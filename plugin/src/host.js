@@ -650,22 +650,41 @@ export default {
     }
 
     // ---------- 北京时间峰谷判定 ----------
+    // 官方 2026-08-23（周日）00:00 北京时间起：周末（按北京日历的周六、周日）
+    // 全天按空闲价计费。该时刻换算成 UTC 是 2026-08-22T16:00:00Z。
+    // 生效前的时间点仍按旧规则结算，所以回放旧账本不会被改价。
+    const WEEKEND_OFFPEAK_FROM_MS = Date.UTC(2026, 7, 22, 16, 0, 0);
     function beijingMinutes(nowMs) {
       const d = new Date(nowMs + 8 * 3600 * 1000);
       return d.getUTCHours() * 60 + d.getUTCMinutes();
     }
+    // 「是不是周末」看的是北京日历，不是 UTC 日历：北京的周末从周五 16:00 UTC
+    // 一直到周日 16:00 UTC。所以星期几必须从同一个平移过的时间上取。
+    function isWeekendOffPeak(nowMs) {
+      if (nowMs < WEEKEND_OFFPEAK_FROM_MS) return false;
+      const day = new Date(nowMs + 8 * 3600 * 1000).getUTCDay();
+      return day === 0 || day === 6;
+    }
     function currentPeriod(nowMs) {
+      if (isWeekendOffPeak(nowMs)) return 'offpeak';
       const m = beijingMinutes(nowMs);
       return (m >= 9 * 60 && m < 12 * 60) || (m >= 14 * 60 && m < 18 * 60) ? 'peak' : 'offpeak';
     }
+    // 周末整天没有切换点，所以要一天一天往前找，跳过周末。原来的写法在周日
+    // 09:30 会说「2 小时 30 分后进高峰」,而下一次进高峰其实是周一早上。
     function nextSwitchAt(nowMs) {
       const d = new Date(nowMs + 8 * 3600 * 1000);
       const cur = d.getUTCHours() * 60 + d.getUTCMinutes();
       const bounds = [9, 12, 14, 18];
-      for (let i = 0; i < bounds.length; i++) {
-        const b = bounds[i] * 60;
-        if (b > cur) {
-          return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), bounds[i], 0, 0) - 8 * 3600 * 1000).getTime();
+      const weekendRuleActive = nowMs >= WEEKEND_OFFPEAK_FROM_MS;
+      for (let ahead = 0; ahead <= 7; ahead++) {
+        const day = (d.getUTCDay() + ahead) % 7;
+        if (weekendRuleActive && (day === 0 || day === 6)) continue;
+        for (let i = 0; i < bounds.length; i++) {
+          const b = ahead * 1440 + bounds[i] * 60;
+          if (b > cur) {
+            return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + ahead, bounds[i], 0, 0) - 8 * 3600 * 1000).getTime();
+          }
         }
       }
       return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 9, 0, 0) - 8 * 3600 * 1000).getTime();
