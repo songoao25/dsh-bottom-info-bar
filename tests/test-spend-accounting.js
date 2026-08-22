@@ -43,7 +43,14 @@ function beijingDayKey(ts) {
   const d = new Date(ts + 8 * 3600 * 1000);
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
 }
+const WEEKEND_OFFPEAK_FROM_MS = Date.UTC(2026, 7, 22, 16, 0, 0);
+function isWeekendOffPeak(nowMs) {
+  if (nowMs < WEEKEND_OFFPEAK_FROM_MS) return false;
+  const day = new Date(nowMs + 8 * 3600 * 1000).getUTCDay();
+  return day === 0 || day === 6;
+}
 function currentPeriod(nowMs) {
+  if (isWeekendOffPeak(nowMs)) return 'offpeak';
   const d = new Date(nowMs + 8 * 3600 * 1000);
   const m = d.getUTCHours() * 60 + d.getUTCMinutes();
   return (m >= 9 * 60 && m < 12 * 60) || (m >= 14 * 60 && m < 18 * 60) ? 'peak' : 'offpeak';
