@@ -78,7 +78,7 @@ For detailed installation, troubleshooting, and upgrade instructions, see [docs/
 ## Configuration
 
 - **API key**: configure the DeepSeek API key under **Settings → Models** (environment variable `DEEPSEEK_API_KEY`). Without it, the plugin shows a hint and every other feature keeps working.
-- **Data scope**: peak hours are 09:00–12:00 and 14:00–18:00 (Beijing time). Built-in pricing covers DeepSeek V4 models plus OpenAI reference prices; models not in the table are excluded from spend statistics.
+- **Data scope**: in Beijing time, peak hours are 09:00–12:00 and 14:00–18:00 on weekdays; Saturday and Sunday use off-peak prices all day. Built-in pricing covers DeepSeek V4 models plus OpenAI reference prices; models not in the table are excluded from spend statistics.
 - **Mode**: the bar switches automatically between balance mode and subscription mode based on the active provider (`codex` / `chatgpt` / `opencode-go` / `opencode` / `openai-codex` → subscription; everything else → balance). An internal `billingMode: 'auto' | 'balance' | 'subscription'` setting (default `auto`) allows forcing a mode.
 - **Subscription sources**:
   - **ChatGPT (Codex)**: install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) and bind your ChatGPT account once — it maintains the token in `~/.codex/auth.json` (mode `0600`) and registers the ChatGPT models. This bar only **reads** that token to fetch quota (`chatgpt.com/backend-api/wham/usage`); it never refreshes, writes back, or injects credentials. Without a token the bar shows a "not bound — install dsh-chatgpt-subscription to authorize" hint; an expired token shows a "re-bind" hint.

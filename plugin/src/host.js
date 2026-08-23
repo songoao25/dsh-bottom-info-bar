@@ -350,7 +350,7 @@ export default {
         peak:   { inputCacheHit: 0.10, inputCacheMiss: 3.0, output: 9.0 },
         offpeak:{ inputCacheHit: 0.05, inputCacheMiss: 1.5, output: 4.5 },
       },
-      // DSH 的视觉实验型号是 V4 Flash 变体；与 Flash 共用峰谷价，确保价格标签与用量记账同步。
+      // 官方价格页已单列视觉实验模型，当前各档价格与 V4 Flash 相同；保留独立条目以便后续独立调价。
       'deepseek-v4-flash-vision-exp': {
         currency: 'CNY', mode: 'peak-valley',
         peak:   { inputCacheHit: 0.10, inputCacheMiss: 3.0, output: 9.0 },
@@ -650,28 +650,36 @@ export default {
     }
 
     // ---------- 北京时间峰谷判定 ----------
+    // DeepSeek 自 2026-08-23 00:00（北京时间）起，周六、周日全天按空闲价计费。
+    // 以生效时刻为界，保留此前周末请求原有的峰谷结算规则，供未冻结的旧记录回算使用。
+    const WEEKEND_OFFPEAK_EFFECTIVE_AT = Date.UTC(2026, 7, 22, 16, 0, 0);
     function beijingMinutes(nowMs) {
       const d = new Date(nowMs + 8 * 3600 * 1000);
       return d.getUTCHours() * 60 + d.getUTCMinutes();
     }
     function currentPeriod(nowMs) {
+      const d = new Date(nowMs + 8 * 3600 * 1000);
+      const weekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+      if (nowMs >= WEEKEND_OFFPEAK_EFFECTIVE_AT && weekend) return 'offpeak';
       const m = beijingMinutes(nowMs);
       return (m >= 9 * 60 && m < 12 * 60) || (m >= 14 * 60 && m < 18 * 60) ? 'peak' : 'offpeak';
     }
     function nextSwitchAt(nowMs) {
       const d = new Date(nowMs + 8 * 3600 * 1000);
-      const cur = d.getUTCHours() * 60 + d.getUTCMinutes();
       const bounds = [9, 12, 14, 18];
-      for (let i = 0; i < bounds.length; i++) {
-        const b = bounds[i] * 60;
-        if (b > cur) {
-          return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), bounds[i], 0, 0) - 8 * 3600 * 1000).getTime();
+      const period = currentPeriod(nowMs);
+      // 周末没有峰谷切换；从当前北京日期起查找下一个实际变价点（最长覆盖至下一周一）。
+      for (let day = 0; day <= 8; day++) {
+        for (let i = 0; i < bounds.length; i++) {
+          const at = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + day, bounds[i], 0, 0) - 8 * 3600 * 1000).getTime();
+          if (at > nowMs && currentPeriod(at) !== period) return at;
         }
       }
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 9, 0, 0) - 8 * 3600 * 1000).getTime();
+      return null;
     }
     function nextPeriodLabel(nowMs) {
       const at = nextSwitchAt(nowMs);
+      if (at == null) return null;
       const d = new Date(at + 8 * 3600 * 1000);
       const hh = String(d.getUTCHours()).padStart(2, '0');
       const mm = String(d.getUTCMinutes()).padStart(2, '0');

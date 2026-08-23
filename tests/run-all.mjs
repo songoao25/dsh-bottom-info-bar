@@ -28,6 +28,7 @@ const cases = [
   ['test-display-name（host.js）', ['tests/test-display-name.js'], join(root), process.execPath],
   ['test-density-toggle（host.js + client-bundle.js）', ['tests/test-density-toggle.js'], join(root), process.execPath],
   ['test-spend-accounting（host.js）', ['tests/test-spend-accounting.js'], join(root), process.execPath],
+  ['test-weekend-pricing（host.js 周末峰谷规则）', ['tests/test-weekend-pricing.mjs'], join(root), process.execPath],
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.js'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.js'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],

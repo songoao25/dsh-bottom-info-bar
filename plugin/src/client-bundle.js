@@ -525,7 +525,7 @@ module.exports = {
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
           ? '\n插件版本：' + updateInfo.current : '';
         const provTitle = '服务商：' + provLabel + ' ' + modelLabel + '\n'
-          + (pr && pr.mode === 'peak-valley' ? '定价：峰谷价（高峰 9-12、14-18 点）'
+          + (pr && pr.mode === 'peak-valley' ? '定价：峰谷价（工作日高峰 9-12、14-18 点；周末全天空闲）'
             : (pr && pr.mode === 'flat' ? '定价：固定价' : '定价：未收录，按默认计'))
           + versionLine;
         return React.createElement('span', { key: 'prov', className: 'bi-model-group', title: provTitle },
