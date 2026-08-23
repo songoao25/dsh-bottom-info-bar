@@ -5,6 +5,9 @@ pnpm-lock.yaml
 # 系统与编辑器
 .DS_Store
 *.log
+
+# Private product-development working materials; never publish to GitHub.
+.product-team/
 *.tmp
 *.swp
 *.swo
