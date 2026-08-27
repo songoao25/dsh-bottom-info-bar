@@ -2,6 +2,33 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-08-27
+
+> v1.7.0：多服务商适配（v1.6 + v1.7 合并发布）。新增 ChatGPT 订阅卡（纯本地实时订阅信息）、小米 MiMo、Together、Fireworks、AWS Bedrock、Cloudflare；修复花费分账与余额跟随两处地基问题。**只显示真实数据**——信息栏只展示各服务商官方真实返回的余额 / 额度 / 套餐 / 账单，不显示任何本地估算金额。
+
+### Added
+
+- **ChatGPT 订阅卡（FR-8，纯本地）**：当前服务商为 ChatGPT / Codex 时，本地解码 `~/.codex/auth.json` 登录令牌的 JWT claims，真实显示套餐档位与到期日期（如 `ChatGPT · Plus | 到期 2026-09-16`）——纯本地解析、零网络请求、零估算；未登录显示「未绑定」引导
+- **小米 MiMo（FR-9）**：`xiaomi` 按量余额（`XIAOMI_API_KEY`）与 `xiaomi-token-plan-cn/-sgp/-ams` 月度 Credits 额度（`XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY`，回退 `XIAOMI_API_KEY`），按地区路由 baseUrl、地区互不串数据
+- **Together（FR-10）**：`TOGETHER_API_KEY` 调官方 Usage API，账单型显示本月真实已用金额（`本月 $X`）
+- **Fireworks（FR-11）**：`FIREWORKS_API_KEY` 解析 account_id 后调官方 Billing 接口，账单型显示本周期真实花费
+- **AWS Bedrock（FR-12）**：复用 AWS 凭据（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`），node:crypto 本地 SigV4 签名调 Cost Explorer 显示本月真实花费，Budget 可选显示预算百分比（`本月 $X · 预算 Y%`）
+- **Cloudflare（FR-13）**：`CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` 调 Billable Usage API（Alpha）显示本月真实用量；每日免费额度与零点重置倒计时仅在接口显式提供时显示，绝不编造
+- **统一数据模型（FR-14）**：新适配器输出统一收敛到 ProviderAccountStatus 子集，客户端新增「账单型」渲染分支，与余额型、额度型三态互斥、不重叠、零新页面
+- **花费统计按账户隔离**：本对话 / 今日 / 本月 / 近30天 / 全部花费仅统计当前活跃服务商账户名下的记录，其他账户记录不参与汇总但仍在账本中保留
+- **未适配服务商优雅降级**：信息栏显示"未适配"引导，绝不显示其他服务商的余额或额度
+- 新增适配器解析器与 SigV4 签名单测（JWT 解码 / 小米 / Together / Fireworks / Cloudflare / AWS 官方固定签名向量）
+
+### Fixed
+
+- 修复余额账户映射逻辑：未知服务商不再回退显示 DeepSeek 余额，改为返回 null 并触发"未适配"提示
+- 修复 deepseek-official 等别名提供商的记录不计入 deepseek 账户的问题：花费聚合现在按账户键而非原始 provider id 过滤
+- Codex 订阅额度不再依赖社区逆向的 wham 接口（保持默认关闭），改由本地 JWT 解码显示真实套餐与到期日期
+
+### Security
+
+- 所有新适配器保持零密钥落盘、错误信息不含密钥片段、请求走 HTTPS；AWS 凭据仅用于本地 SigV4 签名、密钥不出本机；订阅 / 账单查询 RPC 保持同源防护
+
 ## [1.5.1] - 2026-08-23
 
 > v1.5.1：同步 DeepSeek API 周末统一按空闲价计费的新规则。
