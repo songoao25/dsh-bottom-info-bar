@@ -8,9 +8,6 @@ pnpm-lock.yaml
 
 # Private product-development working materials; never publish to GitHub.
 .product-team/
-
-# Private campaign materials; never publish to GitHub.
-promo/
 *.tmp
 *.swp
 *.swo

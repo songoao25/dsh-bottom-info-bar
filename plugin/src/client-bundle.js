@@ -4,7 +4,7 @@
 // - styles.insert(css) → document 注入 <style>（installStyles）
 // - React 由 bundle 的 require('react') 提供（seed 模块）
 // 样式策略：① 整个数据令牌加粗（.bi-num 700）② 服务商名加粗 ③ 高峰价与低余额用警示红、空闲价用绿色
-// 显示行为：① 本对话花费始终显示——新会话/对话刚开始（尚无记账）时显示"本对话 ¥0.000"，
+// 显示行为：① 本会话花费始终显示——新会话/对话刚开始（尚无记账）时显示"本会话 ¥0.000"，
 //   hover 仍可查看持久化的 今天/近一月/全部；
 //   ② 完整模式下原生统计行无 steps 门槛，对话刚开始即显示"0 轮 · 0 步"。
 // 失败策略（AUDIT-CODE-REVIEW 缺陷 #1）：逐接口容错——
@@ -68,10 +68,10 @@ function rpc(method, args, externalSignal) {
 
 // load() 的逐接口容错状态合并（模块级纯函数，供单测提取）：
 // 成功端点 → 写新值 + 清除错误；失败端点 → 保留旧值（无旧数据则为 null）+ 记录错误信息。
-// results 与端点顺序一一对应：balance / pricing / usage / billingMode / sub。
+// results 与端点顺序一一对应：balance / pricing / usage / billingMode / sub / billing。
 function mergeLoadResults(prev, results) {
-  const keys = ['balance', 'pricing', 'usage', 'billingMode', 'sub'];
-  const next = { loading: false, errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null } };
+  const keys = ['balance', 'pricing', 'usage', 'billingMode', 'sub', 'billing'];
+  const next = { loading: false, errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null } };
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     const r = results[i];
@@ -115,7 +115,7 @@ function installStyles() {
       .bi-sep { color: var(--bi-separator); margin: 0 6px; }
       /* 服务商名等一般强调：加粗 600 */
       .bi-root b { color: var(--bi-label-primary); font-weight: 600; }
-      /* 数字：加粗 700（余额/倒计时/本对话花费/原生统计数字） */
+      /* 数字：加粗 700（余额/倒计时/本会话花费/原生统计数字） */
       .bi-root b.bi-num { font-weight: 700; }
       /* 标签与数据不用字符空格拼接：统一由 4px 布局间距控制，避免中英文/数字字宽造成忽松忽紧。 */
       .bi-metric { display: inline-flex; align-items: baseline; white-space: nowrap; }
@@ -240,8 +240,8 @@ module.exports = {
       const usageProj = props.useProjection ? props.useProjection('tokenUsage') : undefined;
 
       const [state, setState] = React.useState({
-        loading: true, balance: null, pricing: null, usage: null, billingMode: null, sub: null,
-        errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null },
+        loading: true, balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null,
+        errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
       const [updateInfo, setUpdateInfo] = React.useState(null);
@@ -350,6 +350,7 @@ module.exports = {
           rpc('getUsageSummary', Object.assign({ sessionId: sessionId }, selectionArgs), signal),
           rpc('getBillingMode', selectionArgs, signal),
           rpc('getSubscriptionSnapshot', selectionArgs, signal),
+          rpc('getBillingStatus', selectionArgs, signal),
         ]).then(function (results) {
           // Do not allow a late A response to overwrite newly active B.
           if ((signal && signal.aborted) || requestVersion !== loadVersionRef.current) return;
@@ -404,9 +405,13 @@ module.exports = {
         || state.pricing.provider !== activeSessionModel.provider || state.pricing.model !== activeSessionModel.model)
         ? { provider: activeSessionModel.provider, model: activeSessionModel.model, providerDisplay: activeSessionModel.providerDisplay, modelDisplay: activeSessionModel.modelDisplay, mode: 'unknown', acceptsImageInput: activeSessionModel.acceptsImageInput }
         : (waitForSessionModel ? null : state.pricing);
+      // v1.6 T7：订阅 provider 集合提取为共享常量，消除两端硬编码漂移
+      var SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
+      // v1.7 FR-14：云账单 provider 集合（账单型显示，与余额/额度互斥）
+      var BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
       const visibleBillingMode = activeSessionModel && (!state.billingMode
         || state.billingMode.provider !== activeSessionModel.provider || state.billingMode.model !== activeSessionModel.model)
-        ? { provider: activeSessionModel.provider, model: activeSessionModel.model, mode: ['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex'].indexOf(activeSessionModel.provider) >= 0 ? 'subscription' : 'balance' }
+        ? { provider: activeSessionModel.provider, model: activeSessionModel.model, mode: SUBSCRIPTION_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'subscription' : (BILLING_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'billing' : 'balance') }
         : (waitForSessionModel ? null : state.billingMode);
       // ---- 与原生一致格式工具 ----
       function formatTokens(n) {
@@ -535,40 +540,79 @@ module.exports = {
 
       // 订阅服务名（订阅制模式下"服务商"指订阅服务本身，不是模型厂商）
       // Codex 与 ChatGPT 已合并：实际 provider openai-codex / chatgpt 均显示 ChatGPT；codex 保持 Codex
+      // v1.6 T7：新增 zai/zai-coding-cn → '智谱'；v1.7：小米 Token Plan → '小米 MiMo'
       function subscriptionServiceName(provider) {
         if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';
         if (provider === 'codex') return 'Codex';
         if (provider === 'opencode-go' || provider === 'opencode') return 'OpenCode Go';
+        if (provider === 'zai' || provider === 'zai-coding-cn') return '智谱';
+        if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return '小米 MiMo';
         return '订阅';
       }
 
+      // 账单型服务名（v1.7：云账单 provider 显示品牌名，未知保持兜底）
+      function billingServiceName(provider) {
+        if (provider === 'together') return 'Together';
+        if (provider === 'fireworks') return 'Fireworks';
+        if (provider === 'amazon-bedrock') return 'AWS Bedrock';
+        if (provider === 'cloudflare-ai-gateway' || provider === 'cloudflare-workers-ai') return 'Cloudflare';
+        return '云账单';
+      }
+
+      // 套餐档位短名（JWT 订阅卡：plus/pro/team/enterprise → Plus/Pro/Team/Enterprise；未知返回 null 显示模型名）
+      function subscriptionPlanShort(planType) {
+        if (typeof planType !== 'string' || planType.length === 0) return null;
+        const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
+        return map[planType.toLowerCase()] || null;
+      }
+
+      // 本地时区 YYYY-MM-DD（订阅到期日）
+      function formatDate(ms) {
+        if (ms == null || isNaN(ms)) return '—';
+        const d = new Date(ms);
+        const p = function (x) { return String(x).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+      }
+
       // 订阅制模型组：订阅服务名 · 具体模型（如 `OpenCode Go · V4 Flash`、`Codex · GPT 5 Codex`）
+      // v1.7 FR-8：codex 源有 JWT 套餐档位时，模型位显示套餐档位（如 `ChatGPT · Plus`），真实信息来自 id_token claims
       function subscriptionProviderGroup() {
         const pr = visiblePricing;
         const serviceName = subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider);
-        const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
+        const subSnapshot = state.sub;
+        const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;
+        const rawModelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
           : (pr && pr.model ? pr.model : '未知模型');
+        const modelLabel = planShort ? planShort : rawModelLabel;
         const modelName = modelLabelWithoutProvider(modelLabel, serviceName);
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
           ? '\n插件版本：' + updateInfo.current : '';
-        const title = '订阅服务：' + serviceName + '\n模型：' + modelLabel + versionLine;
+        const planLine = subSnapshot && subSnapshot.plan ? '\n套餐：' + subSnapshot.plan : '';
+        const expiryLine = subSnapshot && subSnapshot.expiryAt ? '\n到期：' + formatDate(subSnapshot.expiryAt) + '（本地时区）' : '';
+        const title = '订阅服务：' + serviceName + '\n模型：' + rawModelLabel + planLine + expiryLine + versionLine;
         return React.createElement('span', { key: 'subprov', className: 'bi-model-group', title: title },
           React.createElement('b', { className: 'bi-model-provider' }, serviceName),
           modelDetail(pr, modelName),
         );
       }
 
-      // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本对话花费 ----
+      // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       function pushBalanceGroups(groups, trailingErrorGroups) {
         const bal = state.balance;
         const errors = state.errors || {};
         const alertActive = !!(bal && bal.alert && bal.alert.active);
         groups.push(providerGroup());
 
+        // v1.6 T7：未适配账户渲染"未适配"弱提示
+        if (bal && bal.unmapped) {
+          trailingErrorGroups.push(React.createElement('span', { className: 'bi-muted', key: 'unmapped', title: '该服务商暂未适配余额查询，后续版本将支持。' }, '未适配'));
+        }
         // 余额（纯金额；hover 仅展示余额，不显示充值/赠金）
-        if (bal && bal.error && bal.error.kind === 'no-key') {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'nokey', title: '未配置 DeepSeek API Key。请在“设置 → 模型”中填写。' },
-            '未配置 DEEPSEEK_API_KEY → 设置→模型 填写'));
+        // v1.6 T7：未配置提示改为按账户显示凭据名（去掉写死的 DeepSeek 文案）
+        else if (bal && bal.error && bal.error.kind === 'no-key') {
+          const credName = bal.error.message ? String(bal.error.message).replace('未配置 ', '') : 'API_KEY';
+          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'nokey', title: '未配置 ' + credName + '。请在"设置 → 模型"中填写。' },
+            '未配置 ' + credName + ' → 设置→模型 填写'));
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';
           const balTitle = bal.estimate
@@ -610,7 +654,7 @@ module.exports = {
             metric('距' + (peakNow ? '空闲' : '高峰'), fmtCountdown(pr.nextSwitch.at - now))));
         }
 
-        // 本对话花费（只显示钱；hover 浮窗显示 今天 / 近一月 / 全部；金额数字加粗）
+        // 本会话花费（只显示钱；hover 浮窗显示 本会话（含子代理）+ 今天 / 近一月 / 全部；金额数字加粗）
         // 始终显示：新会话/对话刚开始尚无记账时显示 ¥0.000，hover 仍可查看持久化的 今天/近一月/全部
         const usg = state.usage;
         if (usg) {
@@ -625,8 +669,10 @@ module.exports = {
           const month = usg.monthSpend != null ? '近一月 ' + symbol + fmt(usg.monthSpend, 3) : '';
           const total = usg.totalSpend != null ? '全部 ' + symbol + fmt(usg.totalSpend, 3) : '';
           const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
-          groups.push(React.createElement('span', { key: 'convo', title: detail || '本对话花费' },
-            metric('本对话', costTxt)));
+          // v1.7 发布前微调：hover 明确标注"含子代理"——本会话聚合同账户所有记录（同起点后）
+          groups.push(React.createElement('span', { key: 'convo',
+            title: '本会话 ' + costTxt + '（含子代理）' + (detail ? '\n' + detail : '') },
+            metric('本会话', costTxt)));
         } else if (errors.usage) {
           // 本次 RPC 失败且无旧数据：只降级花费块，其余端点数据照常渲染
           trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'usageerr', title: '花费暂不可用；不会影响对话。' }, '花费获取失败'));
@@ -654,6 +700,11 @@ module.exports = {
         groups.push(subscriptionProviderGroup());
         const sub = state.sub;
         const errors = state.errors || {};
+        // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
+        if (sub && sub.planType && sub.expiryAt) {
+          groups.push(React.createElement('span', { key: 'subexp', title: '订阅到期：' + formatDate(sub.expiryAt) + '（本地时区）' },
+            metric('到期', formatDate(sub.expiryAt))));
+        }
         if (!sub) {
           if (errors.sub) {
             // 本次 RPC 失败且无旧数据：显示失败信息而非永久"加载中…"
@@ -721,18 +772,89 @@ module.exports = {
         }
       }
 
+      // ---- v1.7 账单型模式（FR-10~13/FR-14，互斥第三态）：
+      //      账单服务+模型 → 本月真实花费 →（预算%）→（免费额度+重置倒计时）；余额/额度/本会话花费均不显示 ----
+      function billingFailureHint(error, provider) {
+        const serviceName = billingServiceName(provider);
+        const message = error && typeof error.message === 'string' ? error.message : '';
+        const statusMatch = message.match(/HTTP (\d{3})/);
+        const status = statusMatch ? statusMatch[1] : '';
+        if (error && error.kind === 'no-key') return '未配置 ' + message.replace('未配置 ', '') + '。请在"设置 → 模型"中填写。';
+        if (status === '403' || /缺少 .*权限/.test(message)) return serviceName + ' 拒绝访问：Token 可能缺少账单读取权限。';
+        if (error && error.kind === 'parse') return serviceName + ' 返回的数据暂时无法识别。请稍后再试。';
+        if (/timeout|timed out|abort/i.test(message)) return serviceName + ' 响应超时。请检查网络后再试。';
+        return serviceName + ' 账单暂不可用。请检查网络与权限后再试。';
+      }
+
+      function pushBillingGroups(groups, trailingErrorGroups) {
+        groups.push(billingProviderGroup());
+        const bill = state.billing;
+        const errors = state.errors || {};
+        if (!bill) {
+          if (errors.billing) {
+            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billerr', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, '刷新失败'));
+          }
+          return;
+        }
+        const d = bill.data;
+        const hasSpend = !!(d && (d.currentPeriodSpend != null || d.usage != null));
+        if (bill.error && !hasSpend) {
+          trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billstale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          return;
+        }
+        if (hasSpend) {
+          const symbol = d.currency === 'CNY' ? '¥' : '$';
+          const titleLines = ['账单源：' + billingServiceName(visibleBillingMode && visibleBillingMode.provider)]
+            .concat(d.note ? [d.note] : [])
+            .concat(d.currentPeriodSpend != null ? ['本月花费：' + symbol + fmt(d.currentPeriodSpend, 2)] : [])
+            .concat(d.budgetPercent != null ? ['预算使用：' + fmt(d.budgetPercent, 0) + '%'] : [])
+            .concat(d.freeRemaining != null ? ['每日免费额度剩余：' + fmt(d.freeRemaining, 0)] : []);
+          const nodes = [];
+          if (d.currentPeriodSpend != null) nodes.push(metric('本月', symbol + fmt(d.currentPeriodSpend, 2)));
+          else if (d.usage != null) nodes.push(metric('本月用量', fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : '')));
+          if (d.budgetPercent != null) nodes.push(' · ', metric('预算', fmt(d.budgetPercent, 0) + '%'));
+          // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
+          if (d.freeRemaining != null && d.resetsAt) {
+            nodes.push(' · ', metric('免费', fmt(d.freeRemaining, 0) + ' · 距重置 ' + fmtResetCountdown(d.resetsAt - now)));
+          }
+          groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
+          if (bill.error || errors.billing) {
+            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billstale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          }
+        }
+      }
+
+      // 账单型模型组：账单服务名 · 具体模型（如 `AWS Bedrock · Claude`）
+      function billingProviderGroup() {
+        const pr = visiblePricing;
+        const serviceName = billingServiceName(visibleBillingMode && visibleBillingMode.provider);
+        const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
+          : (pr && pr.model ? pr.model : '未知模型');
+        const modelName = modelLabelWithoutProvider(modelLabel, serviceName);
+        const versionLine = updateInfo && typeof updateInfo.current === 'string'
+          ? '\n插件版本：' + updateInfo.current : '';
+        const title = '账单服务：' + serviceName + '\n模型：' + modelLabel + versionLine;
+        return React.createElement('span', { key: 'billprov', className: 'bi-model-group', title: title },
+          React.createElement('b', { className: 'bi-model-provider' }, serviceName),
+          modelDetail(pr, modelName),
+        );
+      }
+
       const groups = [];
       // 报错不打断主要信息的阅读顺序：统一延后到整行最右侧。
       const trailingErrorGroups = [];
       // 两态严格判定：density 只能是 'full' 或 'compact'（host 校验 + 本地防抖保证）
       const full = displayDensity === 'full';
-      // 模式互斥：订阅制渲染订阅版 row2，余额制渲染 v1.0.0 现状，绝不叠加
+      // 模式互斥：订阅制渲染订阅版 row2，账单制渲染账单版 row2，余额制渲染 v1.0.0 现状——三态绝不叠加（FR-14）
       const isSub = !!(visibleBillingMode && visibleBillingMode.mode === 'subscription');
+      const isBilling = !!(visibleBillingMode && visibleBillingMode.mode === 'billing');
       // Never paint a loading placeholder.  Before the active session's model
       // is available, leave this compact row empty rather than briefly showing
       // either a generic loading label or data from the previous session.
       if (waitForSessionModel) {
         // Intentionally empty: session model publish fills the row immediately.
+      } else if (isBilling) {
+        pushBillingGroups(groups, trailingErrorGroups);
       } else if (isSub) {
         pushSubscriptionGroups(groups, trailingErrorGroups);
       } else {
@@ -747,6 +869,7 @@ module.exports = {
       if (errors.usage) failedLabels.push('花费');
       if (errors.billingMode) failedLabels.push('模式');
       if (errors.sub) failedLabels.push('订阅额度');
+      if (errors.billing) failedLabels.push('账单');
       if (failedLabels.length > 0) {
         trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'degraded',
           title: failedLabels.join('、') + '暂不可用；正在保留上次数据并自动重试。' }, '刷新失败'));

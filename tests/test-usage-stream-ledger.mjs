@@ -91,6 +91,8 @@ check('无有效用量的回答不生成空账单', summary.currentSession === n
 
 // Two overlapping plugin instances may each write a snapshot, but both
 // confirmed journal entries must survive a later reload.
+// 注意：v1.7 本会话按"起点 + 同账户聚合"，并发写入的两笔时间戳可能落在同一起点窗口内，
+// 因此各自会话聚合 ≥ 自身记录即证明该完整账单已恢复（合并计入也符合新语义）。
 const parallel = makeStub()
 const disposeParallel = plugin.apply(parallel.ctx)
 await Promise.all([
@@ -103,7 +105,9 @@ const recovered = makeStub()
 const disposeRecovered = plugin.apply(recovered.ctx)
 const writerA = await usageSummary(recovered.captured.route, 'writer-a')
 const writerB = await usageSummary(recovered.captured.route, 'writer-b')
-check('重叠实例写入后两个完整账单都可恢复', writerA.currentSession && writerA.currentSession.tokens === 10 && writerB.currentSession && writerB.currentSession.tokens === 15,
+check('重叠实例写入后两个完整账单都可恢复',
+  writerA.currentSession && writerA.currentSession.tokens >= 10 && writerB.currentSession && writerB.currentSession.tokens >= 15
+  && writerA.currentSession.costs.CNY > 0 && writerB.currentSession.costs.CNY > 0 && writerA.totalSpend === writerB.totalSpend,
   JSON.stringify({ writerA: writerA.currentSession, writerB: writerB.currentSession }))
 disposeRecovered()
 

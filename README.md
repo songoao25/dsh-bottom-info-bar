@@ -18,18 +18,54 @@ From top to bottom, the combined screenshot shows **ChatGPT subscription**, **De
 ## Features
 
 - **Dual-mode billing bar** — Auto-detects whether the active provider is subscription-based (Codex / OpenCode Go) or balance-based. The two modes replace each other, never overlap; balance mode stays exactly as before.
-- **Subscription quota display (ChatGPT & OpenCode Go)** — When the active provider is a subscription service, the bar shows the **subscription service · model** (e.g. `OpenCode Go · V4 Flash`), the **5-hour / weekly / monthly quota remaining** per window (remaining = 100 − used), and a **countdown to the next reset** (e.g. `距重置 1d 21h`). Remaining quota is neutral by default; at 20% or less, the percentage and adjacent `低` status turn alert red, so the warning doesn’t rely on color alone. In compact mode the shortest-duration window is shown (5-hour preferred; falls back to weekly/monthly if unavailable); in full mode all three windows appear. Quota is pulled from **two subscription sources**:
-  - **ChatGPT / Codex** — reads your ChatGPT subscription quota (Plus / Pro / Team / Enterprise) read-only from `~/.codex/auth.json`. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) to bind your ChatGPT account; this bar only reads the token to display quota. Missing/expired token → "not bound / re-bind" hint instead of an error. Hover over `刷新失败` for details on auto-retry behavior.
+- **Three-state billing bar** — Auto-detects whether the active provider is **subscription-based** (quota windows: Codex / OpenCode Go / Zhipu / Xiaomi MiMo Token Plan), **cloud-billing-based** (this month's real bill: Together / Fireworks / AWS Bedrock / Cloudflare), or **balance-based**. The three modes replace each other, never overlap; balance mode stays exactly as before.
+- **ChatGPT subscription card (pure local)** — When the active provider is **ChatGPT / Codex**, the bar decodes `~/.codex/auth.json` locally and shows the **real plan tier + expiry date**, e.g. `ChatGPT · Plus | 到期 2026-09-16` — zero network, real fields straight from OpenAI's own login token (chatgpt_plan_type / subscription_active_until), no local estimation. Not signed in → "not bound" hint. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) to bind your ChatGPT account; this bar only reads the token.
+- **Subscription quota display (OpenCode Go / Zhipu / Xiaomi MiMo Token Plan)** — When the active provider is a subscription service, the bar shows the **subscription service · model** (e.g. `OpenCode Go · V4 Flash`, `小米 MiMo · Mimo-V2.5`), the **5-hour / weekly / monthly quota remaining** per window (remaining = 100 − used), and a **countdown to the next reset** (e.g. `距重置 1d 21h`). **Quota and countdown always match** — both come from the same window. Quota sources:
   - **OpenCode Go** — reads quota from `opencode.ai/zen/go/v1/usage` via `OPENCODE_GO_API_KEY` (Settings → Models) or the opencode CLI login (`~/.local/share/opencode/auth.json`); missing key → "not configured" hint instead of an error.
-  Both sources show the remaining quota and the **reset time** for each of the 5-hour / weekly / monthly windows, so you always know when your quota renews. **Quota and countdown always match** — both come from the same window.
+  - **Zhipu (zai / zai-coding-cn)** — reads GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback: `ZAI_API_KEY`); shows plan tier + 5-hour window remaining.
+  - **Xiaomi MiMo Token Plan** — reads monthly Credits quota via `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` per region (fallback: `XIAOMI_API_KEY`); shows plan name + monthly window.
+- **Cloud-billing display (real monthly bill)** — When the active provider is **Together / Fireworks / AWS Bedrock / Cloudflare**, the bar reads the official billing API and shows **this month's real spend**, e.g. `Together | 本月 $12.34`, `AWS Bedrock | 本月 $45.60 · 预算 46%`. Cloudflare additionally shows daily free-quota remaining and a UTC-midnight reset countdown **only when the API actually reports a free allowance** (otherwise it shows real usage only — never fabricated). All bill figures come from official provider APIs; **no local estimation is ever displayed**. Missing keys → "not configured" hint.
 - **Drop-in replacement** — Replaces the native stats row while keeping its core original information (turns/steps, LLM latency, tool calls, cache hit rate, in/out tokens) with a native-consistent layout. Speed metrics (TTFT, tok/s) move to the hover tooltip so the row stays on a single line.
 - **Provider & model detection** — Always shows provider and model separately, exactly as in the DSH LLM catalog (for example, `DeepSeek · V4-Flash`). The provider is bold; when a catalog model name repeats its provider prefix, only that duplicate prefix is removed from the model part.
 - **Live balance** — Fetches real balance from DeepSeek's `/user/balance` API, auto-refreshes every 60 s, and keeps the last known snapshot on failure so usage is never interrupted.
 - **Peak / off-peak pricing** — Shows peak (alert red, bold) and off-peak (green, bold) prices with a countdown to the next switch; hidden automatically for providers without tiered pricing. The text labels remain visible in both appearances.
-- **Real spend tracking** — Records every `llm/stream` request (usage × unit price) and aggregates precisely by **this conversation / today / this month / all time**. Records are persisted to disk — nothing is lost on restart.
+- **Real spend tracking** — Records every `llm/stream` request (usage × unit price) and aggregates precisely by **this session (includes subagents) / today / this month / all time**. Subagents share the same provider account, so their records are folded into the current session's spend (session starts at the earliest record of the current session, then every same-account record from that moment on counts). Records are persisted to disk — nothing is lost on restart.
 - **Bold numbers** — Balance, countdown, spend, and all stats are rendered with bold numerals for instant readability.
 - **Full / compact toggle** — Click the bar to switch between two strict modes (debounced).
 - **Low-balance alert** — When the balance drops below ¥20, its amount and adjacent `低` status turn alert red.
+- **Real data only** — The bar only ever shows balances / quotas / plans / bills returned by each provider's official API; local spend estimation is never displayed.
+
+## Supported Providers (v1.7)
+
+The bar auto-detects your provider from the DSH model catalog — **zero configuration needed**. Just set up your API key in DeepSeek Harness (Settings → Models), and the bar recognizes it immediately.
+
+### Balance-based providers
+| Provider | Display Name | Credential Key | Balance API |
+|---|---|---|---|
+| deepseek / deepseek-official | DeepSeek | DEEPSEEK_API_KEY | Official API |
+| openai | OpenAI | OPENAI_API_KEY | Estimated (no public API) |
+| moonshotai / moonshotai-cn / kimi-coding | Kimi | MOONSHOT_API_KEY (fallback: KIMI_API_KEY) | Official API |
+| openrouter | OpenRouter | OPENROUTER_API_KEY | Official API |
+| stepfun | StepFun | STEPFUN_API_KEY | Official API |
+| xiaomi | Xiaomi MiMo | XIAOMI_API_KEY | Official API |
+
+### Subscription-based providers (quota windows)
+| Provider | Display Name | Token Source |
+|---|---|---|
+| codex / chatgpt / openai-codex | ChatGPT / Codex | `~/.codex/auth.json` (read-only; local JWT decode → plan + expiry) |
+| opencode-go / opencode | OpenCode Go | OPENCODE_GO_API_KEY or opencode auth.json |
+| zai / zai-coding-cn | Zhipu (智谱) | ZAI_CODING_CN_API_KEY (fallback: ZAI_API_KEY) |
+| xiaomi-token-plan-cn / -sgp / -ams | Xiaomi MiMo | XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY (fallback: XIAOMI_API_KEY) |
+
+### Cloud-billing providers (real monthly bill)
+| Provider | Display Name | Credential Key | Billing API |
+|---|---|---|---|
+| together | Together | TOGETHER_API_KEY | Official Usage API (month spend) |
+| fireworks | Fireworks | FIREWORKS_API_KEY | Official Billing API (period spend) |
+| amazon-bedrock | AWS Bedrock | AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY | AWS Cost Explorer + Budgets (month spend + budget %) |
+| cloudflare-ai-gateway / cloudflare-workers-ai | Cloudflare | CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID (Token needs Billing read) | Billable Usage API (Alpha, real usage) |
+
+**Unadapted providers**: If your provider is not in the list above, the bar shows an "未适配" (Not adapted) hint instead of displaying another provider's data.
 
 ## Requirements
 

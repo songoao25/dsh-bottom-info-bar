@@ -18,8 +18,10 @@ function check(name, condition, detail) {
   else { failures += 1; console.log('FAIL  ' + name + (detail ? ' — ' + detail : '')) }
 }
 
-function record(id, sessionId, cost) {
-  return { id, ts: 1787000000000, model: 'deepseek-v4-flash', provider: 'deepseek', sessionId, purpose: '', input: 1, cacheRead: 0, cacheWrite: 0, output: 0, currency: 'CNY', cost }
+// v1.7 本会话聚合（含子代理）：会话起点 = 当前 sessionId 最早记录 ts，聚合同账户 ts>=起点的记录。
+// 固件必须给每条记录唯一递增时间戳，且被断言会话的记录为最新，否则同起点窗会把整账并入。
+function record(id, sessionId, cost, ts) {
+  return { id, ts: ts == null ? 1787000000000 : ts, model: 'deepseek-v4-flash', provider: 'deepseek', sessionId, purpose: '', input: 1, cacheRead: 0, cacheWrite: 0, output: 0, currency: 'CNY', cost }
 }
 
 function makeStub() {
@@ -54,8 +56,9 @@ async function invoke(route, method, body) {
 
 // A large existing account is loaded intact; the previous in-memory cap used
 // to discard its oldest records every time a new request arrived.
-const largeSnapshot = Array.from({ length: 3005 }, (_, i) => record('large-' + i, 'large-' + i, 0.001))
-largeSnapshot.push(record('frozen-price', 'frozen-price', 3.14159))
+const TS_BASE = 1787000000000
+const largeSnapshot = Array.from({ length: 3005 }, (_, i) => record('large-' + i, 'large-' + i, 0.001, TS_BASE + i))
+largeSnapshot.push(record('frozen-price', 'frozen-price', 3.14159, TS_BASE + 3005)) // 最新记录：仅自身落在本会话起点窗口
 writeFileSync(dataFile, JSON.stringify(largeSnapshot))
 writeFileSync(journalFile, JSON.stringify(largeSnapshot[0]) + '\n') // duplicate id must not double-count
 
@@ -71,8 +74,8 @@ dispose()
 // Simulate a damaged main snapshot after an interrupted replacement.  The
 // known-good backup and valid journal entries must still reconstruct the bill.
 writeFileSync(dataFile, '{ not valid JSON')
-writeFileSync(backupFile, JSON.stringify([record('backup-only', 'backup-only', 1)]))
-writeFileSync(journalFile, [JSON.stringify(record('backup-only', 'backup-only', 1)), '{ torn line', JSON.stringify(record('journal-only', 'journal-only', 2))].join('\n') + '\n')
+writeFileSync(backupFile, JSON.stringify([record('backup-only', 'backup-only', 1, TS_BASE)]))
+writeFileSync(journalFile, [JSON.stringify(record('backup-only', 'backup-only', 1, TS_BASE)), '{ torn line', JSON.stringify(record('journal-only', 'journal-only', 2, TS_BASE + 1))].join('\n') + '\n') // journal-only 较新：本会话窗口仅含自身
 let second = makeStub()
 dispose = plugin.apply(second.ctx)
 result = await invoke(second.captured.route, 'getUsageSummary', { sessionId: 'journal-only', selection: { provider: 'deepseek', model: 'deepseek-v4-flash' } })
