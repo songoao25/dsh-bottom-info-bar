@@ -7,7 +7,7 @@
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
 // 令牌的绑定/续期/写回由独立插件 dsh-chatgpt-subscription 维护，本插件不写回、不续期、不注入凭据。
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -68,8 +68,10 @@ async function checkLatestVersion() {
 }
 
 // ---------- 双模式（余额制 / 订阅制）配置 ----------
-// 订阅制 provider 集合：这些 provider 走"额度窗口"显示而非余额（可在此增删）
-const SUBSCRIPTION_PROVIDERS = ['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex']
+// 订阅制 provider 集合：这些 provider 走"额度窗口"显示而非余额（共享常量注入，见 src/constants.js）
+const SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
+// 云账单 provider 集合：这些 provider 走"账单型"显示（本月真实花费 / 预算%），与余额型/额度型互斥（FR-14 共享常量注入）
+const BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
 // 订阅窗口时长（秒）：5 小时 / 7 天 / 30 天；映射带 5% 容差（接口值可能微调）
 const WINDOW_SECONDS = { five_hour: 18000, seven_day: 604800, monthly: 2592000 }
 const WINDOW_LABELS = { five_hour: '5 小时', seven_day: '周', monthly: '月' }
@@ -83,6 +85,27 @@ const SUBSCRIPTION_RETRY_BACKOFF_MS = 60000 // 订阅刷新失败后退避期：
 const CODEX_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH || join(homedir(), '.codex', 'auth.json')
 const OPENCODE_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH || join(homedir(), '.local', 'share', 'opencode', 'auth.json')
 
+// ---------- 服务商账户映射（v1.6 分账核心）：DSH provider id → 账户键；未知返回 null ----------
+// v1.7：新增 xiaomi（按量）、xiaomi-token-plan-*（套餐）、together / fireworks / amazon-bedrock / cloudflare-*（云账单）
+function accountForProvider(pid) {
+  if (!pid) return null
+  if (pid === 'deepseek' || pid === 'deepseek-official') return 'deepseek'
+  if (pid === 'openai') return 'openai'
+  if (pid === 'moonshotai' || pid === 'moonshotai-cn' || pid === 'kimi-coding') return 'moonshotai'
+  if (pid === 'openrouter') return 'openrouter'
+  if (pid === 'stepfun') return 'stepfun'
+  if (pid === 'codex' || pid === 'chatgpt' || pid === 'openai-codex') return 'codex' // 订阅源 codex
+  if (pid === 'opencode-go' || pid === 'opencode') return 'opencode-go' // 订阅源 opencode-go
+  if (pid === 'zai' || pid === 'zai-coding-cn') return 'zai' // 订阅源 zai
+  if (pid === 'xiaomi') return 'xiaomi'
+  if (pid === 'xiaomi-token-plan-cn' || pid === 'xiaomi-token-plan-sgp' || pid === 'xiaomi-token-plan-ams') return 'xiaomi-token-plan'
+  if (pid === 'together') return 'together'
+  if (pid === 'fireworks') return 'fireworks'
+  if (pid === 'amazon-bedrock') return 'amazon-bedrock'
+  if (pid === 'cloudflare-ai-gateway' || pid === 'cloudflare-workers-ai') return 'cloudflare'
+  return null
+}
+
 // ---------- 双模式纯逻辑（模式检测 / 窗口映射 / 响应解析；单测直接提取） ----------
 
 // 窗口时长（秒）→ 窗口键：18000≈5小时 / 604800≈7天 / 2592000≈30天，5% 容差；未知返回 null
@@ -95,10 +118,24 @@ function codexWindowKey(limitWindowSeconds) {
   return null
 }
 
-// 订阅 provider → 订阅源标识（codex / opencode-go）；非订阅 provider → null
+// 订阅 provider → 订阅源标识（codex / opencode-go / zai / xiaomi-{cn,sgp,ams}）；非订阅 provider → null
+// v1.7：小米 Token Plan 按地区分源（各地区独立 baseUrl 与凭据，避免跨地区串数据）
 function subscriptionSourceFor(providerId) {
   if (providerId === 'codex' || providerId === 'chatgpt' || providerId === 'openai-codex') return 'codex'
   if (providerId === 'opencode-go' || providerId === 'opencode') return 'opencode-go'
+  if (providerId === 'zai' || providerId === 'zai-coding-cn') return 'zai'
+  if (providerId === 'xiaomi-token-plan-cn') return 'xiaomi-cn'
+  if (providerId === 'xiaomi-token-plan-sgp') return 'xiaomi-sgp'
+  if (providerId === 'xiaomi-token-plan-ams') return 'xiaomi-ams'
+  return null
+}
+
+// 云账单 provider → 账单源标识（together / fireworks / amazon-bedrock / cloudflare）；非账单型 → null（FR-14）
+function billingSourceFor(providerId) {
+  if (providerId === 'together') return 'together'
+  if (providerId === 'fireworks') return 'fireworks'
+  if (providerId === 'amazon-bedrock') return 'amazon-bedrock'
+  if (providerId === 'cloudflare-ai-gateway' || providerId === 'cloudflare-workers-ai') return 'cloudflare'
   return null
 }
 
@@ -121,10 +158,14 @@ function providerDisplayFromCache(providerId, cache, staticMap) {
   return providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 
-// 余额制/订阅制判定：billingMode='auto' 按 provider 检测；'balance'/'subscription' 手动强制覆盖
+// 余额制/订阅制/账单制判定：billingMode='auto' 按 provider 检测；'balance'/'subscription' 手动强制覆盖
+// v1.7：FR-14 三态互斥——订阅 provider → subscription（额度窗），云账单 provider → billing（本月花费），其余 → balance
 function detectBillingMode(providerId, billingMode) {
   if (billingMode === 'balance' || billingMode === 'subscription') {
     return { mode: billingMode, provider: providerId || '', reason: 'manual-override' }
+  }
+  if (BILLING_PROVIDERS.indexOf(providerId) >= 0) {
+    return { mode: 'billing', provider: providerId || '', reason: 'provider:' + (providerId || 'unknown') }
   }
   const sub = SUBSCRIPTION_PROVIDERS.indexOf(providerId) >= 0
   return { mode: sub ? 'subscription' : 'balance', provider: providerId || '', reason: 'provider:' + (providerId || 'unknown') }
@@ -242,6 +283,365 @@ function readCodexAuthFile(filePath) {
   }
   if (!auth || typeof auth !== 'object' || Array.isArray(auth)) return { ok: false, reason: 'corrupt' }
   return { ok: true, auth: auth }
+}
+
+// ================= v1.7 纯函数（FR-8/9/10/11/12/13/14；供单测直接提取） =================
+
+// ---------- FR-8 / D7：本地 JWT 解码（纯本地，零网络） ----------
+// 解码 JWT payload：base64url → base64（补 padding）→ Buffer → JSON；任何一步失败返回 null
+function decodeJwtPayload(token) {
+  if (typeof token !== 'string' || token.length === 0) return null
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+  while (b64.length % 4 !== 0) b64 += '='
+  try {
+    const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'))
+    return payload && typeof payload === 'object' ? payload : null
+  } catch (err) {
+    return null
+  }
+}
+
+// ChatGPT claims 命名空间：2026-08 实测 id_token 的订阅字段嵌套在
+// "https://api.openai.com/auth" 下（非扁平顶层）；扁平形态做兼容兜底
+function chatgptClaimSource(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  const ns = payload['https://api.openai.com/auth']
+  if (ns && typeof ns === 'object' && !Array.isArray(ns)) return ns
+  return payload
+}
+
+// 解析 Codex/ChatGPT id_token → { planType, expiryMs }；字段全缺失 / 解码失败 → null（静默降级）
+function parseCodexJwt(token) {
+  const payload = decodeJwtPayload(token)
+  if (!payload) return null
+  const claims = chatgptClaimSource(payload)
+  if (!claims) return null
+  const planType = typeof claims.chatgpt_plan_type === 'string' && claims.chatgpt_plan_type.length > 0 ? claims.chatgpt_plan_type : null
+  let expiryMs = null
+  if (typeof claims.chatgpt_subscription_active_until === 'string' && claims.chatgpt_subscription_active_until.length > 0) {
+    const t = Date.parse(claims.chatgpt_subscription_active_until)
+    if (!isNaN(t)) expiryMs = t
+  }
+  if (!planType && !expiryMs) return null
+  return { planType: planType, expiryMs: expiryMs }
+}
+
+// ---------- FR-9 / D8：小米 MiMo 解析（数值一律容错：字符串/数字、百分比 0-1 或 0-100 双形态） ----------
+function xiaomiRegionBaseUrl(region) {
+  if (region === 'sgp') return 'https://token-plan-sgp.xiaomimimo.com'
+  if (region === 'ams') return 'https://token-plan-ams.xiaomimimo.com'
+  return 'https://token-plan-cn.xiaomimimo.com'
+}
+
+// 百分比 → 0-100 整数（接口可能返回 0.1661=16.61% 或直接 16.61；>1 视为已是百分比）
+function xiaomiPercentToUsed(percent) {
+  const v = typeof percent === 'string' ? parseFloat(percent) : percent
+  if (typeof v !== 'number' || !isFinite(v) || v < 0) return null
+  const scaled = v <= 1 ? v * 100 : v
+  return Math.round(scaled)
+}
+
+// 解析 /v1/tokenPlan/usage：data.monthUsage（used/limit/percent）或 items[] 中 month_total_token；
+// plan_name → 套餐名；返回统一月度窗口（重置时刻由本地推导：下月 1 日零点）
+function parseXiaomiTokenPlanUsage(body) {
+  if (!body || typeof body !== 'object') return null
+  const data = body.data && typeof body.data === 'object' ? body.data : body
+  let used = null
+  let limit = null
+  let percent = null
+  const mu = data.monthUsage
+  if (mu && typeof mu === 'object') {
+    if (typeof mu.percent === 'number' || typeof mu.percent === 'string') percent = mu.percent
+    if (typeof mu.used === 'number' || typeof mu.used === 'string') used = parseFloat(mu.used)
+    if (typeof mu.limit === 'number' || typeof mu.limit === 'string') limit = parseFloat(mu.limit)
+  }
+  if (percent == null && Array.isArray(data.items)) {
+    for (let i = 0; i < data.items.length; i++) {
+      const item = data.items[i]
+      if (!item || typeof item !== 'object') continue
+      if (item.name !== 'month_total_token') continue
+      if (typeof item.percent === 'number' || typeof item.percent === 'string') percent = item.percent
+      if (typeof item.used === 'number' || typeof item.used === 'string') used = parseFloat(item.used)
+      if (typeof item.limit === 'number' || typeof item.limit === 'string') limit = parseFloat(item.limit)
+      break
+    }
+  }
+  let usedPercent = xiaomiPercentToUsed(percent)
+  if (usedPercent == null && used != null && limit != null && limit > 0) usedPercent = Math.round((used / limit) * 100)
+  if (usedPercent == null) return null
+  let planName = null
+  const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : (data.planName != null ? data.planName : null))
+  if (typeof maybePlan === 'string' && maybePlan.length > 0) planName = maybePlan
+  return { plan: planName, windows: [{ key: 'monthly', label: WINDOW_LABELS.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
+}
+
+// 解析 Token Plan /v1/user/balance 的套餐形态：{token_balance, token_limit, plan_name} → 月度额度窗
+function parseXiaomiTokenPlanBalance(body) {
+  if (!body || typeof body !== 'object') return null
+  const data = body.data && typeof body.data === 'object' ? body.data : body
+  const tokenBalance = data.token_balance != null ? parseFloat(data.token_balance) : NaN
+  const tokenLimit = data.token_limit != null ? parseFloat(data.token_limit) : NaN
+  if (!Number.isFinite(tokenLimit) || tokenLimit <= 0 || !Number.isFinite(tokenBalance)) return null
+  const usedPercent = xiaomiPercentToUsed(Math.max(0, Math.min(1, (tokenLimit - tokenBalance) / tokenLimit)))
+  let planName = null
+  const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : null)
+  if (typeof maybePlan === 'string' && maybePlan.length > 0) planName = maybePlan
+  return { plan: planName, windows: [{ key: 'monthly', label: WINDOW_LABELS.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
+}
+
+// 解析按量 /v1/user/balance：{data:{balance, charge_balance, granted_balance, plan}}（balance 为字符串）
+function parseXiaomiPaygBalance(body) {
+  if (!body || typeof body !== 'object') return null
+  const data = body.data && typeof body.data === 'object' ? body.data : body
+  const total = data.balance != null ? parseFloat(data.balance) : NaN
+  if (!Number.isFinite(total)) return null
+  return {
+    currency: 'CNY',
+    total: total,
+    granted: data.granted_balance != null ? parseFloat(data.granted_balance) || 0 : 0,
+    toppedUp: data.charge_balance != null ? parseFloat(data.charge_balance) || 0 : 0,
+    plan: data.plan != null ? data.plan : null,
+  }
+}
+
+// 月度窗口重置时刻（本地推导）：下月 1 日零点（接口无重置字段，A4 记录为本地推导）
+function nextMonthStartMs(nowMs) {
+  const d = new Date(typeof nowMs === 'number' ? nowMs : Date.now())
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0).getTime()
+}
+
+// ---------- FR-10 / D9：Together 账单解析（本月真实已用金额 USD） ----------
+// 官方 /billing/usage：data[].usage[].cost 逐项求和；结构异常返回 null
+function parseTogetherUsage(body) {
+  if (!body || typeof body !== 'object') return null
+  const data = Array.isArray(body.data) ? body.data : []
+  let spend = null
+  for (let i = 0; i < data.length; i++) {
+    const win = data[i]
+    if (!win || typeof win !== 'object') continue
+    const usages = Array.isArray(win.usage) ? win.usage : []
+    for (let j = 0; j < usages.length; j++) {
+      const u = usages[j]
+      if (u && typeof u === 'object' && typeof u.cost === 'number' && isFinite(u.cost)) spend = (spend || 0) + u.cost
+    }
+  }
+  return spend
+}
+
+// ---------- FR-11 / D10：Fireworks 解析 ----------
+// GET /v1/accounts → account_id（响应形态兼容数组 / {accounts:[]} / {data:[]}）
+function parseFireworksAccountId(body) {
+  if (!body || typeof body !== 'object') return null
+  const candidates = []
+  if (Array.isArray(body.accounts)) candidates.push.apply(candidates, body.accounts)
+  if (Array.isArray(body.data)) candidates.push.apply(candidates, body.data)
+  if (Array.isArray(body)) candidates.push.apply(candidates, body)
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]
+    if (!c || typeof c !== 'object') continue
+    const id = typeof c.id === 'string' && c.id.length > 0 ? c.id
+      : (typeof c.name === 'string' && c.name.length > 0 ? c.name : null)
+    if (id) return id
+  }
+  if (typeof body.id === 'string' && body.id.length > 0) return body.id
+  return null
+}
+
+// 解析 billing/summary：lineItems[].totalCost 求和，回退 usageBuckets[].cost 求和
+function parseFireworksSummary(body) {
+  if (!body || typeof body !== 'object') return null
+  let spend = null
+  if (Array.isArray(body.lineItems)) {
+    for (let i = 0; i < body.lineItems.length; i++) {
+      const item = body.lineItems[i]
+      if (item && typeof item === 'object' && typeof item.totalCost === 'number' && isFinite(item.totalCost)) spend = (spend || 0) + item.totalCost
+    }
+  }
+  if (spend == null && Array.isArray(body.usageBuckets)) {
+    for (let i = 0; i < body.usageBuckets.length; i++) {
+      const b = body.usageBuckets[i]
+      if (b && typeof b === 'object' && typeof b.cost === 'number' && isFinite(b.cost)) spend = (spend || 0) + b.cost
+    }
+  }
+  return spend
+}
+
+// 解析 billingUsage（无金额时按 token 用量展示）：数值数组求和，字段名容错
+function parseFireworksUsage(body) {
+  if (!body || typeof body !== 'object') return null
+  let total = null
+  let hasToken = false
+  const buckets = Array.isArray(body.usageBuckets) ? body.usageBuckets : (Array.isArray(body.buckets) ? body.buckets : [])
+  for (let i = 0; i < buckets.length; i++) {
+    const b = buckets[i]
+    if (!b || typeof b !== 'object') continue
+    for (const key of ['totalTokens', 'tokens', 'inputTokens', 'outputTokens']) {
+      const v = b[key]
+      if (typeof v === 'number' && isFinite(v)) { total = (total || 0) + v; hasToken = true }
+    }
+  }
+  if (total == null && hasToken === false) {
+    for (const key of ['totalTokens', 'tokens', 'inputTokens', 'outputTokens']) {
+      const v = body[key]
+      if (typeof v === 'number' && isFinite(v)) { total = (total || 0) + v; hasToken = true }
+    }
+  }
+  return hasToken ? total : null
+}
+
+// ---------- FR-12 / D11：AWS Bedrock（SigV4 纯实现，node:crypto） ----------
+function sha256Hex(data) {
+  return createHash('sha256').update(data).digest('hex')
+}
+function hmacSha256(key, data) {
+  return createHmac('sha256', key).update(data).digest()
+}
+function awsAmzDate(now) {
+  return now.toISOString().replace(/[:-]/g, '').replace(/\.\d{3}/, '')
+}
+function awsShortDate(amzDate) {
+  return amzDate.slice(0, 8)
+}
+// SigV4 请求头计算（纯函数；单测用 AWS 官方 IAM ListUsers 固定向量验证）。
+// headers: 现成请求头（小写 key）；body: 请求体字符串；service/region: 签名作用域。
+// 返回 { 'X-Amz-Date', Authorization[, 'X-Amz-Security-Token'] }。payload hash 始终参与
+// canonical request（协议要求），但不额外注入 x-amz-content-sha256 签名头（与官方测试向量一致，
+// 且 AWS 服务器按请求体自算校验）。
+function awsSigV4Headers(opts) {
+  const method = opts.method || 'POST'
+  const host = opts.host
+  const path = opts.path || '/'
+  const query = opts.query || ''
+  const service = opts.service
+  const region = opts.region || 'us-east-1'
+  const body = opts.body || ''
+  const now = opts.now || new Date()
+  const amzDate = awsAmzDate(now)
+  const dateStamp = awsShortDate(amzDate)
+  const payloadHash = sha256Hex(body)
+  const headers = {}
+  for (const key in opts.headers) headers[key.toLowerCase()] = opts.headers[key]
+  headers['host'] = host
+  headers['x-amz-date'] = amzDate
+  if (opts.sessionToken) headers['x-amz-security-token'] = opts.sessionToken
+  const keys = Object.keys(headers).sort()
+  const signedHeaders = keys.join(';')
+  const canonicalHeaders = keys.map(function (key) { return key + ':' + String(headers[key]).trim().replace(/\s+/g, ' ') + '\n'; }).join('')
+  const canonicalQuery = query.split('&').filter(Boolean).sort().map(function (pair) {
+    const eq = pair.indexOf('=')
+    const k = eq >= 0 ? pair.slice(0, eq) : pair
+    const v = eq >= 0 ? pair.slice(eq + 1) : ''
+    return awsUriEncode(k) + '=' + awsUriEncode(v)
+  }).join('&')
+  const canonicalRequest = [method, path, canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join('\n')
+  const credentialScope = dateStamp + '/' + region + '/' + service + '/aws4_request'
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, sha256Hex(canonicalRequest)].join('\n')
+  const kDate = hmacSha256('AWS4' + opts.secretAccessKey, dateStamp)
+  const kRegion = hmacSha256(kDate, region)
+  const kService = hmacSha256(kRegion, service)
+  const kSigning = hmacSha256(kService, 'aws4_request')
+  const signature = hmacSha256(kSigning, stringToSign).toString('hex')
+  const out = {
+    'X-Amz-Date': amzDate,
+    Authorization: 'AWS4-HMAC-SHA256 Credential=' + opts.accessKeyId + '/' + credentialScope + ', SignedHeaders=' + signedHeaders + ', Signature=' + signature,
+  }
+  if (opts.sessionToken) out['X-Amz-Security-Token'] = opts.sessionToken
+  return out
+}
+// AWS 路径/查询双编码：除 RFC3986 unreserved（A-Za-z0-9-_.~）外全部百分号编码（大写）。
+// 不用正则实现，避免测试提取器被字符类内的引号干扰。
+function awsUriEncode(value) {
+  const str = String(value)
+  let out = ''
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i]
+    if (c >= 'A' && c <= 'Z') out += c
+    else if (c >= 'a' && c <= 'z') out += c
+    else if (c >= '0' && c <= '9') out += c
+    else if (c === '-' || c === '_' || c === '.' || c === '~') out += c
+    else out += '%' + c.charCodeAt(0).toString(16).toUpperCase()
+  }
+  return out
+}
+
+// 解析 Cost Explorer GetCostAndUsage：ResultsByTime[0].Total.UnblendedCost.Amount（金额可为字符串）
+function parseBedrockCost(json) {
+  if (!json || typeof json !== 'object') return null
+  const results = Array.isArray(json.ResultsByTime) ? json.ResultsByTime : []
+  if (results.length === 0) return null
+  const total = results[0] && results[0].Total
+  const amount = total && total.UnblendedCost && parseFloat(total.UnblendedCost.Amount)
+  if (Number.isFinite(amount)) return amount
+  const alt = total && total.NetUnblendedCost && parseFloat(total.NetUnblendedCost.Amount)
+  return Number.isFinite(alt) ? alt : null
+}
+
+// 解析 Budgets GetBudgets：首笔预算 actualSpend / budgetLimit → 预算使用百分比（0-100 整数）
+function parseBedrockBudget(json) {
+  if (!json || typeof json !== 'object' || !Array.isArray(json.Budgets) || json.Budgets.length === 0) return null
+  const budget = json.Budgets[0]
+  if (!budget || typeof budget !== 'object') return null
+  const limit = budget.BudgetLimit && parseFloat(budget.BudgetLimit.Amount)
+  const spend = budget.CalculatedSpend && budget.CalculatedSpend.ActualSpend && parseFloat(budget.CalculatedSpend.ActualSpend.Amount)
+  if (!Number.isFinite(limit) || limit <= 0 || !Number.isFinite(spend)) return null
+  return Math.round((spend / limit) * 100)
+}
+
+// ---------- FR-13 / D12：Cloudflare Billable Usage 解析（Alpha） ----------
+// result[] 逐项：cost → 本月真实花费；usage → 用量；
+// 免费额度仅当接口显式给出 limit/allowance 类字段时才推导（拿不到就只显示用量，绝不编造）
+function parseCloudflareBilling(body) {
+  if (!body || typeof body !== 'object' || body.success !== true || !Array.isArray(body.result)) return null
+  let spend = null
+  let usage = null
+  let usageUnit = null
+  let freeRemaining = null
+  let resetsAt = null
+  let sawAny = false
+  for (let i = 0; i < body.result.length; i++) {
+    const item = body.result[i]
+    if (!item || typeof item !== 'object') continue
+    if (typeof item.cost === 'number' && isFinite(item.cost)) { spend = (spend || 0) + item.cost; sawAny = true }
+    if (typeof item.usage === 'number' && isFinite(item.usage)) { usage = (usage || 0) + item.usage; sawAny = true }
+    if (!usageUnit && typeof item.unit === 'string' && item.unit.length > 0) usageUnit = item.unit
+    // 免费额度：仅当同一条目显式给出已用 + 上限时推导（零点重置为 UTC 午夜，本地推导并注明）
+    const usedVal = typeof item.used === 'number' ? item.used : (typeof item.usage === 'number' ? item.usage : null)
+    const limitVal = typeof item.limit === 'number' ? item.limit : (typeof item.allowance === 'number' ? item.allowance : null)
+    if (usedVal != null && limitVal != null && limitVal > 0) {
+      const remain = Math.max(0, limitVal - usedVal)
+      if (freeRemaining == null || remain < freeRemaining) {
+        freeRemaining = remain
+        resetsAt = nextUtcMidnightMs()
+      }
+    }
+  }
+  if (!sawAny) return null
+  return { spend: spend, usage: usage, usageUnit: usageUnit, freeRemaining: freeRemaining, resetsAt: resetsAt }
+}
+// 每日免费额度零点重置时刻（UTC 午夜；Cloudflare 免费额度按 UTC 日重置）
+function nextUtcMidnightMs(nowMs) {
+  const d = new Date(typeof nowMs === 'number' ? nowMs : Date.now())
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0)
+}
+
+// ---------- FR-14 / D13：统一账户状态收敛 ----------
+// 新适配器（账单型）raw 输出 → 客户端统一契约（ProviderAccountStatus 子集）：
+// { currency, currentPeriodSpend?, budgetPercent?, usage?, usageUnit?, freeRemaining?, resetsAt?, note }
+function normalizeAccountStatus(kind, raw, fallbackCurrency) {
+  const base = { currency: raw && typeof raw.currency === 'string' && raw.currency.length > 0 ? raw.currency : (fallbackCurrency || 'USD') }
+  if (kind === 'billing') {
+    if (raw && Number.isFinite(raw.spend)) base.currentPeriodSpend = raw.spend
+    if (raw && Number.isFinite(raw.budgetPercent)) base.budgetPercent = raw.budgetPercent
+    if (raw && Number.isFinite(raw.usage)) base.usage = raw.usage
+    if (raw && typeof raw.usageUnit === 'string' && raw.usageUnit.length > 0) base.usageUnit = raw.usageUnit
+    if (raw && Number.isFinite(raw.freeRemaining)) base.freeRemaining = raw.freeRemaining
+    if (raw && Number.isFinite(raw.resetsAt)) base.resetsAt = raw.resetsAt
+    if (raw && typeof raw.note === 'string' && raw.note.length > 0) base.note = raw.note
+    return base
+  }
+  return null
 }
 
 // ---------- 订阅令牌与绑定（v1.2.0 起剥离）：绑定/OAuth/续期/写回/凭据注入由独立插件
@@ -410,6 +810,71 @@ export default {
         estimate: true,
         initialTopUp: 20, // USD 起始充值额（内存态）
       },
+      // v1.6 T3：moonshotai（Kimi）余额适配器
+      moonshotai: {
+        id: 'moonshotai', displayName: 'Kimi', credential: 'MOONSHOT_API_KEY',
+        balanceAPI: 'https://api.moonshot.cn/v1/users/me/balance',
+        estimate: false,
+        parseBalance: function (body) {
+          const list = body && Array.isArray(body.balance_infos) ? body.balance_infos : [];
+          // 找 CNY 或第一条
+          let cny = null;
+          for (let i = 0; i < list.length; i++) {
+            if (list[i].currency === 'CNY') { cny = list[i]; break; }
+          }
+          const rec = cny || list[0];
+          if (!rec) return null;
+          return {
+            currency: rec.currency || 'CNY',
+            total: parseFloat(rec.total_balance) || 0,
+            granted: parseFloat(rec.granted_balance) || 0,
+            toppedUp: parseFloat(rec.topped_up_balance) || 0,
+          };
+        },
+      },
+      // v1.6 T4：openrouter 余额适配器
+      openrouter: {
+        id: 'openrouter', displayName: 'OpenRouter', credential: 'OPENROUTER_API_KEY',
+        balanceAPI: 'https://openrouter.ai/api/v1/credits',
+        estimate: false,
+        parseBalance: function (body) {
+          const data = body && body.data;
+          if (!data || typeof data.credits !== 'number') return null;
+          return {
+            currency: 'USD',
+            total: data.credits,
+          };
+        },
+      },
+      // v1.6 T5：stepfun（阶跃星辰）余额适配器
+      stepfun: {
+        id: 'stepfun', displayName: 'StepFun', credential: 'STEPFUN_API_KEY',
+        balanceAPI: 'https://api.stepfun.com/v1/accounts',
+        estimate: false,
+        parseBalance: function (body) {
+          // 官方文档：balance 为可用余额（CNY），total_cash_balance/total_voucher_balance/type
+          // 注意：官方文档无 token_plan 字段，不要解析
+          if (!body || typeof body !== 'object') return null;
+          const balance = body.balance;
+          if (typeof balance !== 'number' || !isFinite(balance)) return null;
+          return {
+            currency: body.currency || 'CNY',
+            total: balance,
+            granted: 0,
+            toppedUp: 0,
+            type: body.type || null,
+            totalCashBalance: body.total_cash_balance || null,
+            totalVoucherBalance: body.total_voucher_balance || null,
+          };
+        },
+      },
+      // v1.7 FR-9：xiaomi（MiMo 按量）余额适配器——B 级半公开端点，Bearer API Key 零设置
+      xiaomi: {
+        id: 'xiaomi', displayName: '小米 MiMo', credential: 'XIAOMI_API_KEY',
+        balanceAPI: 'https://api.xiaomimimo.com/v1/user/balance',
+        estimate: false,
+        parseBalance: parseXiaomiPaygBalance,
+      },
     };
 
     // ---------- 配置（内存态） ----------
@@ -424,11 +889,17 @@ export default {
     // ---------- 余额快照（60s 定时刷新；失败保留上次快照） ----------
     let balances = {}; // { [providerId]: { data, fetchedAt, error } }
 
+    // v1.6：记录归属账户（用于花费分账）；null 表示"无主记录"，不参与任何账户汇总
+    function recordAccount(r) {
+      return accountForProvider(r.provider);
+    }
+
+    // v1.6：providerSpend 改为按 recordAccount === pid 过滤（修复 deepseek-official 记录不计入 deepseek 的旧问题）
     function providerSpend(providerId) {
       let total = 0;
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
-        if (r.provider !== providerId) continue;
+        if (accountForProvider(r.provider) !== providerId) continue;
         const c = costOf(r, false);
         if (c != null) total += c;
       }
@@ -497,44 +968,29 @@ export default {
     const subscriptionRequested = {}; // 仅"客户端请求过"的源进入 60s 周期刷新（余额制下不打扰订阅接口）
     const subscriptionLastFailAt = {}; // { [sourceKey]: ms } 上次订阅刷新失败时刻（失败退避：期内不重试）
 
-    async function fetchWhamUsage(token, accountId) {
-      const headers = { Authorization: 'Bearer ' + token, Accept: 'application/json' };
-      if (accountId) headers['ChatGPT-Account-Id'] = accountId;
-      const res = await fetch('https://chatgpt.com/backend-api/wham/usage', {
-        headers: headers,
-        signal: AbortSignal.timeout(15000),
-      });
-      const text = await res.text();
-      let body = null;
-      try { body = JSON.parse(text); } catch (err) { /* 非 JSON 响应体 → 交由解析层判定结构异常 */ }
-      return { ok: res.ok, status: res.status, body: body };
-    }
-
-    // 只读令牌查询额度：令牌由独立插件 dsh-chatgpt-subscription 维护，本插件不续期、不写回、不注入凭据；
-    // 令牌缺失 → no-key（客户端显示"未绑定"引导）；令牌失效（401）→ auth（客户端显示"重新绑定"引导）
+    // FR-8 / D7：Codex / ChatGPT 订阅卡（纯本地通道）
+    // 只读令牌：令牌由独立插件 dsh-chatgpt-subscription 维护，本插件不续期、不写回、不注入凭据；
+    // 读 tokens.id_token 本地解码 JWT claims（chatgpt_plan_type / subscription_active_until）→ 真实套餐名与到期日。
+    // 解码/字段缺失 → 静默降级（不显式报错、不调用 wham——wham 保持默认关闭）；
+    // 令牌缺失 → no-key（客户端显示"未绑定"引导）。
     async function fetchCodexUsage() {
       const read = readCodexAuthFile(CODEX_AUTH_FILE);
       if (!read.ok) {
         return { error: { kind: 'no-key', message: '未找到 ChatGPT 订阅登录凭证（~/.codex/auth.json），请安装 dsh-chatgpt-subscription 插件绑定' } };
       }
       const tokens = read.auth && read.auth.tokens;
-      const access = tokens && tokens.access_token;
-      const accountId = tokens && tokens.account_id;
-      if (typeof access !== 'string' || access.length === 0) {
-        return { error: { kind: 'no-key', message: 'ChatGPT 订阅登录凭证缺少 access_token，请安装 dsh-chatgpt-subscription 插件重新绑定' } };
+      const idToken = tokens && typeof tokens.id_token === 'string' && tokens.id_token.length > 0 ? tokens.id_token : null;
+      if (!idToken) {
+        return { error: { kind: 'no-key', message: 'ChatGPT 订阅登录凭证缺少 id_token，请安装 dsh-chatgpt-subscription 插件重新绑定' } };
       }
-      try {
-        const r = await fetchWhamUsage(access, accountId);
-        if (r.status === 401) {
-          return { error: { kind: 'auth', message: 'ChatGPT 订阅令牌已失效，请在 dsh-chatgpt-subscription 插件中重新绑定' } };
-        }
-        if (!r.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + r.status + '）' } };
-        const parsed = parseCodexUsage(r.body);
-        if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
-        return { data: { provider: 'codex', plan: parsed.plan, windows: parsed.windows } };
-      } catch (err) {
-        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      let parsed = null;
+      try { parsed = parseCodexJwt(idToken); } catch (err) { /* 解码异常 → 静默降级 */ }
+      if (!parsed) {
+        // 静默降级：纯本地解析失败/字段缺失 → 返回无额度数据（非错误），客户端只显示服务名+模型，不打扰
+        return { data: { provider: 'codex', plan: null, planType: null, expiryAt: null, windows: [] } };
       }
+      const plan = parsed.planType ? planDisplayName(parsed.planType) : null;
+      return { data: { provider: 'codex', plan: plan, planType: parsed.planType, expiryAt: parsed.expiryMs, windows: [] } };
     }
 
     // OpenCode Go key 解析：DSH credentials（OPENCODE_GO_API_KEY）→ opencode auth.json（opencode-go → opencode）
@@ -576,9 +1032,331 @@ export default {
       }
     }
 
+    // v1.6 T6：智谱（zai）订阅额度查询
+    // 凭据：优先 ZAI_CODING_CN_API_KEY，回退 ZAI_API_KEY
+    // host：zai-coding-cn → https://open.bigmodel.cn；zai → https://api.z.ai
+    // 认证：两者均 Authorization 裸 API Key，绝无 Bearer 前缀（加 Bearer 会 401）
+    async function resolveZaiKey(providerId) {
+      try {
+        const cred = await ctx.credentials.resolve('ZAI_CODING_CN_API_KEY');
+        if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
+      } catch (err) { /* 回退 */ }
+      try {
+        const cred = await ctx.credentials.resolve('ZAI_API_KEY');
+        if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
+      } catch (err) { /* 未配置 */ }
+      return null;
+    }
+
+    function zaiHostForProvider(providerId) {
+      if (providerId === 'zai-coding-cn') return 'https://open.bigmodel.cn';
+      return 'https://api.z.ai';
+    }
+
+    // 解析智谱 quota 响应：data.limits[] 中 type=TOKENS_LIMIT 的窗口
+    // unit 映射：已知 3=5小时对应 five_hour；未知 unit/类型跳过
+    // level/planName → 套餐名（lite/standard/pro/max → 智谱 + 首字母大写）
+    function parseZaiQuota(body) {
+      if (!body || typeof body !== 'object') return null;
+      const data = body.data;
+      if (!data || typeof data !== 'object') return null;
+      const limits = Array.isArray(data.limits) ? data.limits : [];
+      const windows = [];
+      for (let i = 0; i < limits.length; i++) {
+        const limit = limits[i];
+        if (!limit || typeof limit !== 'object') continue;
+        if (limit.type !== 'TOKENS_LIMIT') continue;
+        const unit = limit.unit;
+        // 已知 unit 码映射
+        let key = null;
+        if (unit === 3) key = 'five_hour'; // 5小时
+        if (!key) continue; // 未知 unit 跳过
+        const usedPercent = limit.percentage;
+        if (typeof usedPercent !== 'number' || !isFinite(usedPercent)) continue;
+        const resetsAt = typeof limit.nextResetTime === 'number' && isFinite(limit.nextResetTime)
+          ? limit.nextResetTime
+          : (typeof limit.nextResetTime === 'string' ? Date.parse(limit.nextResetTime) : null);
+        windows.push({
+          key: key,
+          label: WINDOW_LABELS[key],
+          usedPercent: Math.round(usedPercent),
+          resetsAt: isNaN(resetsAt) ? null : resetsAt,
+        });
+      }
+      // 套餐名：level 如 lite/standard/pro/max → 显示 '智谱 ' + 首字母大写
+      let planName = null;
+      if (typeof data.level === 'string' && data.level.length > 0) {
+        const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' };
+        const mapped = levelMap[data.level.toLowerCase()];
+        planName = mapped ? '智谱 ' + mapped : ('智谱 ' + data.level.charAt(0).toUpperCase() + data.level.slice(1));
+      } else if (typeof body.planName === 'string' && body.planName.length > 0) {
+        planName = body.planName;
+      }
+      return { plan: planName, windows: windows };
+    }
+
+    async function fetchZaiUsage() {
+      // 从当前 provider 决定用哪个 host（zai-coding-cn vs zai）
+      // 这里通过 subscriptionSourceFor 反推，但实际 RPC 调用时 selection 会传 provider
+      // 为简化，先尝试两个 host
+      const key = await resolveZaiKey();
+      if (!key) {
+        return { error: { kind: 'no-key', message: '未配置智谱 API Key（ZAI_CODING_CN_API_KEY 或 ZAI_API_KEY）' } };
+      }
+      // 尝试两个 host，优先国内
+      const hosts = ['https://open.bigmodel.cn', 'https://api.z.ai'];
+      for (let i = 0; i < hosts.length; i++) {
+        try {
+          const res = await fetch(hosts[i] + '/api/monitor/usage/quota/limit', {
+            headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) {
+            if (i < hosts.length - 1) continue; // 尝试下一个 host
+            return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）' } };
+          }
+          const body = await res.json();
+          const parsed = parseZaiQuota(body);
+          if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
+          return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
+        } catch (err) {
+          if (i < hosts.length - 1) continue; // 尝试下一个 host
+          return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+        }
+      }
+      return { error: { kind: 'exception', message: '所有 host 均失败' } };
+    }
+
+    // v1.7 通用凭据读取：缺失/读取失败一律 null（错误信息不含密钥）
+    async function resolveCredentialValue(name) {
+      try {
+        const cred = await ctx.credentials.resolve(name);
+        if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
+      } catch (err) { /* 未配置/读取失败 → null */ }
+      return null;
+    }
+
+    // v1.7 FR-9：小米 MiMo Token Plan 订阅源（按地区路由 baseUrl + 凭据，地区互不串数据）
+    // 凭据：XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY 按地区优先，回退 XIAOMI_API_KEY；Bearer。
+    // 主端点 GET /v1/tokenPlan/usage（月度 Credits 额度窗）；形态不符/失败回退 GET /v1/user/balance（token_balance/token_limit）。
+    async function resolveXiaomiRegionKey(region) {
+      const regionNames = {
+        cn: 'XIAOMI_TOKEN_PLAN_CN_API_KEY',
+        sgp: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY',
+        ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
+      };
+      const primary = regionNames[region];
+      if (primary) {
+        const cred = await resolveCredentialValue(primary);
+        if (cred) return cred;
+      }
+      return resolveCredentialValue('XIAOMI_API_KEY');
+    }
+
+    async function fetchXiaomiTokenPlanUsage(region) {
+      const key = await resolveXiaomiRegionKey(region);
+      if (!key) {
+        const regionNames = {
+          cn: 'XIAOMI_TOKEN_PLAN_CN_API_KEY',
+          sgp: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY',
+          ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
+        };
+        const credName = regionNames[region] || 'XIAOMI_TOKEN_PLAN_*_API_KEY';
+        return { error: { kind: 'no-key', message: '未配置小米 MiMo Token Plan 凭据（' + credName + ' 或 XIAOMI_API_KEY）' } };
+      }
+      const base = xiaomiRegionBaseUrl(region);
+      const endpoints = [base + '/v1/tokenPlan/usage', base + '/v1/user/balance'];
+      let lastStatus = null;
+      for (let i = 0; i < endpoints.length; i++) {
+        try {
+          const res = await fetch(endpoints[i], {
+            headers: { Authorization: 'Bearer ' + key },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) { lastStatus = res.status; continue; }
+          const body = await res.json();
+          const parsed = i === 0 ? parseXiaomiTokenPlanUsage(body) : parseXiaomiTokenPlanBalance(body);
+          if (!parsed) continue; // 响应形态不符 → 尝试下一个端点
+          return { data: { provider: 'xiaomi-' + region, plan: parsed.plan, windows: parsed.windows } };
+        } catch (err) {
+          if (i < endpoints.length - 1) continue;
+          return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+        }
+      }
+      return { error: { kind: 'http', message: '请求失败（HTTP ' + (lastStatus || '?') + '）' } };
+    }
+
+    // v1.7 FR-10：Together 本月真实账单（USD）。api.together.xyz 为主，api.together.ai 回退（A8 记录确认同源 API）。
+    async function fetchTogetherBilling() {
+      const key = await resolveCredentialValue('TOGETHER_API_KEY');
+      if (!key) return { error: { kind: 'no-key', message: '未配置 TOGETHER_API_KEY' } };
+      const hosts = ['https://api.together.xyz', 'https://api.together.ai'];
+      let lastStatus = null;
+      for (let i = 0; i < hosts.length; i++) {
+        try {
+          const res = await fetch(hosts[i] + '/billing/usage', {
+            headers: { Authorization: 'Bearer ' + key },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) {
+            lastStatus = res.status;
+            if (i < hosts.length - 1) continue;
+            return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）' } };
+          }
+          const body = await res.json();
+          const spend = parseTogetherUsage(body);
+          if (spend == null) return { error: { kind: 'parse', message: '响应格式异常' } };
+          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: '本月真实账单（Together 官方 Usage API）' } };
+        } catch (err) {
+          if (i < hosts.length - 1) continue;
+          return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+        }
+      }
+      return { error: { kind: 'http', message: '请求失败（HTTP ' + (lastStatus || '?') + '）' } };
+    }
+
+    // v1.7 FR-11：Fireworks 本周期真实账单。先 GET /v1/accounts 解析 account_id，
+    // 主端点 billing/summary（美元）；404 → 回退 billingUsage（token 用量，无金额时降级展示用量）。
+    async function fetchFireworksBilling() {
+      const key = await resolveCredentialValue('FIREWORKS_API_KEY');
+      if (!key) return { error: { kind: 'no-key', message: '未配置 FIREWORKS_API_KEY' } };
+      try {
+        const accRes = await fetch('https://api.fireworks.ai/v1/accounts', {
+          headers: { Authorization: 'Bearer ' + key },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!accRes.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + accRes.status + '）' } };
+        const accountId = parseFireworksAccountId(await accRes.json());
+        if (!accountId) return { error: { kind: 'parse', message: '账户解析失败（未取得 account_id）' } };
+        const summaryRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billing/summary?granularity=DAILY', {
+          headers: { Authorization: 'Bearer ' + key },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (summaryRes.ok) {
+          const spend = parseFireworksSummary(await summaryRes.json());
+          if (spend == null) return { error: { kind: 'parse', message: '响应格式异常' } };
+          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: '本周期真实账单（Fireworks Billing Summary）' } };
+        }
+        if (summaryRes.status === 404) {
+          const usageRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billingUsage', {
+            headers: { Authorization: 'Bearer ' + key },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (usageRes.ok) {
+            const usage = parseFireworksUsage(await usageRes.json());
+            if (usage != null) return { data: { kind: 'billing', usage: usage, usageUnit: 'tokens', currency: 'USD', note: '本周期真实用量（billingUsage 回退端点，无金额）' } };
+            return { error: { kind: 'parse', message: '响应格式异常' } };
+          }
+          return { error: { kind: 'http', message: '请求失败（HTTP ' + usageRes.status + '）' } };
+        }
+        return { error: { kind: 'http', message: '请求失败（HTTP ' + summaryRes.status + '）' } };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      }
+    }
+
+    // v1.7 FR-12：AWS Bedrock 本月真实账单（SigV4 本地签名，密钥不出本机）。
+    // Cost Explorer GetCostAndUsage（SERVICE=Amazon Bedrock，MONTHLY）→ 本月花费；
+    // 预算% 可选：STS GetCallerIdentity → Budgets GetBudgets，失败静默（null）。
+    function awsDateKey(d) {
+      return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+    }
+
+    async function resolveAwsCredentials() {
+      const accessKeyId = await resolveCredentialValue('AWS_ACCESS_KEY_ID');
+      const secretAccessKey = await resolveCredentialValue('AWS_SECRET_ACCESS_KEY');
+      if (!accessKeyId || !secretAccessKey) return null;
+      const sessionToken = await resolveCredentialValue('AWS_SESSION_TOKEN');
+      return { accessKeyId: accessKeyId, secretAccessKey: secretAccessKey, sessionToken: sessionToken || null };
+    }
+
+    // AWS 管理面 JSON POST（SigV4）：返回 { ok, status, json }；JSON 解析失败按 null 处理（交由解析层判定）
+    async function awsJsonPost(host, service, region, target, payload, aws) {
+      const body = JSON.stringify(payload);
+      const headers = awsSigV4Headers({
+        method: 'POST', host: host, path: '/', query: '', body: body, service: service, region: region,
+        accessKeyId: aws.accessKeyId, secretAccessKey: aws.secretAccessKey, sessionToken: aws.sessionToken,
+        headers: { 'content-type': 'application/x-amz-json-1.1', 'x-amz-target': target },
+      });
+      const res = await fetch('https://' + host + '/', {
+        method: 'POST', headers: headers, body: body, signal: AbortSignal.timeout(15000),
+      });
+      let json = null;
+      try { json = await res.json(); } catch (err) { /* 交由解析层判定结构异常 */ }
+      return { ok: res.ok, status: res.status, json: json };
+    }
+
+    async function fetchBedrockBilling() {
+      const aws = await resolveAwsCredentials();
+      if (!aws) {
+        return { error: { kind: 'no-key', message: '未配置 AWS 凭据（AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY）' } };
+      }
+      try {
+        const now = new Date();
+        const nextDay = new Date(now.getTime() + 86400 * 1000);
+        const ce = await awsJsonPost('ce.us-east-1.amazonaws.com', 'ce', 'us-east-1', 'AWSInsightsIndexService.GetCostAndUsage', {
+          TimePeriod: { Start: awsDateKey(now), End: awsDateKey(nextDay) },
+          Granularity: 'MONTHLY',
+          Filter: { Dimensions: { Key: 'SERVICE', Values: ['Amazon Bedrock'] } },
+        }, aws);
+        if (!ce.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + ce.status + '）——可能缺少 ce:GetCostAndUsage 权限' } };
+        const spend = parseBedrockCost(ce.json);
+        if (spend == null) return { error: { kind: 'parse', message: '响应格式异常' } };
+        let budgetPercent = null;
+        try { budgetPercent = await fetchBedrockBudget(aws); } catch (err) { budgetPercent = null; } // 预算失败静默
+        return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, budgetPercent: budgetPercent, currency: 'USD', note: 'AWS Cost Explorer 本月真实账单（账单延迟约 24 小时）' } };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      }
+    }
+
+    async function fetchBedrockBudget(aws) {
+      const query = 'Action=GetCallerIdentity&Version=2011-06-15';
+      const headers = awsSigV4Headers({
+        method: 'GET', host: 'sts.amazonaws.com', path: '/', query: query, body: '', service: 'sts', region: 'us-east-1',
+        accessKeyId: aws.accessKeyId, secretAccessKey: aws.secretAccessKey, sessionToken: aws.sessionToken,
+        headers: {},
+      });
+      const stsRes = await fetch('https://sts.amazonaws.com/?' + query, { headers: headers, signal: AbortSignal.timeout(15000) });
+      if (!stsRes.ok) return null;
+      const stsJson = await stsRes.json().catch(function () { return null; });
+      const result = stsJson && stsJson.GetCallerIdentityResponse && stsJson.GetCallerIdentityResponse.GetCallerIdentityResult;
+      const accountId = result && typeof result.Account === 'string' ? result.Account : null;
+      if (!accountId) return null;
+      const budgets = await awsJsonPost('budgets.amazonaws.com', 'budgets', 'us-east-1', 'AWSBudgetServiceGateway.GetBudgets', { AccountId: accountId, MaxResults: 10 }, aws);
+      if (!budgets.ok || !budgets.json) return null;
+      return parseBedrockBudget(budgets.json);
+    }
+
+    // v1.7 FR-13：Cloudflare Billable Usage（Alpha）。复用 CLOUDFLARE_API_KEY（需 Billing 读权限）+ CLOUDFLARE_ACCOUNT_ID。
+    // 免费额度仅当接口显式返回 limit/allowance 字段时展示（拿不到只显示真实用量，绝不编造）；失败静默降级。
+    async function fetchCloudflareBilling() {
+      const key = await resolveCredentialValue('CLOUDFLARE_API_KEY');
+      if (!key) return { error: { kind: 'no-key', message: '未配置 CLOUDFLARE_API_KEY（需账号级 Token 并授予 Billing 读权限）' } };
+      const accountId = await resolveCredentialValue('CLOUDFLARE_ACCOUNT_ID');
+      if (!accountId) return { error: { kind: 'no-key', message: '未配置 CLOUDFLARE_ACCOUNT_ID' } };
+      try {
+        const res = await fetch('https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(accountId) + '/billing/usage/paygo', {
+          headers: { Authorization: 'Bearer ' + key },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）——Token 需 Billing 读权限' } };
+        const parsed = parseCloudflareBilling(await res.json());
+        if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
+        return { data: Object.assign({ kind: 'billing', currency: 'USD', note: 'Cloudflare Billable Usage API（Alpha），本月真实用量' }, parsed) };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      }
+    }
+
     const SUBSCRIPTION_SOURCES = {
       codex: { fetch: fetchCodexUsage },
       'opencode-go': { fetch: fetchOpenCodeGoUsage },
+      zai: { fetch: fetchZaiUsage },
+      // v1.7 FR-9：小米 Token Plan 三集群各为独立源（地区隔离，快照互不串扰）
+      'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn'); } },
+      'xiaomi-sgp': { fetch: function () { return fetchXiaomiTokenPlanUsage('sgp'); } },
+      'xiaomi-ams': { fetch: function () { return fetchXiaomiTokenPlanUsage('ams'); } },
     };
 
     // 触发一次刷新（并发去重 + seq 防旧覆盖）；返回本次刷新 Promise
@@ -619,11 +1397,67 @@ export default {
       }
     }
 
+    // ---------- v1.7 FR-10~13：账单快照（云账单型；与订阅/余额快照完全隔离，同一套策略） ----------
+    const BILLING_REFRESH_MS = 60000;
+    const BILLING_RETRY_BACKOFF_MS = 60000;
+    let billingSnapshots = {}; // { [key]: { data, fetchedAt, error } }
+    const billingSeq = {};
+    const billingInFlight = {};
+    const billingRequested = {};
+    const billingLastFailAt = {};
+
+    function mergeBillingResult(prev, result) {
+      if (!result || result.error) {
+        return {
+          data: prev && prev.data ? prev.data : null,
+          fetchedAt: prev && prev.fetchedAt ? prev.fetchedAt : null,
+          error: result ? result.error : { kind: 'exception', message: '账单请求未知异常' },
+        };
+      }
+      return { data: result.data || null, fetchedAt: Date.now(), error: null };
+    }
+
+    function kickBillingRefresh(key) {
+      const src = BILLING_SOURCES[key];
+      if (!src) return Promise.resolve();
+      if (billingInFlight[key]) return billingInFlight[key];
+      const seq = (billingSeq[key] || 0) + 1;
+      billingSeq[key] = seq;
+      billingInFlight[key] = src.fetch().then(function (result) {
+        if (billingSeq[key] === seq) {
+          // FR-14：适配器原始输出统一经 normalizeAccountStatus 收敛到客户端契约
+          if (result && result.data) result.data = normalizeAccountStatus(result.data.kind, result.data);
+          billingSnapshots[key] = mergeBillingResult(billingSnapshots[key], result);
+          billingLastFailAt[key] = result && result.error ? Date.now() : 0;
+        }
+      }).catch(function (err) {
+        if (billingSeq[key] === seq) {
+          billingSnapshots[key] = mergeBillingResult(billingSnapshots[key], {
+            error: { kind: 'exception', message: String((err && err.message) || err) },
+          });
+          billingLastFailAt[key] = Date.now();
+        }
+      }).finally(function () {
+        billingInFlight[key] = null;
+      });
+      return billingInFlight[key];
+    }
+
+    function refreshActiveBilling() {
+      const nowMs = Date.now();
+      for (const key in BILLING_SOURCES) {
+        if (!billingRequested[key]) continue;
+        const lastFailAt = billingLastFailAt[key] || 0;
+        if (nowMs - lastFailAt < BILLING_RETRY_BACKOFF_MS) continue;
+        kickBillingRefresh(key);
+      }
+    }
+
     // RPC：当前订阅额度快照 + 模式判定（非订阅模式直接返回，不发任何订阅请求）
     async function getSubscriptionSnapshotRpc(selection) {
       const sel = selection || modelSelection();
       const bm = detectBillingMode(sel.provider, config.billingMode);
-      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, windows: [], fetchedAt: null, error: null };
+      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], fetchedAt: null, error: null };
       if (bm.mode !== 'subscription') return out;
       const sourceKey = subscriptionSourceFor(sel.provider);
       if (!sourceKey) return out;
@@ -643,7 +1477,45 @@ export default {
         if (!snap.data) await inflight;
       }
       const cur = subscriptions[sourceKey] || { data: null, fetchedAt: null, error: null };
-      if (cur.data) { out.plan = cur.data.plan; out.windows = cur.data.windows; }
+      if (cur.data) {
+        out.plan = cur.data.plan;
+        out.windows = cur.data.windows;
+        out.planType = cur.data.planType;
+        out.expiryAt = cur.data.expiryAt;
+      }
+      out.fetchedAt = cur.fetchedAt;
+      out.error = cur.error;
+      return out;
+    }
+
+    // ---------- v1.7 FR-14：账单源与 RPC（三态互斥的"账单型"） ----------
+    const BILLING_SOURCES = {
+      together: { fetch: fetchTogetherBilling },
+      fireworks: { fetch: fetchFireworksBilling },
+      'amazon-bedrock': { fetch: fetchBedrockBilling },
+      cloudflare: { fetch: fetchCloudflareBilling }, // cloudflare-ai-gateway / cloudflare-workers-ai 共用
+    };
+
+    async function getBillingSnapshotRpc(selection) {
+      const sel = selection || modelSelection();
+      const bm = detectBillingMode(sel.provider, config.billingMode);
+      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, type: null, data: null, fetchedAt: null, error: null, now: Date.now() };
+      if (bm.mode !== 'billing') return out;
+      const key = billingSourceFor(sel.provider);
+      if (!key) return out;
+      out.type = key;
+      billingRequested[key] = true; // 该源进入 60s 周期刷新
+      const snap = billingSnapshots[key] || { data: null, fetchedAt: null, error: null };
+      const nowMs = Date.now();
+      const lastFailAt = billingLastFailAt[key] || 0;
+      const stale = (!snap.fetchedAt || (nowMs - snap.fetchedAt) > BILLING_REFRESH_MS)
+        && (nowMs - lastFailAt) >= BILLING_RETRY_BACKOFF_MS;
+      if (stale) {
+        const inflight = kickBillingRefresh(key);
+        if (!snap.data) await inflight;
+      }
+      const cur = billingSnapshots[key] || { data: null, fetchedAt: null, error: null };
+      out.data = cur.data;
       out.fetchedAt = cur.fetchedAt;
       out.error = cur.error;
       return out;
@@ -746,6 +1618,16 @@ export default {
       mistral: 'Mistral',
       xai: 'xAI',
       groq: 'Groq',
+      // v1.7：新增服务商显示名（模型目录缺失时的兜底；账单/订阅行另有品牌名映射）
+      xiaomi: '小米 MiMo',
+      'xiaomi-token-plan-cn': '小米 MiMo',
+      'xiaomi-token-plan-sgp': '小米 MiMo',
+      'xiaomi-token-plan-ams': '小米 MiMo',
+      together: 'Together',
+      fireworks: 'Fireworks',
+      'amazon-bedrock': 'AWS Bedrock',
+      'cloudflare-ai-gateway': 'Cloudflare',
+      'cloudflare-workers-ai': 'Cloudflare',
     };
 
     // ---------- DSH 模型/服务商目录名与能力缓存（M5：与模型切换器完全一致） ----------
@@ -847,20 +1729,25 @@ export default {
     }
 
     // ---------- 当前激活服务商余额（含预警） ----------
-    // 模型目录 provider id → 余额账户 key：DSH 目录常用 deepseek-official / openai-codex 等标识，
-    // 余额账户按服务商聚合（deepseek-official → deepseek 同一账户）；未知 → 回退 config.activeProvider。
+    // 模型目录 provider id → 余额账户 key（v1.6 改用 accountForProvider 表）：
+    // 已知映射返回对应账户；未知返回 null（不再回退 config.activeProvider，修复 Bug 2）。
     // 目的：余额/币种跟随"活跃模型的服务商"，避免 OpenAI 模型激活时仍显示 DeepSeek ¥ 余额与 ¥0 花费。
     function balanceProviderKey(pid) {
-      if (!pid) return config.activeProvider;
-      if (Object.hasOwn(PROVIDERS, pid)) return pid;
-      if (pid.indexOf('deepseek') === 0) return 'deepseek';
-      if (pid.indexOf('openai') === 0) return 'openai';
-      return config.activeProvider;
+      if (!pid) return null;
+      const acct = accountForProvider(pid);
+      if (acct !== null) return acct;
+      // 订阅源账户不走余额制，直接返回 null
+      if (subscriptionSourceFor(pid)) return null;
+      return null;
     }
 
     function activeBalanceSummary(providerId, nowMs) {
       // 默认跟随活跃模型的服务商（而非恒 deepseek）；显式 providerId（RPC 传参）优先
       const pid = balanceProviderKey(providerId || modelSelection().provider || config.activeProvider);
+      // v1.6 T7：未知账户返回 unmapped=true，客户端渲染"未适配"引导
+      if (pid === null) {
+        return { provider: null, displayName: '未适配', unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
+      }
       const prov = PROVIDERS[pid] || PROVIDERS.deepseek;
       const snap = balances[pid] || { data: null, fetchedAt: null, error: null };
       let alert = null;
@@ -1079,10 +1966,13 @@ export default {
       return s.length % 2 === 1 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
     }
 
-    function sessionTotals() {
+    // v1.6：sessionTotals 增加账户维度参数——本对话统计只聚合当前账户记录
+    function sessionTotals(activeAccount) {
       const map = new Map();
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
+        // v1.6：账户过滤——只聚合匹配当前活跃账户的记录
+        if (activeAccount !== undefined && activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         const key = r.sessionId || (r.provider + '/' + r.model + '#' + r.ts);
         let s = map.get(key);
         if (!s) {
@@ -1163,6 +2053,8 @@ export default {
 
     function spendSummary(nowMs, selection) {
       const sel = selection || modelSelection();
+      // v1.6：计算当前活跃账户
+      const activeAccount = accountForProvider(sel.provider);
       const snap = balances[balanceProviderKey(sel.provider || config.activeProvider)] || { data: null };
       const balance = snap.data ? snap.data.total : null;
       const cur = activeCurrency(sel);
@@ -1173,6 +2065,8 @@ export default {
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
         if (r.ts < cutoff) continue;
+        // v1.6：账户 + 币种双条件过滤
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         if (recordCurrency(r) !== cur) continue; // 只聚合活动币种，避免跨币种相加
         const c = costOf(r, false);
         if (c == null) continue;
@@ -1198,14 +2092,18 @@ export default {
       };
     }
 
-    // ---------- 今日花费（北京时间当日累计，仅活动币种） ----------
+    // ---------- 今日花费（北京时间当日累计，v1.6 账户 + 币种双条件过滤） ----------
     function todaySpend(nowMs, selection) {
+      const sel = selection || modelSelection();
+      const activeAccount = accountForProvider(sel.provider);
       const key = beijingDayKey(nowMs);
       const cur = activeCurrency(selection);
       let total = 0;
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
         if (beijingDayKey(r.ts) !== key) continue;
+        // v1.6：账户 + 币种双条件过滤
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         if (recordCurrency(r) !== cur) continue;
         const c = costOf(r, false);
         if (c != null) total += c;
@@ -1213,8 +2111,10 @@ export default {
       return Math.round(total * 1000) / 1000;
     }
 
-    // ---------- 本月/近30天花费（仅活动币种） ----------
+    // ---------- 本月/近30天花费（v1.6 账户 + 币种双条件过滤） ----------
     function monthSpend(nowMs, selection) {
+      const sel = selection || modelSelection();
+      const activeAccount = accountForProvider(sel.provider);
       const d = new Date(nowMs + 8 * 3600 * 1000);
       const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       const cur = activeCurrency(selection);
@@ -1223,6 +2123,8 @@ export default {
         const r = usageRecords[i];
         const rd = new Date(r.ts + 8 * 3600 * 1000);
         if (rd.getUTCFullYear() + '-' + String(rd.getUTCMonth() + 1).padStart(2, '0') !== key) continue;
+        // v1.6：账户 + 币种双条件过滤
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         if (recordCurrency(r) !== cur) continue;
         const c = costOf(r, false);
         if (c != null) total += c;
@@ -1230,12 +2132,16 @@ export default {
       return Math.round(total * 1000) / 1000;
     }
     function last30dSpend(nowMs, selection) {
+      const sel = selection || modelSelection();
+      const activeAccount = accountForProvider(sel.provider);
       const cutoff = nowMs - 30 * 86400 * 1000;
       const cur = activeCurrency(selection);
       let total = 0;
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
         if (r.ts < cutoff) continue;
+        // v1.6：账户 + 币种双条件过滤
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         if (recordCurrency(r) !== cur) continue;
         const c = costOf(r, false);
         if (c != null) total += c;
@@ -1319,12 +2225,16 @@ export default {
       };
     }
 
-    // ---------- 全部花费 ----------
+    // ---------- 全部花费（v1.6 账户 + 币种双条件过滤） ----------
     function totalSpend(selection) {
+      const sel = selection || modelSelection();
+      const activeAccount = accountForProvider(sel.provider);
       const cur = activeCurrency(selection);
       let total = 0;
       for (let i = 0; i < usageRecords.length; i++) {
         const r = usageRecords[i];
+        // v1.6：账户 + 币种双条件过滤
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
         if (recordCurrency(r) !== cur) continue;
         const c = costOf(r, false);
         if (c != null) total += c;
@@ -1334,7 +2244,10 @@ export default {
 
     // ---------- 用量汇总 ----------
     function getUsageSummary(nowMs, sessionId, selection) {
-      const sessions = sessionTotals();
+      const sel = selection || modelSelection();
+      // v1.6：计算当前活跃账户，用于会话聚合过滤
+      const activeAccount = accountForProvider(sel.provider);
+      const sessions = sessionTotals(activeAccount);
       return {
         sessions: sessions.length,
         calibration: calibrationFrom(sessions, CALIB_SESSIONS),
@@ -1462,6 +2375,10 @@ export default {
       getSubscriptionSnapshot: function (args) {
         return getSubscriptionSnapshotRpc(selectionFromArgs(args));
       },
+      // v1.7 FR-14：账单型快照（云账单 provider）
+      getBillingStatus: function (args) {
+        return getBillingSnapshotRpc(selectionFromArgs(args));
+      },
       setDisplayMode: function (args) {
         const mode = args && typeof args === 'object' ? args.mode : null;
         if (mode === 'extend' || mode === 'replace') config.displayMode = mode;
@@ -1473,7 +2390,7 @@ export default {
         return { infoDensity: config.infoDensity };
       },
     };
-    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true };
+    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true };
 
     function sameOrigin(req) {
       const fetchSite = req.headers['sec-fetch-site'];
@@ -1565,9 +2482,11 @@ export default {
     // ---------- 启动即刷 + 60s 定时刷新 ----------
     refreshAllBalances();
     refreshActiveSubscriptions(); // 惰性：无客户端请求过订阅源则不发起网络请求
+    refreshActiveBilling(); // v1.7：账单型同样惰性
     refreshActiveModelCatalog(); // M5：启动即拉一次 DSH 目录名（llm 缺失时静默回退，绝不崩溃）
     ctx.interval(refreshAllBalances, 60000);
     ctx.interval(refreshActiveSubscriptions, 60000);
+    ctx.interval(refreshActiveBilling, 60000); // v1.7
 
     // 卸载时冲刷未落盘的记账记录
     return function () {
