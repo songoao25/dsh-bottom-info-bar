@@ -966,6 +966,7 @@ export default {
     const subscriptionSeq = {}; // 每 source 刷新序号：仅最新一次请求可写入快照
     const subscriptionInFlight = {}; // { [sourceKey]: Promise } 并发去重（同一时刻只发一个请求）
     const subscriptionRequested = {}; // 仅"客户端请求过"的源进入 60s 周期刷新（余额制下不打扰订阅接口）
+    const subscriptionSourceProvider = {}; // { [sourceKey]: providerId }——记住请求该源时的 provider（zai 系按 provider 路由 host/凭据）
     const subscriptionLastFailAt = {}; // { [sourceKey]: ms } 上次订阅刷新失败时刻（失败退避：期内不重试）
 
     // FR-8 / D7：Codex / ChatGPT 订阅卡（纯本地通道）
@@ -1037,12 +1038,17 @@ export default {
     // host：zai-coding-cn → https://open.bigmodel.cn；zai → https://api.z.ai
     // 认证：两者均 Authorization 裸 API Key，绝无 Bearer 前缀（加 Bearer 会 401）
     async function resolveZaiKey(providerId) {
+      // 凭据与 host 匹配：zai（国际）→ 优先 ZAI_API_KEY；zai-coding-cn（国内）→ 优先 ZAI_CODING_CN_API_KEY。
+      // 用户通常只配一个，回退另一名防止误配。
+      const isCn = providerId === 'zai-coding-cn';
+      const primary = isCn ? 'ZAI_CODING_CN_API_KEY' : 'ZAI_API_KEY';
+      const fallback = isCn ? 'ZAI_API_KEY' : 'ZAI_CODING_CN_API_KEY';
       try {
-        const cred = await ctx.credentials.resolve('ZAI_CODING_CN_API_KEY');
+        const cred = await ctx.credentials.resolve(primary);
         if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
       } catch (err) { /* 回退 */ }
       try {
-        const cred = await ctx.credentials.resolve('ZAI_API_KEY');
+        const cred = await ctx.credentials.resolve(fallback);
         if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
       } catch (err) { /* 未配置 */ }
       return null;
@@ -1095,36 +1101,35 @@ export default {
       return { plan: planName, windows: windows };
     }
 
-    async function fetchZaiUsage() {
-      // 从当前 provider 决定用哪个 host（zai-coding-cn vs zai）
-      // 这里通过 subscriptionSourceFor 反推，但实际 RPC 调用时 selection 会传 provider
-      // 为简化，先尝试两个 host
-      const key = await resolveZaiKey();
+    async function fetchZaiUsage(providerId) {
+      // 按 provider 路由 host 与凭据：zai-coding-cn → open.bigmodel.cn（国内密钥）；
+      // zai → api.z.ai（国际密钥）。两端均裸 API Key（无 Bearer 前缀）。
+      const resolvedProvider = providerId === 'zai-coding-cn' ? 'zai-coding-cn' : 'zai';
+      const key = await resolveZaiKey(resolvedProvider);
       if (!key) {
-        return { error: { kind: 'no-key', message: '未配置智谱 API Key（ZAI_CODING_CN_API_KEY 或 ZAI_API_KEY）' } };
+        return { error: { kind: 'no-key', message: '未配置智谱 API Key（ZAI_API_KEY 或 ZAI_CODING_CN_API_KEY）' } };
       }
-      // 尝试两个 host，优先国内
-      const hosts = ['https://open.bigmodel.cn', 'https://api.z.ai'];
-      for (let i = 0; i < hosts.length; i++) {
-        try {
-          const res = await fetch(hosts[i] + '/api/monitor/usage/quota/limit', {
-            headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
-            signal: AbortSignal.timeout(15000),
-          });
-          if (!res.ok) {
-            if (i < hosts.length - 1) continue; // 尝试下一个 host
-            return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）' } };
-          }
-          const body = await res.json();
-          const parsed = parseZaiQuota(body);
-          if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
-          return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
-        } catch (err) {
-          if (i < hosts.length - 1) continue; // 尝试下一个 host
-          return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      const host = zaiHostForProvider(resolvedProvider);
+      try {
+        const res = await fetch(host + '/api/monitor/usage/quota/limit', {
+          headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
+          signal: AbortSignal.timeout(15000),
+        });
+        // 智谱 API 常在 HTTP 200 内返回业务错误（{code:401, success:false, msg:...}），需先检查
+        const body = await res.json().catch(() => null);
+        if (body && body.success === false) {
+          const msg = body.msg || body.message || '';
+          if (body.code === 401 || /过期|不正确|unauthorized|expired/i.test(msg))
+            return { error: { kind: 'auth', message: '智谱 API 认证失败（密钥过期或不正确）' } };
+          return { error: { kind: 'http', message: '请求失败（' + (body.code || '') + ' ' + msg + '）' } };
         }
+        if (!res.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）' } };
+        const parsed = parseZaiQuota(body);
+        if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
+        return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
-      return { error: { kind: 'exception', message: '所有 host 均失败' } };
     }
 
     // v1.7 通用凭据读取：缺失/读取失败一律 null（错误信息不含密钥）
@@ -1360,13 +1365,14 @@ export default {
     };
 
     // 触发一次刷新（并发去重 + seq 防旧覆盖）；返回本次刷新 Promise
-    function kickSubscriptionRefresh(sourceKey) {
+    // providerId：需要按 provider 路由 host/凭据的源（如 zai 系）使用；其余源忽略
+    function kickSubscriptionRefresh(sourceKey, providerId) {
       const src = SUBSCRIPTION_SOURCES[sourceKey];
       if (!src) return Promise.resolve();
       if (subscriptionInFlight[sourceKey]) return subscriptionInFlight[sourceKey];
       const seq = (subscriptionSeq[sourceKey] || 0) + 1;
       subscriptionSeq[sourceKey] = seq;
-      subscriptionInFlight[sourceKey] = src.fetch().then(function (result) {
+      subscriptionInFlight[sourceKey] = src.fetch(providerId).then(function (result) {
         if (subscriptionSeq[sourceKey] === seq) {
           subscriptions[sourceKey] = mergeSubscriptionResult(subscriptions[sourceKey], result);
           // 失败退避记录：失败记时刻（期内不重试），成功清零
@@ -1393,7 +1399,7 @@ export default {
         if (!subscriptionRequested[sourceKey]) continue;
         const lastFailAt = subscriptionLastFailAt[sourceKey] || 0;
         if (nowMs - lastFailAt < SUBSCRIPTION_RETRY_BACKOFF_MS) continue;
-        kickSubscriptionRefresh(sourceKey);
+        kickSubscriptionRefresh(sourceKey, subscriptionSourceProvider[sourceKey]);
       }
     }
 
@@ -1463,6 +1469,7 @@ export default {
       if (!sourceKey) return out;
       out.source = sourceKey;
       subscriptionRequested[sourceKey] = true; // 该源进入 60s 周期刷新
+      subscriptionSourceProvider[sourceKey] = sel.provider; // 记住 provider（zai 系路由需要）
       const snap = subscriptions[sourceKey] || { data: null, fetchedAt: null, error: null };
       const nowMs = Date.now();
       const lastFailAt = subscriptionLastFailAt[sourceKey] || 0;
@@ -1471,7 +1478,7 @@ export default {
       const stale = (!snap.fetchedAt || (nowMs - snap.fetchedAt) > SUBSCRIPTION_REFRESH_MS)
         && (nowMs - lastFailAt) >= SUBSCRIPTION_RETRY_BACKOFF_MS;
       if (stale) {
-        const inflight = kickSubscriptionRefresh(sourceKey);
+        const inflight = kickSubscriptionRefresh(sourceKey, subscriptionSourceProvider[sourceKey]);
         // 从未成功过（无旧数据）→ 等本次刷新返回最新结果（含错误），避免退避重试后仍返回旧失败快照；
         // 已有旧数据 → 后台刷新，本次直接返回快照（不阻塞轮询）
         if (!snap.data) await inflight;
