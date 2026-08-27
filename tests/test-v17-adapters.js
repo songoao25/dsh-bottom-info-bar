@@ -288,7 +288,7 @@ const billFn = extractClientFnBody('pushBillingGroups');
 check('client：账单型分支（三态互斥）', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('pushBillingGroups(groups, trailingErrorGroups)'), true);
 check('client：账单型显示本月 $X', clientSrc.includes("metric('本月', symbol + fmt(d.currentPeriodSpend, 2))"), true);
 check('client：账单型显示预算 Y%', clientSrc.includes("metric('预算', fmt(d.budgetPercent, 0) + '%')"), true);
-check('client：账单型不显示余额类字段', !billFn.includes('余额 ') && !billFn.includes('本对话 '), true);
+check('client：账单型不显示余额类字段（本会话也不显示）', !billFn.includes('余额 ') && !billFn.includes('本会话 '), true);
 check('client：JWT 到期卡片（到期 YYYY-MM-DD）', clientSrc.includes("metric('到期', formatDate(sub.expiryAt))"), true);
 check('client：JWT 套餐档位短名', clientSrc.includes('subscriptionPlanShort('), true);
 check('client：BILLING_PROVIDERS 兜底注入', clientSrc.includes('BILLING_PROVIDERS.indexOf(activeSessionModel.provider)'), true);

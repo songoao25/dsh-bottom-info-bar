@@ -276,15 +276,15 @@ check('client 订阅源标题用会话优先的订阅服务名映射（openai-co
 check('client 订阅制不显示余额', subFn.includes('余额 '), false);
 check('client 订阅制不显示时段（高峰价/空闲价）', subFn.includes('高峰价'), false);
 check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
-check('client 订阅制不显示本对话花费', subFn.includes('本对话 '), false);
-check('client 订阅制不显示本对话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
+check('client 订阅制不显示本会话花费', subFn.includes('本会话 '), false);
+check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
 check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("'刷新失败'") && clientSrc.includes('subscriptionFailureHint'), true);
 
 // ---- 6.5) v1.7 三态互斥 + JWT 订阅卡 + 账单型静态检查 ----
 const billFn = extractClientFnBody('pushBillingGroups');
 check('client 账单型渲染分支存在（pushBillingGroups）', clientSrc.includes('function pushBillingGroups(groups, trailingErrorGroups)'), true);
 check('client 三态互斥：row2 依次判定 billing → subscription → balance', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('} else if (isSub) {') && clientSrc.includes('} else {') && clientSrc.includes('pushBalanceGroups(groups, trailingErrorGroups)'), true);
-check('client 账单型不显示余额/本对话花费/峰谷时段', !billFn.includes('余额 ') && !billFn.includes('本对话 ') && !billFn.includes('高峰价'), true);
+check('client 账单型不显示余额/本会话花费/峰谷时段', !billFn.includes('余额 ') && !billFn.includes('本会话 ') && !billFn.includes('高峰价'), true);
 check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric('本月', symbol + fmt(d.currentPeriodSpend, 2))"), true);
 check('client 账单型显示预算%（本月 $X · 预算 Y%）', clientSrc.includes("metric('预算', fmt(d.budgetPercent, 0) + '%')"), true);
 check('client 账单型免费额度仅在接口给出免费字段时显示（绝不编造）', clientSrc.includes('d.freeRemaining != null && d.resetsAt'), true);

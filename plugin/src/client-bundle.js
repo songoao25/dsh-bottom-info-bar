@@ -4,7 +4,7 @@
 // - styles.insert(css) → document 注入 <style>（installStyles）
 // - React 由 bundle 的 require('react') 提供（seed 模块）
 // 样式策略：① 整个数据令牌加粗（.bi-num 700）② 服务商名加粗 ③ 高峰价与低余额用警示红、空闲价用绿色
-// 显示行为：① 本对话花费始终显示——新会话/对话刚开始（尚无记账）时显示"本对话 ¥0.000"，
+// 显示行为：① 本会话花费始终显示——新会话/对话刚开始（尚无记账）时显示"本会话 ¥0.000"，
 //   hover 仍可查看持久化的 今天/近一月/全部；
 //   ② 完整模式下原生统计行无 steps 门槛，对话刚开始即显示"0 轮 · 0 步"。
 // 失败策略（AUDIT-CODE-REVIEW 缺陷 #1）：逐接口容错——
@@ -115,7 +115,7 @@ function installStyles() {
       .bi-sep { color: var(--bi-separator); margin: 0 6px; }
       /* 服务商名等一般强调：加粗 600 */
       .bi-root b { color: var(--bi-label-primary); font-weight: 600; }
-      /* 数字：加粗 700（余额/倒计时/本对话花费/原生统计数字） */
+      /* 数字：加粗 700（余额/倒计时/本会话花费/原生统计数字） */
       .bi-root b.bi-num { font-weight: 700; }
       /* 标签与数据不用字符空格拼接：统一由 4px 布局间距控制，避免中英文/数字字宽造成忽松忽紧。 */
       .bi-metric { display: inline-flex; align-items: baseline; white-space: nowrap; }
@@ -596,7 +596,7 @@ module.exports = {
         );
       }
 
-      // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本对话花费 ----
+      // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       function pushBalanceGroups(groups, trailingErrorGroups) {
         const bal = state.balance;
         const errors = state.errors || {};
@@ -654,7 +654,7 @@ module.exports = {
             metric('距' + (peakNow ? '空闲' : '高峰'), fmtCountdown(pr.nextSwitch.at - now))));
         }
 
-        // 本对话花费（只显示钱；hover 浮窗显示 今天 / 近一月 / 全部；金额数字加粗）
+        // 本会话花费（只显示钱；hover 浮窗显示 本会话（含子代理）+ 今天 / 近一月 / 全部；金额数字加粗）
         // 始终显示：新会话/对话刚开始尚无记账时显示 ¥0.000，hover 仍可查看持久化的 今天/近一月/全部
         const usg = state.usage;
         if (usg) {
@@ -669,8 +669,10 @@ module.exports = {
           const month = usg.monthSpend != null ? '近一月 ' + symbol + fmt(usg.monthSpend, 3) : '';
           const total = usg.totalSpend != null ? '全部 ' + symbol + fmt(usg.totalSpend, 3) : '';
           const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
-          groups.push(React.createElement('span', { key: 'convo', title: detail || '本对话花费' },
-            metric('本对话', costTxt)));
+          // v1.7 发布前微调：hover 明确标注"含子代理"——本会话聚合同账户所有记录（同起点后）
+          groups.push(React.createElement('span', { key: 'convo',
+            title: '本会话 ' + costTxt + '（含子代理）' + (detail ? '\n' + detail : '') },
+            metric('本会话', costTxt)));
         } else if (errors.usage) {
           // 本次 RPC 失败且无旧数据：只降级花费块，其余端点数据照常渲染
           trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'usageerr', title: '花费暂不可用；不会影响对话。' }, '花费获取失败'));
@@ -771,7 +773,7 @@ module.exports = {
       }
 
       // ---- v1.7 账单型模式（FR-10~13/FR-14，互斥第三态）：
-      //      账单服务+模型 → 本月真实花费 →（预算%）→（免费额度+重置倒计时）；余额/额度/本对话花费均不显示 ----
+      //      账单服务+模型 → 本月真实花费 →（预算%）→（免费额度+重置倒计时）；余额/额度/本会话花费均不显示 ----
       function billingFailureHint(error, provider) {
         const serviceName = billingServiceName(provider);
         const message = error && typeof error.message === 'string' ? error.message : '';

@@ -2013,25 +2013,45 @@ export default {
       return String(id).replace(/^session-/, '');
     }
 
-    function currentSessionSummary(sessions, sessionId) {
-      if (!sessions || sessions.length === 0) return null;
+    // v1.7（发布前微调）：本会话聚合含子代理花费——从"按 sessionId 精确匹配"改为
+    // "会话起点 = 当前 sessionId 的最早记录时间戳；聚合同账户（recordAccount === activeAccount）
+    //  且 ts >= 会话起点的全部记录"——子代理/同账户不同 sessionId 的并行记录自然被纳入。
+    // 未知账户（activeAccount=null）时匹配无主记录（recordAccount 同为 null），绝不混入其他账户。
+    function currentSessionSummary(usageRecords, activeAccount, sessionId) {
+      if (!usageRecords || usageRecords.length === 0) return null;
       if (!sessionId) return null; // 无可用会话 ID：不猜测归属，客户端显示 ¥0.000，而非回退最近会话
       const norm = normalizeSessionId(sessionId);
-      let target = null;
-      for (let i = sessions.length - 1; i >= 0; i--) {
-        if (normalizeSessionId(sessions[i].sessionId) === norm) { target = sessions[i]; break; }
+      let sessionStart = null;
+      for (let i = 0; i < usageRecords.length; i++) {
+        const r = usageRecords[i];
+        if (normalizeSessionId(r.sessionId) !== norm) continue;
+        if (sessionStart === null || r.ts < sessionStart) sessionStart = r.ts;
       }
-      if (!target) return null; // 明确传入但未命中（新对话尚无记账）→ 客户端显示 ¥0.000
-      const denom = target.input + target.cacheRead + target.cacheWrite;
-      const tokens = target.input + target.cacheRead + target.cacheWrite + target.output;
+      if (sessionStart === null) return null; // 明确传入但未命中（新会话尚无记账）→ 客户端显示 ¥0.000
+      const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} };
+      for (let i = 0; i < usageRecords.length; i++) {
+        const r = usageRecords[i];
+        if (r.ts < sessionStart) continue;
+        if (recordAccount(r) !== activeAccount) continue; // 只聚合当前账户（含无主 null 账户匹配）
+        acc.input += r.input;
+        acc.cacheRead += r.cacheRead;
+        acc.cacheWrite += r.cacheWrite;
+        acc.output += r.output;
+        const c = costOf(r, false);
+        if (c != null) {
+          const cur = recordCurrency(r);
+          acc.costs[cur] = (acc.costs[cur] || 0) + c;
+        }
+      }
+      const denom = acc.input + acc.cacheRead + acc.cacheWrite;
       return {
-        input: target.input,
-        cacheRead: target.cacheRead,
-        cacheWrite: target.cacheWrite,
-        output: target.output,
-        tokens: tokens,
-        costs: target.costs || {},
-        hitRate: denom > 0 ? Math.round((target.cacheRead / denom) * 1000) / 10 : null,
+        input: acc.input,
+        cacheRead: acc.cacheRead,
+        cacheWrite: acc.cacheWrite,
+        output: acc.output,
+        tokens: acc.input + acc.cacheRead + acc.cacheWrite + acc.output,
+        costs: acc.costs || {},
+        hitRate: denom > 0 ? Math.round((acc.cacheRead / denom) * 1000) / 10 : null,
       };
     }
 
@@ -2251,7 +2271,7 @@ export default {
       return {
         sessions: sessions.length,
         calibration: calibrationFrom(sessions, CALIB_SESSIONS),
-        currentSession: currentSessionSummary(sessions, sessionId),
+        currentSession: currentSessionSummary(usageRecords, activeAccount, sessionId),
         spend: spendSummary(nowMs, selection),
         todaySpend: todaySpend(nowMs, selection),
         monthSpend: monthSpend(nowMs, selection),

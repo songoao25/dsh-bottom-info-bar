@@ -15,7 +15,8 @@
 - **AWS Bedrock（FR-12）**：复用 AWS 凭据（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`），node:crypto 本地 SigV4 签名调 Cost Explorer 显示本月真实花费，Budget 可选显示预算百分比（`本月 $X · 预算 Y%`）
 - **Cloudflare（FR-13）**：`CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` 调 Billable Usage API（Alpha）显示本月真实用量；每日免费额度与零点重置倒计时仅在接口显式提供时显示，绝不编造
 - **统一数据模型（FR-14）**：新适配器输出统一收敛到 ProviderAccountStatus 子集，客户端新增「账单型」渲染分支，与余额型、额度型三态互斥、不重叠、零新页面
-- **花费统计按账户隔离**：本对话 / 今日 / 本月 / 近30天 / 全部花费仅统计当前活跃服务商账户名下的记录，其他账户记录不参与汇总但仍在账本中保留
+- **花费统计按账户隔离**：今日 / 本月 / 近30天 / 全部花费仅统计当前活跃服务商账户名下的记录，其他账户记录不参与汇总但仍在账本中保留
+- **本会话聚合含子代理**：原「本对话」更名为「本会话」——从当前会话最早记录起，聚合同服务商账户的全部记录（子代理使用同账户、独立 sessionId 也一并计入），hover 注明「含子代理」
 - **未适配服务商优雅降级**：信息栏显示"未适配"引导，绝不显示其他服务商的余额或额度
 - 新增适配器解析器与 SigV4 签名单测（JWT 解码 / 小米 / Together / Fireworks / Cloudflare / AWS 官方固定签名向量）
 

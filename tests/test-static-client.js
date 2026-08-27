@@ -1,5 +1,5 @@
 // 静态 client（plugin/src/client-bundle.js）显示逻辑审计：
-// ① 本对话花费始终显示——不再以 currentSession.tokens > 0 为门槛（新会话/对话刚开始显示 ¥0.000，
+// ① 本会话花费始终显示——不再以 currentSession.tokens > 0 为门槛（新会话/对话刚开始显示 ¥0.000，
 //    hover 仍可查看持久化的 今天/近一月/全部）；
 // ② 原生统计行不再以 steps > 0 为门槛——完整模式下对话刚开始即显示 "0 轮 · 0 步"；
 //    简洁模式中该行保留在 DOM 内，以连续收合动画隐藏。
@@ -16,9 +16,9 @@ function check(label, actual, expected) {
   else { fail++; console.log('FAIL  ' + label + ' → 期望 ' + JSON.stringify(expected) + '，实际 ' + JSON.stringify(actual)); }
 }
 
-// 1) 本对话始终显示：无 tokens > 0 门槛
-check('本对话块不再依赖 tokens > 0 门槛', !clientSrc.includes('usg.currentSession.tokens > 0'), true);
-check('本对话块在 usg 存在时始终渲染', clientSrc.includes('const usg = state.usage;\n        if (usg) {'), true);
+// 1) 本会话始终显示：无 tokens > 0 门槛
+check('本会话块不再依赖 tokens > 0 门槛', !clientSrc.includes('usg.currentSession.tokens > 0'), true);
+check('本会话块在 usg 存在时始终渲染', clientSrc.includes('const usg = state.usage;\n        if (usg) {'), true);
 check('无记账时显示 ¥0.000 回退', clientSrc.includes("(bal && bal.currency === 'USD' ? '$' : '¥') + (0).toFixed(3)"), true);
 check('hover 仍含 今天/近一月/全部', clientSrc.includes("'今天 ' + symbol + fmt(usg.todaySpend, 3)"), true);
 check('hover 仍含 全部', clientSrc.includes("'全部 ' + symbol + fmt(usg.totalSpend, 3)"), true);
@@ -80,7 +80,7 @@ check('数值语法统一：数值与紧随单位/货币符号整体加粗，中
   && clientSrc.includes("group([metric('输入', formatTokens(billedInput(usageProj)) + ' tok')"), true);
 check('标签与数据通过 metric 组件统一 4px 边界，不依赖普通字符空格', clientSrc.includes("function metric(label, value, extraClass)")
   && clientSrc.includes("metric('余额', symbol + fmt(bal.data.total)")
-  && clientSrc.includes("metric('本对话', costTxt)")
+  && clientSrc.includes("metric('本会话', costTxt)")
   && clientSrc.includes("metric('缓存命中', hit + '%')"), true);
 check('超长模型名不会被根容器裁切：模型详情可整体换行，视觉胶囊保留能力词并省略过长型号', !clientSrc.includes('display: block; overflow: hidden; font-size: 12px')
   && clientSrc.includes('.bi-row2 > .bi-model-group { white-space: normal; }')
