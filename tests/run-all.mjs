@@ -34,6 +34,8 @@ const cases = [
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
   ['test-usage-stream-ledger（每次回答只记一笔）', ['tests/test-usage-stream-ledger.mjs'], join(root), process.execPath],
   ['test-host-regressions（host.js 审计必修项回归）', ['tests/test-host-regressions.mjs'], join(root), process.execPath],
+  ['test-subscription-providers-consistency（共享常量单一生源一致性）', ['tests/test-subscription-providers-consistency.js'], join(root), process.execPath],
+  ['test-v17-adapters（v1.7 解析器：JWT/小米/Together/Fireworks/SigV4/Cloudflare/normalize）', ['tests/test-v17-adapters.js'], join(root), process.execPath],
   ['test-update-check（启动版本检查与红色提醒）', ['tests/test-update-check.js'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.js', HOST], join(root), process.execPath],
 ]

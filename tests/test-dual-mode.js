@@ -7,6 +7,11 @@ const fs = require('fs');
 
 const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
 const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+// v1.6 整改：从 constants.js 读取单一生源的 SUBSCRIPTION_PROVIDERS
+const constantsSrc = fs.readFileSync(__dirname + '/../plugin/src/constants.js', 'utf8');
+const constantsMatch = constantsSrc.match(/export const SUBSCRIPTION_PROVIDERS = (\[[\s\S]*?\]);?/);
+if (!constantsMatch) throw new Error('无法从 constants.js 中提取 SUBSCRIPTION_PROVIDERS');
+const SUBSCRIPTION_PROVIDERS = eval('(' + constantsMatch[1] + ')');
 
 // 提取纯函数（与 test-spend-accounting.js 同法：括号计数提取 + eval）
 function extractFn(name) {
@@ -38,15 +43,21 @@ function extractConst(name) {
   return eval('(' + m[1] + ')');
 }
 
-// 依赖常量（与 host.js 同源提取，测试与实现共用同一份配置）
-const SUBSCRIPTION_PROVIDERS = extractConst('SUBSCRIPTION_PROVIDERS');
+// 依赖常量（WINDOW_SECONDS/WINDOW_LABELS/CODEX_PLAN_NAMES 仍从 hostSrc 提取；SUBSCRIPTION_PROVIDERS 已从 constants.js 读取）
 const WINDOW_SECONDS = extractConst('WINDOW_SECONDS');
 const WINDOW_LABELS = extractConst('WINDOW_LABELS');
 const CODEX_PLAN_NAMES = extractConst('CODEX_PLAN_NAMES');
+// v1.7：BILLING_PROVIDERS 同样从 constants.js 读取（云账单型 provider 集合）
+const constantsSrcFull = constantsSrc;
+const billingMatch = constantsSrcFull.match(/export const BILLING_PROVIDERS = (\[[\s\S]*?\]);?/);
+if (!billingMatch) throw new Error('无法从 constants.js 中提取 BILLING_PROVIDERS');
+const BILLING_PROVIDERS = eval('(' + billingMatch[1] + ')');
 
 // 提取纯函数（eval 出的函数闭包指向本模块作用域，能解析到上面的常量与函数）
 const detectBillingMode = extractFn('detectBillingMode');
 const subscriptionSourceFor = extractFn('subscriptionSourceFor');
+const accountForProvider = extractFn('accountForProvider'); // v1.7：新增账户映射审计
+const billingSourceFor = extractFn('billingSourceFor'); // v1.7：账单源映射审计
 const codexWindowKey = extractFn('codexWindowKey');
 const planDisplayName = extractFn('planDisplayName'); // parseCodexUsage 的依赖
 const openCodeGoWindowKey = extractFn('openCodeGoWindowKey'); // parseOpenCodeGoUsage 的依赖
@@ -74,13 +85,41 @@ check('订阅源映射：deepseek → null', subscriptionSourceFor('deepseek'), 
 check('provider=deepseek → balance', detectBillingMode('deepseek', 'auto').mode, 'balance');
 check('provider=openai → balance', detectBillingMode('openai', 'auto').mode, 'balance');
 check('provider=openrouter → balance', detectBillingMode('openrouter', 'auto').mode, 'balance');
+check('provider=xiaomi（按量）→ balance', detectBillingMode('xiaomi', 'auto').mode, 'balance');
+// v1.7 FR-14：云账单型 provider → billing（互斥第三态）
+check('provider=together → billing', detectBillingMode('together', 'auto').mode, 'billing');
+check('provider=fireworks → billing', detectBillingMode('fireworks', 'auto').mode, 'billing');
+check('provider=amazon-bedrock → billing', detectBillingMode('amazon-bedrock', 'auto').mode, 'billing');
+check('provider=cloudflare-ai-gateway → billing', detectBillingMode('cloudflare-ai-gateway', 'auto').mode, 'billing');
+check('provider=cloudflare-workers-ai → billing', detectBillingMode('cloudflare-workers-ai', 'auto').mode, 'billing');
+check('billing 理由含 provider 标识', detectBillingMode('together', 'auto').reason, 'provider:together');
+// v1.7：账单源映射
+check('together → 账单源 together', billingSourceFor('together'), 'together');
+check('fireworks → 账单源 fireworks', billingSourceFor('fireworks'), 'fireworks');
+check('amazon-bedrock → 账单源 amazon-bedrock', billingSourceFor('amazon-bedrock'), 'amazon-bedrock');
+check('cloudflare-workers-ai → 账单源 cloudflare（共用）', billingSourceFor('cloudflare-workers-ai'), 'cloudflare');
+check('cloudflare-ai-gateway → 账单源 cloudflare（共用）', billingSourceFor('cloudflare-ai-gateway'), 'cloudflare');
+check('deepseek → 账单源 null', billingSourceFor('deepseek'), null);
+// v1.7：小米 Token Plan 三集群按地区分源（互不串数据）
+check('xiaomi-token-plan-cn → 订阅源 xiaomi-cn', subscriptionSourceFor('xiaomi-token-plan-cn'), 'xiaomi-cn');
+check('xiaomi-token-plan-sgp → 订阅源 xiaomi-sgp', subscriptionSourceFor('xiaomi-token-plan-sgp'), 'xiaomi-sgp');
+check('xiaomi-token-plan-ams → 订阅源 xiaomi-ams', subscriptionSourceFor('xiaomi-token-plan-ams'), 'xiaomi-ams');
+check('xiaomi（按量）→ 订阅源 null（余额制）', subscriptionSourceFor('xiaomi'), null);
+// v1.7：账户映射
+check('账户映射：xiaomi → xiaomi', accountForProvider('xiaomi'), 'xiaomi');
+check('账户映射：xiaomi-token-plan-sgp → xiaomi-token-plan', accountForProvider('xiaomi-token-plan-sgp'), 'xiaomi-token-plan');
+check('账户映射：together → together', accountForProvider('together'), 'together');
+check('账户映射：amazon-bedrock → amazon-bedrock', accountForProvider('amazon-bedrock'), 'amazon-bedrock');
+check('账户映射：cloudflare-ai-gateway → cloudflare', accountForProvider('cloudflare-ai-gateway'), 'cloudflare');
+check('账户映射：未知 → null', accountForProvider('some-unknown'), null);
 check('未知 provider → balance（兜底）', detectBillingMode('some-new-provider', 'auto').mode, 'balance');
 check('空 provider → balance（兜底）', detectBillingMode('', 'auto').mode, 'balance');
 check('手动覆盖 balance：codex + billingMode=balance → balance', detectBillingMode('codex', 'balance').mode, 'balance');
 check('手动覆盖 subscription：deepseek + billingMode=subscription → subscription', detectBillingMode('deepseek', 'subscription').mode, 'subscription');
 check('手动覆盖理由 = manual-override', detectBillingMode('codex', 'balance').reason, 'manual-override');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
-check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex']));
+check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams']));
+check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']));
 
 // ---- 2) 窗口时长映射边界 ----
 check('18000 → five_hour', codexWindowKey(18000), 'five_hour');
@@ -240,6 +279,24 @@ check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰')
 check('client 订阅制不显示本对话花费', subFn.includes('本对话 '), false);
 check('client 订阅制不显示本对话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
 check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("'刷新失败'") && clientSrc.includes('subscriptionFailureHint'), true);
+
+// ---- 6.5) v1.7 三态互斥 + JWT 订阅卡 + 账单型静态检查 ----
+const billFn = extractClientFnBody('pushBillingGroups');
+check('client 账单型渲染分支存在（pushBillingGroups）', clientSrc.includes('function pushBillingGroups(groups, trailingErrorGroups)'), true);
+check('client 三态互斥：row2 依次判定 billing → subscription → balance', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('} else if (isSub) {') && clientSrc.includes('} else {') && clientSrc.includes('pushBalanceGroups(groups, trailingErrorGroups)'), true);
+check('client 账单型不显示余额/本对话花费/峰谷时段', !billFn.includes('余额 ') && !billFn.includes('本对话 ') && !billFn.includes('高峰价'), true);
+check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric('本月', symbol + fmt(d.currentPeriodSpend, 2))"), true);
+check('client 账单型显示预算%（本月 $X · 预算 Y%）', clientSrc.includes("metric('预算', fmt(d.budgetPercent, 0) + '%')"), true);
+check('client 账单型免费额度仅在接口给出免费字段时显示（绝不编造）', clientSrc.includes('d.freeRemaining != null && d.resetsAt'), true);
+check('client 账单型无金额时按真实用量展示', clientSrc.includes("metric('本月用量', fmt(d.usage, 2)"), true);
+check('client 账单服务名映射：Together/Fireworks/AWS Bedrock/Cloudflare', clientSrc.includes("return 'Together'") && clientSrc.includes("return 'Fireworks'") && clientSrc.includes("return 'AWS Bedrock'") && clientSrc.includes("return 'Cloudflare'"), true);
+check('client 订阅服务名含小米 MiMo', clientSrc.includes("return '小米 MiMo'"), true);
+check('client JWT 订阅卡：套餐档位短名映射（plus→Plus 等）', clientSrc.includes("const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };"), true);
+check('client JWT 订阅卡：到期日期渲染（到期 YYYY-MM-DD）', clientSrc.includes("metric('到期', formatDate(sub.expiryAt))"), true);
+check('client JWT 订阅卡：模型位显示套餐档位（ChatGPT · Plus）', clientSrc.includes('const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;'), true);
+check('client 账单型失败保留旧快照提示（bill.error || errors.billing）', billFn.includes('bill.error || errors.billing'), true);
+check('client load 含 getBillingStatus 端点', clientSrc.includes("rpc('getBillingStatus'"), true);
+check('client mergeLoadResults 含 billing 键', clientSrc.includes("keys = ['balance', 'pricing', 'usage', 'billingMode', 'sub', 'billing']"), true);
 
 // ---- 7) host RPC 完整性静态检查 ----
 check('host 含 getBillingMode RPC', hostSrc.includes('getBillingMode: function'), true);

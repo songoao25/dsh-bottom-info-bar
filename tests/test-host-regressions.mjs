@@ -25,7 +25,8 @@ function check(name, cond, detail) {
 // ---------- 桩工具 ----------
 function makeStub(providerId, model) {
   const captured = { route: null, llmListener: null }
-  const credDeferreds = []
+  // v1.6：记录 {name, deferred}，让测试按名称取特定凭据的 deferred
+  const credEntries = []
   const ctx = {
     get(name) {
       if (name === 'agentDefaultModel') {
@@ -34,11 +35,11 @@ function makeStub(providerId, model) {
       return undefined
     },
     credentials: {
-      resolve: () => {
+      resolve: (credName) => {
         // 每次调用返回一个可手动 resolve/reject 的 deferred（测试可控的竞态时序）
-        const d = {}
+        const d = { name: credName }
         d.promise = new Promise((resolve, reject) => { d.resolve = resolve; d.reject = reject })
-        credDeferreds.push(d)
+        credEntries.push(d)
         return d.promise
       },
     },
@@ -55,7 +56,11 @@ function makeStub(providerId, model) {
       return () => {}
     },
   }
-  return { captured, ctx, credDeferreds }
+  // v1.6：返回 credEntries（含 name 字段），并提供辅助函数按名称过滤
+  function getCredEntriesByName(name) {
+    return credEntries.filter(e => e.name === name)
+  }
+  return { captured, ctx, credEntries, getCredEntriesByName }
 }
 
 function makeReq(path, method, body, headers) {
@@ -98,7 +103,7 @@ async function feedUsage(listener, usage, opts) {
   for await (const c of iter) { /* drain */ }
 }
 
-// fetch 桩：DeepSeek 余额 API 返回 88.5 CNY；版本检查返回当前版本，避免混入余额 API 调用计数。
+// fetch 桩：URL 感知——只对 DeepSeek 余额 API 计数并返回 88.5 CNY；其他 URL 返回最小可用响应
 let fetchCalls = 0
 globalThis.fetch = async (url) => {
   let parsedUrl = null
@@ -107,26 +112,33 @@ globalThis.fetch = async (url) => {
       && parsedUrl.pathname === '/dsh-bottom-info-bar/latest') {
     return { ok: true, status: 200, json: async () => ({ version: '1.4.0' }) }
   }
-  fetchCalls += 1
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({ balance_infos: [{ currency: 'CNY', total_balance: '88.5', granted_balance: '0', topped_up_balance: '88.5' }] }),
+  // v1.6：只对 DeepSeek API 计数；其他服务商返回空对象避免抛异常
+  if (parsedUrl && parsedUrl.hostname === 'api.deepseek.com') {
+    fetchCalls += 1
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ balance_infos: [{ currency: 'CNY', total_balance: '88.5', granted_balance: '0', topped_up_balance: '88.5' }] }),
+    }
   }
+  // 其他 URL（moonshot/openrouter/stepfun）返回空对象，不计数
+  return { ok: true, status: 200, json: async () => ({}) }
 }
 
 // ================= ①② 余额 seq 竞态 + 失败保留旧快照 =================
 {
-  const { captured, ctx, credDeferreds } = makeStub()
+  const { captured, ctx, credEntries, getCredEntriesByName } = makeStub()
   const disposer = plugin.apply(ctx)
   await new Promise((r) => setTimeout(r, 30))
   // 触发第二次刷新（seq=2）
   const r1 = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/setActiveProvider', 'POST', JSON.stringify({ provider: 'deepseek' }), { 'sec-fetch-site': 'same-origin' })
   check('setActiveProvider 触发二次余额刷新', r1.status === 200 && r1.payload.activeProvider === 'deepseek')
   await new Promise((r) => setTimeout(r, 10))
-  check('两次凭据请求均已挂起（seq=1 与 seq=2）', credDeferreds.length === 2, String(credDeferreds.length))
+  // v1.6：按名称过滤 deepseek 的凭据请求（排除其他服务商的干扰）
+  const deepseekCreds = getCredEntriesByName('DEEPSEEK_API_KEY')
+  check('两次 deepseek 凭据请求均已挂起（seq=1 与 seq=2）', deepseekCreds.length === 2, String(deepseekCreds.length))
   // seq=2 先成功 → 写入新快照 88.5
-  credDeferreds[1].resolve({ value: 'sk-test' })
+  deepseekCreds[1].resolve({ value: 'sk-test' })
   await new Promise((r) => setTimeout(r, 30))
   {
     const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET')
@@ -134,7 +146,7 @@ globalThis.fetch = async (url) => {
     check('余额 API 恰好调用 1 次（仅 seq=2 成功路径）', fetchCalls === 1, String(fetchCalls))
   }
   // 旧请求（seq=1）此刻才失败：seq guard 必须阻止其覆盖新快照
-  credDeferreds[0].reject(new Error('cred store down'))
+  deepseekCreds[0].reject(new Error('cred store down'))
   await new Promise((r) => setTimeout(r, 30))
   {
     const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET')
@@ -143,8 +155,9 @@ globalThis.fetch = async (url) => {
   // 第三次刷新（seq=3）：no-key 失败 → 保留旧快照，仅换 error
   await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/setActiveProvider', 'POST', JSON.stringify({ provider: 'deepseek' }), { 'sec-fetch-site': 'same-origin' })
   await new Promise((r) => setTimeout(r, 10))
-  check('第三次凭据请求已发起', credDeferreds.length === 3, String(credDeferreds.length))
-  credDeferreds[2].resolve(undefined) // 未配置 Key → no-key 分支
+  const deepseekCreds2 = getCredEntriesByName('DEEPSEEK_API_KEY')
+  check('第三次 deepseek 凭据请求已发起', deepseekCreds2.length === 3, String(deepseekCreds2.length))
+  deepseekCreds2[2].resolve(undefined) // 未配置 Key → no-key 分支
   await new Promise((r) => setTimeout(r, 30))
   {
     const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET')
