@@ -65,7 +65,7 @@
 
 | 优先级 | 问题 | 方案 |
 |---|---|---|
-| 进行中 | Kimi / StepFun / 小米按量 价目表空缺（花费恒 0） | 官方价采集进行中（同智谱标准：官方来源＋币种分清＋全档入 notes）；入库后"本会话"即生效 |
+| ✅ 完成 | Kimi / StepFun / 小米按量 价目表空缺（花费恒 0） | 三家官方价已入库（小米5+StepFun2+Kimi国内10，全 CNY）：新增 `provider:model` **作用域键**框架解决 Kimi 同名模型双币种问题；小米本地 USD 数字陷阱记录于 `docs/research/kimi-stepfun-xiaomi-pricing-202608.md`；kimi 国际站 USD 待单独采集（`moonshotai:` 键位预留） |
 | ~~P2~~ 完成 | OpenRouter 无法静态维护价目 | ✅ 已实现"直读真实账单"路径：usage 自报 cost 直接落账（provider-reported，币种按家登记），聚合商免维护静态价目；待真实账单验证 |
 | P1 | z.ai 国际站订阅的谷值五折不可视 | 峰谷框架参数化（entry 支持 `windows` 自定义时段）。**决策备注：当前无人使用该形态且订阅以 credit% 展示为主，实际收益有限——排后保留** |
 | P2 | OpenAI 价目仅两款 gpt | 目录中补齐 gpt-5.x / o-series |

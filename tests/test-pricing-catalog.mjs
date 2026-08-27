@@ -29,6 +29,11 @@ check('记录层支持服务商报告的真实金额（u.cost）', /billed == nu
 check('聚合商币种登记表存在（OpenRouter=USD）', host.includes("PROVIDER_REPORTED_CURRENCY = { openrouter: 'USD' }"), true)
 check('账单来源版本标记 provider-reported', host.includes("'provider-reported-'"), true)
 
+// 4) 服务商作用域键（同名模型跨币种计费域）
+check('host 支持作用域键回退链（provider:model → model）', /const scoped = PRICING\[provider \+ ':' \+ model\]/.test(host), true)
+check('目录允许作用域键（sanitizer 含冒号白名单）', host.includes('[A-Za-z0-9._:-]'), true)
+check('Kimi 国内域以 moonshotai-cn: 作用域收录（防串币种）', host.includes("'moonshotai-cn:kimi-k3'"), true)
+
 // 2) 目录文件本体
 const catalogPath = join(root, 'catalog/pricing.json')
 check('catalog/pricing.json 存在', existsSync(catalogPath), true)
@@ -36,7 +41,7 @@ if (existsSync(catalogPath)) {
   let raw = null
   try { raw = JSON.parse(readFileSync(catalogPath, 'utf8')) } catch (err) { raw = null }
   check('catalog 可解析为 JSON 对象', raw && typeof raw === 'object' && !Array.isArray(raw), true)
-  const badKey = Object.keys(raw).filter(function (k) { return !/^[A-Za-z0-9._-]{1,64}$/.test(k) })
+  const badKey = Object.keys(raw).filter(function (k) { return !/^[A-Za-z0-9._:-]{1,64}$/.test(k) })
   check('所有 key 符合模型名规范', badKey.length === 0, true)
   const badVal = Object.keys(raw).filter(function (k) {
     const e = raw[k]

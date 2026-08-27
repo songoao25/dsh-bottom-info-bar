@@ -782,9 +782,34 @@ export default {
       'glm-5v-turbo':  { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.2,  inputCacheMiss: 5,   output: 22 } },
       'glm-4.7':       { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.4,  inputCacheMiss: 2,   output: 8 } },
       'glm-4.5-air':   { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.16, inputCacheMiss: 0.8, output: 2 } },
+      // ---------- 小米 MiMo 按量官方价（mimo.mi.com/docs/zh-CN/price/pay-as-you-go，2026-08-06 调价后 CNY；
+      // 本机 pi-ai 目录里的 cost 字段是 USD 数字——严禁混用，详见体系审计报告）----------
+      'mimo-v2-flash':  { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.02,  inputCacheMiss: 1,   output: 2 } },
+      'mimo-v2-omni':   { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.02,  inputCacheMiss: 1,   output: 2 } },
+      'mimo-v2-pro':    { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.025, inputCacheMiss: 3,   output: 6 } },
+      'mimo-v2.5':      { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.02,  inputCacheMiss: 1,   output: 2 } },
+      'mimo-v2.5-pro':  { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.025, inputCacheMiss: 3,   output: 6 } },
+      // mimo-v2.5-pro-ultraspeed：官方仅美元口径、人民币数未独立确认 → 按"不臆测"暂不收录
+      // ---------- 阶跃 StepFun 在售文本模型（platform.stepfun.com 定价详情；step-1/2/3 系已于 2026-07 下线）----------
+      'step-3.7-flash': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.27,  inputCacheMiss: 1.35, output: 8.1 } },
+      'step-3.5-flash': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.14,  inputCacheMiss: 0.7,  output: 2.1 } },
+      // ---------- Kimi 国内站（provider=moonshotai-cn → api.moonshot.cn 计费 ¥）----------
+      // 同型号在 api.moonshot.ai 国际站按 $ 另计：官方 USD 数字待采集后以 'moonshotai:kimi-*'
+      // 作用域键收录；裸 kimi-* 键刻意留空，防止币种串档。
+      'moonshotai-cn:kimi-k3':                 { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 2,    inputCacheMiss: 20,   output: 100 } },
+      'moonshotai-cn:kimi-k2.5':               { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.7,  inputCacheMiss: 4,    output: 21 } },
+      'moonshotai-cn:kimi-k2.6':               { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.1,  inputCacheMiss: 6.5,  output: 27 } },
+      'moonshotai-cn:kimi-k2.7-code':          { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.3,  inputCacheMiss: 6.5,  output: 27 } },
+      'moonshotai-cn:kimi-k2.7-code-highspeed':{ currency: 'CNY', mode: 'flat', price: { inputCacheHit: 2.6,  inputCacheMiss: 13,   output: 54 } },
+      'moonshotai-cn:kimi-k2-0711-preview':    { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 0.6,  output: 2.5 } },
+      'moonshotai-cn:kimi-k2-0905-preview':    { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 0.6,  output: 2.5 } },
+      'moonshotai-cn:kimi-k2-thinking':        { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 0.6,  output: 2.5 } },
+      'moonshotai-cn:kimi-k2-thinking-turbo':  { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 1.15, output: 8 } },
+      'moonshotai-cn:kimi-k2-turbo-preview':   { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.6,  inputCacheMiss: 2.4,  output: 10 } },
     };
-    function modelCurrency(model) {
-      const entry = PRICING[model];
+    function modelCurrency(provider, model) {
+      // 服务商作用域键优先：同名模型跨计费域时（Kimi 国内外），币种必须跟作用域走
+      const entry = pricingEntryFor(provider, model);
       if (entry && entry.currency) return entry.currency;
       return model && model.indexOf('gpt') === 0 ? 'USD' : 'CNY';
     }
@@ -808,7 +833,7 @@ export default {
       const entries = {};
       for (const key of Object.keys(raw)) {
         if (Object.keys(entries).length >= 512) break; // 容量上限，防滥用
-        if (!/^[A-Za-z0-9._-]{1,64}$/.test(key)) continue;
+        if (!/^[A-Za-z0-9._:-]{1,64}$/.test(key)) continue; // 允许 "provider:model" 作用域键（跨币种同名模型）
         const e = raw[key];
         if (!e || typeof e !== 'object') continue;
         // v1 仅接受统一价（flat）；分时价的窗口规则须随框架参数化后再开放远程下发
@@ -1865,9 +1890,18 @@ export default {
     }
 
     // ---------- 定价计算 ----------
+    // 价目键解析：优先"服务商:模型"作用域键（解决同名模型跨计费域价格/币种不同的问题，
+    // 如 Kimi 同一型号在 api.moonshot.cn=¥ 与 api.moonshot.ai=$ 两套价）；
+    // 无作用域键时回退裸模型键。远程目录可下发任意一种形态。
+    function pricingEntryFor(provider, model) {
+      const scoped = PRICING[provider + ':' + model];
+      if (scoped && typeof scoped === 'object') return scoped;
+      return PRICING[model] || null;
+    }
+
     function computePricing(nowMs, selection) {
       const sel = selection || modelSelection();
-      const entry = PRICING[sel.model];
+      const entry = pricingEntryFor(sel.provider, sel.model);
       const period = entry && entry.mode === 'peak-valley' ? currentPeriod(nowMs) : 'flat';
       let prices = null;
       if (entry) {
@@ -1958,7 +1992,7 @@ export default {
         const billed = costOf(rec, false);
         if (billed == null) continue; // 价目表仍无该模型 → 维持 unpriced
         rec.cost = billed;
-        rec.currency = modelCurrency(rec.model);
+        rec.currency = modelCurrency(rec.provider, rec.model);
         rec.pricingStatus = 'priced';
         rec.pricingVersion = 'builtin-backfill-' + packageVersion();
         count++;
@@ -2071,11 +2105,11 @@ export default {
       // ② 价目表换算（当前各家官方单价）；③ 都没有 → unpriced 待启动回填。
       if (billed == null && typeof u.cost === 'number' && Number.isFinite(u.cost) && u.cost >= 0) {
         rec.cost = u.cost;
-        rec.currency = PROVIDER_REPORTED_CURRENCY[rec.provider] || modelCurrency(rec.model);
+        rec.currency = PROVIDER_REPORTED_CURRENCY[rec.provider] || modelCurrency(rec.provider, rec.model);
         rec.pricingStatus = 'priced';
         rec.pricingVersion = 'provider-reported-' + packageVersion();
       } else if (billed != null) {
-        rec.currency = modelCurrency(rec.model);
+        rec.currency = modelCurrency(rec.provider, rec.model);
         rec.cost = billed;
         rec.pricingStatus = 'priced';
         rec.pricingVersion = 'builtin-' + packageVersion();
@@ -2086,7 +2120,7 @@ export default {
         // 每个模型仅首次出现时提醒一次，防止未收录模型（如订阅目录下的混合路由）高频刷日志
         if (!unpricedWarnedModels.has(rec.model)) {
           unpricedWarnedModels.add(rec.model);
-          console.warn('[dsh-bottom-info-bar] 记账未计价（每模型仅提示一次）：model="' + rec.model + '" 价目表含该模型=' + Boolean(PRICING[rec.model]));
+          console.warn('[dsh-bottom-info-bar] 记账未计价（每模型仅提示一次）：model="' + rec.model + '" 价目表含该模型=' + Boolean(PRICING[rec.model] || PRICING[rec.provider + ':' + rec.model]));
         }
       }
       const writeError = appendUsageJournal(rec);
@@ -2150,7 +2184,7 @@ export default {
       // v2 ledger records carry the charge as observed.  Use it for normal
       // reporting; only the "all-offpeak" forecast intentionally recalculates.
       if (!forceOffpeak && Number.isFinite(record.cost) && record.cost >= 0) return record.cost;
-      const entry = PRICING[record.model];
+      const entry = pricingEntryFor(record.provider, record.model);
       if (!entry) return null;
       let p;
       if (entry.mode === 'peak-valley') {
@@ -2268,13 +2302,13 @@ export default {
       const key = balanceProviderKey(sel.provider || config.activeProvider);
       const snap = balances[key];
       if (snap && snap.data && snap.data.currency) return snap.data.currency;
-      return modelCurrency(sel.model);
+      return modelCurrency(sel.provider, sel.model);
     }
 
     function recordCurrency(record) {
       return record && typeof record.currency === 'string' && record.currency.length > 0
         ? record.currency
-        : modelCurrency(record && record.model);
+        : modelCurrency(record && record.provider, record && record.model);
     }
 
     function spendSummary(nowMs, selection) {
@@ -2408,8 +2442,9 @@ export default {
       let scenarios = [];
       if (balance != null && pricing.prices) {
         const p = pricing.prices;
-        const peakPrices = pricing.mode === 'peak-valley' ? PRICING[pricing.model].peak : p;
-        const offpeakPrices = pricing.mode === 'peak-valley' ? PRICING[pricing.model].offpeak : p;
+        const pvEntry = pricing.mode === 'peak-valley' ? pricingEntryFor(pricing.provider, pricing.model) : null;
+        const peakPrices = pvEntry ? pvEntry.peak : p;
+        const offpeakPrices = pvEntry ? pvEntry.offpeak : p;
         scenarios = SCENARIOS.map(function (sc) {
           return {
             id: sc.id, label: sc.label, outputK: sc.outputK, inputK: sc.inputK,
