@@ -1111,12 +1111,14 @@ export default {
       }
       const host = zaiHostForProvider(resolvedProvider);
       try {
+        console.warn('[bottom-info-debug] zai quota: provider=' + resolvedProvider + ', keyLen=' + key.length + ', host=' + host);
         const res = await fetch(host + '/api/monitor/usage/quota/limit', {
           headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
           signal: AbortSignal.timeout(15000),
         });
-        // 智谱 API 常在 HTTP 200 内返回业务错误（{code:401, success:false, msg:...}），需先检查
         const body = await res.json().catch(() => null);
+        console.warn('[bottom-info-debug] zai quota: http=' + res.status + ', body=' + JSON.stringify(body).slice(0, 300));
+        // 智谱 API 常在 HTTP 200 内返回业务错误（{code:401, success:false, msg:...}），需先检查
         if (body && body.success === false) {
           const msg = body.msg || body.message || '';
           if (body.code === 401 || /过期|不正确|unauthorized|expired/i.test(msg))
