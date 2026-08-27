@@ -37,6 +37,7 @@ const cases = [
   ['test-subscription-providers-consistency（共享常量单一生源一致性）', ['tests/test-subscription-providers-consistency.js'], join(root), process.execPath],
   ['test-v17-adapters（v1.7 解析器：JWT/小米/Together/Fireworks/SigV4/Cloudflare/normalize）', ['tests/test-v17-adapters.js'], join(root), process.execPath],
   ['test-update-check（启动版本检查与红色提醒）', ['tests/test-update-check.js'], join(root), process.execPath],
+  ['test-pricing-catalog（远程价目目录体系 + 官方价目校验）', ['tests/test-pricing-catalog.mjs'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.js', HOST], join(root), process.execPath],
 ]
 

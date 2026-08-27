@@ -23,6 +23,12 @@ const HIDE_SPEED_FIELDS = true;
 // RPC 超时兜底：host 侧 15s 超时之上再留余量；端点挂起时 20s 内必失败，杜绝永久"加载中…"
 const RPC_TIMEOUT_MS = 20000;
 
+// 首启强制刷新窗口：页面刚打开/用户手动刷新后的这几秒内，快照请求带 force=true，
+// host 会绕过缓存与失败退避当场重查服务商——用户刷新页面立即看到最新余额/额度，
+// 不必干等后台 60s 自动周期。覆盖窗口需容纳会话模型从空到确定的短暂翻转期。
+const BOOT_AT = Date.now();
+const FORCE_REFRESH_WINDOW_MS = 6000;
+
 // rpc(method, args, externalSignal)：
 // - 超时：20s 未响应 → abort 并以"请求超时"失败（fetch 挂起不阻塞界面）
 // - 可中止：传入外部 AbortSignal（组件卸载时 abort）→ 立即取消并拒绝"请求已取消"
@@ -341,11 +347,14 @@ module.exports = {
         const requestVersion = ++loadVersionRef.current;
         const activeSelection = selection || activeSessionModel;
         const selectionArgs = activeSelection ? { selection: { provider: activeSelection.provider, model: activeSelection.model } } : {};
+        // 首启窗口内（打开/刷新网页头几秒）→ 快照类请求强制重查；之后的 30s 周期轮询走常规缓存节奏
+        const force = Date.now() - BOOT_AT < FORCE_REFRESH_WINDOW_MS;
+        if (force) { selectionArgs.force = true; }
         const signal = abortRef.current ? abortRef.current.signal : null;
         // 逐接口容错：allSettled 等全部 settle（最坏 20s 超时兜底），任一失败只降级该端点，
         // 不拖垮其他成功数据；合并逻辑在 mergeLoadResults（失败端点保留旧值 + 记录错误）
         Promise.allSettled([
-          rpc('getBalanceSnapshot', activeSelection ? { provider: activeSelection.provider } : null, signal),
+          rpc('getBalanceSnapshot', activeSelection ? { provider: activeSelection.provider, force: force } : (force ? { force: true } : null), signal),
           rpc('getPricing', selectionArgs, signal),
           rpc('getUsageSummary', Object.assign({ sessionId: sessionId }, selectionArgs), signal),
           rpc('getBillingMode', selectionArgs, signal),
@@ -654,33 +663,39 @@ module.exports = {
             metric('距' + (peakNow ? '空闲' : '高峰'), fmtCountdown(pr.nextSwitch.at - now))));
         }
 
-        // 本会话花费（只显示钱；hover 浮窗显示 本会话（含子代理）+ 今天 / 近一月 / 全部；金额数字加粗）
+        // 本会话花费（公共小部件 pushSessionCost：只显示钱；hover 显示 今天/近一月/全部）
         // 始终显示：新会话/对话刚开始尚无记账时显示 ¥0.000，hover 仍可查看持久化的 今天/近一月/全部
+        pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));
+      }
+
+      // 本会话花费块（余额制 与 订阅·充值余额 形态共用的小部件）：
+      // 只显示钱；hover 浮窗显示 含子代理说明 + 今天 / 近一月 / 全部；金额数字加粗。
+      // usdSymbol：账户币种为美元时，hover 汇总行用 $ 前缀（本会话单值仍按其真实计价币种）
+      function pushSessionCost(groups, trailingErrorGroups, usdSymbol) {
         const usg = state.usage;
+        const errs = state.errors || {};
         if (usg) {
           const cs = usg.currentSession;
           const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
           const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
-          const zeroTxt = (bal && bal.currency === 'USD' ? '$' : '¥') + (0).toFixed(3);
+          const symbol = usdSymbol ? '$' : '¥';
           const costTxt = costCNY != null ? '¥' + costCNY.toFixed(3)
-            : (costUSD != null ? '$' + costUSD.toFixed(3) : zeroTxt);
-          const symbol = bal && bal.currency === 'USD' ? '$' : '¥';
+            : (costUSD != null ? '$' + costUSD.toFixed(3) : symbol + (0).toFixed(3));
           const today = usg.todaySpend != null ? '今天 ' + symbol + fmt(usg.todaySpend, 3) : '';
           const month = usg.monthSpend != null ? '近一月 ' + symbol + fmt(usg.monthSpend, 3) : '';
           const total = usg.totalSpend != null ? '全部 ' + symbol + fmt(usg.totalSpend, 3) : '';
           const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
-          // v1.7 发布前微调：hover 明确标注"含子代理"——本会话聚合同账户所有记录（同起点后）
           groups.push(React.createElement('span', { key: 'convo',
             title: '本会话 ' + costTxt + '（含子代理）' + (detail ? '\n' + detail : '') },
             metric('本会话', costTxt)));
-        } else if (errors.usage) {
-          // 本次 RPC 失败且无旧数据：只降级花费块，其余端点数据照常渲染
+        } else if (errs.usage) {
           trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'usageerr', title: '花费暂不可用；不会影响对话。' }, '花费获取失败'));
         }
       }
 
-      // ---- 订阅制模式（互斥替换余额制版，row2 只三类信息）：
-      //      订阅服务+模型 → 三窗口额度 → 距重置倒计时（最紧窗口）；余额/时段/花费/token 均不显示 ----
+      // ---- 订阅制模式（互斥替换余额制版）：
+      //      套餐额度型：订阅服务+模型 → 三窗口额度 → 距重置倒计时（余额/时段/花费/token 不显示）
+      //      充值余额型（如智谱按量账户，windows 空且有 sub.balance）：服务商+模型 → 余额 → 本会话花费 ----
        function subscriptionFailureHint(error, source) {
          const kind = error && error.kind;
          const serviceName = subscriptionServiceName(source);
@@ -722,6 +737,22 @@ module.exports = {
         // 令牌由独立插件 dsh-chatgpt-subscription 维护，本插件只读令牌显示额度，不自行绑定/续期
         if (sub.error && !hasData) {
           trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'substale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          return;
+        }
+        // v1.8：充值余额模式——无额度窗口但有 balance 字段（如智谱普通 API 余额用户）
+        // 显示"余额 ¥XX.XX"，与 Coding Plan 额度窗口互斥
+        if (!hasData && typeof sub.balance === 'number' && isFinite(sub.balance)) {
+          const balTxt = '¥' + fmt(sub.balance, 2);
+          const titleLines = ['订阅源：' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + '（' + (sub.plan || '充值余额') + '）',
+            '可用余额：' + balTxt];
+          groups.push(React.createElement('span', { key: 'subbal', title: titleLines.join('\n') },
+            metric('余额', balTxt)));
+          // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
+          pushSessionCost(groups, trailingErrorGroups, false);
+          // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
+          if (sub.error || errors.sub) {
+            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'substale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          }
           return;
         }
         // 窗口缺失（如 Codex 无 5 小时窗口）→ 跳过窗口组，不占位、不报错

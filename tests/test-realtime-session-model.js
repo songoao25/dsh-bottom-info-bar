@@ -35,7 +35,7 @@ check('会话选择连同所有相关 RPC 发送到 host', client.includes('cons
 check('host 校验会话选择并在缺失时安全回退', host.includes('function selectionFromArgs(args)')
   && host.includes('return modelSelection();'))
 check('host 的定价、模式、订阅和花费汇总均接受会话选择', host.includes('computePricing(Date.now(), sel)')
-  && host.includes('getSubscriptionSnapshotRpc(selectionFromArgs(args))')
+  && host.includes('getSubscriptionSnapshotRpc(selectionFromArgs(args), force)')
   && host.includes('getUsageSummary(Date.now(), sessionId, selectionFromArgs(args))'))
 
 console.log(failed === 0 ? '\n结果：全部 PASS' : '\n结果：' + failed + ' 项 FAIL')
