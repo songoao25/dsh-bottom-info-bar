@@ -273,10 +273,9 @@ check('client 紧凑标签 five_hour → 5h', clientSrc.includes("if (key === 'f
 check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("'窗口：剩余 ' + remainingPercent(w) + '%（已用 ' + w.usedPercent + '%）'"), true);
 check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
 check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("'订阅源：' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider)"), true);
-check('client 订阅制不显示余额', subFn.includes('余额 '), false);
-check('client 订阅制不显示时段（高峰价/空闲价）', subFn.includes('高峰价'), false);
+check('client 订阅制显示充值余额（sub.balance）', subFn.includes('sub.balance'), true);
+check('client 订阅·充值余额形态追加本会话花费块（共用 pushSessionCost）', subFn.includes('pushSessionCost(groups, trailingErrorGroups, false)'), true);
 check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
-check('client 订阅制不显示本会话花费', subFn.includes('本会话 '), false);
 check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
 check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("'刷新失败'") && clientSrc.includes('subscriptionFailureHint'), true);
 

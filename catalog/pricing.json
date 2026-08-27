@@ -1,0 +1,58 @@
+{
+  "glm-5.3": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 2, "inputCacheMiss": 8, "output": 28 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "2026-08-19 上线旗舰；1M 上下文。缓存存储限时免费。"
+  },
+  "glm-5.3-flash": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 0.115, "inputCacheMiss": 0.4, "output": 1.4 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "促销价（官方'5折限时两周'，有效期至8月31日批次，约至2026-09初）：输入0.4/缓存命中0.115/输出1.4；刊例价为 0.8/0.23/2.8——活动结束后请将本条目改回刊例价。内置兜底表恒为刊例价。"
+  },
+  "glm-5.2": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 2, "inputCacheMiss": 8, "output": 28 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "与 GLM-5.3 同价；1M 上下文。"
+  },
+  "glm-5.1": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 1.3, "inputCacheMiss": 6, "output": 24 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=输入≤32K。>32K 档：8/命中2/输出28。200K 上下文。"
+  },
+  "glm-5-turbo": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 1.2, "inputCacheMiss": 5, "output": 22 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=输入≤32K。>32K 档：7/1.8/26。200K 上下文。"
+  },
+  "glm-5v-turbo": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 1.2, "inputCacheMiss": 5, "output": 22 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "同 glm-5-turbo 双档（>32K：7/1.8/26）；多模态输入。200K 上下文。"
+  },
+  "glm-4.7": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 0.4, "inputCacheMiss": 2, "output": 8 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=in[0,32K)&out[0,0.2)。全三档：out[0.2+)→3/0.6/14；in[32K,200K)→4/0.8/16。200K 上下文。"
+  },
+  "glm-4.5-air": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": { "inputCacheHit": 0.16, "inputCacheMiss": 0.8, "output": 2 },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=in[0,32K)&out[0,0.2)（当前挂牌即'限时5折'折后价）。全三档：out[0.2+)→0.8/0.16/6；in[32K,128K)→1.2/0.24/8。128K 上下文。"
+  }
+}

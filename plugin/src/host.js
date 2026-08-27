@@ -106,6 +106,11 @@ function accountForProvider(pid) {
   return null
 }
 
+// 服务商在账单（usage）里直接报告真实金额时，按服务商固定币种回填。
+// 仅列明确用美元计价的聚合商（如 OpenRouter）；未登记的走价目表币种回退。
+// 动机：聚合商路由模型数量庞大、价目无法静态维护——官方报出的钱 > 本地任何换算。
+const PROVIDER_REPORTED_CURRENCY = { openrouter: 'USD' }
+
 // ---------- 双模式纯逻辑（模式检测 / 窗口映射 / 响应解析；单测直接提取） ----------
 
 // 窗口时长（秒）→ 窗口键：18000≈5小时 / 604800≈7天 / 2592000≈30天，5% 容差；未知返回 null
@@ -764,6 +769,19 @@ export default {
       'deepseek-chat': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.5, inputCacheMiss: 2.0, output: 8.0 } },
       'gpt-4o':        { currency: 'USD', mode: 'flat', price: { inputCacheHit: 1.25, inputCacheMiss: 2.5, output: 10.0 } },
       'gpt-4o-mini':   { currency: 'USD', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 0.15, output: 0.6 } },
+      // ---------- 智谱 BigModel 官方按量价（CNY/百万 tokens；来源 open.bigmodel.cn/pricing，
+      // 采集记录与全档分段备注见 docs/research/bigmodel-pricing-202608.md）----------
+      // 分段模型主条目取基础档（输入≤32K 等），长上下文档暂不计入——影响与限制见体系审计报告。
+      'glm-5.3':       { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 2,    inputCacheMiss: 8,   output: 28 } },
+      // flash 存在"5折限时两周"双价：内置表取刊例价 0.8/0.23/2.8（保守）；
+      // 远程目录按用户当前实扣配促销价（活动窗口约至 2026-09 初，详见 catalog/pricing.json notes）
+      'glm-5.3-flash': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.23, inputCacheMiss: 0.8, output: 2.8 } },
+      'glm-5.2':       { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 2,    inputCacheMiss: 8,   output: 28 } },
+      'glm-5.1':       { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.3,  inputCacheMiss: 6,   output: 24 } },
+      'glm-5-turbo':   { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.2,  inputCacheMiss: 5,   output: 22 } },
+      'glm-5v-turbo':  { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 1.2,  inputCacheMiss: 5,   output: 22 } },
+      'glm-4.7':       { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.4,  inputCacheMiss: 2,   output: 8 } },
+      'glm-4.5-air':   { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.16, inputCacheMiss: 0.8, output: 2 } },
     };
     function modelCurrency(model) {
       const entry = PRICING[model];
@@ -771,6 +789,90 @@ export default {
       return model && model.indexOf('gpt') === 0 ? 'USD' : 'CNY';
     }
     const DEFAULT_MODEL = 'deepseek-v4-flash';
+
+    // ---------- 远程价目目录（v1.8）：内置表兜底 + 启动/定时增量更新 ----------
+    // 设计目标（用户铁律）：接入新模型/新价格不再依赖插件发版。
+    // 机制：启动时先用磁盘缓存离线合并，再异步拉取远程 catalog/pricing.json 增量合并；
+    //       每合并一次立即重跑 unpriced 回填 → 新覆盖的模型的历史账目自动补算。
+    // 安全边界：仅接受"声明式数字"（统一价 + 白名单币种），绝不执行远程代码；
+    //          匿名 GET 不携带任何密钥/用户标识；失败静默降级缓存与内置表，不影响信息栏。
+    const REMOTE_PRICING_URL = process.env.DSH_BOTTOM_INFO_BAR_PRICING_URL
+      || 'https://raw.githubusercontent.com/songoao25/dsh-bottom-info-bar/main/catalog/pricing.json';
+    const REMOTE_PRICING_REFRESH_MS = 6 * 60 * 60 * 1000; // 定时刷新：6 小时
+    const PRICING_CACHE_FILE = join(DATA_DIR, 'pricing-cache.json');
+    let remotePricingEtag = null;
+
+    // 校验目录条目：只放行可安全参与计算的声明式数据
+    function sanitizeRemotePricingEntries(raw) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+      const entries = {};
+      for (const key of Object.keys(raw)) {
+        if (Object.keys(entries).length >= 512) break; // 容量上限，防滥用
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(key)) continue;
+        const e = raw[key];
+        if (!e || typeof e !== 'object') continue;
+        // v1 仅接受统一价（flat）；分时价的窗口规则须随框架参数化后再开放远程下发
+        if (e.mode !== 'flat' || !e.price || typeof e.price !== 'object') continue;
+        if (e.currency !== 'CNY' && e.currency !== 'USD') continue; // 白名单币种
+        const hit = Number(e.price.inputCacheHit);
+        const miss = Number(e.price.inputCacheMiss);
+        const out = Number(e.price.output);
+        if (!Number.isFinite(hit) || !Number.isFinite(miss) || !Number.isFinite(out)) continue;
+        if (miss <= 0 || hit < 0 || out < 0) continue;
+        if (hit > miss) continue; // 缓存命中不可能比未命中更贵：脏数据拒收
+        entries[key] = { currency: e.currency, mode: 'flat', price: { inputCacheHit: hit, inputCacheMiss: miss, output: out } };
+      }
+      return Object.keys(entries).length > 0 ? entries : null;
+    }
+
+    // 合并进运行时价目表并触发回填；返回本次新增/更新的条数
+    function applyRemotePricingEntries(entries) {
+      if (!entries) return 0;
+      let n = 0;
+      for (const key of Object.keys(entries)) {
+        PRICING[key] = entries[key];
+        n++;
+      }
+      if (n > 0) backfillUnpricedRecords();
+      return n;
+    }
+
+    function loadPricingCacheFromDisk() {
+      try {
+        const parsed = JSON.parse(readFileSync(PRICING_CACHE_FILE, 'utf8'));
+        return sanitizeRemotePricingEntries(parsed && parsed.entries);
+      } catch (err) { /* 无缓存/损坏 → 内置表兜底 */ }
+      return null;
+    }
+
+    function savePricingCacheToDisk(entries) {
+      try {
+        mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+        writeAndSync(PRICING_CACHE_FILE, JSON.stringify({ fetchedAt: Date.now(), etag: remotePricingEtag, entries: entries }), 'w');
+      } catch (err) { /* 缓存写失败不致命 */ }
+    }
+
+    async function refreshRemotePricing(reason) {
+      try {
+        const headers = {};
+        if (remotePricingEtag) headers['If-None-Match'] = remotePricingEtag;
+        const res = await fetch(REMOTE_PRICING_URL, { headers, signal: AbortSignal.timeout(10000) });
+        if (res.status === 304) return { status: 'fresh' }; // 目录未变
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        const entries = sanitizeRemotePricingEntries(body);
+        if (!entries) throw new Error('目录格式不符合规范');
+        remotePricingEtag = res.headers.get('etag');
+        savePricingCacheToDisk(entries);
+        const merged = applyRemotePricingEntries(entries);
+        console.warn('[dsh-bottom-info-bar] 远程价目已合并（' + reason + '）：' + merged + ' 条有效条目');
+        return { status: 'merged', count: merged };
+      } catch (err) {
+        console.warn('[dsh-bottom-info-bar] 远程价目获取失败（' + reason + '），沿用缓存/内置表：' + String((err && err.message) || err));
+        return { status: 'error', message: String((err && err.message) || err) };
+      }
+    }
+
     const SCENARIOS = [
       { id: 'qa',       label: '日常问答',            outputK: 2,   inputK: 4 },
       { id: 'coding',   label: '中等编码任务',        outputK: 15,  inputK: 30 },
@@ -910,7 +1012,7 @@ export default {
 
     function refreshProviderBalance(pid) {
       const prov = PROVIDERS[pid];
-      if (!prov) return;
+      if (!prov) return Promise.resolve();
       const seq = (balanceSeq[pid] || 0) + 1;
       balanceSeq[pid] = seq;
       if (!prov.balanceAPI) {
@@ -918,9 +1020,10 @@ export default {
         const spend = providerSpend(pid);
         const total = Math.max(0, prov.initialTopUp - spend);
         balances[pid] = { data: { currency: 'USD', total: total, granted: 0, toppedUp: prov.initialTopUp }, fetchedAt: Date.now(), error: null };
-        return;
+        return Promise.resolve();
       }
-      (async function () {
+      // 返回本次刷新 Promise：强制刷新路径（客户端打开页面）需等待最新结果落快照后再返回
+      return (async function () {
         let cred = null;
         try {
           cred = await ctx.credentials.resolve(prov.credential);
@@ -1101,26 +1204,45 @@ export default {
       return { plan: planName, windows: windows };
     }
 
+    // 解析智谱充值余额响应（/api/biz/account/query-customer-account-report）
+    // 被 CodexBar PR#3109、CodexMeter PR#2 等多个项目验证的非公开控制台 API
+    function parseZaiBalance(body) {
+      if (!body || typeof body !== 'object') return null;
+      if (body.success === false || body.code !== 200) return null;
+      const d = body.data;
+      if (!d || typeof d !== 'object') return null;
+      // availableBalance 优先（可用余额），fallback 到 balance
+      const bal = typeof d.availableBalance === 'number' ? d.availableBalance
+        : (typeof d.balance === 'number' ? d.balance : null);
+      if (bal === null || !isFinite(bal)) return null;
+      return { balance: bal };
+    }
+
     async function fetchZaiUsage(providerId) {
       // 按 provider 路由 host 与凭据：zai-coding-cn → open.bigmodel.cn（国内密钥）；
       // zai → api.z.ai（国际密钥）。两端均裸 API Key（无 Bearer 前缀）。
+      // 自动检测用户类型：先尝试 Coding Plan 额度接口，失败后回退充值余额接口。
       const resolvedProvider = providerId === 'zai-coding-cn' ? 'zai-coding-cn' : 'zai';
       const key = await resolveZaiKey(resolvedProvider);
       if (!key) {
         return { error: { kind: 'no-key', message: '未配置智谱 API Key（ZAI_API_KEY 或 ZAI_CODING_CN_API_KEY）' } };
       }
       const host = zaiHostForProvider(resolvedProvider);
+
+      // ---- 第一步：尝试 Coding Plan 额度接口 ----
       try {
-        console.warn('[bottom-info-debug] zai quota: provider=' + resolvedProvider + ', keyLen=' + key.length + ', host=' + host);
         const res = await fetch(host + '/api/monitor/usage/quota/limit', {
           headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
           signal: AbortSignal.timeout(15000),
         });
         const body = await res.json().catch(() => null);
-        console.warn('[bottom-info-debug] zai quota: http=' + res.status + ', body=' + JSON.stringify(body).slice(0, 300));
         // 智谱 API 常在 HTTP 200 内返回业务错误（{code:401, success:false, msg:...}），需先检查
         if (body && body.success === false) {
           const msg = body.msg || body.message || '';
+          // "当前用户不存在 coding plan" → 非订阅用户，回退到充值余额接口
+          if (/不存在.*coding\s*plan|no.*coding\s*plan/i.test(msg)) {
+            return fetchZaiBalanceFallback(host, key, resolvedProvider);
+          }
           if (body.code === 401 || /过期|不正确|unauthorized|expired/i.test(msg))
             return { error: { kind: 'auth', message: '智谱 API 认证失败（密钥过期或不正确）' } };
           return { error: { kind: 'http', message: '请求失败（' + (body.code || '') + ' ' + msg + '）' } };
@@ -1129,6 +1251,32 @@ export default {
         const parsed = parseZaiQuota(body);
         if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
         return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      }
+    }
+
+    // 智谱充值余额回退：Coding Plan 接口报"不存在 coding plan"时自动查询充值余额
+    async function fetchZaiBalanceFallback(host, key, resolvedProvider) {
+      try {
+        // open.bigmodel.cn 与 www.bigmodel.cn 均可用；国际站 api.z.ai 无此接口
+        const balanceHost = host === 'https://api.z.ai' ? 'https://open.bigmodel.cn' : host;
+        const res = await fetch(balanceHost + '/api/biz/account/query-customer-account-report', {
+          headers: { Authorization: 'Bearer ' + key }, // Bearer 认证（与裸 Key 均可）
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = await res.json().catch(() => null);
+        if (body && body.success === false) {
+          const msg = body.msg || body.message || '';
+          if (body.code === 401 || body.code === 1000 || /过期|不正确|unauthorized|expired/i.test(msg))
+            return { error: { kind: 'auth', message: '智谱 API 认证失败（密钥过期或不正确）' } };
+          return { error: { kind: 'http', message: '请求失败（' + (body.code || '') + ' ' + msg + '）' } };
+        }
+        if (!res.ok) return { error: { kind: 'http', message: '请求失败（HTTP ' + res.status + '）' } };
+        const parsed = parseZaiBalance(body);
+        if (!parsed) return { error: { kind: 'parse', message: '响应格式异常' } };
+        // 返回充值余额：balance 字段携带金额，windows 为空（无额度窗口）
+        return { data: { provider: 'zai', plan: '充值余额', windows: [], balance: parsed.balance } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -1462,10 +1610,10 @@ export default {
     }
 
     // RPC：当前订阅额度快照 + 模式判定（非订阅模式直接返回，不发任何订阅请求）
-    async function getSubscriptionSnapshotRpc(selection) {
+    async function getSubscriptionSnapshotRpc(selection, force) {
       const sel = selection || modelSelection();
       const bm = detectBillingMode(sel.provider, config.billingMode);
-      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], fetchedAt: null, error: null };
+      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], balance: null, fetchedAt: null, error: null };
       if (bm.mode !== 'subscription') return out;
       const sourceKey = subscriptionSourceFor(sel.provider);
       if (!sourceKey) return out;
@@ -1479,11 +1627,13 @@ export default {
       // 减少对未公开 wham 接口的请求，也避免"刷新失败"提示随每次轮询反复闪烁（失败期内直接读缓存快照）
       const stale = (!snap.fetchedAt || (nowMs - snap.fetchedAt) > SUBSCRIPTION_REFRESH_MS)
         && (nowMs - lastFailAt) >= SUBSCRIPTION_RETRY_BACKOFF_MS;
-      if (stale) {
+      // force（客户端打开/刷新网页后的首启窗口）绕过新鲜度与失败退避，当场重查，
+      // 让用户手动刷新页面时立刻拿到最新额度/余额，而不是干等下一轮自动刷新
+      if (force || stale) {
         const inflight = kickSubscriptionRefresh(sourceKey, subscriptionSourceProvider[sourceKey]);
-        // 从未成功过（无旧数据）→ 等本次刷新返回最新结果（含错误），避免退避重试后仍返回旧失败快照；
-        // 已有旧数据 → 后台刷新，本次直接返回快照（不阻塞轮询）
-        if (!snap.data) await inflight;
+        // 从未成功过（无旧数据）或强制刷新 → 等本次结果返回最新数据（含错误）；
+        // 已有旧数据的普通刷新 → 后台刷新，本次直接返回快照（不阻塞轮询）
+        if (!snap.data || force) await inflight;
       }
       const cur = subscriptions[sourceKey] || { data: null, fetchedAt: null, error: null };
       if (cur.data) {
@@ -1491,6 +1641,7 @@ export default {
         out.windows = cur.data.windows;
         out.planType = cur.data.planType;
         out.expiryAt = cur.data.expiryAt;
+        out.balance = typeof cur.data.balance === 'number' ? cur.data.balance : null;
       }
       out.fetchedAt = cur.fetchedAt;
       out.error = cur.error;
@@ -1505,7 +1656,7 @@ export default {
       cloudflare: { fetch: fetchCloudflareBilling }, // cloudflare-ai-gateway / cloudflare-workers-ai 共用
     };
 
-    async function getBillingSnapshotRpc(selection) {
+    async function getBillingSnapshotRpc(selection, force) {
       const sel = selection || modelSelection();
       const bm = detectBillingMode(sel.provider, config.billingMode);
       const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, type: null, data: null, fetchedAt: null, error: null, now: Date.now() };
@@ -1519,9 +1670,10 @@ export default {
       const lastFailAt = billingLastFailAt[key] || 0;
       const stale = (!snap.fetchedAt || (nowMs - snap.fetchedAt) > BILLING_REFRESH_MS)
         && (nowMs - lastFailAt) >= BILLING_RETRY_BACKOFF_MS;
-      if (stale) {
+      // force（客户端打开/刷新网页后的首启窗口）绕过新鲜度与失败退避，当场重查最新账单
+      if (force || stale) {
         const inflight = kickBillingRefresh(key);
-        if (!snap.data) await inflight;
+        if (!snap.data || force) await inflight;
       }
       const cur = billingSnapshots[key] || { data: null, fetchedAt: null, error: null };
       out.data = cur.data;
@@ -1790,6 +1942,35 @@ export default {
     let dirty = loadedUsageRecords.migratedLegacyRecord;
     let ledgerError = null;
 
+    // ---------- 一次性回填：unpriced 历史记录按当前价目表补算 ----------
+    // 背景：价目表随适配逐步收录；收录之前落账的记录 pricingStatus='unpriced'（cost=null），
+    // 导致本会话/今日/累计花费长期漏算（例如接入智谱后其历史对话金额恒为 0）。
+    // 规则：① 只补"从未有过价格"的记录，绝不改写已 priced 的历史金额；
+    //      ② 仅限带稳定 id 的记录（无 id 的远古记录在快照+流水双源下无法安全幂等）；
+    //      ③ 补算结果一次性写入快照，此后与正常记录同权参与全部汇总。
+    function backfillUnpricedRecords() {
+      let count = 0;
+      for (let i = 0; i < usageRecords.length; i++) {
+        const rec = usageRecords[i];
+        if (!rec || rec.pricingStatus === 'priced') continue;
+        if (!(typeof rec.id === 'string' && rec.id.length > 0)) continue;
+        if (Number.isFinite(rec.cost) && rec.cost >= 0) continue;
+        const billed = costOf(rec, false);
+        if (billed == null) continue; // 价目表仍无该模型 → 维持 unpriced
+        rec.cost = billed;
+        rec.currency = modelCurrency(rec.model);
+        rec.pricingStatus = 'priced';
+        rec.pricingVersion = 'builtin-backfill-' + packageVersion();
+        count++;
+      }
+      if (count > 0) {
+        dirty = true;
+        scheduleSave();
+        console.warn('[dsh-bottom-info-bar] 价目表回填：' + count + ' 条 unpriced 记录已按官方单价补算');
+      }
+      return count;
+    }
+
     function writeAndSync(filePath, content, flags) {
       let fd = null;
       try {
@@ -1863,6 +2044,8 @@ export default {
       });
     }
 
+    const unpricedWarnedModels = new Set(); // 每个模型只提醒一次，避免高频 warn 刷日志
+
     function recordUsage(options, usage, status) {
       const u = usage || {};
       // 数值清洗：uncachedInputTokens 的 != null 对 NaN 恒真、|| 0 挡不住 Infinity/负值——
@@ -1883,7 +2066,15 @@ export default {
       // Freeze the actual price at usage time.  Historical totals must not
       // change merely because the plugin's reference price table is updated.
       const billed = costOf(rec, false);
-      if (billed != null) {
+      // ① 聚合商在 usage 中直接给出的真实金额（如 OpenRouter 的 usage.cost）——
+      //    官方报出的钱优先级最高，聚合商场景从此免维护静态价目表；
+      // ② 价目表换算（当前各家官方单价）；③ 都没有 → unpriced 待启动回填。
+      if (billed == null && typeof u.cost === 'number' && Number.isFinite(u.cost) && u.cost >= 0) {
+        rec.cost = u.cost;
+        rec.currency = PROVIDER_REPORTED_CURRENCY[rec.provider] || modelCurrency(rec.model);
+        rec.pricingStatus = 'priced';
+        rec.pricingVersion = 'provider-reported-' + packageVersion();
+      } else if (billed != null) {
         rec.currency = modelCurrency(rec.model);
         rec.cost = billed;
         rec.pricingStatus = 'priced';
@@ -1891,6 +2082,12 @@ export default {
       } else {
         rec.pricingStatus = 'unpriced';
         rec.pricingVersion = null;
+        // 诊断：理论上本插件任一实例的 PRICING 均应同步；若此处为 false 说明存在多副本或键名不匹配。
+        // 每个模型仅首次出现时提醒一次，防止未收录模型（如订阅目录下的混合路由）高频刷日志
+        if (!unpricedWarnedModels.has(rec.model)) {
+          unpricedWarnedModels.add(rec.model);
+          console.warn('[dsh-bottom-info-bar] 记账未计价（每模型仅提示一次）：model="' + rec.model + '" 价目表含该模型=' + Boolean(PRICING[rec.model]));
+        }
       }
       const writeError = appendUsageJournal(rec);
       if (writeError) {
@@ -2357,8 +2554,14 @@ export default {
       getUpdateInfo: function () {
         return updateInfoPromise
       },
-      getBalanceSnapshot: function (args) {
+      getBalanceSnapshot: async function (args) {
         const pid = args && typeof args === 'object' && args.provider ? String(args.provider) : '';
+        // force：客户端刚打开/刷新网页时的强制刷新——当场重查服务商，不等 60s 周期缓存
+        const force = !!(args && typeof args === 'object' && args.force === true);
+        if (force) {
+          const key = balanceProviderKey(pid || undefined);
+          if (key) await refreshProviderBalance(key);
+        }
         return activeBalanceSummary(pid || undefined, Date.now());
       },
       getPricing: async function (args) {
@@ -2402,11 +2605,13 @@ export default {
         return Object.assign(detectBillingMode(sel.provider, config.billingMode), { model: sel.model });
       },
       getSubscriptionSnapshot: function (args) {
-        return getSubscriptionSnapshotRpc(selectionFromArgs(args));
+        const force = !!(args && typeof args === 'object' && args.force === true);
+        return getSubscriptionSnapshotRpc(selectionFromArgs(args), force);
       },
       // v1.7 FR-14：账单型快照（云账单 provider）
       getBillingStatus: function (args) {
-        return getBillingSnapshotRpc(selectionFromArgs(args));
+        const force = !!(args && typeof args === 'object' && args.force === true);
+        return getBillingSnapshotRpc(selectionFromArgs(args), force);
       },
       setDisplayMode: function (args) {
         const mode = args && typeof args === 'object' ? args.mode : null;
@@ -2508,7 +2713,13 @@ export default {
       }, 'dsh-bottom-info-bar: Web routes');
     });
 
-    // ---------- 启动即刷 + 60s 定时刷新 ----------
+    // ---------- 启动即刷 + 定时刷新 ----------
+    // 价目目录：① 离线兜底（磁盘缓存先同步合并）→ ② 回填 → ③ 异步拉远程增量（成功后再回填一次）
+    const cachedPricing = loadPricingCacheFromDisk();
+    if (cachedPricing) applyRemotePricingEntries(cachedPricing);
+    backfillUnpricedRecords(); // 内置表已覆盖的部分先补算
+    refreshRemotePricing('启动'); // 网络刷新异步进行；成功后内部会再次触发回填
+    ctx.interval(function () { refreshRemotePricing('定时'); }, REMOTE_PRICING_REFRESH_MS);
     refreshAllBalances();
     refreshActiveSubscriptions(); // 惰性：无客户端请求过订阅源则不发起网络请求
     refreshActiveBilling(); // v1.7：账单型同样惰性
