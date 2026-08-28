@@ -33,6 +33,7 @@ const cases = [
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.js'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
   ['test-usage-compaction（v1.9 压缩等价/会话锁/回填/扫描量/崩溃安全）', ['tests/test-usage-compaction.mjs'], join(root), process.execPath],
+  ['test-field-settings（v1.9 PR2 设置落盘/白名单/密度持久/双重置/configVersion）', ['tests/test-field-settings.mjs'], join(root), process.execPath],
   ['test-usage-stream-ledger（每次回答只记一笔）', ['tests/test-usage-stream-ledger.mjs'], join(root), process.execPath],
   ['test-host-regressions（host.js 审计必修项回归）', ['tests/test-host-regressions.mjs'], join(root), process.execPath],
   ['test-subscription-providers-consistency（共享常量单一生源一致性）', ['tests/test-subscription-providers-consistency.js'], join(root), process.execPath],

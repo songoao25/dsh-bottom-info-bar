@@ -10,6 +10,8 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+// v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
+import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
 
 const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
@@ -25,6 +27,10 @@ const USAGE_SUMMARIES_FILE = join(DATA_DIR, 'usage-summaries.json')
 const USAGE_SUMMARIES_BACKUP_FILE = USAGE_SUMMARIES_FILE + '.bak'
 const USAGE_SUMMARIES_TEMP_PREFIX = USAGE_SUMMARIES_FILE + '.tmp.'
 const USAGE_ARCHIVE_DIR = join(DATA_DIR, 'usage-archive')
+// v1.9.0 PR2：设置文件（字段显隐/颜色/信息密度），与记账数据同目录但互不干扰
+const SETTINGS_FILE = join(DATA_DIR, 'settings.json')
+const SETTINGS_FORMAT_VERSION = 1
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/
 const SUMMARIES_FORMAT_VERSION = 1
 const DETAIL_RETENTION_DAYS = 90 // 明细保留窗：更早的 priced 明细折叠进日桶
 const DETAIL_HARD_CAP = 100000 // 明细硬顶：unpriced 永不折叠，故硬顶只对 priced 明细逐日推进折叠边界
@@ -800,6 +806,114 @@ export const __usageInternals = {
   reset: resetUsageInternals,
 }
 
+// ---------- v1.9.0 PR2：settings.json（字段显隐/颜色/信息密度）读写 ----------
+// 数据流：启动加载 → 内存缓存 → RPC 变更 → 原子落盘（tmp + fsync + rename，与账本快照同型）。
+// 损坏/非法条目绝不拖垮信息栏：整体损坏回退默认并显式 warn；单条非法仅丢弃该条并聚合 warn。
+// 字段 id 白名单 = FIELD_REGISTRY；颜色只接受预设色名或严格 #RRGGBB（存为大写）。
+const FIELD_ID_SET = new Set(FIELD_REGISTRY.map(function (f) { return f.id }))
+const ANCHOR_FIELD_IDS = new Set(FIELD_REGISTRY.filter(function (f) { return f.anchor === true }).map(function (f) { return f.id }))
+const PRESET_COLOR_SET = new Set(PRESET_COLOR_NAMES)
+
+function isPlainSettingsObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+// 保留键的纯对象浅拷贝，避免把宿主内部对象直接交给 JSON 序列化之外的路径
+function shallowSettingsCopy(map) {
+  const out = {}
+  for (const key of Object.keys(map)) out[key] = map[key]
+  return out
+}
+
+function defaultFieldSettings() {
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {} }
+  for (const field of FIELD_REGISTRY) {
+    settings.fields[field.id] = true // 默认值全部=显示（与既有行为一致）
+    settings.colors[field.id] = null // null=未自定义 → 客户端沿用原语义色（零回归）
+  }
+  return settings
+}
+
+// 非法颜色返回 undefined（调用方决定拒绝还是丢弃）；null=恢复默认；预设名原样；hex 归一化为 #RRGGBB 大写
+function normalizeColorValue(value) {
+  if (value === null) return null
+  if (typeof value === 'string' && value.length > 0) {
+    if (PRESET_COLOR_SET.has(value)) return value
+    const lower = value.toLowerCase()
+    if (HEX_COLOR_PATTERN.test(lower)) return lower.toUpperCase()
+  }
+  return undefined
+}
+
+// 逐条校验并归一化：返回 { settings, dropped }。dropped 非空时由调用方聚合 warn。
+function sanitizeSettings(raw) {
+  const settings = defaultFieldSettings()
+  const dropped = []
+  if (!isPlainSettingsObject(raw)) return { settings: settings, dropped: ['整个文件'] }
+  if (raw.version !== SETTINGS_FORMAT_VERSION) dropped.push('version')
+  if (raw.infoDensity === 'full' || raw.infoDensity === 'compact') settings.infoDensity = raw.infoDensity
+  else dropped.push('infoDensity')
+  if (isPlainSettingsObject(raw.fields)) {
+    for (const key of Object.keys(raw.fields)) {
+      const value = raw.fields[key]
+      if (!FIELD_ID_SET.has(key) || typeof value !== 'boolean') { dropped.push('fields.' + key); continue }
+      settings.fields[key] = value
+    }
+  } else dropped.push('fields')
+  if (isPlainSettingsObject(raw.colors)) {
+    for (const key of Object.keys(raw.colors)) {
+      const normalized = normalizeColorValue(raw.colors[key])
+      if (!FIELD_ID_SET.has(key) || normalized === undefined) { dropped.push('colors.' + key); continue }
+      settings.colors[key] = normalized
+    }
+  } else dropped.push('colors')
+  return { settings: settings, dropped: dropped }
+}
+
+function loadSettingsFromDisk() {
+  try {
+    if (!existsSync(SETTINGS_FILE)) return defaultFieldSettings()
+    const parsed = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    const result = sanitizeSettings(parsed)
+    if (result.dropped.length > 0) {
+      console.warn('[dsh-bottom-info-bar] settings.json 含无法识别的条目，已忽略：' + result.dropped.join(', '))
+    }
+    return result.settings
+  } catch (err) {
+    console.warn('[dsh-bottom-info-bar] settings.json 读取失败，已重置为默认设置：' + String((err && err.message) || err))
+    return defaultFieldSettings()
+  }
+}
+
+// 原子写：tmp 文件写满 + fsync 后 rename 覆盖（与 writeAndSync 快照路径同一模式，避免半截文件）
+function writeFileAtomic(filePath, content) {
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
+  const tmp = filePath + '.tmp.' + process.pid + '.' + randomUUID()
+  let fd = null
+  try {
+    fd = openSync(tmp, 'w', 0o600)
+    const bytes = Buffer.from(content)
+    let offset = 0
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset)
+      if (!written) throw new Error('设置文件写入未完成')
+      offset += written
+    }
+    fsyncSync(fd)
+  } finally {
+    if (fd !== null) closeSync(fd)
+  }
+  renameSync(tmp, filePath)
+}
+
+export const __settingsInternals = {
+  // 测试/诊断专用：不参与任何业务判定
+  sanitizeSettings: sanitizeSettings,
+  normalizeColorValue: normalizeColorValue,
+  defaultFieldSettings: defaultFieldSettings,
+  settingsFile: SETTINGS_FILE,
+}
+
 export default {
   inject: ['credentials', 'timer'],
   apply(ctx) {
@@ -1063,9 +1177,34 @@ export default {
     };
 
     // ---------- 配置（内存态） ----------
+    // v1.9.0 PR2：settings.json 启动加载进内存缓存；infoDensity 改为落盘持久（修复重启即丢）
+    let fieldSettings = loadSettingsFromDisk();
+    let settingsConfigVersion = 0; // configVersion：每次设置变更 +1，客户端据此识别新配置
+    function settingsPayload(persistError) {
+      return {
+        version: fieldSettings.version,
+        infoDensity: config.infoDensity,
+        fields: shallowSettingsCopy(fieldSettings.fields),
+        colors: shallowSettingsCopy(fieldSettings.colors),
+        configVersion: settingsConfigVersion,
+        persisted: persistError == null,
+        warning: persistError == null ? null : String(persistError),
+      };
+    }
+    function persistSettings() {
+      // 落盘失败不阻断内存态生效（本会话内一致），但显式 warn 并把结果带回客户端
+      try {
+        writeFileAtomic(SETTINGS_FILE, JSON.stringify(fieldSettings));
+        return null;
+      } catch (err) {
+        const message = 'settings.json 落盘失败：' + String((err && err.message) || err);
+        console.warn('[dsh-bottom-info-bar] ' + message);
+        return message;
+      }
+    }
     let config = {
       displayMode: 'replace',
-      infoDensity: 'full', // 'full' 完整 | 'compact' 简洁
+      infoDensity: fieldSettings.infoDensity, // 'full' 完整 | 'compact' 简洁（v1.9 起落盘持久）
       activeProvider: 'deepseek',
       alertThreshold: ALERT_THRESHOLD,
       billingMode: 'auto', // 'auto' 按 provider 检测余额/订阅 | 'balance'/'subscription' 手动强制覆盖
@@ -3230,11 +3369,93 @@ export default {
       },
       setInfoDensity: function (args) {
         const d = args && typeof args === 'object' ? args.density : null;
-        if (d === 'full' || d === 'compact') config.infoDensity = d;
+        // v1.9.0 PR2：密度从内存态改为落盘持久（重启不再丢）；校验字面保持严格两态
+        if (d === 'full' || d === 'compact') {
+          if (fieldSettings.infoDensity !== d) {
+            fieldSettings.infoDensity = d;
+            settingsConfigVersion += 1;
+            persistSettings();
+          }
+          if (config.infoDensity !== d) config.infoDensity = d;
+        }
         return { infoDensity: config.infoDensity };
       },
+      // ---------- v1.9.0 PR2：字段显隐/颜色配置（白名单校验 + 增量 patch + 原子落盘） ----------
+      getFieldConfig: function () {
+        return settingsPayload(null);
+      },
+      setFieldConfig: function (args) {
+        const patch = isPlainSettingsObject(args) ? args : null;
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors'))) {
+          throw invalidArgument('patch 需包含 fields 或 colors 之一');
+        }
+        // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
+        let normalizedFields = null;
+        let normalizedColors = null;
+        if (Object.hasOwn(patch, 'fields')) {
+          const patchFields = patch.fields;
+          if (!isPlainSettingsObject(patchFields)) throw invalidArgument('fields 必须是对象');
+          normalizedFields = {};
+          for (const key of Object.keys(patchFields)) {
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument('未知字段 id: ' + key);
+            if (ANCHOR_FIELD_IDS.has(key) && patchFields[key] === false) throw invalidArgument('身份锚点字段不可关闭: ' + key);
+            if (typeof patchFields[key] !== 'boolean') throw invalidArgument('字段开关必须是布尔值: ' + key);
+            normalizedFields[key] = patchFields[key];
+          }
+        }
+        if (Object.hasOwn(patch, 'colors')) {
+          const patchColors = patch.colors;
+          if (!isPlainSettingsObject(patchColors)) throw invalidArgument('colors 必须是对象');
+          normalizedColors = {};
+          for (const key of Object.keys(patchColors)) {
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument('未知字段 id: ' + key);
+            const value = normalizeColorValue(patchColors[key]);
+            if (value === undefined) throw invalidArgument('颜色只接受预设色名或 #RRGGBB: ' + key);
+            normalizedColors[key] = value;
+          }
+        }
+        let changed = false;
+        let persistError = null;
+        for (const key of Object.keys(normalizedFields || {})) {
+          if (fieldSettings.fields[key] !== normalizedFields[key]) {
+            fieldSettings.fields[key] = normalizedFields[key];
+            changed = true;
+          }
+        }
+        for (const key of Object.keys(normalizedColors || {})) {
+          if (fieldSettings.colors[key] !== normalizedColors[key]) {
+            fieldSettings.colors[key] = normalizedColors[key];
+            changed = true;
+          }
+        }
+        if (changed) {
+          settingsConfigVersion += 1;
+          persistError = persistSettings();
+        }
+        return settingsPayload(persistError);
+      },
+      resetFieldConfig: function () {
+        // 只重置标签显隐；颜色保持不动（两个重置按钮彼此独立）
+        fieldSettings.fields = shallowSettingsCopy(defaultFieldSettings().fields);
+        settingsConfigVersion += 1;
+        const persistError = persistSettings();
+        return settingsPayload(persistError);
+      },
+      resetFieldColors: function () {
+        // 只重置颜色为默认（null）；标签显隐保持不动
+        fieldSettings.colors = shallowSettingsCopy(defaultFieldSettings().colors);
+        settingsConfigVersion += 1;
+        const persistError = persistSettings();
+        return settingsPayload(persistError);
+      },
     };
-    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true };
+    // 写操作与触发宿主网络请求的方法一律要求同源（防跨站驱动宿主写文件/发请求）
+    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true };
+    function invalidArgument(message) {
+      const err = new Error(message);
+      err.status = 400;
+      return err;
+    }
 
     function sameOrigin(req) {
       const fetchSite = req.headers['sec-fetch-site'];
