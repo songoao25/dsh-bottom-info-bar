@@ -811,7 +811,6 @@ export const __usageInternals = {
 // 损坏/非法条目绝不拖垮信息栏：整体损坏回退默认并显式 warn；单条非法仅丢弃该条并聚合 warn。
 // 字段 id 白名单 = FIELD_REGISTRY；颜色只接受预设色名或严格 #RRGGBB（存为大写）。
 const FIELD_ID_SET = new Set(FIELD_REGISTRY.map(function (f) { return f.id }))
-const ANCHOR_FIELD_IDS = new Set(FIELD_REGISTRY.filter(function (f) { return f.anchor === true }).map(function (f) { return f.id }))
 const PRESET_COLOR_SET = new Set(PRESET_COLOR_NAMES)
 
 function isPlainSettingsObject(value) {
@@ -3425,7 +3424,7 @@ export default {
           normalizedFields = {};
           for (const key of Object.keys(patchFields)) {
             if (!FIELD_ID_SET.has(key)) throw invalidArgument('未知字段 id: ' + key);
-            if (ANCHOR_FIELD_IDS.has(key) && patchFields[key] === false) throw invalidArgument('身份锚点字段不可关闭: ' + key);
+            // D6 用户拍板：锚点字段与其他字段同等可隐藏——白名单只校验 id 合法性，不再对锚点特殊拒绝
             if (typeof patchFields[key] !== 'boolean') throw invalidArgument('字段开关必须是布尔值: ' + key);
             normalizedFields[key] = patchFields[key];
           }

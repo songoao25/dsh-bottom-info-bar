@@ -16,35 +16,46 @@ await rm(libDir, { recursive: true, force: true })
 await mkdir(libDir, { recursive: true })
 
 // 从 constants.js 读取单一生源的共享常量（v1.6：SUBSCRIPTION_PROVIDERS；v1.7：+BILLING_PROVIDERS；
-// v1.9：+FIELD_REGISTRY / PRESET_COLOR_NAMES）。数组/对象字面量按括号配对提取（注册表内嵌数组，非贪婪正则会截断）。
+// v1.9：+FIELD_REGISTRY / PRESET_COLOR_NAMES / FIELD_GROUP_ORDER / FIELD_GROUP_LABELS）。
+// 数组/对象字面量按括号配对提取（注册表内嵌数组，非贪婪正则会截断）。
 const constantsSource = await readFile(join(root, 'src', 'constants.js'), 'utf8')
-function extractArray(name) {
+function extractLiteral(name) {
   const marker = 'export const ' + name + ' = '
   const start = constantsSource.indexOf(marker)
   if (start === -1) throw new Error('无法从 constants.js 中找到 ' + name)
-  const from = constantsSource.indexOf('[', start + marker.length)
-  if (from === -1) throw new Error(name + ' 不是数组字面量')
-  let depth = 0
-  for (let i = from; i < constantsSource.length; i++) {
+  let openIdx = -1
+  let openCh = ''
+  let closeCh = ''
+  for (let i = start + marker.length; i < constantsSource.length; i++) {
     const ch = constantsSource[i]
-    if (ch === '[') depth++
-    else if (ch === ']') {
+    if (ch === '[' || ch === '{') { openIdx = i; openCh = ch; closeCh = ch === '[' ? ']' : '}'; break }
+  }
+  if (openIdx === -1) throw new Error(name + ' 不是数组/对象字面量')
+  let depth = 0
+  for (let i = openIdx; i < constantsSource.length; i++) {
+    const ch = constantsSource[i]
+    if (ch === openCh) depth++
+    else if (ch === closeCh) {
       depth--
-      if (depth === 0) return constantsSource.slice(from, i + 1)
+      if (depth === 0) return constantsSource.slice(openIdx, i + 1)
     }
   }
-  throw new Error(name + ' 的数组字面量未闭合')
+  throw new Error(name + ' 的字面量未闭合')
 }
-const subscriptionProvidersJson = extractArray('SUBSCRIPTION_PROVIDERS')
-const billingProvidersJson = extractArray('BILLING_PROVIDERS')
-const fieldRegistryJson = extractArray('FIELD_REGISTRY')
-const presetColorsJson = extractArray('PRESET_COLOR_NAMES')
+const subscriptionProvidersJson = extractLiteral('SUBSCRIPTION_PROVIDERS')
+const billingProvidersJson = extractLiteral('BILLING_PROVIDERS')
+const fieldRegistryJson = extractLiteral('FIELD_REGISTRY')
+const presetColorsJson = extractLiteral('PRESET_COLOR_NAMES')
+const fieldGroupOrderJson = extractLiteral('FIELD_GROUP_ORDER')
+const fieldGroupLabelsJson = extractLiteral('FIELD_GROUP_LABELS')
 function injectSharedConstants(source) {
   return source
     .replace(/\/\*__SUBSCRIPTION_PROVIDERS__\*\/\[\]/g, subscriptionProvidersJson)
     .replace(/\/\*__BILLING_PROVIDERS__\*\/\[\]/g, billingProvidersJson)
     .replace(/\/\*__FIELD_REGISTRY__\*\/\[\]/g, fieldRegistryJson)
     .replace(/\/\*__PRESET_COLORS__\*\/\[\]/g, presetColorsJson)
+    .replace(/\/\*__FIELD_GROUP_ORDER__\*\/\[\]/g, fieldGroupOrderJson)
+    .replace(/\/\*__FIELD_GROUP_LABELS__\*\/\{\}/g, fieldGroupLabelsJson)
 }
 
 // 1) host（ESM，原样复制后替换锚点占位；constants.js 随包复制供 import 解析）

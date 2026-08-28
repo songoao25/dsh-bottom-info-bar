@@ -12,6 +12,21 @@ const BIB_SET_PRESET_LABELS = { red: '红', green: '绿', blue: '蓝', purple: '
 // 原生取色器（input[type=color]）在未自定义时显示的代表色（浅色主题值；实际信息栏渲染仍按主题变量）
 const BIB_SET_PRESET_WELL_HEX = { red: '#D92D20', green: '#087F5B', blue: '#0044CC', purple: '#6941C6', orange: '#B54708', neutral: '#333333' };
 const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
+// 「显示字段」两级分组（D6 用户拍板：原生在前、插件在后）——构建从 constants.js 注入（单一来源）
+const FIELD_GROUP_ORDER = /*__FIELD_GROUP_ORDER__*/[];
+const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
+// 每行出现条件文案：modes → 中文（余额制/订阅制/账单制/原生统计行/通用）
+const BIB_SET_MODE_LABELS = { balance: '余额制', subscription: '订阅制', billing: '账单制', native: '原生统计行', common: '通用' };
+function bibSetModeText(field) {
+  if (!field || !Array.isArray(field.modes) || field.modes.length === 0) return '';
+  if (field.modes.length === 1 && field.modes[0] === 'native') return '原生统计行字段';
+  const labels = [];
+  for (let i = 0; i < field.modes.length; i++) {
+    const label = BIB_SET_MODE_LABELS[field.modes[i]];
+    if (label && labels.indexOf(label) === -1) labels.push(label);
+  }
+  return labels.length > 0 ? '出现于' + labels.join('、') : '';
+}
 
 function bibSetDispatchChanged() {
   // 设置页保存成功后广播：信息栏监听并立即重拉配置（宿主内存缓存，即回）
@@ -316,7 +331,10 @@ function InfoBarSettingsSection(props) {
       const field = groupFields[i];
       const isAnchor = field.anchor === true;
       const descParts = [];
-      if (isAnchor) descParts.push('身份锚点，始终显示。');
+      // D6：锚点与其他字段同等可隐藏——「身份锚点」仅作为说明保留，不再恒开/禁用
+      if (isAnchor) descParts.push('身份锚点：当前对话的服务商与模型标识。');
+      const modeText = bibSetModeText(field);
+      if (modeText) descParts.push(modeText + '。');
       if (field.note) descParts.push(field.note);
       if (field.suggestKeep) descParts.push('关闭后相应提示不再出现，建议保留。');
       rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row' },
@@ -328,8 +346,7 @@ function InfoBarSettingsSection(props) {
         bibSetSwitch({
           label: '显示' + field.label,
           checked: fieldOn(field.id),
-          disabled: isAnchor, // 身份锚点：默认恒开（宿主同样拒绝关闭）
-          title: isAnchor ? '身份锚点始终显示' : (fieldOn(field.id) ? '点击隐藏' : '点击显示'),
+          title: fieldOn(field.id) ? '点击隐藏' : '点击显示',
           onToggle: function (next) { setFieldFlag(field.id, next); },
         })));
     }

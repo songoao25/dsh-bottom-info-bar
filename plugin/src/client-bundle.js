@@ -261,6 +261,51 @@ function windowFieldVisible(key) {
   return id ? fieldVisible(id) : true;
 }
 
+// 降级节点现在包着 data-field 容器（fieldSpan 着色），文案要穿透一层包装再读
+function trailingErrorText(node) {
+  let current = node;
+  for (let depth = 0; depth < 3 && current && current.props; depth++) {
+    const child = current.props.children;
+    if (typeof child === 'string') return child;
+    current = child;
+  }
+  return '';
+}
+
+// 行组装（模块级纯函数，createElement 注入以便单测用桩验证分隔符收合与全隐藏零输出）：
+// 居中组之间插一个分隔符；尾部错误组多来源「刷新失败」去重后逐个接在右侧，
+// 分隔符只在已有内容之后出现——全空输入返回空数组（D6：零节点/零分隔符）。
+function assembleInfoBarRow(groups, trailingErrorGroups, createElement) {
+  const nodes = [];
+  for (let i = 0; i < groups.length; i++) {
+    if (i > 0) nodes.push(createElement('span', { key: 'sep' + i, className: 'bi-sep' }, '|'));
+    nodes.push(createElement('span', { key: 'g' + i }, groups[i]));
+  }
+  const seenRefreshFailure = { value: false };
+  const visibleErrors = trailingErrorGroups.filter(function (node) {
+    const text = trailingErrorText(node);
+    if (text !== '刷新失败') return true;
+    if (seenRefreshFailure.value) return false;
+    seenRefreshFailure.value = true;
+    return true;
+  });
+  for (let i = 0; i < visibleErrors.length; i++) {
+    if (groups.length > 0 || i > 0) nodes.push(createElement('span', { key: 'errsep' + i, className: 'bi-sep' }, '|'));
+    nodes.push(createElement('span', { key: 'err' + i }, visibleErrors[i]));
+  }
+  return nodes;
+}
+
+// D6 用户拍板：全部字段隐藏 = 底栏彻底移除。此判定为纯函数供单测：
+// 注册表内没有任何可见字段，或渲染结果（原生行/主行/错误组）全空 → 信息栏整体不渲染，
+// 不留空行、占位高度或悬空分隔符；density 点击因无 DOM 而天然无副作用。
+function infoBarShouldRemoveAll(registry, isVisible) {
+  for (let i = 0; i < registry.length; i++) {
+    if (isVisible(registry[i].id)) return false;
+  }
+  return registry.length > 0;
+}
+
 function installStyles() {
   const id = 'dsh-bottom-info-bar';
   const existing = document.querySelector('style[data-plugin-css="' + id + '"]');
@@ -1184,36 +1229,9 @@ module.exports = {
        }, '新版本提醒')));
        }
 
-       // ---- 组装 ----
-      const sepNodes = [];
-      const nodes = [];
-      for (let i = 0; i < groups.length; i++) {
-        if (i > 0) nodes.push(React.createElement('span', { key: 'sep' + i, className: 'bi-sep' }, '|'));
-        nodes.push(React.createElement('span', { key: 'g' + i }, groups[i]));
-      }
-      const seenRefreshFailure = { value: false };
-      // v1.9.0 PR2：降级节点现在包着 data-field 容器（fieldSpan），文案要穿透一层包装再读
-      function trailingErrorText(node) {
-        let current = node;
-        for (let depth = 0; depth < 3 && current && current.props; depth++) {
-          const child = current.props.children;
-          if (typeof child === 'string') return child;
-          current = child;
-        }
-        return '';
-      }
-      const visibleErrors = trailingErrorGroups.filter(function (node) {
-        const text = trailingErrorText(node);
-        if (text !== '刷新失败') return true;
-        if (seenRefreshFailure.value) return false;
-        seenRefreshFailure.value = true;
-        return true;
-      });
-      for (let i = 0; i < visibleErrors.length; i++) {
-        if (groups.length > 0 || i > 0) nodes.push(React.createElement('span', { key: 'errsep' + i, className: 'bi-sep' }, '|'));
-        nodes.push(React.createElement('span', { key: 'err' + i }, visibleErrors[i]));
-      }
-      const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);
+       // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
+       const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
+       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);
 
       let row1 = null;
       if (statsProj) {
@@ -1279,7 +1297,16 @@ module.exports = {
             style: ng[i].fieldId ? fieldStyle(ng[i].fieldId) : undefined,
           }, ng[i].nodes));
         }
-        row1 = React.createElement('div', { id: 'dsh-bottom-info-bar-native', className: 'bi-native-row', title: nativeLine }, ...ngNodes);
+        // D6：原生组全部被隐藏（或全空）→ 原生行不渲染（不留空行/占位；hover 浮窗随之消失）
+        if (ngNodes.length === 0) row1 = null;
+        else row1 = React.createElement('div', { id: 'dsh-bottom-info-bar-native', className: 'bi-native-row', title: nativeLine }, ...ngNodes);
+      }
+
+      // D6 用户拍板：全部字段隐藏 = 底栏彻底移除——不渲染任何 DOM（无空行/占位高度/悬空分隔符），
+      // density 点击因无 DOM 而天然无副作用、不报错。两条路径：①配置层面所有字段都被关闭；
+      // ②渲染层面（数据条件导致）原生行/主行全空。
+      if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0)) {
+        return null;
       }
 
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra' },
