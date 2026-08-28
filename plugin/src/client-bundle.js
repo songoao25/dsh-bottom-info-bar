@@ -1135,8 +1135,18 @@ module.exports = {
         nodes.push(React.createElement('span', { key: 'g' + i }, groups[i]));
       }
       const seenRefreshFailure = { value: false };
+      // v1.9.0 PR2：降级节点现在包着 data-field 容器（fieldSpan），文案要穿透一层包装再读
+      function trailingErrorText(node) {
+        let current = node;
+        for (let depth = 0; depth < 3 && current && current.props; depth++) {
+          const child = current.props.children;
+          if (typeof child === 'string') return child;
+          current = child;
+        }
+        return '';
+      }
       const visibleErrors = trailingErrorGroups.filter(function (node) {
-        const text = node && node.props ? node.props.children : '';
+        const text = trailingErrorText(node);
         if (text !== '刷新失败') return true;
         if (seenRefreshFailure.value) return false;
         seenRefreshFailure.value = true;
