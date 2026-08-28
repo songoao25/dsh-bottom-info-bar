@@ -2,7 +2,7 @@
 // 双重置 / configVersion / 同源防护。
 // 账本类铁律：涉及 DATA_DIR 的测试必须在 import 被测模块前先设 env 指向临时目录
 //（参照 tests/test-usage-compaction.mjs 护栏），绝不触碰 ~/.dsh 真实用户数据。
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -221,6 +221,51 @@ function copySettings(fromDir, toDir) {
     const d = s.mod.internals.defaultFieldSettings()
     return d.version === 1 && d.infoDensity === 'full' && Object.values(d.fields).every(Boolean) && Object.values(d.colors).every((v) => v === null)
   })(), true)
+}
+
+// ---------- ⑧ D4：summaries 与 .bak 同时缺失且折叠已发生 → 显式 warn + 客户端可见「账单待整理」 ----------
+{
+  // 对照组：正常启动（从未折叠、无冷归档）→ 无告警、persistence=ok
+  const s = await mount(newSection('d4-baseline'))
+  const baseline = (await invokeRoute(s.stub.captured.route, 'getUsageSummary')).body
+  check('D4 对照：未折叠时 persistence=ok 且无告警', baseline.persistence.state === 'ok', baseline.persistence)
+
+  // 制造“折叠已发生”的痕迹：冷归档目录留有明细（appendFoldArchive 只在折叠时创建）
+  mkdirSync(join(s.dir, 'usage-archive'), { recursive: true })
+  writeFileSync(join(s.dir, 'usage-archive', '2026-07.jsonl'), '{"id":"archived","ts":0}\n')
+
+  // 重启（同目录、全新模块实例）：summaries 与 .bak 均缺失
+  const warns = []
+  const originalWarn = console.warn
+  console.warn = function (...args) { warns.push(args.join(' ')) }
+  let restartRoute = null
+  try {
+    const mod2 = await import('../plugin/src/host.js?settings=' + encodeURIComponent(s.dir) + '&round=2')
+    const stub2 = makeStub()
+    mod2.default.apply(stub2.ctx)
+    restartRoute = stub2.captured.route
+  } finally {
+    console.warn = originalWarn
+  }
+  const restarted = (await invokeRoute(restartRoute, 'getUsageSummary')).body
+  check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('账单汇总文件缺失') !== -1), warns)
+  check('D4：客户端可见告警（persistence=snapshot-stale「账单待整理」+ 指向冷归档文案）',
+    restarted.persistence.state === 'snapshot-stale' && /usage-archive/.test(restarted.persistence.message || ''), restarted.persistence)
+}
+
+// ---------- ⑨ L1：启动自愈权限收敛（DATA_DIR 0700 / journal 0600，尽力而为不崩溃） ----------
+{
+  const s = newSection('perms')
+  mkdirSync(s.dir, { recursive: true })
+  chmodSync(s.dir, 0o755)
+  const journalPath = join(s.dir, 'usage-records.journal.jsonl')
+  writeFileSync(journalPath, '')
+  chmodSync(journalPath, 0o644)
+  await mount(s)
+  check('L1：DATA_DIR 权限收敛为 0700', (statSync(s.dir).mode & 0o777) === 0o700, (statSync(s.dir).mode & 0o777).toString(8))
+  check('L1：journal 权限收敛为 0600', (statSync(journalPath).mode & 0o777) === 0o600, (statSync(journalPath).mode & 0o777).toString(8))
+  const set = await invokeRoute(s.stub.captured.route, 'setInfoDensity', { density: 'compact' })
+  check('L1：权限收敛后设置仍可正常落盘（未影响可写性）', set.body.infoDensity === 'compact' && readSettingsFile(s.dir).infoDensity === 'compact', set.body)
 }
 
 console.log('\n结果：' + passes + ' PASS / ' + failures + ' FAIL')

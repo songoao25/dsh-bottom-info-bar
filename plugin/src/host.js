@@ -6,7 +6,7 @@
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
 // 令牌的绑定/续期/写回由独立插件 dsh-chatgpt-subscription 维护，本插件不写回、不续期、不注入凭据。
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -904,6 +904,15 @@ function writeFileAtomic(filePath, content) {
     if (fd !== null) closeSync(fd)
   }
   renameSync(tmp, filePath)
+}
+
+// L1（安全审计低危建议）：启动时尽力而为收敛敏感文件权限——账本目录 0700、流水账 journal 0600。
+// 只做 try/catch 包裹的 chmod：权限收敛失败（如非 POSIX 文件系统/只读挂载）绝不影响启动与记账。
+function hardenLedgerFilePermissions() {
+  try { chmodSync(DATA_DIR, 0o700) } catch (err) { /* 尽力而为，不因权限问题崩溃 */ }
+  try {
+    if (existsSync(USAGE_JOURNAL_FILE)) chmodSync(USAGE_JOURNAL_FILE, 0o600)
+  } catch (err) { /* 尽力而为，不因权限问题崩溃 */ }
 }
 
 export const __settingsInternals = {
@@ -2316,6 +2325,14 @@ export default {
       journalLineCount = journalStats.lines;
       journalByteCount = journalStats.bytes;
       const fileSummaries = readSummariesFile();
+      // D4：汇总文件与备份同时不可用（缺失/双损坏）且折叠确已发生 → 折叠天金额本轮无法恢复。
+      // 绝不静默：控制台显式 warn + 客户端可见「账单待整理」（persistence 走既有 snapshot-stale 通道），
+      // 冷归档 usage-archive/ 仍保留记录级明细，可人工恢复。
+      if (!fileSummaries && archiveHasFoldedRecords()) {
+        const message = '账单汇总文件缺失：折叠期间的历史金额暂未计入显示（明细仍在冷归档 usage-archive/，可人工恢复）';
+        console.warn('[dsh-bottom-info-bar] ' + message);
+        ledgerError = { kind: 'snapshot-stale', message: message, at: Date.now() };
+      }
       const boundary = fileSummaries ? fileSummaries.foldedUpTo : null;
       summariesState.foldedUpTo = boundary;
       summariesState.dayBuckets = {};
@@ -2440,6 +2457,14 @@ export default {
         } catch (err) { /* 损坏 → 依次回退 .bak → 全量重建 */ }
       }
       return null;
+    }
+
+    // 冷归档目录是否留有折叠明细（“折叠已发生”的可靠痕迹：目录只在 appendFoldArchive 时创建）
+    function archiveHasFoldedRecords() {
+      try {
+        if (!existsSync(USAGE_ARCHIVE_DIR)) return false;
+        return readdirSync(USAGE_ARCHIVE_DIR).some(function (name) { return name.indexOf('.jsonl') !== -1; });
+      } catch (err) { return false; }
     }
 
     function writeSummariesFile(foldedUpTo, sessionsDelta, accountTotals) {
@@ -2635,6 +2660,8 @@ export default {
       }
     }
 
+    // 启动自愈：收敛账本目录/流水账权限（尽力而为，见 hardenLedgerFilePermissions）
+    hardenLedgerFilePermissions();
     initUsageAggregates(loadedUsageRecords.journalStats);
 
     // ---------- 一次性回填：unpriced 历史记录按当前价目表补算 ----------
