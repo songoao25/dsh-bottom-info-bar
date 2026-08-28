@@ -81,8 +81,12 @@ check('注册表无 defaultHidden 语义（默认值全部=显示，由宿主测
 check('每个注册字段都在信息栏渲染层被引用（id ↔ 渲染片段一一对应）', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
-check('分组顺序与中文标题齐备', FIELD_GROUP_ORDER.length === Object.keys(FIELD_GROUP_LABELS).length
-  && FIELD_GROUP_LABELS.anchor === '身份锚点' && FIELD_GROUP_LABELS.status === '状态与提醒', true);
+check('D6 分组：仅「原生字段/插件字段」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
+  && FIELD_GROUP_LABELS.native === '原生字段' && FIELD_GROUP_LABELS.plugin === '插件字段', true);
+check('D6 分组：原生组恰 5 个 DeepSeek 原生标签', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
+  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
+check('D6 分组：其余 23 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 23
+  && FIELD_REGISTRY.every((f) => f.group === 'native' || f.group === 'plugin'), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
@@ -97,8 +101,9 @@ check('设置页与信息栏同一 bundle（module.exports 包装、信息栏 ap
   && settingsSrc.includes('await baseExports.apply(ctx);'), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', settingsSrc.includes("role: 'switch'")
   && settingsSrc.includes("'aria-checked': checked") && settingsSrc.includes("'显示' + field.label"), true);
-check('身份锚点恒开（开关禁用并标注，宿主双重兜底）', settingsSrc.includes('disabled: isAnchor')
-  && settingsSrc.includes("'身份锚点，始终显示。'"), true);
+check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', !settingsSrc.includes('disabled: isAnchor')
+  && !settingsSrc.includes('始终显示'), true);
+check('D6 解锁：「身份锚点」仅作为说明文字保留', settingsSrc.includes("'身份锚点：当前对话的服务商与模型标识。'"), true);
 check('错误/提醒类字段带「建议保留」徽标', settingsSrc.includes("'建议保留'"), true);
 check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', settingsSrc.includes("role: 'radiogroup'")
   && settingsSrc.includes("role: 'radio'") && settingsSrc.includes('ArrowRight') && settingsSrc.includes("'Home'"), true);
@@ -268,6 +273,44 @@ function withFakeDocument(run) {
   check('D3：refreshFieldConfig 使用版本守卫 + 在途补拉（源码断言）', clientSrc.includes('fieldConfigSnapshotIsNewer(incoming, fieldConfigServerVersion)')
     && clientSrc.includes('fieldConfigRefetchPending = true; return;')
     && clientSrc.includes('fieldConfigRefetchPending = false; refreshFieldConfig();'), true);
+}
+
+// ---------- ⑩ D6：全部字段隐藏 = 底栏彻底移除（零节点/零分隔符/无占位） ----------
+{
+  // assembleInfoBarRow 依赖模块级 trailingErrorText：先提取依赖再提取本体，保持在同一作用域
+  const trailingErrorText = eval('(' + extractFunctionFrom(clientSrc, 'trailingErrorText') + ')');
+  const assembleInfoBarRow = eval('(' + extractFunctionFrom(clientSrc, 'assembleInfoBarRow') + ')');
+  const infoBarShouldRemoveAll = eval('(' + extractFunctionFrom(clientSrc, 'infoBarShouldRemoveAll') + ')');
+  const stubCreate = function (type, props) {
+    return { type: type, props: props, children: Array.prototype.slice.call(arguments, 2) };
+  };
+  const errNode = function (text) {
+    return { props: { 'data-field': 'refreshFailure', children: { props: { className: 'bi-stale', children: text } } } };
+  };
+  check('D6：全部字段隐藏 → 组装输出为空（零节点/零分隔符）', assembleInfoBarRow([], [], stubCreate).length === 0, true);
+  check('D6：分隔符只在相邻可见组之间（3 组恰好 2 个）', (function () {
+    const nodes = assembleInfoBarRow([{}, {}, {}], [], stubCreate);
+    return nodes.length === 5 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 2;
+  })(), true);
+  check('D6：组与错误组之间的分隔符正确收合（1 组 + 2 错误 → 2 个分隔符）', (function () {
+    const nodes = assembleInfoBarRow([{}], [errNode('刷新失败'), errNode('账单未保存')], stubCreate);
+    return nodes.length === 5 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 2;
+  })(), true);
+  check('D6：多个「刷新失败」去重仍生效（组装函数内）', (function () {
+    const nodes = assembleInfoBarRow([], [errNode('刷新失败'), errNode('账单未保存'), errNode('刷新失败')], stubCreate);
+    return nodes.length === 3 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 1;
+  })(), true);
+  check('D6：配置层面全隐藏判定（注册表全关 → true；任一可见 → false）', infoBarShouldRemoveAll(FIELD_REGISTRY, function () { return false; }) === true
+    && infoBarShouldRemoveAll(FIELD_REGISTRY, function (id) { return id === 'anchorGroup'; }) === false
+    && infoBarShouldRemoveAll([], function () { return false; }) === false, true);
+  check('D6：全隐藏整体移除判定已接入渲染（源码断言：return null 优先于 root 组装）',
+    clientSrc.indexOf('infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible)') !== -1
+    && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
+    && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
+  check('D6：构建产物含注入的两级分组常量（设置页渲染不落空）', (function () {
+    const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+    return lib.indexOf("['native', 'plugin']") !== -1 && lib.indexOf("native: '原生字段'") !== -1 && lib.indexOf("plugin: '插件字段'") !== -1;
+  })(), true);
 }
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

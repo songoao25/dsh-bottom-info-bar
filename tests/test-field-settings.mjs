@@ -149,7 +149,9 @@ function copySettings(fromDir, toDir) {
   const badBool = await invokeRoute(route, 'setFieldConfig', { fields: { balance: 'no' } })
   check('非布尔开关拒绝（400）', badBool.status === 400 && /布尔值/.test(badBool.body.error), badBool)
   const anchor = await invokeRoute(route, 'setFieldConfig', { fields: { anchorGroup: false } })
-  check('身份锚点拒绝关闭（400）', anchor.status === 400 && /锚点/.test(anchor.body.error), anchor)
+  check('D6 解锁：锚点字段允许关闭（200 且生效）', anchor.status === 200 && anchor.body.fields.anchorGroup === false, anchor.body.fields.anchorGroup)
+  const anchorBack = await invokeRoute(route, 'setFieldConfig', { fields: { anchorGroup: true } })
+  check('D6 解锁：锚点字段同样可重新打开', anchorBack.status === 200 && anchorBack.body.fields.anchorGroup === true, anchorBack.body.fields.anchorGroup)
   for (const bad of ['red!', '#12345', '#1234567', '123456', 'javascript:alert(1)', 5, {}]) {
     const r = await invokeRoute(route, 'setFieldConfig', { colors: { balance: bad } })
     check('非法颜色拒绝（400）: ' + JSON.stringify(bad), r.status === 400, r)
