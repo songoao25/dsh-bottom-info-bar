@@ -122,7 +122,7 @@ function bibSetSwitch(props) {
 // 色板圆点组：默认 + 预设色名；role=radiogroup/radio + roving tabindex（方向键/Home/End）
 function bibSetPalette(props) {
   const options = ['default'].concat(PRESET_COLORS);
-  const refs = React.useRef({});
+  const refs = { current: {} };
   const isSelected = function (option) {
     return option === 'default' ? props.value === null : props.value === option;
   };
