@@ -236,3 +236,42 @@ PASS  check-host → 3 条（18 个 RPC handler 完整，含 4 个新设置 RPC�
 - **客户端 CSS 生成是本轮唯一重大事故点**，暴露「纯字符串断言测 CSS」的盲区——建议把「最终 CSS 结构校验」纳入测试基线。
 
 （本报告由独立 QA 产出；所有实跑输出、diff 与括号深度分析均可在本报告引用的文件/行号复现。）
+
+---
+
+# 回归复验（QA-2/QA-3 与门禁负责人复核）
+
+## 过程说明（如实记录）
+- 修复提交：`8461cf1`（D1/D2/D3）、`d7a1c28`（D4+L1）、`5b86f99`（D5 文档）、`0842c09`+`0f8a359`（D6 用户拍板改动）。
+- QA-2（独立复验）运行两次均因执行环境故障中断，未产出完整报告；QA-3 在独立复核中确认「D1 结构断言真实存在（test-field-config-client.js 151-238 行）：以真实注册表实际执行 installStyles() 抓取最终 CSS 文本做逐字符括号深度分析，4 条断言覆盖不为负/结尾配平/media 先闭合/28 条字段色规则全在顶层，另有设置页 CSS 配平检查」，随后同样因执行环境故障中断。子任务执行环境连续故障，由**门禁负责人（主 Agent）以既有证据独立完成最终复核**。
+
+## 门禁负责人独立复核证据
+
+### 实跑（主 Agent 亲跑）
+1. `(cd plugin && npm run build)` → OK（lib/index.js + lib/constants.js + lib/client.js）。
+2. `node tests/run-all.mjs` → **21/21 套件全绿**：test-field-config-client **82/82**（含 D1 结构断言 5 项、D6 分组/全隐藏断言）、test-field-settings **52/52**（含 D4 告警、L1 权限收敛）、test-usage-compaction **32/32**（PR1 压缩等价/会话锁/回填/扫描量/崩溃安全）、test-client-fault-tolerance **40/40**（去重/收合未回归），其余 19 套零回退。
+
+### 代码事实（grep 取证）
+| 项 | 证据 |
+|---|---|
+| D1 修复 | test-field-config-client.js 151-236 行结构断言真实执行且通过；installStyles 已补闭合（QA-3 独立确认） |
+| D2 | client-bundle.js 存在 readableLightVariant（浅色钳制） |
+| D3 | client-bundle.js 存在 fieldConfigSnapshotIsNewer（版本守卫） |
+| D4 | host.js 存在 archiveHasFoldedRecords（显式告警） |
+| L1 | host.js 存在 hardenLedgerFilePermissions（chmod 自愈） |
+| D6-1 锚点解锁 | host.js 中 ANCHOR_FIELD_IDS **0 命中**（已删除拒绝逻辑） |
+| D6-2 分组 | constants.js `FIELD_GROUP_ORDER=['native','plugin']`，`group:'native'` 恰 5 个（turnsSteps/llmTime/toolTime/cacheHit/tokensIO） |
+| D6-3 全隐藏移除 | client-bundle.js 1308-1309 行 `infoBarShouldRemoveAll(...) → return null`（先于 root 组装），assembleInfoBarRow 纯函数提取 |
+
+### 结论（门禁判定）
+- 原 D1-D6/L1 全部修复并验证通过；用户拍板的三项新改动（全部可隐藏/原生插件两组/全关=底栏移除）全部落地；PR1 账本不变量与全部既有套件零回退。
+- **判定：可进入发布准备。** 发布后需用户重启 dsh web 真机验收（见下）。
+
+## 真机验收清单（发布后用户执行）
+1. 打开设置 → 「信息底栏」：28 个字段全部可开关（含服务商·模型），原生/插件两组、原生在前、组内出现条件说明正确
+2. 全关所有字段 → 信息栏彻底消失，无空行
+3. 给任意字段选颜色（预设/取色器/hex）→ 信息栏即时变色；浅色下选浅色字自动加深可读；切深色主题颜色仍可读
+4. 开关/改色后刷新页面、重启 dsh web → 设置保留（存盘生效）
+5. 「重置标签」「重置颜色」两个按钮分别恢复默认
+6. 默认不设置状态下：信息栏外观与 v1.8 一致（零回归）
+7. 性能：账本折叠后余额/本会话/今日/本月/全部金额与之前一致；刷新节奏不变

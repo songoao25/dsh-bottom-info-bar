@@ -34,6 +34,8 @@ From top to bottom, the combined screenshot shows **ChatGPT subscription**, **De
 - **Full / compact toggle** — Click the bar to switch between two strict modes (debounced).
 - **Low-balance alert** — When the balance drops below ¥20, its amount and adjacent `低` status turn alert red.
 - **Real data only** — The bar only ever shows balances / quotas / plans / bills returned by each provider's official API; local spend estimation is never displayed.
+- **「Info Bar」settings page (v1.9)** — A new page in the settings panel: **every field can be toggled independently** (provider · model included; hiding all removes the bar entirely), grouped into **Native** (DSH's original stats) and **Plugin** sections; **per-field custom colors** (preset palette / system color input / hex), auto-adapted for both light and dark themes; dedicated **Reset labels** and **Reset colors** buttons; all settings **persist across restarts** (compact mode now persists too).
+- **Stays fast over months (v1.9)** — Ledger details auto-archive into summaries and stats are computed incrementally, so bar refreshes never slow down with usage; ledger file permissions are hardened automatically on startup.
 
 ## Supported Providers (v1.7)
 
