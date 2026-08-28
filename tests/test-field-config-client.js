@@ -5,6 +5,7 @@
 const fs = require('fs');
 
 const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const settingsSrc = fs.readFileSync(__dirname + '/../plugin/src/client-settings.js', 'utf8');
 const { FIELD_REGISTRY, PRESET_COLOR_NAMES, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS } = require('../plugin/src/constants.js');
 
 let pass = 0, fail = 0;
@@ -84,6 +85,62 @@ check('分组顺序与中文标题齐备', FIELD_GROUP_ORDER.length === Object.k
   && FIELD_GROUP_LABELS.anchor === '身份锚点' && FIELD_GROUP_LABELS.status === '状态与提醒', true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
+
+// ---------- ⑤ 设置页（settings.section）：注册 / 无障碍 / 乐观更新 / CustomEvent ----------
+check('设置页注册 DSH settings.section 插座', settingsSrc.includes("ctx.slots.inject('settings.section'"), true);
+check('注册条目含 id/order/label（侧栏导航行自动生成）', settingsSrc.includes("id: 'bottom-info-bar'")
+  && settingsSrc.includes('order: 100')
+  && settingsSrc.includes("label: '信息底栏'"), true);
+check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', settingsSrc.includes('function InfoBarSettingsSection(')
+  && !/<[A-Z][A-Za-z]*[\s/>]/.test(settingsSrc), true);
+check('设置页与信息栏同一 bundle（module.exports 包装、信息栏 apply 之后注册）', settingsSrc.includes('const baseExports = module.exports;')
+  && settingsSrc.includes('await baseExports.apply(ctx);'), true);
+check('字段开关使用 role=switch + aria-checked（含中文可读名）', settingsSrc.includes("role: 'switch'")
+  && settingsSrc.includes("'aria-checked': checked") && settingsSrc.includes("'显示' + field.label"), true);
+check('身份锚点恒开（开关禁用并标注，宿主双重兜底）', settingsSrc.includes('disabled: isAnchor')
+  && settingsSrc.includes("'身份锚点，始终显示。'"), true);
+check('错误/提醒类字段带「建议保留」徽标', settingsSrc.includes("'建议保留'"), true);
+check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', settingsSrc.includes("role: 'radiogroup'")
+  && settingsSrc.includes("role: 'radio'") && settingsSrc.includes('ArrowRight') && settingsSrc.includes("'Home'"), true);
+check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', settingsSrc.includes("'aria-label': field.label + '的自定义颜色'")
+  && settingsSrc.includes("'aria-label': field.label + '的十六进制颜色'")
+  && settingsSrc.includes("'aria-invalid': hexInvalid ? 'true' : 'false'"), true);
+check('hex 非法拒绝回退：仅 Enter/失焦提交且非法值不入库', settingsSrc.includes('if (!BIB_SET_HEX_PATTERN.test(value))')
+  && settingsSrc.includes("onBlur: function () { commitHex(field.id); }"), true);
+check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）', settingsSrc.includes('applyOptimistic();')
+  && settingsSrc.includes('revertOptimistic();') && settingsSrc.includes('const seq = ++opSeqRef.current;')
+  && settingsSrc.includes('if (seq !== opSeqRef.current)'), true);
+check('保存成功后派发 CustomEvent 联动信息栏', settingsSrc.includes('bibSetDispatchChanged()')
+  && settingsSrc.includes("document.dispatchEvent(new CustomEvent(BIB_SET_EVENT))"), true);
+check('重置标签/重置颜色为两个独立按钮', settingsSrc.includes("runReset('fields')") && settingsSrc.includes("runReset('colors')")
+  && settingsSrc.includes("'重置标签'") && settingsSrc.includes("'重置颜色'"), true);
+check('保存失败有 role=alert 文案；状态通知 aria-live=polite', settingsSrc.includes("role: 'alert'")
+  && settingsSrc.includes("'aria-live': 'polite'"), true);
+check('焦点可见 + 减少动效降级', settingsSrc.includes(':focus-visible')
+  && settingsSrc.includes('@media (prefers-reduced-motion: reduce)'), true);
+check('设置页样式复用 DSH 设计令牌（--dsw-alias-*）融入既有面板风格', settingsSrc.includes('--dsw-alias-border-l2')
+  && settingsSrc.includes('--dsw-alias-bg-layer-3') && settingsSrc.includes('--dsw-alias-label-tertiary'), true);
+check('设置页复用信息栏预设定色板变量（同一三套主题）', settingsSrc.includes("'var(--bi-palette-' + option + ')'"), true);
+check('构建产物含被注入的字段注册表（非空锚点占位）', fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8').includes("id: 'anchorGroup'"), true);
+
+// ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
+{
+  const code = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+  let captured = null;
+  const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
+  const fakeRequire = function (name) {
+    if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
+    throw new Error('unexpected require: ' + name);
+  };
+  try {
+    new Function('window', 'require', code)(fakeWindow, fakeRequire);
+    const exported = captured && captured.factory(fakeRequire);
+    check('lib/client.js 工厂可加载且导出 inject/apply', !!captured && captured.id === 'dsh-bottom-info-bar'
+      && Array.isArray(exported.inject) && typeof exported.apply === 'function', true);
+  } catch (err) {
+    check('lib/client.js 工厂可加载且导出 inject/apply（' + err.message + '）', false, true);
+  }
+}
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
