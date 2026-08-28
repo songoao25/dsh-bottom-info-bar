@@ -6,10 +6,12 @@
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
 // 令牌的绑定/续期/写回由独立插件 dsh-chatgpt-subscription 维护，本插件不写回、不续期、不注入凭据。
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+// v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
+import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
 
 const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
@@ -19,6 +21,25 @@ const DATA_TEMP_PREFIX = DATA_TEMP_FILE + '.'
 // The journal is the source of truth.  The JSON file remains a compact,
 // human-readable snapshot for backwards compatibility and quick recovery.
 const USAGE_JOURNAL_FILE = join(DATA_DIR, 'usage-records.journal.jsonl')
+// v1.9.0 性能地基（设计依据 docs/PERF-AUDIT-v1.9.md §③A/B）：滚动压缩阈值与汇总/归档文件。
+// 汇总文件只保存"已折叠天"的聚合，是折叠部分金额的唯一权威；冷归档只留记录级副本，运行期绝不读。
+const USAGE_SUMMARIES_FILE = join(DATA_DIR, 'usage-summaries.json')
+const USAGE_SUMMARIES_BACKUP_FILE = USAGE_SUMMARIES_FILE + '.bak'
+const USAGE_SUMMARIES_TEMP_PREFIX = USAGE_SUMMARIES_FILE + '.tmp.'
+const USAGE_ARCHIVE_DIR = join(DATA_DIR, 'usage-archive')
+// v1.9.0 PR2：设置文件（字段显隐/颜色/信息密度），与记账数据同目录但互不干扰
+const SETTINGS_FILE = join(DATA_DIR, 'settings.json')
+const SETTINGS_FORMAT_VERSION = 1
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/
+const SUMMARIES_FORMAT_VERSION = 1
+const DETAIL_RETENTION_DAYS = 90 // 明细保留窗：更早的 priced 明细折叠进日桶
+const DETAIL_HARD_CAP = 100000 // 明细硬顶：unpriced 永不折叠，故硬顶只对 priced 明细逐日推进折叠边界
+const JOURNAL_COMPACT_MAX_LINES = 2000
+const JOURNAL_COMPACT_MAX_BYTES = 2 * 1024 * 1024
+const MS_PER_DAY = 86400 * 1000
+const BEIJING_OFFSET_MS = 8 * 3600 * 1000
+// recordAccount 为 null 的“无主记录”在桶/会话索引里的键（accountForProvider 永不返回空串，无碰撞）
+const NULL_ACCOUNT_KEY = ''
 const PACKAGE_FILE = new URL('../package.json', import.meta.url)
 const UPDATE_REGISTRY_URL = 'https://registry.npmjs.org/dsh-bottom-info-bar/latest'
 const UPDATE_CHECK_TIMEOUT_MS = 5000
@@ -698,6 +719,22 @@ function usageRecordKey(record, index, source) {
   return 'legacy:' + source + ':' + index + ':' + record.ts + ':' + record.provider + ':' + record.model + ':' + record.sessionId
 }
 
+// 桶/索引的键都来自落盘记录（账户、币种、会话 ID）。JSON.parse 产生的 __proto__ 自有属性无害，
+// 但 obj[key]= 赋值会触发原型污染——统一过一道键名护栏。
+function safeMapKey(value) {
+  const str = String(value)
+  return str === '__proto__' || str === 'constructor' || str === 'prototype' ? '_' + str : str
+}
+
+// 北京日键（YYYY-MM-DD）→ 该日 0 点的毫秒时刻（桶的折叠边界按北京整天对齐）
+function beijingDayStartMs(dayKey) {
+  return Date.parse(dayKey + 'T00:00:00Z') - BEIJING_OFFSET_MS
+}
+
+function emptyDayBucket() {
+  return { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, cost: 0, costOffpeak: 0, records: 0, unpriced: 0 }
+}
+
 function loadUsageRecords() {
   // Recovery order: current snapshot → last known-good snapshot → interrupted
   // temporary snapshot.  A bad file must not turn a user's whole bill into 0.
@@ -719,6 +756,8 @@ function loadUsageRecords() {
   const records = []
   const seen = new Set()
   let migratedLegacyRecord = false
+  // journal 行数/字节数基线：滚动压缩只看阈值是否超限，不参与记账正确性
+  let journalLines = 0
   function add(record, index, source) {
     if (!isValidUsageRecord(record)) return
     if (typeof record.id !== 'string' || record.id.length === 0) migratedLegacyRecord = true
@@ -731,15 +770,156 @@ function loadUsageRecords() {
   snapshot.forEach(function (record, index) { add(record, index, 'snapshot') })
   // A torn journal line only loses that one unfinished append; all preceding
   // valid lines remain usable.  This is deliberately unlike all-or-nothing JSON.
+  let journalBytes = 0
   try {
     if (existsSync(USAGE_JOURNAL_FILE)) {
-      readFileSync(USAGE_JOURNAL_FILE, 'utf8').split('\n').forEach(function (line, index) {
+      const journalRaw = readFileSync(USAGE_JOURNAL_FILE, 'utf8')
+      journalBytes = Buffer.byteLength(journalRaw)
+      journalRaw.split('\n').forEach(function (line, index) {
         if (!line.trim()) return
+        journalLines += 1
         try { add(JSON.parse(line), index, 'journal') } catch (err) { /* skip only the corrupt line */ }
       })
     }
   } catch (err) { /* snapshot is still a safe recovery source */ }
-  return { records: records.sort(function (a, b) { return a.ts - b.ts }), migratedLegacyRecord: migratedLegacyRecord }
+  return {
+    records: records.sort(function (a, b) { return a.ts - b.ts }),
+    migratedLegacyRecord: migratedLegacyRecord,
+    journalStats: { lines: journalLines, bytes: journalBytes },
+  }
+}
+
+// 测试/诊断专用遍历计数（不参与任何业务判定）：证明聚合不再随总记录数全量扫明细
+function resetUsageInternals() {
+  for (const key of Object.keys(__usageInternals.counters)) __usageInternals.counters[key] = 0;
+}
+
+export const __usageInternals = {
+  counters: {
+    detailScanCalls: 0,
+    detailRecordsScanned: 0,
+    recordUsageCount: 0,
+    foldedRecords: 0,
+    journalCompactions: 0,
+    aggregatesVersion: 0,
+  },
+  reset: resetUsageInternals,
+}
+
+// ---------- v1.9.0 PR2：settings.json（字段显隐/颜色/信息密度）读写 ----------
+// 数据流：启动加载 → 内存缓存 → RPC 变更 → 原子落盘（tmp + fsync + rename，与账本快照同型）。
+// 损坏/非法条目绝不拖垮信息栏：整体损坏回退默认并显式 warn；单条非法仅丢弃该条并聚合 warn。
+// 字段 id 白名单 = FIELD_REGISTRY；颜色只接受预设色名或严格 #RRGGBB（存为大写）。
+const FIELD_ID_SET = new Set(FIELD_REGISTRY.map(function (f) { return f.id }))
+const PRESET_COLOR_SET = new Set(PRESET_COLOR_NAMES)
+
+function isPlainSettingsObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+// 保留键的纯对象浅拷贝，避免把宿主内部对象直接交给 JSON 序列化之外的路径
+function shallowSettingsCopy(map) {
+  const out = {}
+  for (const key of Object.keys(map)) out[key] = map[key]
+  return out
+}
+
+function defaultFieldSettings() {
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {} }
+  for (const field of FIELD_REGISTRY) {
+    settings.fields[field.id] = true // 默认值全部=显示（与既有行为一致）
+    settings.colors[field.id] = null // null=未自定义 → 客户端沿用原语义色（零回归）
+  }
+  return settings
+}
+
+// 非法颜色返回 undefined（调用方决定拒绝还是丢弃）；null=恢复默认；预设名原样；hex 归一化为 #RRGGBB 大写
+function normalizeColorValue(value) {
+  if (value === null) return null
+  if (typeof value === 'string' && value.length > 0) {
+    if (PRESET_COLOR_SET.has(value)) return value
+    const lower = value.toLowerCase()
+    if (HEX_COLOR_PATTERN.test(lower)) return lower.toUpperCase()
+  }
+  return undefined
+}
+
+// 逐条校验并归一化：返回 { settings, dropped }。dropped 非空时由调用方聚合 warn。
+function sanitizeSettings(raw) {
+  const settings = defaultFieldSettings()
+  const dropped = []
+  if (!isPlainSettingsObject(raw)) return { settings: settings, dropped: ['整个文件'] }
+  if (raw.version !== SETTINGS_FORMAT_VERSION) dropped.push('version')
+  if (raw.infoDensity === 'full' || raw.infoDensity === 'compact') settings.infoDensity = raw.infoDensity
+  else dropped.push('infoDensity')
+  if (isPlainSettingsObject(raw.fields)) {
+    for (const key of Object.keys(raw.fields)) {
+      const value = raw.fields[key]
+      if (!FIELD_ID_SET.has(key) || typeof value !== 'boolean') { dropped.push('fields.' + key); continue }
+      settings.fields[key] = value
+    }
+  } else dropped.push('fields')
+  if (isPlainSettingsObject(raw.colors)) {
+    for (const key of Object.keys(raw.colors)) {
+      const normalized = normalizeColorValue(raw.colors[key])
+      if (!FIELD_ID_SET.has(key) || normalized === undefined) { dropped.push('colors.' + key); continue }
+      settings.colors[key] = normalized
+    }
+  } else dropped.push('colors')
+  return { settings: settings, dropped: dropped }
+}
+
+function loadSettingsFromDisk() {
+  try {
+    if (!existsSync(SETTINGS_FILE)) return defaultFieldSettings()
+    const parsed = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    const result = sanitizeSettings(parsed)
+    if (result.dropped.length > 0) {
+      console.warn('[dsh-bottom-info-bar] settings.json 含无法识别的条目，已忽略：' + result.dropped.join(', '))
+    }
+    return result.settings
+  } catch (err) {
+    console.warn('[dsh-bottom-info-bar] settings.json 读取失败，已重置为默认设置：' + String((err && err.message) || err))
+    return defaultFieldSettings()
+  }
+}
+
+// 原子写：tmp 文件写满 + fsync 后 rename 覆盖（与 writeAndSync 快照路径同一模式，避免半截文件）
+function writeFileAtomic(filePath, content) {
+  mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
+  const tmp = filePath + '.tmp.' + process.pid + '.' + randomUUID()
+  let fd = null
+  try {
+    fd = openSync(tmp, 'w', 0o600)
+    const bytes = Buffer.from(content)
+    let offset = 0
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset)
+      if (!written) throw new Error('设置文件写入未完成')
+      offset += written
+    }
+    fsyncSync(fd)
+  } finally {
+    if (fd !== null) closeSync(fd)
+  }
+  renameSync(tmp, filePath)
+}
+
+// L1（安全审计低危建议）：启动时尽力而为收敛敏感文件权限——账本目录 0700、流水账 journal 0600。
+// 只做 try/catch 包裹的 chmod：权限收敛失败（如非 POSIX 文件系统/只读挂载）绝不影响启动与记账。
+function hardenLedgerFilePermissions() {
+  try { chmodSync(DATA_DIR, 0o700) } catch (err) { /* 尽力而为，不因权限问题崩溃 */ }
+  try {
+    if (existsSync(USAGE_JOURNAL_FILE)) chmodSync(USAGE_JOURNAL_FILE, 0o600)
+  } catch (err) { /* 尽力而为，不因权限问题崩溃 */ }
+}
+
+export const __settingsInternals = {
+  // 测试/诊断专用：不参与任何业务判定
+  sanitizeSettings: sanitizeSettings,
+  normalizeColorValue: normalizeColorValue,
+  defaultFieldSettings: defaultFieldSettings,
+  settingsFile: SETTINGS_FILE,
 }
 
 export default {
@@ -1005,9 +1185,34 @@ export default {
     };
 
     // ---------- 配置（内存态） ----------
+    // v1.9.0 PR2：settings.json 启动加载进内存缓存；infoDensity 改为落盘持久（修复重启即丢）
+    let fieldSettings = loadSettingsFromDisk();
+    let settingsConfigVersion = 0; // configVersion：每次设置变更 +1，客户端据此识别新配置
+    function settingsPayload(persistError) {
+      return {
+        version: fieldSettings.version,
+        infoDensity: config.infoDensity,
+        fields: shallowSettingsCopy(fieldSettings.fields),
+        colors: shallowSettingsCopy(fieldSettings.colors),
+        configVersion: settingsConfigVersion,
+        persisted: persistError == null,
+        warning: persistError == null ? null : String(persistError),
+      };
+    }
+    function persistSettings() {
+      // 落盘失败不阻断内存态生效（本会话内一致），但显式 warn 并把结果带回客户端
+      try {
+        writeFileAtomic(SETTINGS_FILE, JSON.stringify(fieldSettings));
+        return null;
+      } catch (err) {
+        const message = 'settings.json 落盘失败：' + String((err && err.message) || err);
+        console.warn('[dsh-bottom-info-bar] ' + message);
+        return message;
+      }
+    }
     let config = {
       displayMode: 'replace',
-      infoDensity: 'full', // 'full' 完整 | 'compact' 简洁
+      infoDensity: fieldSettings.infoDensity, // 'full' 完整 | 'compact' 简洁（v1.9 起落盘持久）
       activeProvider: 'deepseek',
       alertThreshold: ALERT_THRESHOLD,
       billingMode: 'auto', // 'auto' 按 provider 检测余额/订阅 | 'balance'/'subscription' 手动强制覆盖
@@ -1022,15 +1227,10 @@ export default {
     }
 
     // v1.6：providerSpend 改为按 recordAccount === pid 过滤（修复 deepseek-official 记录不计入 deepseek 的旧问题）
+    // v1.9：改为读账户累计器（随记账/回填/折叠增量维护），openai 记账回退的 60s 轮询不再全扫明细
     function providerSpend(providerId) {
-      let total = 0;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (accountForProvider(r.provider) !== providerId) continue;
-        const c = costOf(r, false);
-        if (c != null) total += c;
-      }
-      return total;
+      const total = summariesState.accountTotals[safeMapKey(providerId == null ? NULL_ACCOUNT_KEY : providerId)];
+      return typeof total === 'number' ? total : 0;
     }
 
     const balanceSeq = {}; // 每 provider 刷新序号：仅最新一次请求可写入快照，防慢请求覆盖新数据
@@ -1976,6 +2176,493 @@ export default {
     let dirty = loadedUsageRecords.migratedLegacyRecord;
     let ledgerError = null;
 
+    // ---------- v1.9.0 性能地基：日桶 × 账户 × 币种聚合 + 会话索引（docs/PERF-AUDIT-v1.9.md §③B/C） ----------
+    // 结构不变量：
+    //  ① 内存桶 = 完整日聚合（token/条数含 unpriced，cost 只算 priced 且有限）——recordUsage O(1) 增量维护；
+    //  ② 折叠只删明细，绝不动桶/索引（记账时已入桶）；折叠边界按北京整天对齐，
+    //     “天 < foldedUpTo ⇒ 该日 priced 明细已不在明细里”恒成立；
+    //  ③ summaries 文件只持久化“已折叠天”的桶 + 已折叠记录的会话/账户增量 → 重启时
+    //     桶 = 文件冻结部分 + 明细重建部分，两块按“天/记录是否已折叠”严格不相交，天然防双算；
+    //  ④ unpriced 明细永不折叠（保住启动回填与远程价目 6h 回填），旧 unpriced 记录留在明细侧参与会话索引。
+    const summariesState = {
+      foldedUpTo: null, // 折叠边界（北京日起点 ms）；null = 从未折叠
+      dayBuckets: {},   // day → account → currency → bucket
+      sessions: {},     // accountKey\0sessionKey → { sessionId, account, input, cacheRead, cacheWrite, output, costs, minTs, maxTs }
+      sessionStarts: {}, // normalizeSessionId → minTs（跨账户取最小，本会话语义的 O(1) 起点）
+      accountTotals: {}, // account → Σ costOf（币种混算，保持旧 providerSpend 口径）
+    };
+    let foldedSessionsDelta = {}; // 折叠记录的会话增量（持久化于 summaries；与明细重建部分不相交）
+    let foldedAccountTotals = {}; // 折叠记录的账户累计增量（持久化于 summaries）
+    let summariesDirty = false;
+    let aggregatesVersion = 0; // 记账/回填/折叠任一实际变更 +1（预留增量缓存比对）
+    let oldestRetainedPricedTs = null; // 明细中最旧 priced 记录的 ts；null = 无（折叠触发的廉价判据）
+    let detailSorted = true; // 明细按 ts 有序才能二分；乱序（时钟回拨）时扫描自动退化为全量线性
+    let journalLineCount = 0;
+    let journalByteCount = 0;
+    const perfCounters = __usageInternals.counters;
+
+    function bumpAggregatesVersion() {
+      aggregatesVersion += 1;
+      perfCounters.aggregatesVersion = aggregatesVersion;
+    }
+
+    function accountBucketKey(account) {
+      return safeMapKey(account == null ? NULL_ACCOUNT_KEY : account);
+    }
+
+    function isPricedFinite(record) {
+      return Number.isFinite(record.cost) && record.cost >= 0;
+    }
+
+    // 无 sessionId 的记录沿用 provider/model#ts 兜底键（与旧 sessionTotals 的 Map 键一致）
+    function sessionIndexKey(record) {
+      const account = accountBucketKey(recordAccount(record));
+      const rawKey = record.sessionId || (record.provider + '/' + record.model + '#' + record.ts);
+      return account + '\u0000' + safeMapKey(rawKey);
+    }
+
+    function addToDayBucket(record) {
+      const day = beijingDayKey(record.ts);
+      const dayBuckets = summariesState.dayBuckets[day] || (summariesState.dayBuckets[day] = {});
+      const accountBuckets = dayBuckets[accountBucketKey(recordAccount(record))] || (dayBuckets[accountBucketKey(recordAccount(record))] = {});
+      const bucket = accountBuckets[safeMapKey(recordCurrency(record))] || (accountBuckets[safeMapKey(recordCurrency(record))] = emptyDayBucket());
+      bucket.input += record.input;
+      bucket.cacheRead += record.cacheRead;
+      bucket.cacheWrite += record.cacheWrite;
+      bucket.output += record.output;
+      const cost = costOf(record, false);
+      if (cost != null) {
+        bucket.cost += cost;
+        bucket.records += 1;
+        const offpeak = costOf(record, true);
+        if (offpeak != null) bucket.costOffpeak += offpeak;
+      } else {
+        bucket.unpriced += 1;
+      }
+    }
+
+    function addToSessionIndex(record) {
+      const key = sessionIndexKey(record);
+      let entry = summariesState.sessions[key];
+      if (!entry) {
+        entry = {
+          sessionId: record.sessionId,
+          account: recordAccount(record),
+          input: 0, cacheRead: 0, cacheWrite: 0, output: 0,
+          costs: {},
+          minTs: record.ts,
+          maxTs: record.ts,
+        };
+        summariesState.sessions[key] = entry;
+      }
+      entry.input += record.input;
+      entry.cacheRead += record.cacheRead;
+      entry.cacheWrite += record.cacheWrite;
+      entry.output += record.output;
+      const cost = costOf(record, false);
+      if (cost != null) {
+        const cur = recordCurrency(record);
+        entry.costs[cur] = (entry.costs[cur] || 0) + cost;
+      }
+      if (record.ts < entry.minTs) entry.minTs = record.ts;
+      if (record.ts > entry.maxTs) entry.maxTs = record.ts;
+      // 本会话起点 = 该归一化 sessionId 的最早记录（跨账户取最小，与旧全扫口径一致）
+      const norm = normalizeSessionId(record.sessionId);
+      if (norm) {
+        const known = summariesState.sessionStarts[norm];
+        if (known == null || record.ts < known) summariesState.sessionStarts[norm] = record.ts;
+      }
+    }
+
+    // 记账 O(1) 路径：push 后增量更新当日桶 + 会话索引 + 账户累计器
+    function addRecordToAggregates(record) {
+      addToDayBucket(record);
+      addToSessionIndex(record);
+      const cost = costOf(record, false);
+      if (cost != null) {
+        const key = accountBucketKey(recordAccount(record));
+        summariesState.accountTotals[key] = (summariesState.accountTotals[key] || 0) + cost;
+      }
+      if (isPricedFinite(record) && (oldestRetainedPricedTs == null || record.ts < oldestRetainedPricedTs)) {
+        oldestRetainedPricedTs = record.ts;
+      }
+      if (detailSorted && usageRecords.length > 0 && record.ts < usageRecords[usageRecords.length - 1].ts) {
+        detailSorted = false; // 时钟回拨：后续边界天扫描退化为线性，正确性由 ts 过滤保证
+      }
+      bumpAggregatesVersion();
+    }
+
+    // unpriced 回填后同步聚合：token 已在桶里（记账时计入），只补 cost 维度
+    function backfillRecordAggregates(record) {
+      const cost = costOf(record, false);
+      if (cost == null) return;
+      const day = summariesState.dayBuckets[beijingDayKey(record.ts)];
+      const bucket = day && day[accountBucketKey(recordAccount(record))] && day[accountBucketKey(recordAccount(record))][safeMapKey(recordCurrency(record))];
+      if (bucket) {
+        bucket.cost += cost;
+        bucket.records += 1;
+        bucket.unpriced = Math.max(0, bucket.unpriced - 1);
+        const offpeak = costOf(record, true);
+        if (offpeak != null) bucket.costOffpeak += offpeak;
+      }
+      const entry = summariesState.sessions[sessionIndexKey(record)];
+      if (entry) {
+        const cur = recordCurrency(record);
+        entry.costs[cur] = (entry.costs[cur] || 0) + cost;
+      }
+      const key = accountBucketKey(recordAccount(record));
+      summariesState.accountTotals[key] = (summariesState.accountTotals[key] || 0) + cost;
+      if (oldestRetainedPricedTs == null || record.ts < oldestRetainedPricedTs) oldestRetainedPricedTs = record.ts;
+      // 回填可能改写了已折叠天的桶：冻结部分必须随下次落盘重写，否则重启后该天金额回退
+      if (summariesState.foldedUpTo != null && record.ts < summariesState.foldedUpTo) summariesDirty = true;
+      bumpAggregatesVersion();
+    }
+
+    // 启动重建：桶 = 文件冻结部分 + 明细重建部分；会话索引 = 文件折叠增量 + 全部明细。
+    // 明细里残留的“已折叠 priced 记录”（旧版本回滚重写过快照等）按桶去重剔除——金额在桶里，绝不重复计。
+    function initUsageAggregates(journalStats) {
+      journalLineCount = journalStats.lines;
+      journalByteCount = journalStats.bytes;
+      const fileSummaries = readSummariesFile();
+      // D4：汇总文件与备份同时不可用（缺失/双损坏）且折叠确已发生 → 折叠天金额本轮无法恢复。
+      // 绝不静默：控制台显式 warn + 客户端可见「账单待整理」（persistence 走既有 snapshot-stale 通道），
+      // 冷归档 usage-archive/ 仍保留记录级明细，可人工恢复。
+      if (!fileSummaries && archiveHasFoldedRecords()) {
+        const message = '账单汇总文件缺失：折叠期间的历史金额暂未计入显示（明细仍在冷归档 usage-archive/，可人工恢复）';
+        console.warn('[dsh-bottom-info-bar] ' + message);
+        ledgerError = { kind: 'snapshot-stale', message: message, at: Date.now() };
+      }
+      const boundary = fileSummaries ? fileSummaries.foldedUpTo : null;
+      summariesState.foldedUpTo = boundary;
+      summariesState.dayBuckets = {};
+      summariesState.sessions = {};
+      summariesState.sessionStarts = {};
+      summariesState.accountTotals = {};
+      if (fileSummaries) {
+        for (const day of Object.keys(fileSummaries.foldedDayBuckets)) {
+          const dayBuckets = {};
+          const raw = fileSummaries.foldedDayBuckets[day] || {};
+          for (const account of Object.keys(raw)) {
+            const accountBuckets = {};
+            for (const currency of Object.keys(raw[account])) {
+              accountBuckets[safeMapKey(currency)] = Object.assign(emptyDayBucket(), raw[account][currency]);
+            }
+            dayBuckets[safeMapKey(account)] = accountBuckets;
+          }
+          summariesState.dayBuckets[safeMapKey(day)] = dayBuckets;
+        }
+        for (const key of Object.keys(fileSummaries.foldedSessions)) {
+          const entry = fileSummaries.foldedSessions[key];
+          if (!entry || typeof entry !== 'object') continue;
+          summariesState.sessions[safeMapKey(key)] = {
+            sessionId: typeof entry.sessionId === 'string' ? entry.sessionId : '',
+            account: entry.account == null ? null : entry.account,
+            input: Number(entry.input) || 0,
+            cacheRead: Number(entry.cacheRead) || 0,
+            cacheWrite: Number(entry.cacheWrite) || 0,
+            output: Number(entry.output) || 0,
+            costs: Object.assign({}, entry.costs && typeof entry.costs === 'object' ? entry.costs : {}),
+            minTs: Number(entry.minTs) || 0,
+            maxTs: Number(entry.maxTs) || 0,
+          };
+          const norm = normalizeSessionId(entry.sessionId);
+          if (norm) {
+            const known = summariesState.sessionStarts[norm];
+            if (known == null || entry.minTs < known) summariesState.sessionStarts[norm] = entry.minTs;
+          }
+        }
+        for (const key of Object.keys(fileSummaries.foldedAccountTotals)) {
+          summariesState.accountTotals[safeMapKey(key)] = Number(fileSummaries.foldedAccountTotals[key]) || 0;
+        }
+        foldedSessionsDelta = {};
+        for (const key of Object.keys(fileSummaries.foldedSessions)) {
+          foldedSessionsDelta[safeMapKey(key)] = fileSummaries.foldedSessions[key];
+        }
+        foldedAccountTotals = Object.assign({}, fileSummaries.foldedAccountTotals);
+      }
+      let droppedStale = 0;
+      const retained = [];
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (boundary != null && record.ts < boundary && isPricedFinite(record)) { droppedStale += 1; continue; }
+        retained.push(record);
+      }
+      if (droppedStale > 0) {
+        usageRecords = retained;
+        dirty = true; // 下次落盘把快照重写为窗内明细
+        console.warn('[dsh-bottom-info-bar] 快照含 ' + droppedStale + ' 条已折叠的残留明细，已按汇总去重（金额不受影响）');
+      }
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        const alreadyFolded = boundary != null && record.ts < boundary; // priced 残留已被剔除，这里只剩“整日已冻结”的 unpriced 记录
+        if (!alreadyFolded) addToDayBucket(record);
+        addToSessionIndex(record);
+        const cost = costOf(record, false);
+        if (cost != null) {
+          const key = accountBucketKey(recordAccount(record));
+          summariesState.accountTotals[key] = (summariesState.accountTotals[key] || 0) + cost;
+        }
+        if (isPricedFinite(record) && (oldestRetainedPricedTs == null || record.ts < oldestRetainedPricedTs)) {
+          oldestRetainedPricedTs = record.ts;
+        }
+      }
+      detailSorted = true;
+      perfCounters.aggregatesVersion = aggregatesVersion;
+    }
+
+    // 明细范围扫描（聚合唯一触明细的路径）：有序时二分定位，只遍历 [fromTs, toTs)；
+    // 计数器仅统计真正命中范围的记录，供测试断言“不随总记录数全量扫描”。
+    function scanDetailRange(fromTs, toTs, visit) {
+      perfCounters.detailScanCalls += 1;
+      let i = 0;
+      if (detailSorted && usageRecords.length > 0) {
+        let lo = 0;
+        let hi = usageRecords.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (usageRecords[mid].ts < fromTs) lo = mid + 1;
+          else hi = mid;
+        }
+        i = lo;
+      }
+      for (; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (detailSorted && record.ts >= toTs) break;
+        if (record.ts < fromTs || record.ts >= toTs) continue;
+        perfCounters.detailRecordsScanned += 1;
+        visit(record);
+      }
+    }
+
+    // ---------- summaries 落盘（只含折叠部分；原子写 + .bak 轮换，复用快照的恢复模式） ----------
+    function validateSummariesFile(parsed) {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+      if (parsed.version !== SUMMARIES_FORMAT_VERSION) return false;
+      const cut = parsed.foldedUpTo;
+      if (cut != null && (!Number.isFinite(cut) || cut < 0 || cut > Date.now() + MS_PER_DAY)) return false;
+      return !!(parsed.foldedDayBuckets && typeof parsed.foldedDayBuckets === 'object'
+        && parsed.foldedSessions && typeof parsed.foldedSessions === 'object'
+        && parsed.foldedAccountTotals && typeof parsed.foldedAccountTotals === 'object');
+    }
+
+    function readSummariesFile() {
+      const candidates = [USAGE_SUMMARIES_FILE, USAGE_SUMMARIES_BACKUP_FILE];
+      for (let i = 0; i < candidates.length; i++) {
+        try {
+          if (!existsSync(candidates[i])) continue;
+          const parsed = JSON.parse(readFileSync(candidates[i], 'utf8'));
+          if (validateSummariesFile(parsed)) return parsed;
+          console.warn('[dsh-bottom-info-bar] 汇总文件校验未通过：' + candidates[i]);
+        } catch (err) { /* 损坏 → 依次回退 .bak → 全量重建 */ }
+      }
+      return null;
+    }
+
+    // 冷归档目录是否留有折叠明细（“折叠已发生”的可靠痕迹：目录只在 appendFoldArchive 时创建）
+    function archiveHasFoldedRecords() {
+      try {
+        if (!existsSync(USAGE_ARCHIVE_DIR)) return false;
+        return readdirSync(USAGE_ARCHIVE_DIR).some(function (name) { return name.indexOf('.jsonl') !== -1; });
+      } catch (err) { return false; }
+    }
+
+    function writeSummariesFile(foldedUpTo, sessionsDelta, accountTotals) {
+      mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+      const boundaryDay = foldedUpTo != null ? beijingDayKey(foldedUpTo) : null;
+      const foldedDayBuckets = {};
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        if (boundaryDay != null && day < boundaryDay) foldedDayBuckets[day] = summariesState.dayBuckets[day];
+      }
+      const payload = {
+        version: SUMMARIES_FORMAT_VERSION,
+        savedAt: Date.now(),
+        foldedUpTo: foldedUpTo,
+        foldedDayBuckets: foldedDayBuckets,
+        foldedSessions: sessionsDelta,
+        foldedAccountTotals: accountTotals,
+      };
+      const tmp = USAGE_SUMMARIES_TEMP_PREFIX + process.pid + '.' + randomUUID();
+      writeAndSync(tmp, JSON.stringify(payload), 'w');
+      if (existsSync(USAGE_SUMMARIES_FILE)) {
+        try { renameSync(USAGE_SUMMARIES_FILE, USAGE_SUMMARIES_BACKUP_FILE); } catch (err) { /* 下面的替换仍是原子操作 */ }
+      }
+      renameSync(tmp, USAGE_SUMMARIES_FILE);
+    }
+
+    // ---------- 折叠：超窗 priced 明细 → 冷归档 + 冻结天桶/会话/账户增量 ----------
+    function appendFoldArchive(foldSet) {
+      try {
+        mkdirSync(USAGE_ARCHIVE_DIR, { recursive: true, mode: 0o700 });
+        const byMonth = {};
+        for (let i = 0; i < foldSet.length; i++) {
+          const month = beijingDayKey(foldSet[i].ts).slice(0, 7);
+          (byMonth[month] || (byMonth[month] = [])).push(foldSet[i]);
+        }
+        for (const month of Object.keys(byMonth)) {
+          const lines = byMonth[month].map(function (record) { return JSON.stringify(record) + '\n'; }).join('');
+          writeAndSync(join(USAGE_ARCHIVE_DIR, month + '.jsonl'), lines, 'a');
+        }
+        return true;
+      } catch (err) {
+        console.warn('[dsh-bottom-info-bar] 折叠明细冷归档失败，本次折叠放弃（明细原样保留）：' + String((err && err.message) || err));
+        return false;
+      }
+    }
+
+    function planFoldBoundary(nowMs) {
+      const windowBoundary = beijingDayStartMs(beijingDayKey(nowMs - DETAIL_RETENTION_DAYS * MS_PER_DAY));
+      const needByAge = oldestRetainedPricedTs != null && oldestRetainedPricedTs < windowBoundary;
+      if (!needByAge && usageRecords.length <= DETAIL_HARD_CAP) return null;
+      // 单次遍历按天计数：同时解出“覆盖过期 priced”与“剩余 priced ≤ 硬顶”的整天边界（unpriced 永不折叠）
+      const perDay = new Map();
+      let oldestPricedDay = null;
+      let pricedCount = 0;
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (!isPricedFinite(record)) continue;
+        pricedCount += 1;
+        const day = beijingDayKey(record.ts);
+        const stat = perDay.get(day) || { priced: 0 };
+        stat.priced += 1;
+        perDay.set(day, stat);
+        if (oldestPricedDay == null || day < oldestPricedDay) oldestPricedDay = day;
+      }
+      let boundary = windowBoundary;
+      if (needByAge && oldestPricedDay != null) {
+        boundary = Math.max(boundary, beijingDayStartMs(oldestPricedDay) + MS_PER_DAY);
+      }
+      if (pricedCount > DETAIL_HARD_CAP) {
+        const days = Array.from(perDay.keys()).sort();
+        let remaining = pricedCount;
+        for (let i = 0; i < days.length; i++) {
+          if (remaining <= DETAIL_HARD_CAP) break;
+          const dayStartMs = beijingDayStartMs(days[i]);
+          if (dayStartMs + MS_PER_DAY <= boundary) {
+            remaining -= perDay.get(days[i]).priced;
+            continue;
+          }
+          boundary = dayStartMs + MS_PER_DAY;
+          remaining -= perDay.get(days[i]).priced;
+        }
+      }
+      let foldCount = 0;
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (record.ts < boundary && isPricedFinite(record)) foldCount += 1;
+      }
+      return foldCount > 0 ? boundary : null;
+    }
+
+    // 折叠三步（每步可中断且不丢账）：①冷归档（唯一记录级副本）→ ②原子写 summaries（失败回滚增量）→ ③才动明细。
+    // 桶/索引在记账时就含这些记录，折叠只移除明细副本，任何中断点金额口径都不变。
+    function maybeFoldUsage(nowMs) {
+      const boundary = planFoldBoundary(nowMs);
+      if (boundary == null) return false;
+      const foldSet = [];
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (record.ts < boundary && isPricedFinite(record)) foldSet.push(record);
+      }
+      if (foldSet.length === 0) return false;
+      if (!appendFoldArchive(foldSet)) return false;
+      const nextFoldedUpTo = summariesState.foldedUpTo != null ? Math.max(summariesState.foldedUpTo, boundary) : boundary;
+      const nextSessionsDelta = Object.assign({}, foldedSessionsDelta);
+      const nextAccountTotals = Object.assign({}, foldedAccountTotals);
+      for (let i = 0; i < foldSet.length; i++) {
+        const record = foldSet[i];
+        const sKey = sessionIndexKey(record);
+        const delta = nextSessionsDelta[sKey] || (nextSessionsDelta[sKey] = {
+          sessionId: record.sessionId,
+          account: recordAccount(record),
+          input: 0, cacheRead: 0, cacheWrite: 0, output: 0,
+          costs: {},
+          minTs: record.ts,
+          maxTs: record.ts,
+        });
+        delta.input += record.input;
+        delta.cacheRead += record.cacheRead;
+        delta.cacheWrite += record.cacheWrite;
+        delta.output += record.output;
+        const cost = costOf(record, false);
+        if (cost != null) {
+          const cur = recordCurrency(record);
+          delta.costs[cur] = (delta.costs[cur] || 0) + cost;
+        }
+        if (record.ts < delta.minTs) delta.minTs = record.ts;
+        if (record.ts > delta.maxTs) delta.maxTs = record.ts;
+        const aKey = accountBucketKey(recordAccount(record));
+        nextAccountTotals[aKey] = (nextAccountTotals[aKey] || 0) + (cost == null ? 0 : cost);
+      }
+      try {
+        writeSummariesFile(nextFoldedUpTo, nextSessionsDelta, nextAccountTotals);
+      } catch (err) {
+        console.warn('[dsh-bottom-info-bar] 折叠汇总落盘失败，本次折叠放弃（明细原样保留）：' + String((err && err.message) || err));
+        return false;
+      }
+      summariesState.foldedUpTo = nextFoldedUpTo;
+      foldedSessionsDelta = nextSessionsDelta;
+      foldedAccountTotals = nextAccountTotals;
+      summariesDirty = false;
+      const removeSet = new Set(foldSet);
+      usageRecords = usageRecords.filter(function (record) { return !removeSet.has(record); });
+      oldestRetainedPricedTs = null;
+      for (let i = 0; i < usageRecords.length; i++) {
+        const record = usageRecords[i];
+        if (isPricedFinite(record) && (oldestRetainedPricedTs == null || record.ts < oldestRetainedPricedTs)) {
+          oldestRetainedPricedTs = record.ts;
+        }
+      }
+      dirty = true; // 快照需重写为窗内明细（首次折叠即“重写快照为窗内明细”）
+      perfCounters.foldedRecords += foldSet.length;
+      bumpAggregatesVersion();
+      console.warn('[dsh-bottom-info-bar] 已折叠 ' + foldSet.length + ' 条超窗明细（冷归档 usage-archive/，汇总 usage-summaries.json）');
+      return true;
+    }
+
+    // ---------- journal 滚动压缩：快照写成功后，把“不在当前快照里的行”原子替换回去 ----------
+    // 以记录 id 判定残留（比审计建议的字节偏移基线更稳：多实例交替追加时行序交错，偏移量切不准）；
+    // 解析失败/无 id 的行保守保留，靠加载侧 id 去重兜底，任何中断点至少快照或 journal 其一完整。
+    function maybeCompactJournal() {
+      try {
+        let stat = null;
+        try { stat = statSync(USAGE_JOURNAL_FILE); } catch (err) {
+          journalLineCount = 0;
+          journalByteCount = 0;
+          return;
+        }
+        if (stat.size <= JOURNAL_COMPACT_MAX_BYTES && journalLineCount <= JOURNAL_COMPACT_MAX_LINES) return;
+        const raw = readFileSync(USAGE_JOURNAL_FILE, 'utf8');
+        const keepIds = new Set();
+        for (let i = 0; i < usageRecords.length; i++) keepIds.add(usageRecords[i].id);
+        // 折叠边界（若有）：折叠区的 priced 行金额已冻结进 summaries，可直接丢弃；
+        // 否则这些行永远“不在明细里”，journal 会被反复保守保留、永远压不干净。
+        const foldedUpTo = summariesState.foldedUpTo;
+        const kept = [];
+        raw.split('\n').forEach(function (line) {
+          if (!line.trim()) return;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed && typeof parsed.id === 'string' && keepIds.has(parsed.id)) return; // 已在快照里 → 可丢弃
+            if (foldedUpTo != null && Number.isFinite(parsed.ts) && parsed.ts < foldedUpTo && Number.isFinite(parsed.cost) && parsed.cost >= 0) return; // 折叠区 priced 行：金额在冻结桶里
+          } catch (err) { /* 撕裂行保守保留 */ }
+          kept.push(line);
+        });
+        const tmp = USAGE_JOURNAL_FILE + '.compact.' + process.pid + '.' + randomUUID();
+        writeAndSync(tmp, kept.length > 0 ? kept.join('\n') + '\n' : '', 'w');
+        renameSync(tmp, USAGE_JOURNAL_FILE);
+        journalLineCount = kept.length;
+        journalByteCount = Buffer.byteLength(kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
+        perfCounters.journalCompactions += 1;
+      } catch (err) {
+        // 压缩失败不影响记账：journal 仍是权威追加日志，下次落盘再试
+        console.warn('[dsh-bottom-info-bar] 记账流水压缩失败（不影响记账）：' + String((err && err.message) || err));
+      }
+    }
+
+    // 启动自愈：收敛账本目录/流水账权限（尽力而为，见 hardenLedgerFilePermissions）
+    hardenLedgerFilePermissions();
+    initUsageAggregates(loadedUsageRecords.journalStats);
+
     // ---------- 一次性回填：unpriced 历史记录按当前价目表补算 ----------
     // 背景：价目表随适配逐步收录；收录之前落账的记录 pricingStatus='unpriced'（cost=null），
     // 导致本会话/今日/累计花费长期漏算（例如接入智谱后其历史对话金额恒为 0）。
@@ -1995,6 +2682,7 @@ export default {
         rec.currency = modelCurrency(rec.provider, rec.model);
         rec.pricingStatus = 'priced';
         rec.pricingVersion = 'builtin-backfill-' + packageVersion();
+        backfillRecordAggregates(rec);
         count++;
       }
       if (count > 0) {
@@ -2036,6 +2724,17 @@ export default {
 
     function flushSave() {
       if (saveDisposer) { saveDisposer(); saveDisposer = null; }
+      // 折叠汇总先于快照落盘：崩溃时“冻结桶已持久化、快照仍含明细”是安全方向——
+      // 重启按桶去重剔除残留明细即可；反过来（快照已删、汇总未写）会丢折叠部分的金额。
+      if (summariesDirty) {
+        try {
+          writeSummariesFile(summariesState.foldedUpTo, foldedSessionsDelta, foldedAccountTotals);
+          summariesDirty = false;
+        } catch (err) {
+          ledgerError = { kind: 'snapshot-stale', message: '折叠汇总落盘失败：' + String((err && err.message) || err), at: Date.now() };
+          console.warn('[dsh-bottom-info-bar] 折叠汇总落盘失败（内存聚合继续，重启前重试）', ledgerError.message);
+        }
+      }
       try {
         mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
         // The append-only journal has already made each record durable.  This
@@ -2048,13 +2747,16 @@ export default {
         }
         renameSync(tmp, DATA_FILE);
         dirty = false; // 写盘成功后才清除脏标记：失败时保留，卸载冲刷可重试
-        if (ledgerError && ledgerError.kind === 'snapshot-stale') ledgerError = null;
+        if (ledgerError && ledgerError.kind === 'snapshot-stale' && !summariesDirty) ledgerError = null;
+        maybeCompactJournal();
       } catch (err) {
         // The journal remains authoritative, but tell the user that the
         // directly readable snapshot has not caught up yet.
         ledgerError = { kind: 'snapshot-stale', message: String((err && err.message) || err), at: Date.now() };
         console.warn('[dsh-bottom-info-bar] 记账快照落盘失败', ledgerError.message);
       }
+      // 落盘后顺手检查折叠：触发则冻结部分已写盘，明细变化再排一次快照重写
+      if (maybeFoldUsage(Date.now())) scheduleSave();
     }
 
     // 防抖落盘：记账后 4s 内合并写入；插件卸载时立即冲刷
@@ -2130,6 +2832,8 @@ export default {
         return false;
       }
       usageRecords.push(rec);
+      addRecordToAggregates(rec); // O(1) 增量聚合：桶/索引在记账时即完整，后续汇总不再回扫明细
+      perfCounters.recordUsageCount += 1;
       ledgerError = null;
       scheduleSave();
       return true;
@@ -2207,30 +2911,24 @@ export default {
     }
 
     // v1.6：sessionTotals 增加账户维度参数——本对话统计只聚合当前账户记录
+    // v1.9：改由会话索引直接输出（记账时增量维护，折叠不回删索引），O(会话数) 且与全扫逐字段等价；
+    // 账户过滤保持旧口径：activeAccount 为 null/undefined 时不过滤（全部会话）
     function sessionTotals(activeAccount) {
-      const map = new Map();
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        // v1.6：账户过滤——只聚合匹配当前活跃账户的记录
-        if (activeAccount !== undefined && activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        const key = r.sessionId || (r.provider + '/' + r.model + '#' + r.ts);
-        let s = map.get(key);
-        if (!s) {
-          s = { sessionId: r.sessionId, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {}, lastTs: r.ts };
-          map.set(key, s);
-        }
-        s.input += r.input;
-        s.cacheRead += r.cacheRead;
-        s.cacheWrite += r.cacheWrite;
-        s.output += r.output;
-        const c = costOf(r, false);
-        if (c != null) {
-          const cur = recordCurrency(r);
-          s.costs[cur] = (s.costs[cur] || 0) + c;
-        }
-        if (r.ts > s.lastTs) s.lastTs = r.ts;
+      const out = [];
+      for (const key of Object.keys(summariesState.sessions)) {
+        const entry = summariesState.sessions[key];
+        if (activeAccount != null && entry.account !== activeAccount) continue;
+        out.push({
+          sessionId: entry.sessionId,
+          input: entry.input,
+          cacheRead: entry.cacheRead,
+          cacheWrite: entry.cacheWrite,
+          output: entry.output,
+          costs: Object.assign({}, entry.costs),
+          lastTs: entry.maxTs,
+        });
       }
-      return Array.from(map.values()).sort(function (a, b) { return a.lastTs - b.lastTs; });
+      return out.sort(function (a, b) { return a.lastTs - b.lastTs; });
     }
 
     function calibrationFrom(sessions, n) {
@@ -2257,31 +2955,55 @@ export default {
     // "会话起点 = 当前 sessionId 的最早记录时间戳；聚合同账户（recordAccount === activeAccount）
     //  且 ts >= 会话起点的全部记录"——子代理/同账户不同 sessionId 的并行记录自然被纳入。
     // 未知账户（activeAccount=null）时匹配无主记录（recordAccount 同为 null），绝不混入其他账户。
-    function currentSessionSummary(usageRecords, activeAccount, sessionId) {
-      if (!usageRecords || usageRecords.length === 0) return null;
+    // v1.9：起点由会话索引 O(1) 取得；起点之后的天读日桶，起点当天（边界天）在明细上
+    // 二分后逐条过滤 r.ts >= start——边界天不读桶、桶不含边界天，与旧两遍全扫逐字段等价。
+    // 例外（退化）：起点早于 90 天折叠窗时边界天的 priced 明细已折叠，只能整天读桶，
+    // 无法再剔除起点之前的同日同账户记录（见 docs/PERF-AUDIT-v1.9.md §⑤ 风险表）。
+    function accumulateBucketDay(acc, day, accountKey) {
+      const dayBuckets = summariesState.dayBuckets[day];
+      const accountBuckets = dayBuckets && dayBuckets[accountKey];
+      if (!accountBuckets) return;
+      for (const currency of Object.keys(accountBuckets)) {
+        const bucket = accountBuckets[currency];
+        acc.input += bucket.input;
+        acc.cacheRead += bucket.cacheRead;
+        acc.cacheWrite += bucket.cacheWrite;
+        acc.output += bucket.output;
+        if (bucket.records > 0) acc.costs[currency] = (acc.costs[currency] || 0) + bucket.cost;
+      }
+    }
+
+    function currentSessionSummary(activeAccount, sessionId) {
+      if (usageRecords.length === 0) return null;
       if (!sessionId) return null; // 无可用会话 ID：不猜测归属，客户端显示 ¥0.000，而非回退最近会话
       const norm = normalizeSessionId(sessionId);
-      let sessionStart = null;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (normalizeSessionId(r.sessionId) !== norm) continue;
-        if (sessionStart === null || r.ts < sessionStart) sessionStart = r.ts;
-      }
-      if (sessionStart === null) return null; // 明确传入但未命中（新会话尚无记账）→ 客户端显示 ¥0.000
+      const sessionStart = summariesState.sessionStarts[norm];
+      if (sessionStart == null) return null; // 明确传入但未命中（新会话尚无记账）→ 客户端显示 ¥0.000
+      const accountKey = accountBucketKey(activeAccount);
       const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} };
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (r.ts < sessionStart) continue;
-        if (recordAccount(r) !== activeAccount) continue; // 只聚合当前账户（含无主 null 账户匹配）
-        acc.input += r.input;
-        acc.cacheRead += r.cacheRead;
-        acc.cacheWrite += r.cacheWrite;
-        acc.output += r.output;
-        const c = costOf(r, false);
-        if (c != null) {
-          const cur = recordCurrency(r);
-          acc.costs[cur] = (acc.costs[cur] || 0) + c;
-        }
+      const boundaryDay = beijingDayKey(sessionStart);
+      const boundaryStartMs = beijingDayStartMs(boundaryDay);
+      if (summariesState.foldedUpTo == null || boundaryStartMs >= summariesState.foldedUpTo) {
+        // 边界天仍在保留窗内：明细完整，逐条过滤（ts 有序 → 二分定位，只扫边界天）
+        scanDetailRange(boundaryStartMs, boundaryStartMs + MS_PER_DAY, function (r) {
+          if (r.ts < sessionStart) return;
+          if (recordAccount(r) !== activeAccount) return; // 只聚合当前账户（含无主 null 账户匹配）
+          acc.input += r.input;
+          acc.cacheRead += r.cacheRead;
+          acc.cacheWrite += r.cacheWrite;
+          acc.output += r.output;
+          const c = costOf(r, false);
+          if (c != null) {
+            const cur = recordCurrency(r);
+            acc.costs[cur] = (acc.costs[cur] || 0) + c;
+          }
+        });
+      } else {
+        accumulateBucketDay(acc, boundaryDay, accountKey);
+      }
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        if (day <= boundaryDay) continue;
+        accumulateBucketDay(acc, day, accountKey);
       }
       const denom = acc.input + acc.cacheRead + acc.cacheWrite;
       return {
@@ -2318,25 +3040,39 @@ export default {
       const snap = balances[balanceProviderKey(sel.provider || config.activeProvider)] || { data: null };
       const balance = snap.data ? snap.data.total : null;
       const cur = activeCurrency(sel);
-      const cutoff = nowMs - SPEND_DAYS * 86400 * 1000;
+      const cutoff = nowMs - SPEND_DAYS * MS_PER_DAY;
+      const cutoffDay = beijingDayKey(cutoff);
+      const accountKey = accountBucketKey(activeAccount);
+      const currencyKey = safeMapKey(cur);
       let total = 0;
       let offpeakTotal = 0;
-      const daySet = new Set();
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (r.ts < cutoff) continue;
+      let daysActive = 0;
+      // 完整天读桶；截止日（含 cutoff 之前的部分天）在明细上逐条过滤，保持与旧全扫等价
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        if (day <= cutoffDay) continue;
+        const accountBuckets = summariesState.dayBuckets[day][accountKey];
+        const bucket = accountBuckets && accountBuckets[currencyKey];
+        if (!bucket || bucket.records <= 0) continue;
+        daysActive += 1;
+        total += bucket.cost;
+        offpeakTotal += bucket.costOffpeak;
+      }
+      let boundaryDayActive = false;
+      scanDetailRange(beijingDayStartMs(cutoffDay), beijingDayStartMs(cutoffDay) + MS_PER_DAY, function (r) {
+        if (r.ts < cutoff) return;
         // v1.6：账户 + 币种双条件过滤
-        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        if (recordCurrency(r) !== cur) continue; // 只聚合活动币种，避免跨币种相加
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) return;
+        if (recordCurrency(r) !== cur) return; // 只聚合活动币种，避免跨币种相加
         const c = costOf(r, false);
-        if (c == null) continue;
+        if (c == null) return;
+        boundaryDayActive = true;
         total += c;
         const oc = costOf(r, true);
         if (oc != null) offpeakTotal += oc;
-        daySet.add(beijingDayKey(r.ts));
-      }
+      });
+      if (boundaryDayActive) daysActive += 1;
       if (total <= 0 || balance == null) return null;
-      const daysActive = Math.max(1, daySet.size);
+      daysActive = Math.max(1, daysActive);
       const dailySpend = total / daysActive;
       const offpeakDailySpend = offpeakTotal / daysActive;
       return {
@@ -2353,21 +3089,15 @@ export default {
     }
 
     // ---------- 今日花费（北京时间当日累计，v1.6 账户 + 币种双条件过滤） ----------
+    // v1.9：直接读当日桶 O(1)（桶在记账时即含全部记录，含 unpriced 的 token，cost 只算 priced）
     function todaySpend(nowMs, selection) {
       const sel = selection || modelSelection();
       const activeAccount = accountForProvider(sel.provider);
       const key = beijingDayKey(nowMs);
       const cur = activeCurrency(selection);
-      let total = 0;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (beijingDayKey(r.ts) !== key) continue;
-        // v1.6：账户 + 币种双条件过滤
-        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        if (recordCurrency(r) !== cur) continue;
-        const c = costOf(r, false);
-        if (c != null) total += c;
-      }
+      const accountBuckets = summariesState.dayBuckets[key] && summariesState.dayBuckets[key][accountBucketKey(activeAccount)];
+      const bucket = accountBuckets && accountBuckets[safeMapKey(cur)];
+      const total = bucket ? bucket.cost : 0;
       return Math.round(total * 1000) / 1000;
     }
 
@@ -2378,34 +3108,40 @@ export default {
       const d = new Date(nowMs + 8 * 3600 * 1000);
       const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
       const cur = activeCurrency(selection);
+      const accountKey = accountBucketKey(activeAccount);
+      const currencyKey = safeMapKey(cur);
       let total = 0;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        const rd = new Date(r.ts + 8 * 3600 * 1000);
-        if (rd.getUTCFullYear() + '-' + String(rd.getUTCMonth() + 1).padStart(2, '0') !== key) continue;
-        // v1.6：账户 + 币种双条件过滤
-        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        if (recordCurrency(r) !== cur) continue;
-        const c = costOf(r, false);
-        if (c != null) total += c;
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        if (!day.startsWith(key)) continue;
+        const accountBuckets = summariesState.dayBuckets[day][accountKey];
+        const bucket = accountBuckets && accountBuckets[currencyKey];
+        if (bucket) total += bucket.cost;
       }
       return Math.round(total * 1000) / 1000;
     }
     function last30dSpend(nowMs, selection) {
       const sel = selection || modelSelection();
       const activeAccount = accountForProvider(sel.provider);
-      const cutoff = nowMs - 30 * 86400 * 1000;
+      const cutoff = nowMs - 30 * MS_PER_DAY;
+      const cutoffDay = beijingDayKey(cutoff);
       const cur = activeCurrency(selection);
+      const accountKey = accountBucketKey(activeAccount);
+      const currencyKey = safeMapKey(cur);
       let total = 0;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        if (r.ts < cutoff) continue;
-        // v1.6：账户 + 币种双条件过滤
-        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        if (recordCurrency(r) !== cur) continue;
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        if (day <= cutoffDay) continue;
+        const accountBuckets = summariesState.dayBuckets[day][accountKey];
+        const bucket = accountBuckets && accountBuckets[currencyKey];
+        if (bucket) total += bucket.cost;
+      }
+      // 截止日是半天：桶是整日聚合，不能整读，在明细上逐条过滤保持等价
+      scanDetailRange(beijingDayStartMs(cutoffDay), beijingDayStartMs(cutoffDay) + MS_PER_DAY, function (r) {
+        if (r.ts < cutoff) return;
+        if (activeAccount !== null && recordAccount(r) !== activeAccount) return;
+        if (recordCurrency(r) !== cur) return;
         const c = costOf(r, false);
         if (c != null) total += c;
-      }
+      });
       return Math.round(total * 1000) / 1000;
     }
 
@@ -2419,6 +3155,8 @@ export default {
     }
 
     function computeEstimate(nowMs) {
+      // v1.9：会话合计取一次，估算与校准两处复用（原来各全扫一遍明细）
+      const allSessions = sessionTotals();
       const pricing = computePricing(nowMs);
       const bal = activeBalanceSummary(config.activeProvider, nowMs);
       const balance = bal.data ? bal.data.total : null;
@@ -2454,7 +3192,7 @@ export default {
             offpeakBase: Math.floor(balance / scenarioCost(sc, 0.5, offpeakPrices)),
           };
         });
-        const calib = calibrationFrom(sessionTotals(), CALIB_SESSIONS);
+        const calib = calibrationFrom(allSessions, CALIB_SESSIONS);
         if (calib && calib.medianOutput > 0) {
           const sc = {
             id: 'calibrated', label: '你的典型会话',
@@ -2478,7 +3216,7 @@ export default {
         balance: balance,
         conversion: conversion,
         scenarios: scenarios,
-        calibration: calibrationFrom(sessionTotals(), CALIB_SESSIONS),
+        calibration: calibrationFrom(allSessions, CALIB_SESSIONS),
         pricing: pricing,
         fetchedAt: balances[config.activeProvider] ? balances[config.activeProvider].fetchedAt : null,
         stale: !!balances[config.activeProvider] && balances[config.activeProvider].error !== null && balances[config.activeProvider].data !== null,
@@ -2487,23 +3225,25 @@ export default {
     }
 
     // ---------- 全部花费（v1.6 账户 + 币种双条件过滤） ----------
+    // v1.9：全部历史读全量日桶（含已折叠天），不再回扫明细
     function totalSpend(selection) {
       const sel = selection || modelSelection();
       const activeAccount = accountForProvider(sel.provider);
       const cur = activeCurrency(selection);
+      const accountKey = accountBucketKey(activeAccount);
+      const currencyKey = safeMapKey(cur);
       let total = 0;
-      for (let i = 0; i < usageRecords.length; i++) {
-        const r = usageRecords[i];
-        // v1.6：账户 + 币种双条件过滤
-        if (activeAccount !== null && recordAccount(r) !== activeAccount) continue;
-        if (recordCurrency(r) !== cur) continue;
-        const c = costOf(r, false);
-        if (c != null) total += c;
+      for (const day of Object.keys(summariesState.dayBuckets)) {
+        const accountBuckets = summariesState.dayBuckets[day][accountKey];
+        const bucket = accountBuckets && accountBuckets[currencyKey];
+        if (bucket) total += bucket.cost;
       }
       return Math.round(total * 1000) / 1000;
     }
 
     // ---------- 用量汇总 ----------
+    // v1.9：全部字段由日桶/会话索引组装（O(桶数+会话数)+边界天扫描），明细遍历只剩
+    // “当前会话边界天 + 各滚动窗截止日”，不再随总记录数增长
     function getUsageSummary(nowMs, sessionId, selection) {
       const sel = selection || modelSelection();
       // v1.6：计算当前活跃账户，用于会话聚合过滤
@@ -2512,7 +3252,7 @@ export default {
       return {
         sessions: sessions.length,
         calibration: calibrationFrom(sessions, CALIB_SESSIONS),
-        currentSession: currentSessionSummary(usageRecords, activeAccount, sessionId),
+        currentSession: currentSessionSummary(activeAccount, sessionId),
         spend: spendSummary(nowMs, selection),
         todaySpend: todaySpend(nowMs, selection),
         monthSpend: monthSpend(nowMs, selection),
@@ -2544,39 +3284,39 @@ export default {
     }
 
     // ---------- 花费趋势 ----------
+    // v1.9：逐日点位改读日桶（一次按桶扫描）；byModel 需要模型维度（桶无此维度），
+    // 保留一次保留窗内的明细扫描（7/30 天 ⊆ 90 天窗，不再随总历史增长）
     function spendTrend(nowMs, days) {
       const d = days === 30 ? 30 : 7;
       const points = [];
-      const byModel = {};
       for (let i = d - 1; i >= 0; i--) {
         const dayStart = new Date(nowMs + 8 * 3600 * 1000);
         dayStart.setUTCDate(dayStart.getUTCDate() - i);
         dayStart.setUTCHours(0, 0, 0, 0);
         const startMs = dayStart.getTime() - 8 * 3600 * 1000;
-        const endMs = startMs + 86400 * 1000;
+        const dayKey = beijingDayKey(startMs);
         const label = String(dayStart.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dayStart.getUTCDate()).padStart(2, '0');
         let spend = 0;
         let offpeak = 0;
-        for (let j = 0; j < usageRecords.length; j++) {
-          const r = usageRecords[j];
-          if (r.ts < startMs || r.ts >= endMs) continue;
-          const c = costOf(r, false);
-          if (c == null) continue;
-          spend += c;
-          const oc = costOf(r, true);
-          if (oc != null) offpeak += oc;
+        const dayBuckets = summariesState.dayBuckets[dayKey] || {};
+        for (const account of Object.keys(dayBuckets)) {
+          for (const currency of Object.keys(dayBuckets[account])) {
+            const bucket = dayBuckets[account][currency];
+            spend += bucket.cost;
+            offpeak += bucket.costOffpeak;
+          }
         }
         points.push({ label: label, spend: Math.round(spend * 1000) / 1000, offpeak: Math.round(offpeak * 1000) / 1000 });
       }
-      const cutoff = nowMs - d * 86400 * 1000;
-      for (let j = 0; j < usageRecords.length; j++) {
-        const r = usageRecords[j];
-        if (r.ts < cutoff) continue;
+      const cutoff = nowMs - d * MS_PER_DAY;
+      const byModel = {};
+      scanDetailRange(beijingDayStartMs(beijingDayKey(cutoff)), Infinity, function (r) {
+        if (r.ts < cutoff) return;
         const c = costOf(r, false);
-        if (c == null) continue;
+        if (c == null) return;
         const key = r.model || r.provider;
         byModel[key] = (byModel[key] || 0) + c;
-      }
+      });
       const byModelList = Object.keys(byModel).map(function (m) {
         return { model: m, spend: Math.round(byModel[m] * 1000) / 1000 };
       }).sort(function (a, b) { return b.spend - a.spend; });
@@ -2655,11 +3395,93 @@ export default {
       },
       setInfoDensity: function (args) {
         const d = args && typeof args === 'object' ? args.density : null;
-        if (d === 'full' || d === 'compact') config.infoDensity = d;
+        // v1.9.0 PR2：密度从内存态改为落盘持久（重启不再丢）；校验字面保持严格两态
+        if (d === 'full' || d === 'compact') {
+          if (fieldSettings.infoDensity !== d) {
+            fieldSettings.infoDensity = d;
+            settingsConfigVersion += 1;
+            persistSettings();
+          }
+          if (config.infoDensity !== d) config.infoDensity = d;
+        }
         return { infoDensity: config.infoDensity };
       },
+      // ---------- v1.9.0 PR2：字段显隐/颜色配置（白名单校验 + 增量 patch + 原子落盘） ----------
+      getFieldConfig: function () {
+        return settingsPayload(null);
+      },
+      setFieldConfig: function (args) {
+        const patch = isPlainSettingsObject(args) ? args : null;
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors'))) {
+          throw invalidArgument('patch 需包含 fields 或 colors 之一');
+        }
+        // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
+        let normalizedFields = null;
+        let normalizedColors = null;
+        if (Object.hasOwn(patch, 'fields')) {
+          const patchFields = patch.fields;
+          if (!isPlainSettingsObject(patchFields)) throw invalidArgument('fields 必须是对象');
+          normalizedFields = {};
+          for (const key of Object.keys(patchFields)) {
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument('未知字段 id: ' + key);
+            // D6 用户拍板：锚点字段与其他字段同等可隐藏——白名单只校验 id 合法性，不再对锚点特殊拒绝
+            if (typeof patchFields[key] !== 'boolean') throw invalidArgument('字段开关必须是布尔值: ' + key);
+            normalizedFields[key] = patchFields[key];
+          }
+        }
+        if (Object.hasOwn(patch, 'colors')) {
+          const patchColors = patch.colors;
+          if (!isPlainSettingsObject(patchColors)) throw invalidArgument('colors 必须是对象');
+          normalizedColors = {};
+          for (const key of Object.keys(patchColors)) {
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument('未知字段 id: ' + key);
+            const value = normalizeColorValue(patchColors[key]);
+            if (value === undefined) throw invalidArgument('颜色只接受预设色名或 #RRGGBB: ' + key);
+            normalizedColors[key] = value;
+          }
+        }
+        let changed = false;
+        let persistError = null;
+        for (const key of Object.keys(normalizedFields || {})) {
+          if (fieldSettings.fields[key] !== normalizedFields[key]) {
+            fieldSettings.fields[key] = normalizedFields[key];
+            changed = true;
+          }
+        }
+        for (const key of Object.keys(normalizedColors || {})) {
+          if (fieldSettings.colors[key] !== normalizedColors[key]) {
+            fieldSettings.colors[key] = normalizedColors[key];
+            changed = true;
+          }
+        }
+        if (changed) {
+          settingsConfigVersion += 1;
+          persistError = persistSettings();
+        }
+        return settingsPayload(persistError);
+      },
+      resetFieldConfig: function () {
+        // 只重置标签显隐；颜色保持不动（两个重置按钮彼此独立）
+        fieldSettings.fields = shallowSettingsCopy(defaultFieldSettings().fields);
+        settingsConfigVersion += 1;
+        const persistError = persistSettings();
+        return settingsPayload(persistError);
+      },
+      resetFieldColors: function () {
+        // 只重置颜色为默认（null）；标签显隐保持不动
+        fieldSettings.colors = shallowSettingsCopy(defaultFieldSettings().colors);
+        settingsConfigVersion += 1;
+        const persistError = persistSettings();
+        return settingsPayload(persistError);
+      },
     };
-    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true };
+    // 写操作与触发宿主网络请求的方法一律要求同源（防跨站驱动宿主写文件/发请求）
+    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true };
+    function invalidArgument(message) {
+      const err = new Error(message);
+      err.status = 400;
+      return err;
+    }
 
     function sameOrigin(req) {
       const fetchSite = req.headers['sec-fetch-site'];
@@ -2753,6 +3575,7 @@ export default {
     const cachedPricing = loadPricingCacheFromDisk();
     if (cachedPricing) applyRemotePricingEntries(cachedPricing);
     backfillUnpricedRecords(); // 内置表已覆盖的部分先补算
+    if (maybeFoldUsage(Date.now())) scheduleSave(); // 启动折叠超窗明细（在回填之后：刚可计价的记录先补算再折叠，不漏一分钱）
     refreshRemotePricing('启动'); // 网络刷新异步进行；成功后内部会再次触发回填
     ctx.interval(function () { refreshRemotePricing('定时'); }, REMOTE_PRICING_REFRESH_MS);
     refreshAllBalances();
@@ -2765,7 +3588,7 @@ export default {
 
     // 卸载时冲刷未落盘的记账记录
     return function () {
-      if (dirty) flushSave();
+      if (dirty || summariesDirty) flushSave();
     };
   },
 };

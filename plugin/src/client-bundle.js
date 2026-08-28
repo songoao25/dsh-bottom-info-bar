@@ -92,6 +92,220 @@ function mergeLoadResults(prev, results) {
   return next;
 }
 
+// ---------- v1.9.0 PR2：字段显隐/颜色配置（宿主落盘，设置页变更后经 CustomEvent 即时同步） ----------
+// 字段注册表/预设色板由构建从 constants.js 注入（单一来源，宿主白名单同源）
+const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
+const PRESET_COLORS = /*__PRESET_COLORS__*/[];
+const PRESET_COLOR_SET = new Set(PRESET_COLORS);
+
+let fieldConfig = { fields: {}, colors: {} };
+let fieldConfigVersion = 0;
+let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
+const fieldConfigListeners = new Set();
+let fieldConfigInFlight = false;
+let fieldConfigRefetchPending = false; // 在途期间收到刷新请求（如设置页 CustomEvent）→ 当前响应落地后立即补拉（D3）
+
+function applyFieldConfigSnapshot(next) {
+  fieldConfig = {
+    fields: next && next.fields && typeof next.fields === 'object' ? next.fields : {},
+    colors: next && next.colors && typeof next.colors === 'object' ? next.colors : {},
+  };
+  fieldConfigVersion += 1;
+  fieldConfigListeners.forEach(function (listener) { listener(); });
+}
+
+// 版本守卫（纯函数，供单测）：只有严格更新的快照才应用。
+// - incoming 缺失（旧宿主无 configVersion）→ 接受，兼容不阻断；
+// - 尚未应用过任何快照（applied < 0）→ 接受；
+// - 相同版本不重复应用（宿主每次变更必 +1，同版本即同内容，省去 30s 轮询的无谓重渲染）；
+// - 过期响应（incoming < applied）→ 拒绝，绝不回退用户刚保存的配置。
+// 注：宿主重启必然伴随 dsh web 重启与页面重载，客户端版本号随之重置，不存在版本回退场景。
+function fieldConfigSnapshotIsNewer(incomingVersion, appliedVersion) {
+  if (typeof incomingVersion !== 'number') return true;
+  if (!(appliedVersion >= 0)) return true;
+  return incomingVersion > appliedVersion;
+}
+
+// 宿主把配置常驻内存缓存，拉取即回；在途去重避免 30s 轮询叠加请求。
+// D3：在途期间的新刷新请求（设置页 CustomEvent）记为 pending，当前响应落地后立即补拉，
+// 配合版本守卫——过期响应直接丢弃——保证刚保存的配置最迟一次往返内生效，绝不被旧响应覆盖。
+function refreshFieldConfig() {
+  if (fieldConfigInFlight) { fieldConfigRefetchPending = true; return; }
+  fieldConfigInFlight = true;
+  rpc('getFieldConfig').then(function (cfg) {
+    fieldConfigInFlight = false;
+    if (cfg && typeof cfg === 'object') {
+      const incoming = typeof cfg.configVersion === 'number' ? cfg.configVersion : null;
+      if (fieldConfigSnapshotIsNewer(incoming, fieldConfigServerVersion)) {
+        if (incoming !== null) fieldConfigServerVersion = incoming;
+        applyFieldConfigSnapshot(cfg);
+      }
+      // 过期/相同版本响应：直接丢弃，不触发重渲染
+    }
+    if (fieldConfigRefetchPending) { fieldConfigRefetchPending = false; refreshFieldConfig(); }
+  }).catch(function () {
+    fieldConfigInFlight = false;
+    if (fieldConfigRefetchPending) { fieldConfigRefetchPending = false; refreshFieldConfig(); }
+  });
+}
+
+// 未知/缺省 id 一律视为显示：与历史行为一致（默认值全部=显示），前向兼容新字段
+function fieldVisible(id) {
+  return fieldConfig.fields[id] !== false;
+}
+
+function fieldColor(id) {
+  const value = fieldConfig.colors[id];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+// 深色主题下把自定义 hex 向白色混合 45%，避免深底上不可读；预设色名走三套主题变量，无需处理
+function readableDarkVariant(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  function mix(channel) { return Math.round(channel + (255 - channel) * 0.45); }
+  const r = mix((value >> 16) & 255);
+  const g = mix((value >> 8) & 255);
+  const b = mix(value & 255);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+// WCAG 相对亮度（对比度计算用，纯函数供单测）
+function hexLuminance(value) {
+  function linear(channel) {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  return 0.2126 * linear((value >> 16) & 255) + 0.7152 * linear((value >> 8) & 255) + 0.0722 * linear(value & 255);
+}
+
+// 浅色主题钳制（D2）：自定义 hex 对白底对比度 < 4.5:1 时逐级向黑混合（每步 5%，至多 95%），
+// 直到可读；本就可读的颜色原样返回（大写规范化）。深浅两套变量由此始终各自可读。
+function readableLightVariant(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  if (1.05 / (hexLuminance(value) + 0.05) >= 4.5) return hex.toUpperCase();
+  for (let step = 1; step <= 19; step++) {
+    const keep = 1 - step * 0.05;
+    const r = Math.round(((value >> 16) & 255) * keep);
+    const g = Math.round(((value >> 8) & 255) * keep);
+    const b = Math.round((value & 255) * keep);
+    const candidate = (r << 16) | (g << 8) | b;
+    if (step === 19 || 1.05 / (hexLuminance(candidate) + 0.05) >= 4.5) {
+      return '#' + candidate.toString(16).padStart(6, '0').toUpperCase();
+    }
+  }
+  return hex.toUpperCase();
+}
+
+// 字段已自定义颜色时返回要注入的 CSS 变量；未自定义返回 undefined → 变量不存在 → 完全沿用现有颜色（零回归）
+// 浅色默认层取浅色钳制变体（--bi-field-<id>），深色覆盖层取向白加亮变体（--bi-field-<id>-dark）
+function fieldStyle(id) {
+  const color = fieldColor(id);
+  if (!color) return undefined;
+  const style = {};
+  if (PRESET_COLOR_SET.has(color)) {
+    style['--bi-field-' + id] = 'var(--bi-palette-' + color + ')';
+    return style;
+  }
+  style['--bi-field-' + id] = readableLightVariant(color);
+  style['--bi-field-' + id + '-dark'] = readableDarkVariant(color);
+  return style;
+}
+
+// 字段级颜色 CSS 生成：回退值=各字段原语义色，未自定义时渲染结果与旧版一致。
+// 深色主题规则用更高优先级选择器优先取 hex 加亮变体（--bi-field-<id>-dark；预设色名无该变量时自然回落）。
+function buildFieldColorCss() {
+  const rules = [];
+  for (let i = 0; i < FIELD_REGISTRY.length; i++) {
+    const field = FIELD_REGISTRY[i];
+    const id = field.id;
+    const kind = field.colorKind;
+    const attr = '[data-field="' + id + '"]';
+    let pairs;
+    if (kind === 'alert') {
+      pairs = [
+        ['.bi-root ' + attr + '.bi-err', 'var(--bi-state-alert)'],
+        ['.bi-root ' + attr + '.bi-stale', 'var(--bi-state-alert)'],
+        ['.bi-root ' + attr + '.bi-update', 'var(--bi-state-alert)'],
+      ];
+    } else if (kind === 'period') {
+      pairs = [
+        ['.bi-root ' + attr + '.bi-peak', 'var(--bi-state-alert)'],
+        ['.bi-root ' + attr + '.bi-offpeak', 'var(--bi-state-price-low)'],
+      ];
+    } else if (kind === 'provider') {
+      pairs = [
+        ['.bi-root ' + attr, 'inherit'],
+        ['.bi-root ' + attr + ' .bi-model-provider', 'var(--bi-label-primary)'],
+      ];
+    } else if (kind === 'muted') {
+      pairs = [['.bi-root ' + attr, 'var(--bi-label-supporting)']];
+    } else {
+      pairs = [['.bi-root ' + attr, 'inherit']];
+    }
+    for (let j = 0; j < pairs.length; j++) {
+      const selector = pairs[j][0];
+      const fallback = pairs[j][1];
+      const light = 'var(--bi-field-' + id + ', ' + fallback + ')';
+      const dark = 'var(--bi-field-' + id + '-dark, ' + light + ')';
+      rules.push(selector + ' { color: ' + light + '; }');
+      rules.push('body[data-ds-dark-theme] ' + selector + ' { color: ' + dark + '; }');
+    }
+  }
+  return rules.join('\n');
+}
+const FIELD_COLOR_CSS = buildFieldColorCss();
+// 订阅窗口 key → 字段 id（简洁模式只显示优先窗口的既有逻辑保持不变，只叠加显隐过滤）
+const WINDOW_FIELD_IDS = { five_hour: 'subWindow5h', seven_day: 'subWindowWeek', monthly: 'subWindowMonth' };
+function windowFieldVisible(key) {
+  const id = WINDOW_FIELD_IDS[key];
+  return id ? fieldVisible(id) : true;
+}
+
+// 降级节点现在包着 data-field 容器（fieldSpan 着色），文案要穿透一层包装再读
+function trailingErrorText(node) {
+  let current = node;
+  for (let depth = 0; depth < 3 && current && current.props; depth++) {
+    const child = current.props.children;
+    if (typeof child === 'string') return child;
+    current = child;
+  }
+  return '';
+}
+
+// 行组装（模块级纯函数，createElement 注入以便单测用桩验证分隔符收合与全隐藏零输出）：
+// 居中组之间插一个分隔符；尾部错误组多来源「刷新失败」去重后逐个接在右侧，
+// 分隔符只在已有内容之后出现——全空输入返回空数组（D6：零节点/零分隔符）。
+function assembleInfoBarRow(groups, trailingErrorGroups, createElement) {
+  const nodes = [];
+  for (let i = 0; i < groups.length; i++) {
+    if (i > 0) nodes.push(createElement('span', { key: 'sep' + i, className: 'bi-sep' }, '|'));
+    nodes.push(createElement('span', { key: 'g' + i }, groups[i]));
+  }
+  const seenRefreshFailure = { value: false };
+  const visibleErrors = trailingErrorGroups.filter(function (node) {
+    const text = trailingErrorText(node);
+    if (text !== '刷新失败') return true;
+    if (seenRefreshFailure.value) return false;
+    seenRefreshFailure.value = true;
+    return true;
+  });
+  for (let i = 0; i < visibleErrors.length; i++) {
+    if (groups.length > 0 || i > 0) nodes.push(createElement('span', { key: 'errsep' + i, className: 'bi-sep' }, '|'));
+    nodes.push(createElement('span', { key: 'err' + i }, visibleErrors[i]));
+  }
+  return nodes;
+}
+
+// D6 用户拍板：全部字段隐藏 = 底栏彻底移除。此判定为纯函数供单测：
+// 注册表内没有任何可见字段，或渲染结果（原生行/主行/错误组）全空 → 信息栏整体不渲染，
+// 不留空行、占位高度或悬空分隔符；density 点击因无 DOM 而天然无副作用。
+function infoBarShouldRemoveAll(registry, isVisible) {
+  for (let i = 0; i < registry.length; i++) {
+    if (isVisible(registry[i].id)) return false;
+  }
+  return registry.length > 0;
+}
+
 function installStyles() {
   const id = 'dsh-bottom-info-bar';
   const existing = document.querySelector('style[data-plugin-css="' + id + '"]');
@@ -150,6 +364,12 @@ function installStyles() {
       .bi-model-capability-pending { visibility: hidden; }
       /* 读屏说明不参与视觉排版。 */
       .bi-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      /* v1.9.0 PR2 预设色板：浅色默认 → 深色覆盖 → 增强对比三套成对（与现有语义色同一套规则）；设置页共用 .bib-set-root 取同一色板 */
+      .bi-root, .bib-set-root { --bi-palette-red: #d92d20; --bi-palette-green: #087f5b; --bi-palette-blue: #0044cc; --bi-palette-purple: #6941c6; --bi-palette-orange: #b54708; --bi-palette-neutral: var(--dsw-alias-label-primary, var(--bi-label-primary, #333)); }
+      body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff6961; --bi-palette-green: #86efac; --bi-palette-blue: #66a3ff; --bi-palette-purple: #b19cf7; --bi-palette-orange: #fdb022; }
+      @media (prefers-contrast: more) { body:not([data-ds-dark-theme]) .bi-root, body:not([data-ds-dark-theme]) .bib-set-root { --bi-palette-red: #ad1717; --bi-palette-green: #05603a; --bi-palette-blue: #003399; --bi-palette-purple: #4a1fb8; --bi-palette-orange: #7a2e0e; } body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff7770; --bi-palette-blue: #80b3ff; --bi-palette-purple: #c9b8ff; --bi-palette-orange: #ffcc80; } }
+      /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
+` + FIELD_COLOR_CSS + `
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -239,6 +459,16 @@ module.exports = {
       }
     } catch (err) { /* 默认完整 */ }
 
+    // v1.9.0 PR2：字段配置与密度同型——启动拉取一次；设置页保存成功后派发 CustomEvent 即时同步；
+    // load() 周期顺带校准（宿主常驻内存缓存，拉取即回）
+    refreshFieldConfig();
+    ctx.effect(function () {
+      if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+      const onConfigChanged = function () { refreshFieldConfig(); };
+      document.addEventListener('dsh-bib-config-changed', onConfigChanged);
+      return function () { document.removeEventListener('dsh-bib-config-changed', onConfigChanged); };
+    }, 'dsh-bottom-info-bar: field config sync');
+
     // ---------- 组件 ----------
     function BottomInfoBar(props) {
       // 原生/会话投影（hooks 无条件调用）
@@ -271,6 +501,17 @@ module.exports = {
           densityBusyListeners.delete(setIsDensitySaving);
         };
       }, []);
+
+      // v1.9.0 PR2：字段配置订阅——设置页保存（CustomEvent）或周期校准更新配置时重渲染。
+      // 配置本体存模块级单例，组件只记版本号；订阅建立时立即回读避免首帧用过期配置。
+      const [fieldConfigTick, setFieldConfigTick] = React.useState(fieldConfigVersion);
+      React.useEffect(function () {
+        const listener = function () { setFieldConfigTick(fieldConfigVersion); };
+        fieldConfigListeners.add(listener);
+        setFieldConfigTick(fieldConfigVersion);
+        return function () { fieldConfigListeners.delete(listener); };
+      }, []);
+      void fieldConfigTick;
 
       // 当前会话 ID 多路获取：slotProps 标准 kit → session 快照 → 运行时 sessions 服务
       // （DSH 各版本注入方式不同，任一路可用即拿到真实会话 ID，避免回退到上一会话的账）
@@ -344,6 +585,8 @@ module.exports = {
       const cachedSessionModel = sessionId ? sessionModelCache.get(sessionId) : null;
       const activeSessionModel = sessionModel && sessionModel.sessionId === sessionId ? sessionModel : (cachedSessionModel || null);
       const load = React.useCallback(function (selection) {
+        // v1.9.0 PR2：周期顺带校准字段配置（宿主内存缓存，即回；设置页变更另有 CustomEvent 即时通道）
+        refreshFieldConfig();
         const requestVersion = ++loadVersionRef.current;
         const activeSelection = selection || activeSessionModel;
         const selectionArgs = activeSelection ? { selection: { provider: activeSelection.provider, model: activeSelection.model } } : {};
@@ -605,62 +848,86 @@ module.exports = {
         );
       }
 
+      // 字段包装：带 data-field 与（可选）颜色变量的容器 span，供 CSS 按字段着色（未自定义时变量不存在，零回归）
+      function fieldSpan(id, key, children) {
+        return React.createElement('span', { key: key, 'data-field': id, style: fieldStyle(id) }, children);
+      }
+
       // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
+      // v1.9.0 PR2：每个渲染片段按设置过滤（fieldVisible）；隐藏不占位，组间分隔符由组装层自动收合
       function pushBalanceGroups(groups, trailingErrorGroups) {
         const bal = state.balance;
         const errors = state.errors || {};
         const alertActive = !!(bal && bal.alert && bal.alert.active);
-        groups.push(providerGroup());
+        if (fieldVisible('anchorGroup')) {
+          const anchor = providerGroup();
+          groups.push(React.cloneElement(anchor, { 'data-field': 'anchorGroup', style: fieldStyle('anchorGroup') }));
+        }
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-muted', key: 'unmapped', title: '该服务商暂未适配余额查询，后续版本将支持。' }, '未适配'));
+          if (fieldVisible('unmapped')) {
+            trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
+              React.createElement('span', { className: 'bi-muted', title: '该服务商暂未适配余额查询，后续版本将支持。' }, '未适配')));
+          }
         }
         // 余额（纯金额；hover 仅展示余额，不显示充值/赠金）
         // v1.6 T7：未配置提示改为按账户显示凭据名（去掉写死的 DeepSeek 文案）
         else if (bal && bal.error && bal.error.kind === 'no-key') {
-          const credName = bal.error.message ? String(bal.error.message).replace('未配置 ', '') : 'API_KEY';
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'nokey', title: '未配置 ' + credName + '。请在"设置 → 模型"中填写。' },
-            '未配置 ' + credName + ' → 设置→模型 填写'));
+          if (fieldVisible('noKeyHint')) {
+            const credName = bal.error.message ? String(bal.error.message).replace('未配置 ', '') : 'API_KEY';
+            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+              React.createElement('span', { className: 'bi-err', title: '未配置 ' + credName + '。请在"设置 → 模型"中填写。' },
+                '未配置 ' + credName + ' → 设置→模型 填写')));
+          }
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';
           const balTitle = bal.estimate
             ? '估算余额：' + symbol + fmt(bal.data.total)
             : '余额：' + symbol + fmt(bal.data.total);
-          groups.push(React.createElement('span', { key: 'bal', title: balTitle },
-            metric('余额', symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
-            alertActive ? React.createElement('span', { className: 'bi-low-status' }, '低') : null,
-            bal.estimate ? React.createElement('span', { className: 'bi-muted' }, '（估算）') : null,
-          ));
+          if (fieldVisible('balance')) {
+            groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balTitle },
+              metric('余额', symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
+              alertActive ? React.createElement('span', { className: 'bi-low-status' }, '低') : null,
+              bal.estimate ? React.createElement('span', { className: 'bi-muted' }, '（估算）') : null,
+            )));
+          }
           // host 快照失败（bal.error）或本次 RPC 失败（errors.balance）→ 均保留旧数据 + 降级标记
-          if (bal.error || errors.balance) {
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'balerr', title: '余额暂不可用；正在显示上次数据并自动重试。' }, '刷新失败'));
+          if (fieldVisible('balanceError') && (bal.error || errors.balance)) {
+            trailingErrorGroups.push(fieldSpan('balanceError', 'balerr',
+              React.createElement('span', { className: 'bi-stale', title: '余额暂不可用；正在显示上次数据并自动重试。' }, '刷新失败')));
           }
         } else if (bal && bal.error) {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'berr', title: '余额获取失败。请检查网络和 API Key。' }, '余额获取失败'));
+          if (fieldVisible('balanceError')) {
+            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+              React.createElement('span', { className: 'bi-err', title: '余额获取失败。请检查网络和 API Key。' }, '余额获取失败')));
+          }
         } else if (errors.balance) {
           // 本次 RPC 失败且无旧数据：只降级余额块，其余端点数据照常渲染
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'berr', title: '余额获取失败。请检查网络和 API Key。' }, '余额获取失败'));
+          if (fieldVisible('balanceError')) {
+            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+              React.createElement('span', { className: 'bi-err', title: '余额获取失败。请检查网络和 API Key。' }, '余额获取失败')));
+          }
         }
 
         // 时段：仅峰谷价服务商显示"高峰价/空闲价"（flat/unknown 服务商不显示；hover 展示具体价格）
         const pr = visiblePricing;
-        if (pr && pr.mode === 'peak-valley') {
+        if (pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
           const peakNow = pr.period === 'peak';
           const p = pr.prices || {};
           const periodTitle = '北京时间 ' + (peakNow ? '高峰价' : '空闲价') + '：输入 ¥' + (p.inputCacheMiss != null ? p.inputCacheMiss : '?')
             + '/M · 缓存 ¥' + (p.inputCacheHit != null ? p.inputCacheHit : '?')
             + '/M · 输出 ¥' + (p.output != null ? p.output : '?') + '/M';
-          groups.push(React.createElement('span', { key: 'period', className: peakNow ? 'bi-peak' : 'bi-offpeak', title: periodTitle },
-            peakNow ? '高峰价' : '空闲价'));
+          groups.push(fieldSpan('period', 'period', React.createElement('span', { className: peakNow ? 'bi-peak' : 'bi-offpeak', title: periodTitle },
+            peakNow ? '高峰价' : '空闲价')));
         }
 
         // 倒计时：仅峰谷价服务商显示"距高峰/距空闲"（hover 展示下次切换时刻；数字加粗）
-        if (pr && pr.mode === 'peak-valley' && pr.nextSwitch) {
+        if (pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
           const peakNow = pr.period === 'peak';
           const countdownTitle = '北京时间 ' + pr.nextSwitch.atLabel + ' 切换为' + (peakNow ? '空闲价' : '高峰价') + '。';
-          groups.push(React.createElement('span', { key: 'countdown', title: countdownTitle },
-            metric('距' + (peakNow ? '空闲' : '高峰'), fmtCountdown(pr.nextSwitch.at - now))));
+          groups.push(fieldSpan('countdown', 'countdown', React.createElement('span', { title: countdownTitle },
+            metric('距' + (peakNow ? '空闲' : '高峰'), fmtCountdown(pr.nextSwitch.at - now)))));
         }
 
         // 本会话花费（公共小部件 pushSessionCost：只显示钱；hover 显示 今天/近一月/全部）
@@ -675,21 +942,25 @@ module.exports = {
         const usg = state.usage;
         const errs = state.errors || {};
         if (usg) {
-          const cs = usg.currentSession;
-          const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
-          const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
-          const symbol = usdSymbol ? '$' : '¥';
-          const costTxt = costCNY != null ? '¥' + costCNY.toFixed(3)
-            : (costUSD != null ? '$' + costUSD.toFixed(3) : symbol + (0).toFixed(3));
-          const today = usg.todaySpend != null ? '今天 ' + symbol + fmt(usg.todaySpend, 3) : '';
-          const month = usg.monthSpend != null ? '近一月 ' + symbol + fmt(usg.monthSpend, 3) : '';
-          const total = usg.totalSpend != null ? '全部 ' + symbol + fmt(usg.totalSpend, 3) : '';
-          const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
-          groups.push(React.createElement('span', { key: 'convo',
-            title: '本会话 ' + costTxt + '（含子代理）' + (detail ? '\n' + detail : '') },
-            metric('本会话', costTxt)));
-        } else if (errs.usage) {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-err', key: 'usageerr', title: '花费暂不可用；不会影响对话。' }, '花费获取失败'));
+          // 隐藏不占位（错误提示属于独立字段 usageError，两支互斥不受影响）
+          if (fieldVisible('sessionCost')) {
+            const cs = usg.currentSession;
+            const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
+            const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
+            const symbol = usdSymbol ? '$' : '¥';
+            const costTxt = costCNY != null ? '¥' + costCNY.toFixed(3)
+              : (costUSD != null ? '$' + costUSD.toFixed(3) : symbol + (0).toFixed(3));
+            const today = usg.todaySpend != null ? '今天 ' + symbol + fmt(usg.todaySpend, 3) : '';
+            const month = usg.monthSpend != null ? '近一月 ' + symbol + fmt(usg.monthSpend, 3) : '';
+            const total = usg.totalSpend != null ? '全部 ' + symbol + fmt(usg.totalSpend, 3) : '';
+            const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
+            groups.push(fieldSpan('sessionCost', 'convo', React.createElement('span', {
+              title: '本会话 ' + costTxt + '（含子代理）' + (detail ? '\n' + detail : '') },
+              metric('本会话', costTxt))));
+          }
+        } else if (errs.usage && fieldVisible('usageError')) {
+          trailingErrorGroups.push(fieldSpan('usageError', 'usageerr',
+            React.createElement('span', { className: 'bi-err', title: '花费暂不可用；不会影响对话。' }, '花费获取失败')));
         }
       }
 
@@ -712,46 +983,57 @@ module.exports = {
        }
 
        function pushSubscriptionGroups(groups, trailingErrorGroups) {
-        groups.push(subscriptionProviderGroup());
+        if (fieldVisible('subServiceGroup')) {
+          const subAnchor = subscriptionProviderGroup();
+          groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));
+        }
         const sub = state.sub;
         const errors = state.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
-        if (sub && sub.planType && sub.expiryAt) {
-          groups.push(React.createElement('span', { key: 'subexp', title: '订阅到期：' + formatDate(sub.expiryAt) + '（本地时区）' },
-            metric('到期', formatDate(sub.expiryAt))));
+        if (sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
+          groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: '订阅到期：' + formatDate(sub.expiryAt) + '（本地时区）' },
+            metric('到期', formatDate(sub.expiryAt)))));
         }
         if (!sub) {
-          if (errors.sub) {
+          if (errors.sub && fieldVisible('refreshFailure')) {
             // 本次 RPC 失败且无旧数据：显示失败信息而非永久"加载中…"
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'suberr', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, '刷新失败'));
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'suberr',
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, '刷新失败')));
           }
           return;
         }
         const rawWindows = Array.isArray(sub.windows) ? sub.windows : [];
+        // v1.9.0 PR2：逐窗口显隐过滤（5h/周/月各自独立开关），后续优先窗口/重置倒计时都基于过滤后的集合
         const windows = rawWindows.filter(function (w) {
-          return w && typeof w.usedPercent === 'number';
+          return w && typeof w.usedPercent === 'number' && windowFieldVisible(w.key);
         });
         const hasData = windows.length > 0;
         // 错误分支：无旧数据时给出明确引导 / 错误文案；有旧数据时走下方渲染并附"刷新失败"标记。
         // no-key（无令牌/缺 access_token）与 auth（令牌失效 401）→ 统一"未绑定/重新绑定"引导——
         // 令牌由独立插件 dsh-chatgpt-subscription 维护，本插件只读令牌显示额度，不自行绑定/续期
         if (sub.error && !hasData) {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'substale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          if (fieldVisible('refreshFailure')) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败')));
+          }
           return;
         }
         // v1.8：充值余额模式——无额度窗口但有 balance 字段（如智谱普通 API 余额用户）
         // 显示"余额 ¥XX.XX"，与 Coding Plan 额度窗口互斥
         if (!hasData && typeof sub.balance === 'number' && isFinite(sub.balance)) {
-          const balTxt = '¥' + fmt(sub.balance, 2);
-          const titleLines = ['订阅源：' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + '（' + (sub.plan || '充值余额') + '）',
-            '可用余额：' + balTxt];
-          groups.push(React.createElement('span', { key: 'subbal', title: titleLines.join('\n') },
-            metric('余额', balTxt)));
+          if (fieldVisible('subBalance')) {
+            const balTxt = '¥' + fmt(sub.balance, 2);
+            const titleLines = ['订阅源：' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + '（' + (sub.plan || '充值余额') + '）',
+              '可用余额：' + balTxt];
+            groups.push(fieldSpan('subBalance', 'subbal', React.createElement('span', { title: titleLines.join('\n') },
+              metric('余额', balTxt))));
+          }
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
           pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
-          if (sub.error || errors.sub) {
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'substale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败')));
           }
           return;
         }
@@ -768,10 +1050,10 @@ module.exports = {
                 return pa - pb;
               })[0]
             : null;
-          
+
           // 完整模式显示全部窗口；简洁模式只显示选中的那个窗口
           const visible = full ? windows : (displayWindow ? [displayWindow] : []);
-          
+
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
           const LOW_QUOTA_PERCENT = 20;
           const titleLines = ['订阅源：' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + (sub.plan ? '（' + sub.plan + '）' : '')]
@@ -785,20 +1067,26 @@ module.exports = {
             if (i > 0) winNodes.push(' · ');
             const remaining = remainingPercent(w);
             const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';
-            winNodes.push(metric(compactWindowLabel(w.key), remaining + '%', numberClass));
+            // 每个窗口独立 data-field（subWindow5h/Week/Month），色变量按字段注入；「低」字标签保留
+            winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,
+              metric(compactWindowLabel(w.key), remaining + '%', numberClass)));
             if (remaining <= LOW_QUOTA_PERCENT) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, '低'));
           }
-          groups.push(React.createElement('span', { key: 'subwin', title: titleLines.join('\n') }, ...winNodes));
+          // 全部窗口被隐藏（或紧凑模式无候选）→ 整组不推送，分隔符由组装层正确收合
+          if (winNodes.length > 0) {
+            groups.push(React.createElement('span', { key: 'subwin', title: titleLines.join('\n') }, ...winNodes));
+          }
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 均保留旧数据 + 降级标记
-          if (sub.error || errors.sub) {
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'substale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败')));
           }
           // 距重置倒计时（与显示的窗口一致，确保额度与倒计时匹配）
-          if (displayWindow && displayWindow.resetsAt) {
+          if (displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
             const cdTitle = displayWindow.label + '窗口 剩余 ' + remainingPercent(displayWindow)
               + '%（已用 ' + displayWindow.usedPercent + '%） · 重置 ' + formatDateTime(displayWindow.resetsAt);
-            groups.push(React.createElement('span', { key: 'subcd', title: cdTitle },
-              metric('距重置', fmtResetCountdown(displayWindow.resetsAt - now))));
+            groups.push(fieldSpan('resetCountdown', 'subcd', React.createElement('span', { title: cdTitle },
+              metric('距重置', fmtResetCountdown(displayWindow.resetsAt - now)))));
           }
         }
       }
@@ -818,19 +1106,26 @@ module.exports = {
       }
 
       function pushBillingGroups(groups, trailingErrorGroups) {
-        groups.push(billingProviderGroup());
+        if (fieldVisible('billingServiceGroup')) {
+          const billAnchor = billingProviderGroup();
+          groups.push(React.cloneElement(billAnchor, { 'data-field': 'billingServiceGroup', style: fieldStyle('billingServiceGroup') }));
+        }
         const bill = state.billing;
         const errors = state.errors || {};
         if (!bill) {
-          if (errors.billing) {
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billerr', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, '刷新失败'));
+          if (errors.billing && fieldVisible('refreshFailure')) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'billerr',
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, '刷新失败')));
           }
           return;
         }
         const d = bill.data;
         const hasSpend = !!(d && (d.currentPeriodSpend != null || d.usage != null));
         if (bill.error && !hasSpend) {
-          trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billstale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          if (fieldVisible('refreshFailure')) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败')));
+          }
           return;
         }
         if (hasSpend) {
@@ -840,17 +1135,28 @@ module.exports = {
             .concat(d.currentPeriodSpend != null ? ['本月花费：' + symbol + fmt(d.currentPeriodSpend, 2)] : [])
             .concat(d.budgetPercent != null ? ['预算使用：' + fmt(d.budgetPercent, 0) + '%'] : [])
             .concat(d.freeRemaining != null ? ['每日免费额度剩余：' + fmt(d.freeRemaining, 0)] : []);
+          // v1.9.0 PR2：本月/预算/免费额度三片段各自显隐，分隔符只在可见片段之间
           const nodes = [];
-          if (d.currentPeriodSpend != null) nodes.push(metric('本月', symbol + fmt(d.currentPeriodSpend, 2)));
-          else if (d.usage != null) nodes.push(metric('本月用量', fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : '')));
-          if (d.budgetPercent != null) nodes.push(' · ', metric('预算', fmt(d.budgetPercent, 0) + '%'));
-          // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
-          if (d.freeRemaining != null && d.resetsAt) {
-            nodes.push(' · ', metric('免费', fmt(d.freeRemaining, 0) + ' · 距重置 ' + fmtResetCountdown(d.resetsAt - now)));
+          if (d.currentPeriodSpend != null && fieldVisible('billingSpend')) {
+            nodes.push(fieldSpan('billingSpend', 'billspend', metric('本月', symbol + fmt(d.currentPeriodSpend, 2))));
+          } else if (d.usage != null && fieldVisible('billingSpend')) {
+            nodes.push(fieldSpan('billingSpend', 'billspend', metric('本月用量', fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
           }
-          groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
-          if (bill.error || errors.billing) {
-            trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'billstale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败'));
+          if (d.budgetPercent != null && fieldVisible('budget')) {
+            if (nodes.length > 0) nodes.push(' · ');
+            nodes.push(fieldSpan('budget', 'billbudget', metric('预算', fmt(d.budgetPercent, 0) + '%')));
+          }
+          // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
+          if (d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
+            if (nodes.length > 0) nodes.push(' · ');
+            nodes.push(fieldSpan('freeQuota', 'billfree', metric('免费', fmt(d.freeRemaining, 0) + ' · 距重置 ' + fmtResetCountdown(d.resetsAt - now))));
+          }
+          if (nodes.length > 0) {
+            groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
+          }
+          if (fieldVisible('refreshFailure') && (bill.error || errors.billing)) {
+            trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, '刷新失败')));
           }
         }
       }
@@ -901,53 +1207,37 @@ module.exports = {
       if (errors.billingMode) failedLabels.push('模式');
       if (errors.sub) failedLabels.push('订阅额度');
       if (errors.billing) failedLabels.push('账单');
-      if (failedLabels.length > 0) {
-        trailingErrorGroups.push(React.createElement('span', { className: 'bi-stale', key: 'degraded',
-          title: failedLabels.join('、') + '暂不可用；正在保留上次数据并自动重试。' }, '刷新失败'));
+      if (failedLabels.length > 0 && fieldVisible('refreshFailure')) {
+        trailingErrorGroups.push(fieldSpan('refreshFailure', 'degraded',
+          React.createElement('span', { className: 'bi-stale', key: 'degraded',
+            title: failedLabels.join('、') + '暂不可用；正在保留上次数据并自动重试。' }, '刷新失败')));
       }
       const persistence = state.usage && state.usage.persistence;
-      if (persistence && persistence.state && persistence.state !== 'ok') {
+      if (persistence && persistence.state && persistence.state !== 'ok' && fieldVisible('persistWarning')) {
         const snapshotOnly = persistence.state === 'snapshot-stale';
-        trailingErrorGroups.push(React.createElement('span', {
-          className: snapshotOnly ? 'bi-stale' : 'bi-err', key: 'ledger-save',
+        trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {
+          className: snapshotOnly ? 'bi-stale' : 'bi-err',
           title: snapshotOnly
             ? '账单流水已保存，但可直接查看的账单文件暂未更新：' + (persistence.message || '未知原因')
             : '本次账单未保存，不会计入金额：' + (persistence.message || '未知原因'),
-        }, snapshotOnly ? '账单待整理' : '账单未保存'));
+        }, snapshotOnly ? '账单待整理' : '账单未保存')));
       }
 
-       if (updateInfo && updateInfo.available === true) {
-         groups.push(React.createElement('span', {
-           className: 'bi-update', key: 'update', title: '请告知你的 Agent 将本插件更新到“' + updateInfo.latest + '”版本。',
-       }, '新版本提醒'));
+       if (updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
+         groups.push(fieldSpan('updateNotice', 'update', React.createElement('span', {
+           className: 'bi-update', title: '请告知你的 Agent 将本插件更新到“' + updateInfo.latest + '”版本。',
+       }, '新版本提醒')));
        }
 
-       // ---- 组装 ----
-      const sepNodes = [];
-      const nodes = [];
-      for (let i = 0; i < groups.length; i++) {
-        if (i > 0) nodes.push(React.createElement('span', { key: 'sep' + i, className: 'bi-sep' }, '|'));
-        nodes.push(React.createElement('span', { key: 'g' + i }, groups[i]));
-      }
-      const seenRefreshFailure = { value: false };
-      const visibleErrors = trailingErrorGroups.filter(function (node) {
-        const text = node && node.props ? node.props.children : '';
-        if (text !== '刷新失败') return true;
-        if (seenRefreshFailure.value) return false;
-        seenRefreshFailure.value = true;
-        return true;
-      });
-      for (let i = 0; i < visibleErrors.length; i++) {
-        if (groups.length > 0 || i > 0) nodes.push(React.createElement('span', { key: 'errsep' + i, className: 'bi-sep' }, '|'));
-        nodes.push(React.createElement('span', { key: 'err' + i }, visibleErrors[i]));
-      }
-      const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);
+       // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
+       const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
+       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);
 
       let row1 = null;
       if (statsProj) {
-        // 每组：{ nodes: React 节点数组（数字用 num 加粗）, text: 纯文本（title 用） }
+        // 每组：{ nodes: React 节点数组（数字用 num 加粗）, text: 纯文本（title 用）, fieldId: 字段 id（着色用） }
         const ng = [];
-        function group(parts, hidden) {
+        function group(parts, hidden, fieldId) {
           const nodesArr = [];
           const texts = [];
           function textOf(part) {
@@ -963,27 +1253,35 @@ module.exports = {
             else if (Array.isArray(p)) { for (let j = 0; j < p.length; j++) nodesArr.push(p[j]); texts.push(textOf(p)); }
             else { nodesArr.push(p); texts.push(textOf(p)); }
           }
-          ng.push({ nodes: nodesArr, text: texts.join(''), hidden: !!hidden });
+          ng.push({ nodes: nodesArr, text: texts.join(''), hidden: !!hidden, fieldId: fieldId || null });
         }
 
-        // 中文界面遵循数字与汉字混排留白：数值与量词视觉上分开，便于快速扫读。
-        group([num(statsProj.turns + ' 轮'), ' · ', num(statsProj.steps + ' 步')]);
+        // v1.9.0 PR2：原生统计行字段按设置过滤（隐藏组完全不进 ng，不占版式也不进 title）
+        if (fieldVisible('turnsSteps')) {
+          // 中文界面遵循数字与汉字混排留白：数值与量词视觉上分开，便于快速扫读。
+          group([num(statsProj.turns + ' 轮'), ' · ', num(statsProj.steps + ' 步')], false, 'turnsSteps');
+        }
 
         const durations = [];
-        if (statsProj.llmMs > 0) durations.push(metric('LLM', formatDuration(statsProj.llmMs)));
-        if (statsProj.toolMs > 0) durations.push(' · ', metric('工具调用', formatDuration(statsProj.toolMs)));
+        if (statsProj.llmMs > 0 && fieldVisible('llmTime')) durations.push(fieldSpan('llmTime', 'durl', metric('LLM', formatDuration(statsProj.llmMs))));
+        if (statsProj.toolMs > 0 && fieldVisible('toolTime')) {
+          if (durations.length > 0) durations.push(' · ');
+          durations.push(fieldSpan('toolTime', 'durt', metric('工具调用', formatDuration(statsProj.toolMs))));
+        }
         if (durations.length > 0) group(durations);
 
         const speeds = [];
         if (statsProj.ttftSteps > 0) speeds.push(metric('首 token 平均', formatDuration(statsProj.ttftMs / statsProj.ttftSteps)));
         if (statsProj.decodeMs > 0) speeds.push(' · ', num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s'));
-        if (speeds.length > 0) group(speeds, HIDE_SPEED_FIELDS); // 不占可见版式，title 浮窗保留
+        if (speeds.length > 0) group(speeds, HIDE_SPEED_FIELDS); // 不占可见版式，title 浮窗保留（官方隐藏字段，非用户可配）
 
         if (usageProj && (billedInput(usageProj) > 0 || (usageProj.outputTokens || 0) > 0)) {
           const denom = billedInput(usageProj);
           const hit = denom > 0 ? Math.round(((usageProj.cacheReadTokens || 0) / denom) * 100) : null;
-          if (hit != null) group([metric('缓存命中', hit + '%')]);
-          group([metric('输入', formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric('输出', formatTokens(usageProj.outputTokens || 0) + ' tok')]);
+          if (hit != null && fieldVisible('cacheHit')) group([metric('缓存命中', hit + '%')], false, 'cacheHit');
+          if (fieldVisible('tokensIO')) {
+            group([metric('输入', formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric('输出', formatTokens(usageProj.outputTokens || 0) + ' tok')], false, 'tokensIO');
+          }
         }
 
         const nativeLine = ng.map(function (g) { return g.text; }).join(' | ');
@@ -993,9 +1291,22 @@ module.exports = {
           if (ng[i].hidden) continue; // 隐藏分组不占版式（title 仍含其文本）
           if (visCount > 0) ngNodes.push(React.createElement('span', { key: 'nsep' + i, className: 'bi-sep' }, '|'));
           visCount++;
-          ngNodes.push(React.createElement('span', { key: 'ng' + i }, ng[i].nodes));
+          ngNodes.push(React.createElement('span', {
+            key: 'ng' + i,
+            'data-field': ng[i].fieldId || undefined,
+            style: ng[i].fieldId ? fieldStyle(ng[i].fieldId) : undefined,
+          }, ng[i].nodes));
         }
-        row1 = React.createElement('div', { id: 'dsh-bottom-info-bar-native', className: 'bi-native-row', title: nativeLine }, ...ngNodes);
+        // D6：原生组全部被隐藏（或全空）→ 原生行不渲染（不留空行/占位；hover 浮窗随之消失）
+        if (ngNodes.length === 0) row1 = null;
+        else row1 = React.createElement('div', { id: 'dsh-bottom-info-bar-native', className: 'bi-native-row', title: nativeLine }, ...ngNodes);
+      }
+
+      // D6 用户拍板：全部字段隐藏 = 底栏彻底移除——不渲染任何 DOM（无空行/占位高度/悬空分隔符），
+      // density 点击因无 DOM 而天然无副作用、不报错。两条路径：①配置层面所有字段都被关闭；
+      // ②渲染层面（数据条件导致）原生行/主行全空。
+      if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0)) {
+        return null;
       }
 
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra' },

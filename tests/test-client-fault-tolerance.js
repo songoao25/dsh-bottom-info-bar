@@ -126,5 +126,31 @@ check('订阅块 RPC 失败且无旧数据 → 只显示刷新失败并提供悬
 check('订阅块失败保留旧快照提示（host 快照失败 / RPC 失败共用）', clientSrc.includes('sub.error || errors.sub'), true);
 check('花费块 RPC 失败且无旧数据 → 简短降级提示', clientSrc.includes("title: '花费暂不可用；不会影响对话。'"), true);
 
+// ---- ⑤ v1.9 PR2 回归：降级节点包上 data-field 容器（fieldSpan 着色）后，
+//      多个「刷新失败」仍必须合并为一个——文案解析要穿透包装层（功能性验证） ----
+const trailingErrorText = extractFn('trailingErrorText');
+function errNode(text, wrapperProps) {
+  const inner = { props: { className: 'bi-stale', children: text } };
+  return wrapperProps ? { props: Object.assign({}, wrapperProps, { children: inner }) } : inner;
+}
+const mixedErrors = [
+  errNode('刷新失败', { 'data-field': 'refreshFailure' }),
+  errNode('账单未保存', { 'data-field': 'persistWarning' }),
+  errNode('刷新失败', { 'data-field': 'refreshFailure' }),
+];
+check('降级文案解析穿透 data-field 包装层', trailingErrorText(mixedErrors[0]) === '刷新失败'
+  && trailingErrorText(mixedErrors[1]) === '账单未保存', true);
+const seen = { value: false };
+const visibleNow = mixedErrors.filter(function (node) {
+  const text = trailingErrorText(node);
+  if (text !== '刷新失败') return true;
+  if (seen.value) return false;
+  seen.value = true;
+  return true;
+});
+check('包装后的多个「刷新失败」仍合并为一个（账单未保存保留）', visibleNow.length === 2
+  && trailingErrorText(visibleNow[0]) === '刷新失败' && trailingErrorText(visibleNow[1]) === '账单未保存', true);
+check('去重过滤器确实改用穿透式文案解析（防回归字面锁定）', clientSrc.includes('const text = trailingErrorText(node);'), true);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

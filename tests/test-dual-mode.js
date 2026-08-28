@@ -252,7 +252,7 @@ const subFn = extractClientFnBody('pushSubscriptionGroups');
 check('client 按会话优先的 billingMode 分支互斥渲染', clientSrc.includes("const isSub = !!(visibleBillingMode && visibleBillingMode.mode === 'subscription')"), true);
 check('client 余额制渲染函数独立保留', clientSrc.includes('function pushBalanceGroups(groups, trailingErrorGroups)'), true);
 check('client 订阅制渲染函数存在', clientSrc.includes('function pushSubscriptionGroups(groups, trailingErrorGroups)'), true);
-check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌）', clientSrc.includes("winNodes.push(metric(compactWindowLabel(w.key), remaining + '%', numberClass))"), true);
+check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌；v1.9 PR2 每窗口独立 data-field）', clientSrc.includes("winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,"), true);
 check('client compact 密度精简为最紧窗口', clientSrc.includes('const visible = full ? windows : (displayWindow ? [displayWindow] : []);'), true);
 check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn.includes("'订阅额度加载中…'"), false);
 check('client 窗口渲染由 hasData 门控（空窗口跳过不占位）', subFn.includes('if (hasData) {'), true);
@@ -263,7 +263,8 @@ check('client 距重置倒计时使用同一窗口，并通过统一 metric 间�
 check('client fmtResetCountdown 天级格式（1d 21h）', clientSrc.includes("d + 'd ' + h + 'h'"), true);
 check('client hover 明细含重置时刻（formatDateTime）', clientSrc.includes("' · 重置 ' + formatDateTime(w.resetsAt)"), true);
 check('client hover 距重置用天级格式（避免与剩余%混淆）', clientSrc.includes("' · 距重置 ' + fmtResetCountdown(w.resetsAt - now)"), true);
-check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup）', clientSrc.includes('groups.push(subscriptionProviderGroup())'), true);
+check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup；v1.9 PR2 经 subServiceGroup 门控+着色）', clientSrc.includes("const subAnchor = subscriptionProviderGroup();")
+  && clientSrc.includes("groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));"), true);
 check('client 订阅服务名映射含 OpenCode Go / Codex / ChatGPT', clientSrc.includes("return 'OpenCode Go'") && clientSrc.includes("return 'Codex'") && clientSrc.includes("return 'ChatGPT'"), true);
 check('client 订阅失败提示按实际订阅服务命名，不把 Codex 误称为 ChatGPT', clientSrc.includes('const serviceName = subscriptionServiceName(source);'), true);
 check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.includes("if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';"), true);

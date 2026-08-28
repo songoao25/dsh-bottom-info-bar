@@ -78,7 +78,7 @@ check('外部分组为 6px、标签与数据为 4px、模型内部圆点为 4px�
   && clientSrc.includes('.bi-model-dot { margin: 0 4px; flex: 0 0 auto; }'), true);
 check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric('余额', symbol + fmt(bal.data.total)")
   && clientSrc.includes("num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s')")
-  && clientSrc.includes("group([num(statsProj.turns + ' 轮'), ' · ', num(statsProj.steps + ' 步')])")
+  && clientSrc.includes("group([num(statsProj.turns + ' 轮'), ' · ', num(statsProj.steps + ' 步')], false, 'turnsSteps')")
   && clientSrc.includes("group([metric('输入', formatTokens(billedInput(usageProj)) + ' tok')"), true);
 check('标签与数据通过 metric 组件统一 4px 边界，不依赖普通字符空格', clientSrc.includes("function metric(label, value, extraClass)")
   && clientSrc.includes("metric('余额', symbol + fmt(bal.data.total)")
