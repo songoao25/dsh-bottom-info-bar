@@ -142,5 +142,133 @@ check('构建产物含被注入的字段注册表（非空锚点占位）', fs.r
   }
 }
 
+// ---------- ⑦ 最终 CSS 结构校验（D1 回归锁，堵住「纯字符串断言测 CSS」的盲区） ----------
+// 用真实注册表还原 installStyles 注入的最终 CSS（与浏览器收到的文本一致），做括号深度分析：
+// 全程不为负、结尾配平、增强对比 @media 块在字段色规则之前闭合、每条字段色规则位于样式表顶层。
+function extractFunctionFrom(source, name) {
+  const start = source.indexOf('function ' + name);
+  if (start < 0) throw new Error('未找到 function ' + name);
+  let depth = 0, i = start, inStr = null;
+  while (i < source.length) {
+    const c = source[i];
+    if (inStr) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === inStr) inStr = null;
+    } else if (c === '"' || c === "'" || c === '`') {
+      inStr = c;
+    } else if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) break; }
+    i++;
+  }
+  return source.slice(start, i + 1);
+}
+function withFakeDocument(run) {
+  const fakeStyle = { dataset: {}, textContent: '' };
+  const originalDocument = global.document;
+  global.document = {
+    querySelector: function () { return null; },
+    createElement: function () { return fakeStyle; },
+    head: { appendChild: function () {} },
+  };
+  try { run(); } finally {
+    if (originalDocument === undefined) delete global.document;
+    else global.document = originalDocument;
+  }
+  return fakeStyle.textContent;
+}
+{
+  const startMarker = 'const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];';
+  const endMarker = 'module.exports = {';
+  const start = clientSrc.indexOf(startMarker);
+  const end = clientSrc.indexOf(endMarker);
+  try {
+    if (start === -1 || end === -1 || end <= start) throw new Error('未能定位客户端 CSS 模块切片');
+    let slice = clientSrc.slice(start, end);
+    slice = slice.replace('/*__FIELD_REGISTRY__*/[]', JSON.stringify(FIELD_REGISTRY))
+      .replace('/*__PRESET_COLORS__*/[]', JSON.stringify(PRESET_COLOR_NAMES));
+    const installStyles = new Function(slice + '\nreturn installStyles;')();
+    const finalCss = withFakeDocument(function () { installStyles(); });
+    const depths = new Array(finalCss.length);
+    let d = 0;
+    for (let i = 0; i < finalCss.length; i++) {
+      if (finalCss[i] === '{') d += 1;
+      else if (finalCss[i] === '}') d -= 1;
+      depths[i] = d;
+    }
+    const depthBefore = function (idx) { return idx <= 0 ? 0 : depths[idx - 1]; };
+    check('D1：最终 CSS 括号全程不为负', depths.every(function (x) { return x >= 0; }), true);
+    check('D1：最终 CSS 括号配平（结尾深度为 0）', depths[depths.length - 1] === 0, true);
+    check('D1：增强对比 @media 块在字段色规则之前闭合', (function () {
+      const mediaStart = finalCss.indexOf('@media (prefers-contrast: more)');
+      if (mediaStart === -1) return false;
+      for (let i = mediaStart + 1; i < finalCss.length; i++) {
+        if (depths[i] === 0) return true; // media 块的闭合点
+      }
+      return false;
+    })(), true);
+    check('D1：全部字段色规则位于样式表顶层（不在任何 @media 内）', FIELD_REGISTRY.every(function (f) {
+      const idx = finalCss.indexOf('.bi-root [data-field="' + f.id + '"]');
+      return idx !== -1 && depthBefore(idx) === 0;
+    }), true);
+    check('D1：字段色规则浅色/深色两层成对生成', FIELD_REGISTRY.every(function (f) {
+      return finalCss.indexOf('var(--bi-field-' + f.id + ',') !== -1
+        && finalCss.indexOf('var(--bi-field-' + f.id + '-dark,') !== -1;
+    }), true);
+  } catch (err) {
+    check('D1：最终 CSS 结构校验（' + err.message + '）', false, true);
+  }
+  try {
+    const bibSetInstallStyles = eval('(' + extractFunctionFrom(settingsSrc, 'bibSetInstallStyles') + ')');
+    const settingsCss = withFakeDocument(function () { bibSetInstallStyles(); });
+    let d = 0, negative = false;
+    for (let i = 0; i < settingsCss.length; i++) {
+      if (settingsCss[i] === '{') d += 1;
+      else if (settingsCss[i] === '}') d -= 1;
+      if (d < 0) negative = true;
+    }
+    check('设置页样式表括号配平（不为负且结尾为 0）', !negative && d === 0, true);
+  } catch (err) {
+    check('设置页样式表括号配平（' + err.message + '）', false, true);
+  }
+}
+
+// ---------- ⑧ D2：自定义 hex 浅色钳制（对比度驱动，向黑混合至 ≥4.5:1） ----------
+{
+  // readableLightVariant 依赖模块级 hexLuminance：先提取依赖再提取本体，保持在同一作用域
+  const hexLuminance = eval('(' + extractFunctionFrom(clientSrc, 'hexLuminance') + ')');
+  const readableLightVariant = eval('(' + extractFunctionFrom(clientSrc, 'readableLightVariant') + ')');
+  function luminance(value) {
+    function linear(channel) {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    return 0.2126 * linear((value >> 16) & 255) + 0.7152 * linear((value >> 8) & 255) + 0.0722 * linear(value & 255);
+  }
+  function contrastVsWhite(hex) {
+    return 1.05 / (luminance(parseInt(hex.slice(1), 16)) + 0.05);
+  }
+  check('D2：已可读的自定义颜色原样保留（#333333 不被改动）', readableLightVariant('#333333') === '#333333', true);
+  check('D2：过浅颜色钳制后对白对比度 ≥4.5:1', ['#FFFF00', '#FFFFFF', '#00FFFF', '#F8F8F8', '#C0C0C0', '#FFFFCC'].every(function (hex) {
+    const out = readableLightVariant(hex);
+    return contrastVsWhite(out) >= 4.5;
+  }), true);
+  check('D2：输出为严格 #RRGGBB 大写', /^#[0-9A-F]{6}$/.test(readableLightVariant('#ab12cd')), true);
+  check('D2：fieldStyle 浅色默认层使用钳制变体（源码断言）', clientSrc.includes("style['--bi-field-' + id] = readableLightVariant(color);")
+    && clientSrc.includes("style['--bi-field-' + id + '-dark'] = readableDarkVariant(color);"), true);
+}
+
+// ---------- ⑨ D3：字段配置刷新的版本守卫 + 在途补拉 ----------
+{
+  const fieldConfigSnapshotIsNewer = eval('(' + extractFunctionFrom(clientSrc, 'fieldConfigSnapshotIsNewer') + ')');
+  check('D3：无版本号（旧宿主）一律接受', fieldConfigSnapshotIsNewer(null, 5) === true && fieldConfigSnapshotIsNewer(undefined, 5) === true, true);
+  check('D3：尚未应用过快照（applied=-1）接受', fieldConfigSnapshotIsNewer(3, -1) === true, true);
+  check('D3：更新版本接受', fieldConfigSnapshotIsNewer(4, 3) === true, true);
+  check('D3：过期响应拒绝（不回退刚保存的配置）', fieldConfigSnapshotIsNewer(2, 3) === false, true);
+  check('D3：相同版本不重复应用（省去 30s 轮询无谓重渲染）', fieldConfigSnapshotIsNewer(3, 3) === false, true);
+  check('D3：refreshFieldConfig 使用版本守卫 + 在途补拉（源码断言）', clientSrc.includes('fieldConfigSnapshotIsNewer(incoming, fieldConfigServerVersion)')
+    && clientSrc.includes('fieldConfigRefetchPending = true; return;')
+    && clientSrc.includes('fieldConfigRefetchPending = false; refreshFieldConfig();'), true);
+}
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

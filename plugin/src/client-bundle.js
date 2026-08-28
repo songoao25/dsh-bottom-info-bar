@@ -100,8 +100,10 @@ const PRESET_COLOR_SET = new Set(PRESET_COLORS);
 
 let fieldConfig = { fields: {}, colors: {} };
 let fieldConfigVersion = 0;
+let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
 let fieldConfigInFlight = false;
+let fieldConfigRefetchPending = false; // 在途期间收到刷新请求（如设置页 CustomEvent）→ 当前响应落地后立即补拉（D3）
 
 function applyFieldConfigSnapshot(next) {
   fieldConfig = {
@@ -112,14 +114,39 @@ function applyFieldConfigSnapshot(next) {
   fieldConfigListeners.forEach(function (listener) { listener(); });
 }
 
-// 宿主把配置常驻内存缓存，拉取即回；在途去重避免 30s 轮询叠加请求
+// 版本守卫（纯函数，供单测）：只有严格更新的快照才应用。
+// - incoming 缺失（旧宿主无 configVersion）→ 接受，兼容不阻断；
+// - 尚未应用过任何快照（applied < 0）→ 接受；
+// - 相同版本不重复应用（宿主每次变更必 +1，同版本即同内容，省去 30s 轮询的无谓重渲染）；
+// - 过期响应（incoming < applied）→ 拒绝，绝不回退用户刚保存的配置。
+// 注：宿主重启必然伴随 dsh web 重启与页面重载，客户端版本号随之重置，不存在版本回退场景。
+function fieldConfigSnapshotIsNewer(incomingVersion, appliedVersion) {
+  if (typeof incomingVersion !== 'number') return true;
+  if (!(appliedVersion >= 0)) return true;
+  return incomingVersion > appliedVersion;
+}
+
+// 宿主把配置常驻内存缓存，拉取即回；在途去重避免 30s 轮询叠加请求。
+// D3：在途期间的新刷新请求（设置页 CustomEvent）记为 pending，当前响应落地后立即补拉，
+// 配合版本守卫——过期响应直接丢弃——保证刚保存的配置最迟一次往返内生效，绝不被旧响应覆盖。
 function refreshFieldConfig() {
-  if (fieldConfigInFlight) return;
+  if (fieldConfigInFlight) { fieldConfigRefetchPending = true; return; }
   fieldConfigInFlight = true;
   rpc('getFieldConfig').then(function (cfg) {
     fieldConfigInFlight = false;
-    if (cfg && typeof cfg === 'object') applyFieldConfigSnapshot(cfg);
-  }).catch(function () { fieldConfigInFlight = false; });
+    if (cfg && typeof cfg === 'object') {
+      const incoming = typeof cfg.configVersion === 'number' ? cfg.configVersion : null;
+      if (fieldConfigSnapshotIsNewer(incoming, fieldConfigServerVersion)) {
+        if (incoming !== null) fieldConfigServerVersion = incoming;
+        applyFieldConfigSnapshot(cfg);
+      }
+      // 过期/相同版本响应：直接丢弃，不触发重渲染
+    }
+    if (fieldConfigRefetchPending) { fieldConfigRefetchPending = false; refreshFieldConfig(); }
+  }).catch(function () {
+    fieldConfigInFlight = false;
+    if (fieldConfigRefetchPending) { fieldConfigRefetchPending = false; refreshFieldConfig(); }
+  });
 }
 
 // 未知/缺省 id 一律视为显示：与历史行为一致（默认值全部=显示），前向兼容新字段
@@ -142,7 +169,35 @@ function readableDarkVariant(hex) {
   return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
+// WCAG 相对亮度（对比度计算用，纯函数供单测）
+function hexLuminance(value) {
+  function linear(channel) {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  return 0.2126 * linear((value >> 16) & 255) + 0.7152 * linear((value >> 8) & 255) + 0.0722 * linear(value & 255);
+}
+
+// 浅色主题钳制（D2）：自定义 hex 对白底对比度 < 4.5:1 时逐级向黑混合（每步 5%，至多 95%），
+// 直到可读；本就可读的颜色原样返回（大写规范化）。深浅两套变量由此始终各自可读。
+function readableLightVariant(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  if (1.05 / (hexLuminance(value) + 0.05) >= 4.5) return hex.toUpperCase();
+  for (let step = 1; step <= 19; step++) {
+    const keep = 1 - step * 0.05;
+    const r = Math.round(((value >> 16) & 255) * keep);
+    const g = Math.round(((value >> 8) & 255) * keep);
+    const b = Math.round((value & 255) * keep);
+    const candidate = (r << 16) | (g << 8) | b;
+    if (step === 19 || 1.05 / (hexLuminance(candidate) + 0.05) >= 4.5) {
+      return '#' + candidate.toString(16).padStart(6, '0').toUpperCase();
+    }
+  }
+  return hex.toUpperCase();
+}
+
 // 字段已自定义颜色时返回要注入的 CSS 变量；未自定义返回 undefined → 变量不存在 → 完全沿用现有颜色（零回归）
+// 浅色默认层取浅色钳制变体（--bi-field-<id>），深色覆盖层取向白加亮变体（--bi-field-<id>-dark）
 function fieldStyle(id) {
   const color = fieldColor(id);
   if (!color) return undefined;
@@ -151,7 +206,7 @@ function fieldStyle(id) {
     style['--bi-field-' + id] = 'var(--bi-palette-' + color + ')';
     return style;
   }
-  style['--bi-field-' + id] = color;
+  style['--bi-field-' + id] = readableLightVariant(color);
   style['--bi-field-' + id + '-dark'] = readableDarkVariant(color);
   return style;
 }
@@ -267,7 +322,9 @@ function installStyles() {
       /* v1.9.0 PR2 预设色板：浅色默认 → 深色覆盖 → 增强对比三套成对（与现有语义色同一套规则）；设置页共用 .bib-set-root 取同一色板 */
       .bi-root, .bib-set-root { --bi-palette-red: #d92d20; --bi-palette-green: #087f5b; --bi-palette-blue: #0044cc; --bi-palette-purple: #6941c6; --bi-palette-orange: #b54708; --bi-palette-neutral: var(--dsw-alias-label-primary, var(--bi-label-primary, #333)); }
       body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff6961; --bi-palette-green: #86efac; --bi-palette-blue: #66a3ff; --bi-palette-purple: #b19cf7; --bi-palette-orange: #fdb022; }
-      @media (prefers-contrast: more) { body:not([data-ds-dark-theme]) .bi-root, body:not([data-ds-dark-theme]) .bib-set-root { --bi-palette-red: #ad1717; --bi-palette-green: #05603a; --bi-palette-blue: #003399; --bi-palette-purple: #4a1fb8; --bi-palette-orange: #7a2e0e; } body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff7770; --bi-palette-blue: #80b3ff; --bi-palette-purple: #c9b8ff; --bi-palette-orange: #ffcc80; } ` + FIELD_COLOR_CSS + `
+      @media (prefers-contrast: more) { body:not([data-ds-dark-theme]) .bi-root, body:not([data-ds-dark-theme]) .bib-set-root { --bi-palette-red: #ad1717; --bi-palette-green: #05603a; --bi-palette-blue: #003399; --bi-palette-purple: #4a1fb8; --bi-palette-orange: #7a2e0e; } body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff7770; --bi-palette-blue: #80b3ff; --bi-palette-purple: #c9b8ff; --bi-palette-orange: #ffcc80; } }
+      /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
+` + FIELD_COLOR_CSS + `
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
