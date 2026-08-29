@@ -421,6 +421,8 @@ function bibSetInstallStyles() {
   style.dataset.pluginCss = id;
   style.textContent = `
       .bib-set-root { --bib-set-brand: var(--dsw-alias-brand-primary, #4d6bfe); }
+      /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
+      .bib-set-page-title { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
       .bib-settings { max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
       .bib-set-intro { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
@@ -539,6 +541,11 @@ function bibSetPalette(props) {
 }
 
 // ---------- 页面组件 ----------
+// M2 首渲骨架：页面标题行——任何状态下都先输出可见标题（数据未到、加载失败也一样有东西看）
+function bibSetPageTitle() {
+  return React.createElement('h1', { className: 'bib-set-page-title' }, '信息底栏设置');
+}
+
 function InfoBarSettingsSection(props) {
   void props; // 与官方 section 组件同签名（外壳会传入 renderSlot/close 等，本页不使用）
   const [snapshot, setSnapshot] = React.useState(null); // { fields, colors, configVersion }
@@ -577,14 +584,21 @@ function InfoBarSettingsSection(props) {
     if (savingCountRef.current === 0) setSaving(false);
   }, []);
 
-  if (status === 'loading') {
-    return React.createElement('div', { className: 'bib-set-root bib-settings' },
-      React.createElement('p', { className: 'bib-set-status' }, '正在载入信息底栏设置…'));
-  }
-  if (status === 'error') {
-    return React.createElement('div', { className: 'bib-set-root bib-settings' },
-      React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, '信息底栏设置暂时无法读取：' + (loadError || '请稍后再试')));
-  }
+  // M2 屏显防护（铁律：绝不允许白屏）：渲染主体整体包进 try/catch——
+  // 任何渲染期异常都在页面内渲染为可见红色错误框（role=alert，含错误信息），而不是中断成白屏
+  try {
+    // 首渲骨架：即便配置尚未取回，也立刻渲染「信息底栏设置」标题行 + 载入说明
+    if (status === 'loading') {
+      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+        bibSetPageTitle(),
+        React.createElement('p', { className: 'bib-set-status' }, '正在载入信息底栏设置…'));
+    }
+    // RPC 加载失败：照旧显示可见错误文字（角色 alert），页面不空白
+    if (status === 'error') {
+      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+        bibSetPageTitle(),
+        React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, '信息底栏设置暂时无法读取：' + (loadError || '请稍后再试')));
+    }
 
   const fieldsById = {};
   for (let i = 0; i < FIELD_REGISTRY.length; i++) fieldsById[FIELD_REGISTRY[i].id] = FIELD_REGISTRY[i];
@@ -793,6 +807,7 @@ function InfoBarSettingsSection(props) {
   else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, '正在保存…'));
 
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
+    bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       '选择信息底栏显示哪些信息、为每个信息挑一个颜色。改动即时生效并自动保存，重启后仍然保留；隐藏信息不会删除任何记账数据。'),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
@@ -817,6 +832,12 @@ function InfoBarSettingsSection(props) {
         type: 'button', className: 'bib-set-btn', disabled: saving,
         onClick: function () { runReset('colors'); },
       }, '重置颜色')));
+  } catch (err) {
+    // M2：渲染期异常绝不以白屏收场——改为页面内可见的红色错误框（role=alert，含错误信息）
+    return React.createElement('div', { className: 'bib-set-root bib-settings' },
+      bibSetPageTitle(),
+      React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, '信息底栏设置渲染出错：' + bibSetOperationMessage(err)));
+  }
 }
 
 module.exports = {
