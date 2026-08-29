@@ -351,6 +351,12 @@ function withFakeDocument(run) {
     const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
     return lib.indexOf("['native', 'plugin']") !== -1 && lib.indexOf("native: '原生字段'") !== -1 && lib.indexOf("plugin: '插件字段'") !== -1;
   })(), true);
+  check('310防复发：含 React hooks 的组件 bibSetPalette 必须以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
+    clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1 && clientSrc.indexOf('bibSetPalette({') === -1, true);
+  check('310防复发：构建产物同样不含裸调用', (function () {
+    const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+    return lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
+  })(), true);
 }
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

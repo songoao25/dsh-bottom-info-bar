@@ -765,7 +765,7 @@ function InfoBarSettingsSection(props) {
           React.createElement('div', { className: 'bib-set-rowTitle' }, field.label),
           React.createElement('div', { className: 'bib-set-rowDesc' }, '当前：' + valueText + (field.anchor === true ? '（身份锚点）' : ''))),
         React.createElement('div', { className: 'bib-set-controls' },
-          bibSetPalette({
+          React.createElement(bibSetPalette, {
             label: field.label + '的预设颜色',
             value: value,
             onSelect: function (next) { setColor(field.id, next); },
