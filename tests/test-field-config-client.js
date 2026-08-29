@@ -1,11 +1,11 @@
-// v1.9.0 PR2 客户端静态断言：字段自选/配色
+// v1.9.0 PR2 → v1.9.1 客户端静态断言：字段自选/配色 + 设置页单文件化
 // ① 过滤逻辑嵌在三态渲染函数内部 + 分隔符正确收合 ② 默认配置渲染与旧版一致
 // ③ 颜色变量默认不注入（未自定义零回归）④ 字段注册表一致性（宿主白名单 = 客户端渲染 = 设置页）
+// ⑤ 设置页（settings.section）：M1 单文件注册 / M2 屏显防护与首渲骨架 / 无障碍 / 乐观更新 / CustomEvent
 // 用法：node tests/test-field-config-client.js
 const fs = require('fs');
 
 const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
-const settingsSrc = fs.readFileSync(__dirname + '/../plugin/src/client-settings.js', 'utf8');
 const { FIELD_REGISTRY, PRESET_COLOR_NAMES, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS } = require('../plugin/src/constants.js');
 
 let pass = 0, fail = 0;
@@ -90,43 +90,82 @@ check('D6 分组：其余 23 个全部归入插件组', FIELD_REGISTRY.filter((f
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
-// ---------- ⑤ 设置页（settings.section）：注册 / 无障碍 / 乐观更新 / CustomEvent ----------
-check('设置页注册 DSH settings.section 插座', settingsSrc.includes("ctx.slots.inject('settings.section'"), true);
-check('注册条目含 id/order/label（侧栏导航行自动生成）', settingsSrc.includes("id: 'bottom-info-bar'")
-  && settingsSrc.includes('order: 100')
-  && settingsSrc.includes("label: '信息底栏'"), true);
-check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', settingsSrc.includes('function InfoBarSettingsSection(')
-  && !/<[A-Z][A-Za-z]*[\s/>]/.test(settingsSrc), true);
-check('设置页与信息栏同一 bundle（module.exports 包装、信息栏 apply 之后注册）', settingsSrc.includes('const baseExports = module.exports;')
-  && settingsSrc.includes('await baseExports.apply(ctx);'), true);
-check('字段开关使用 role=switch + aria-checked（含中文可读名）', settingsSrc.includes("role: 'switch'")
-  && settingsSrc.includes("'aria-checked': checked") && settingsSrc.includes("'显示' + field.label"), true);
-check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', !settingsSrc.includes('disabled: isAnchor')
-  && !settingsSrc.includes('始终显示'), true);
-check('D6 解锁：「身份锚点」仅作为说明文字保留', settingsSrc.includes("'身份锚点：当前对话的服务商与模型标识。'"), true);
-check('错误/提醒类字段带「建议保留」徽标', settingsSrc.includes("'建议保留'"), true);
-check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', settingsSrc.includes("role: 'radiogroup'")
-  && settingsSrc.includes("role: 'radio'") && settingsSrc.includes('ArrowRight') && settingsSrc.includes("'Home'"), true);
-check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', settingsSrc.includes("'aria-label': field.label + '的自定义颜色'")
-  && settingsSrc.includes("'aria-label': field.label + '的十六进制颜色'")
-  && settingsSrc.includes("'aria-invalid': hexInvalid ? 'true' : 'false'"), true);
-check('hex 非法拒绝回退：仅 Enter/失焦提交且非法值不入库', settingsSrc.includes('if (!BIB_SET_HEX_PATTERN.test(value))')
-  && settingsSrc.includes("onBlur: function () { commitHex(field.id); }"), true);
-check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）', settingsSrc.includes('applyOptimistic();')
-  && settingsSrc.includes('revertOptimistic();') && settingsSrc.includes('const seq = ++opSeqRef.current;')
-  && settingsSrc.includes('if (seq !== opSeqRef.current)'), true);
-check('保存成功后派发 CustomEvent 联动信息栏', settingsSrc.includes('bibSetDispatchChanged()')
-  && settingsSrc.includes("document.dispatchEvent(new CustomEvent(BIB_SET_EVENT))"), true);
-check('重置标签/重置颜色为两个独立按钮', settingsSrc.includes("runReset('fields')") && settingsSrc.includes("runReset('colors')")
-  && settingsSrc.includes("'重置标签'") && settingsSrc.includes("'重置颜色'"), true);
-check('保存失败有 role=alert 文案；状态通知 aria-live=polite', settingsSrc.includes("role: 'alert'")
-  && settingsSrc.includes("'aria-live': 'polite'"), true);
-check('焦点可见 + 减少动效降级', settingsSrc.includes(':focus-visible')
-  && settingsSrc.includes('@media (prefers-reduced-motion: reduce)'), true);
-check('设置页样式复用 DSH 设计令牌（--dsw-alias-*）融入既有面板风格', settingsSrc.includes('--dsw-alias-border-l2')
-  && settingsSrc.includes('--dsw-alias-bg-layer-3') && settingsSrc.includes('--dsw-alias-label-tertiary'), true);
-check('设置页复用信息栏预设定色板变量（同一三套主题）', settingsSrc.includes("'var(--bi-palette-' + option + ')'"), true);
-check('构建产物含被注入的字段注册表（非空锚点占位）', fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8').includes("id: 'anchorGroup'"), true);
+// ---------- ⑤ 设置页（settings.section）：M1 单文件注册 / M2 屏显防护 / 无障碍 / 乐观更新 / CustomEvent ----------
+check('设置页注册 DSH settings.section 插座（apply 内直接 slots.inject）', clientSrc.includes("slots.inject('settings.section'"), true);
+check('注册条目含 id/order/label（侧栏导航行自动生成）', clientSrc.includes("id: 'bottom-info-bar'")
+  && clientSrc.includes('order: 100')
+  && clientSrc.includes("label: '信息底栏'"), true);
+check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
+  && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
+check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼接第二源码', (function () {
+  const buildSrc = fs.readFileSync(__dirname + '/../plugin/scripts/build.mjs', 'utf8');
+  return !fs.existsSync(__dirname + '/../plugin/src/client-settings.js')
+    && !buildSrc.includes('client-settings.js')
+    && !buildSrc.includes('baseExports')
+    && !buildSrc.includes('applyInfoBarSettingsSection');
+})(), true);
+check('M1 拆除拼接：settings.section 与信息栏同一 apply、同一 slots.inject 路径（无 async 串接/module.exports 重写）', (function () {
+  const applyStart = clientSrc.indexOf('async apply(ctx)');
+  const applySlice = applyStart === -1 ? '' : clientSrc.slice(applyStart);
+  const dockIdx = applySlice.indexOf("slots.inject('conversation.composer.dock'");
+  const setIdx = applySlice.indexOf("slots.inject('settings.section'");
+  return applyStart !== -1
+    && dockIdx !== -1 && setIdx !== -1 && setIdx > dockIdx
+    && !clientSrc.includes('const baseExports = module.exports;')
+    && !clientSrc.includes('applyInfoBarSettingsSection')
+    && !clientSrc.includes('await applyInfoBarSettingsSection');
+})(), true);
+check('M2 屏显防护：渲染主体包在 try/catch，任何渲染期异常 → role=alert 错误框（含错误信息）', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  const tryIdx = body.indexOf('try {');
+  const catchIdx = body.indexOf('} catch (err) {');
+  return tryIdx !== -1 && catchIdx !== -1 && catchIdx > tryIdx
+    && body.includes("role: 'alert'")
+    && body.includes('信息底栏设置渲染出错')
+    && body.includes('bibSetOperationMessage(err)');
+})(), true);
+check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设置」（bibSetPageTitle → h1）', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return clientSrc.includes('function bibSetPageTitle()')
+    && clientSrc.includes("React.createElement('h1', { className: 'bib-set-page-title' }, '信息底栏设置')")
+    && body.includes('正在载入信息底栏设置…')
+    && body.includes('bibSetPageTitle()');
+})(), true);
+check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
+  && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("'显示' + field.label"), true);
+check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return !body.includes('disabled: isAnchor') && !body.includes('始终显示');
+})(), true);
+check('D6 解锁：「身份锚点」仅作为说明文字保留', clientSrc.includes("'身份锚点：当前对话的服务商与模型标识。'"), true);
+check('错误/提醒类字段带「建议保留」徽标', clientSrc.includes("'建议保留'"), true);
+check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', clientSrc.includes("role: 'radiogroup'")
+  && clientSrc.includes("role: 'radio'") && clientSrc.includes('ArrowRight') && clientSrc.includes("'Home'"), true);
+check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', clientSrc.includes("'aria-label': field.label + '的自定义颜色'")
+  && clientSrc.includes("'aria-label': field.label + '的十六进制颜色'")
+  && clientSrc.includes("'aria-invalid': hexInvalid ? 'true' : 'false'"), true);
+check('hex 非法拒绝回退：仅 Enter/失焦提交且非法值不入库', clientSrc.includes('if (!BIB_SET_HEX_PATTERN.test(value))')
+  && clientSrc.includes("onBlur: function () { commitHex(field.id); }"), true);
+check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）', clientSrc.includes('applyOptimistic();')
+  && clientSrc.includes('revertOptimistic();') && clientSrc.includes('const seq = ++opSeqRef.current;')
+  && clientSrc.includes('if (seq !== opSeqRef.current)'), true);
+check('保存成功后派发 CustomEvent 联动信息栏', clientSrc.includes('bibSetDispatchChanged()')
+  && clientSrc.includes("document.dispatchEvent(new CustomEvent(BIB_SET_EVENT))"), true);
+check('重置标签/重置颜色为两个独立按钮', clientSrc.includes("runReset('fields')") && clientSrc.includes("runReset('colors')")
+  && clientSrc.includes("'重置标签'") && clientSrc.includes("'重置颜色'"), true);
+check('保存失败有 role=alert 文案；状态通知 aria-live=polite', clientSrc.includes("role: 'alert'")
+  && clientSrc.includes("'aria-live': 'polite'"), true);
+check('焦点可见 + 减少动效降级', clientSrc.includes(':focus-visible')
+  && clientSrc.includes('@media (prefers-reduced-motion: reduce)'), true);
+check('设置页样式复用 DSH 设计令牌（--dsw-alias-*）融入既有面板风格', clientSrc.includes('--dsw-alias-border-l2')
+  && clientSrc.includes('--dsw-alias-bg-layer-3') && clientSrc.includes('--dsw-alias-label-tertiary'), true);
+check('设置页复用信息栏预设定色板变量（同一三套主题）', clientSrc.includes("'var(--bi-palette-' + option + ')'"), true);
+check('构建产物含被注入的字段注册表与设置页注册（非空锚点占位）', (function () {
+  const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+  return lib.includes("id: 'anchorGroup'")
+    && lib.includes("name: 'settings.section'")
+    && lib.includes('function InfoBarSettingsSection');
+})(), true);
 
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
 {
@@ -223,7 +262,7 @@ function withFakeDocument(run) {
     check('D1：最终 CSS 结构校验（' + err.message + '）', false, true);
   }
   try {
-    const bibSetInstallStyles = eval('(' + extractFunctionFrom(settingsSrc, 'bibSetInstallStyles') + ')');
+    const bibSetInstallStyles = eval('(' + extractFunctionFrom(clientSrc, 'bibSetInstallStyles') + ')');
     const settingsCss = withFakeDocument(function () { bibSetInstallStyles(); });
     let d = 0, negative = false;
     for (let i = 0; i < settingsCss.length; i++) {
@@ -232,6 +271,7 @@ function withFakeDocument(run) {
       if (d < 0) negative = true;
     }
     check('设置页样式表括号配平（不为负且结尾为 0）', !negative && d === 0, true);
+    check('M2：设置页样式含页面标题行规则（.bib-set-page-title）', settingsCss.includes('.bib-set-page-title'), true);
   } catch (err) {
     check('设置页样式表括号配平（' + err.message + '）', false, true);
   }
