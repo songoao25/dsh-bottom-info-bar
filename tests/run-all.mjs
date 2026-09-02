@@ -48,9 +48,10 @@ const cases = [
 let failed = 0
 for (const [name, args, cwd, cmd = process.execPath] of cases) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' })
-  const tail = (r.stdout || '').split('\n').filter(Boolean).slice(-3).join(' | ')
   const ok = r.status === 0
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  →  ${tail || r.stderr}`)
+  const output = (r.stdout || r.stderr || '').split('\n').filter(Boolean)
+  const summary = ok ? output.slice(-3).join(' | ') : output.slice(-60).join(' | ')
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  →  ${summary || r.stderr}`)
   if (!ok) failed += 1
 }
 console.log(failed === 0 ? '\n全量测试全部通过' : `\n${failed} 项测试失败`)
