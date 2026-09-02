@@ -22,6 +22,7 @@ console.log('build OK → lib/')
 
 const cases = [
   ['smoke-static-host', ['tests/smoke-static-host.mjs'], join(root), process.execPath],
+  ['test-alpha4-client-contract（alpha.4 client manifest/slots/React）', ['tests/test-alpha4-client-contract.mjs'], join(root), process.execPath],
   ['test-static-client（plugin/src/client-bundle.js）', ['tests/test-static-client.js'], join(root), process.execPath],
   ['test-client-fault-tolerance（client-bundle.js 失败处理原子性）', ['tests/test-client-fault-tolerance.js'], join(root), process.execPath],
   ['test-realtime-session-model（会话级实时模型同步）', ['tests/test-realtime-session-model.js'], join(root), process.execPath],
