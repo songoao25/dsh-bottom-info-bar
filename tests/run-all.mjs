@@ -22,6 +22,7 @@ console.log('build OK → lib/')
 
 const cases = [
   ['smoke-static-host', ['tests/smoke-static-host.mjs'], join(root), process.execPath],
+  ['test-alpha4-client-contract（alpha.4 client manifest/slots/React）', ['tests/test-alpha4-client-contract.mjs'], join(root), process.execPath],
   ['test-static-client（plugin/src/client-bundle.js）', ['tests/test-static-client.js'], join(root), process.execPath],
   ['test-client-fault-tolerance（client-bundle.js 失败处理原子性）', ['tests/test-client-fault-tolerance.js'], join(root), process.execPath],
   ['test-realtime-session-model（会话级实时模型同步）', ['tests/test-realtime-session-model.js'], join(root), process.execPath],
@@ -47,9 +48,10 @@ const cases = [
 let failed = 0
 for (const [name, args, cwd, cmd = process.execPath] of cases) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' })
-  const tail = (r.stdout || '').split('\n').filter(Boolean).slice(-3).join(' | ')
   const ok = r.status === 0
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  →  ${tail || r.stderr}`)
+  const output = (r.stdout || r.stderr || '').split('\n').filter(Boolean)
+  const summary = ok ? output.slice(-3).join(' | ') : output.slice(-60).join(' | ')
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  →  ${summary || r.stderr}`)
   if (!ok) failed += 1
 }
 console.log(failed === 0 ? '\n全量测试全部通过' : `\n${failed} 项测试失败`)
