@@ -145,9 +145,9 @@ function copySettings(fromDir, toDir) {
   const s = await mount(newSection('whitelist'))
   const route = s.stub.captured.route
   const unknown = await invokeRoute(route, 'setFieldConfig', { fields: { notAField: false } })
-  check('未知字段 id 拒绝（400）', unknown.status === 400 && /未知字段/.test(unknown.body.error), unknown)
+  check('未知字段 id 拒绝（400）', unknown.status === 400 && /Unknown field/.test(unknown.body.error), unknown)
   const badBool = await invokeRoute(route, 'setFieldConfig', { fields: { balance: 'no' } })
-  check('非布尔开关拒绝（400）', badBool.status === 400 && /布尔值/.test(badBool.body.error), badBool)
+  check('非布尔开关拒绝（400）', badBool.status === 400 && /boolean/.test(badBool.body.error), badBool)
   const anchor = await invokeRoute(route, 'setFieldConfig', { fields: { anchorGroup: false } })
   check('D6 解锁：锚点字段允许关闭（200 且生效）', anchor.status === 200 && anchor.body.fields.anchorGroup === false, anchor.body.fields.anchorGroup)
   const anchorBack = await invokeRoute(route, 'setFieldConfig', { fields: { anchorGroup: true } })
@@ -250,7 +250,7 @@ function copySettings(fromDir, toDir) {
     console.warn = originalWarn
   }
   const restarted = (await invokeRoute(restartRoute, 'getUsageSummary')).body
-  check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('账单汇总文件缺失') !== -1), warns)
+  check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('Spend summary file missing') !== -1), warns)
   check('D4：客户端可见告警（persistence=snapshot-stale「账单待整理」+ 指向冷归档文案）',
     restarted.persistence.state === 'snapshot-stale' && /usage-archive/.test(restarted.persistence.message || ''), restarted.persistence)
 }

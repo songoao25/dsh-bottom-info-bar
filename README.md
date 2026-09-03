@@ -13,28 +13,28 @@ The **best-adapted bottom info bar for [DeepSeek Harness](https://github.com/dee
 
 ![Bottom Info Bar preview: ChatGPT subscription, DeepSeek API, and OpenCode Go subscription](/assets/bottom-info-bar-preview.jpeg)
 
-From top to bottom, the combined screenshot shows **ChatGPT subscription**, **DeepSeek API**, and **OpenCode Go subscription**. Each account is shown in **full view** followed by **compact view**.
+The preview was captured before the English UI update. From top to bottom, the combined screenshot shows **ChatGPT subscription**, **DeepSeek API**, and **OpenCode Go subscription**. Each account is shown in **full view** followed by **compact view**.
 
 ## Features
 
 - **Dual-mode billing bar** — Auto-detects whether the active provider is subscription-based (Codex / OpenCode Go) or balance-based. The two modes replace each other, never overlap; balance mode stays exactly as before.
 - **Three-state billing bar** — Auto-detects whether the active provider is **subscription-based** (quota windows: Codex / OpenCode Go / Zhipu / Xiaomi MiMo Token Plan), **cloud-billing-based** (this month's real bill: Together / Fireworks / AWS Bedrock / Cloudflare), or **balance-based**. The three modes replace each other, never overlap; balance mode stays exactly as before.
-- **ChatGPT subscription card (pure local)** — When the active provider is **ChatGPT / Codex**, the bar decodes `~/.codex/auth.json` locally and shows the **real plan tier + expiry date**, e.g. `ChatGPT · Plus | 到期 2026-09-16` — zero network, real fields straight from OpenAI's own login token (chatgpt_plan_type / subscription_active_until), no local estimation. Not signed in → "not bound" hint. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) to bind your ChatGPT account; this bar only reads the token.
-- **Subscription quota display (OpenCode Go / Zhipu / Xiaomi MiMo Token Plan)** — When the active provider is a subscription service, the bar shows the **subscription service · model** (e.g. `OpenCode Go · V4 Flash`, `小米 MiMo · Mimo-V2.5`), the **5-hour / weekly / monthly quota remaining** per window (remaining = 100 − used), and a **countdown to the next reset** (e.g. `距重置 1d 21h`). **Quota and countdown always match** — both come from the same window. Quota sources:
+- **ChatGPT subscription card (pure local)** — When the active provider is **ChatGPT / Codex**, the bar decodes `~/.codex/auth.json` locally and shows the **real plan tier + expiry date**, e.g. `ChatGPT · Plus | Expires 2026-09-16` — zero network, real fields straight from OpenAI's own login token (chatgpt_plan_type / subscription_active_until), no local estimation. Not signed in → **Refresh failed**, with a reauthorization reminder in the tooltip. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) to bind your ChatGPT account; this bar only reads the token.
+- **Subscription quota display (OpenCode Go / Zhipu / Xiaomi MiMo Token Plan)** — When the active provider is a subscription service, the bar shows the **subscription service · model** (e.g. `OpenCode Go · V4 Flash`, `Xiaomi MiMo · Mimo-V2.5`), the **5-hour / weekly / monthly quota remaining** per window (remaining = 100 − used), and a **countdown to the next reset** (e.g. `Resets in 1d 21h`). **Quota and countdown always match** — both come from the same window. Quota sources:
   - **OpenCode Go** — reads quota from `opencode.ai/zen/go/v1/usage` via `OPENCODE_GO_API_KEY` (Settings → Models) or the opencode CLI login (`~/.local/share/opencode/auth.json`); missing key → "not configured" hint instead of an error.
   - **Zhipu (zai / zai-coding-cn)** — reads GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback: `ZAI_API_KEY`); shows plan tier + 5-hour window remaining.
   - **Xiaomi MiMo Token Plan** — reads monthly Credits quota via `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` per region (fallback: `XIAOMI_API_KEY`); shows plan name + monthly window.
-- **Cloud-billing display (real monthly bill)** — When the active provider is **Together / Fireworks / AWS Bedrock / Cloudflare**, the bar reads the official billing API and shows **this month's real spend**, e.g. `Together | 本月 $12.34`, `AWS Bedrock | 本月 $45.60 · 预算 46%`. Cloudflare additionally shows daily free-quota remaining and a UTC-midnight reset countdown **only when the API actually reports a free allowance** (otherwise it shows real usage only — never fabricated). All bill figures come from official provider APIs; **no local estimation is ever displayed**. Missing keys → "not configured" hint.
+- **Cloud-billing display (real monthly bill)** — When the active provider is **Together / Fireworks / AWS Bedrock / Cloudflare**, the bar reads the official billing API and shows **this month's real spend**, e.g. `Together | This month $12.34`, `AWS Bedrock | This month $45.60 · Budget 46%`. Cloudflare additionally shows daily free-quota remaining and a UTC-midnight reset countdown **only when the API actually reports a free allowance** (otherwise it shows real usage only — never fabricated). All bill figures come from official provider APIs; **no local estimation is ever displayed**. Missing keys → "not configured" hint.
 - **Drop-in replacement** — Replaces the native stats row while keeping its core original information (turns/steps, LLM latency, tool calls, cache hit rate, in/out tokens) with a native-consistent layout. Speed metrics (TTFT, tok/s) move to the hover tooltip so the row stays on a single line.
 - **Provider & model detection** — Always shows provider and model separately, exactly as in the DSH LLM catalog (for example, `DeepSeek · V4-Flash`). The provider is bold; when a catalog model name repeats its provider prefix, only that duplicate prefix is removed from the model part.
 - **Live balance** — Fetches real balance from DeepSeek's `/user/balance` API, auto-refreshes every 60 s, and keeps the last known snapshot on failure so usage is never interrupted.
 - **Peak / off-peak pricing** — Shows peak (alert red, bold) and off-peak (green, bold) prices with a countdown to the next switch; hidden automatically for providers without tiered pricing. The text labels remain visible in both appearances.
-- **Real spend tracking** — Records every `llm/stream` request (usage × unit price) and aggregates precisely by **this session (includes subagents) / today / this month / all time**. Subagents share the same provider account, so their records are folded into the current session's spend (session starts at the earliest record of the current session, then every same-account record from that moment on counts). Records are persisted to disk — nothing is lost on restart.
+- **Real spend tracking** — Records every `llm/stream` request (usage × unit price) and aggregates precisely by **this session (includes subagents) / today / last 30 days / all time**. Subagents share the same provider account, so their records are folded into the current session's spend (session starts at the earliest record of the current session, then every same-account record from that moment on counts). Records are persisted to disk — nothing is lost on restart.
 - **Bold numbers** — Balance, countdown, spend, and all stats are rendered with bold numerals for instant readability.
 - **Full / compact toggle** — Click the bar to switch between two strict modes (debounced).
-- **Low-balance alert** — When the balance drops below ¥20, its amount and adjacent `低` status turn alert red.
+- **Low-balance alert** — When the balance drops below ¥20, its amount and adjacent `Low` status turn alert red.
 - **Real data only** — The bar only ever shows balances / quotas / plans / bills returned by each provider's official API; local spend estimation is never displayed.
-- **「Info Bar」settings page (v1.9)** — A new page in the settings panel: **every field can be toggled independently** (provider · model included; hiding all removes the bar entirely), grouped into **Native** (DSH's original stats) and **Plugin** sections; **per-field custom colors** (preset palette / system color input / hex), auto-adapted for both light and dark themes; dedicated **Reset labels** and **Reset colors** buttons; all settings **persist across restarts** (compact mode now persists too).
+- **「Info Bar」settings page (v1.9)** — A new page in the settings panel: **every field can be toggled independently** (provider · model included; hiding all removes the bar entirely), grouped into **Native fields** (DSH's original stats) and **Plugin fields** sections; **per-field custom colors** (preset palette / system color input / hex), auto-adapted for both light and dark themes; dedicated **Reset labels** and **Reset colors** buttons; all settings **persist across restarts** (compact mode now persists too).
 - **Stays fast over months (v1.9)** — Ledger details auto-archive into summaries and stats are computed incrementally, so bar refreshes never slow down with usage; ledger file permissions are hardened automatically on startup.
 
 ## Supported Providers (v1.7)
@@ -56,7 +56,7 @@ The bar auto-detects your provider from the DSH model catalog — **zero configu
 |---|---|---|
 | codex / chatgpt / openai-codex | ChatGPT / Codex | `~/.codex/auth.json` (read-only; local JWT decode → plan + expiry) |
 | opencode-go / opencode | OpenCode Go | OPENCODE_GO_API_KEY or opencode auth.json |
-| zai / zai-coding-cn | Zhipu (智谱) | ZAI_CODING_CN_API_KEY (fallback: ZAI_API_KEY) |
+| zai / zai-coding-cn | Zhipu | ZAI_CODING_CN_API_KEY (fallback: ZAI_API_KEY) |
 | xiaomi-token-plan-cn / -sgp / -ams | Xiaomi MiMo | XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY (fallback: XIAOMI_API_KEY) |
 
 ### Cloud-billing providers (real monthly bill)
@@ -67,7 +67,11 @@ The bar auto-detects your provider from the DSH model catalog — **zero configu
 | amazon-bedrock | AWS Bedrock | AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY | AWS Cost Explorer + Budgets (month spend + budget %) |
 | cloudflare-ai-gateway / cloudflare-workers-ai | Cloudflare | CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID (Token needs Billing read) | Billable Usage API (Alpha, real usage) |
 
-**Unadapted providers**: If your provider is not in the list above, the bar shows an "未适配" (Not adapted) hint instead of displaying another provider's data.
+**Unsupported providers**: If your provider is not in the list above, the bar shows a **Not supported** hint instead of displaying another provider's data.
+
+## UI language
+
+The plugin UI, tooltips and user-facing host messages use English. This release does not follow the DSH language setting. Chinese documentation remains available.
 
 ## Requirements
 
@@ -109,9 +113,9 @@ For detailed installation, troubleshooting, and upgrade instructions, see [docs/
 
 ## Usage
 
-- **Hover** the bar for details: balance, per-token pricing, next price-switch time, and this-conversation spend (today / this month / all time).
+- **Hover** the bar for details: balance, per-token pricing, next price-switch time, and this-conversation spend (today / last 30 days / all time).
 - **Click** the bar to toggle between full and compact modes.
-- **Version reminder**: once per full DSH startup, the plugin checks NPM; if a newer version exists, it shows a red `↑ vX.Y.Z` label. The label only reminds you and never updates code automatically; tell an Agent with local terminal access to help update it.
+- **Version reminder**: once per full DSH startup, the plugin checks NPM; if a newer version exists, it shows a red **Update available** label with the new version in its tooltip. The label only reminds you and never updates code automatically; tell an Agent with local terminal access to help update it.
 
 ## Configuration
 
@@ -119,7 +123,7 @@ For detailed installation, troubleshooting, and upgrade instructions, see [docs/
 - **Data scope**: in Beijing time, peak hours are 09:00–12:00 and 14:00–18:00 on weekdays; Saturday and Sunday use off-peak prices all day. Built-in pricing covers DeepSeek V4 models plus OpenAI reference prices; models not in the table are excluded from spend statistics.
 - **Mode**: the bar switches automatically between balance mode and subscription mode based on the active provider (`codex` / `chatgpt` / `opencode-go` / `opencode` / `openai-codex` → subscription; everything else → balance). An internal `billingMode: 'auto' | 'balance' | 'subscription'` setting (default `auto`) allows forcing a mode.
 - **Subscription sources**:
-  - **ChatGPT (Codex)**: install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) and bind your ChatGPT account once — it maintains the token in `~/.codex/auth.json` (mode `0600`) and registers the ChatGPT models. This bar only **reads** that token to fetch quota (`chatgpt.com/backend-api/wham/usage`); it never refreshes, writes back, or injects credentials. Without a token the bar shows a "not bound — install dsh-chatgpt-subscription to authorize" hint; an expired token shows a "re-bind" hint.
+  - **ChatGPT (Codex)**: install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) and bind your ChatGPT account once — it maintains the token in `~/.codex/auth.json` (mode `0600`) and registers the ChatGPT models. This bar only **reads** that token to fetch quota (`chatgpt.com/backend-api/wham/usage`); it never refreshes, writes back, or injects credentials. Missing credentials show **Refresh failed**, with instructions to install **dsh-chatgpt-subscription** and sign in. Invalid credentials show a tooltip asking you to reauthorize.
   - **OpenCode Go**: set `OPENCODE_GO_API_KEY` under **Settings → Models**, or log in with the opencode CLI (writes the `opencode-go` entry in `~/.local/share/opencode/auth.json`). Without a key the bar shows a "not configured" hint instead of an error.
 
 #### ChatGPT subscription: known limitations
@@ -142,7 +146,7 @@ All spend data lives in the plugin's own data directory, isolated from other plu
 - **Override**: set the environment variable `DSH_BOTTOM_INFO_BAR_DATA_DIR` to relocate the whole data directory (e.g. an external drive or a synced folder).
 - **View and migrate**: open `usage-records.json` in any text editor to inspect every recorded model response. To back up or move to another computer, copy the entire `~/.dsh/dsh-bottom-info-bar/` directory while DSH is closed.
 - **Contents**: one entry per model response (`id / ts / model / provider / sessionId / input / cacheRead / cacheWrite / output / currency / cost / status`). `status` is `completed` or `interrupted`; an interrupted response can still have confirmed billable usage. The billed price is fixed when the response completes, so later price-table updates never rewrite historical totals. Unknown-price models keep their token usage with `pricingStatus: "unpriced"` and are not given an invented cost. No conversation content, prompts, or API keys are ever stored.
-- **Durability**: the journal is synchronously confirmed before the UI includes a new bill. If that write fails, the bar says “账单未保存” and the amount is not added. The readable JSON snapshot is rebuilt in the background; if it is damaged after an interruption, the last good snapshot and every intact journal line are recovered automatically. Do not manually edit the journal or backup file.
+- **Durability**: the journal is synchronously confirmed before the UI includes a new bill. If that write fails, the bar says **Spend not saved** and the amount is not added. The readable JSON snapshot is rebuilt in the background; if it is damaged after an interruption, the last good snapshot and every intact journal line are recovered automatically. Do not manually edit the journal or backup file.
 - **Retention**: no silent entry cap. Keep the directory in normal user backups if you need long-term retention beyond this machine.
 - **Spend scope**: money is aggregated only in the active provider's currency (CNY for DeepSeek, USD for the OpenAI reference prices); records in other currencies are not mixed in. Models absent from the pricing table remain visible in the ledger but are excluded from money totals.
 - **Reset**: delete the whole `~/.dsh/dsh-bottom-info-bar/` directory to clear all statistics. Uninstalling the plugin does not delete your data.
@@ -164,11 +168,11 @@ After restarting, the native stats row returns automatically with no residue (th
 | Symptom | Fix |
 |---|---|
 | Bar does not appear after a page refresh | **Restart** `dsh web` (the host process loads plugins) |
-| Balance shows "DEEPSEEK_API_KEY not configured" | Add the key under Settings → Models |
-| Balance shows "刷新失败" while a balance remains visible | Transient network/key issue; retries automatically after 60 s. The last successful data is kept so the bar never goes blank. **Hover over the warning** for a detailed explanation and retry timing. |
-| Shows "OpenCode Go not configured" | Add `OPENCODE_GO_API_KEY` under Settings → Models, or configure OpenCode Go in the opencode CLI |
+| Balance shows **Not configured: DEEPSEEK_API_KEY** | Add the key under Settings → Models |
+| Balance shows **Refresh failed** while a balance remains visible | Transient network/key issue; retries automatically after 60 s. The last successful data is kept so the bar never goes blank. **Hover over the warning** for a detailed explanation and retry timing. |
+| OpenCode Go shows **Refresh failed** with a missing-credentials tooltip | Add `OPENCODE_GO_API_KEY` under Settings → Models, or configure OpenCode Go in the opencode CLI |
 | How do I bind my ChatGPT subscription? | Install the companion plugin **dsh-chatgpt-subscription** and authorize on the official page — it maintains the token this bar reads for quota display |
-| ChatGPT quotas look wrong or empty | The wham endpoint is undocumented and may change; failures keep the last snapshot and retry every 60 s. Hover over `刷新失败` to see the retry explanation. |
+| ChatGPT quotas look wrong or empty | The wham endpoint is undocumented and may change; failures keep the last snapshot and retry every 60 s. Hover over **Refresh failed** to see the retry explanation. |
 | Why does compact mode show a different window? | Compact mode prioritizes the shortest-duration window (5-hour > weekly > monthly) because it refreshes fastest. If the 5-hour window is unavailable, it falls back to weekly or monthly. **Quota and countdown always match** — both come from the same window. |
 | Why is the model's reasoning process not shown? | DSH does not render the model's internal reasoning in the UI — a DSH interface-layer limitation, not the plugin's |
 | Want the original stats row back | Uninstall the plugin and restart |
