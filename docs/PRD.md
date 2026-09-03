@@ -114,4 +114,4 @@ v1.6 目标：修好分账与余额跟随两个地基 bug + 四家国产/常用�
 - 智谱密钥配置后 60 秒内显示真实套餐额度（用户当场可验证）
 - 切换服务商后信息栏零串账、零串台（FR-1/FR-2 验收通过）
 - 全量测试通过（tests/run-all.mjs 全绿，新增分账与适配器单测）
-- Git 提交符合 Conventional Commits，发布符合仓库既有规范（授权作者 songoao25）
+- Git 提交符合 Conventional Commits，发布符合仓库既有规范（授权作者 SONGOAO25）

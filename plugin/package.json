@@ -13,13 +13,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/songoao25/dsh-bottom-info-bar.git"
+    "url": "https://github.com/SONGOAO25/dsh-bottom-info-bar.git"
   },
-  "homepage": "https://github.com/songoao25/dsh-bottom-info-bar",
+  "homepage": "https://github.com/SONGOAO25/dsh-bottom-info-bar",
   "bugs": {
-    "url": "https://github.com/songoao25/dsh-bottom-info-bar/issues"
+    "url": "https://github.com/SONGOAO25/dsh-bottom-info-bar/issues"
   },
-  "author": "songoao25",
+  "author": "SONGOAO25",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

@@ -427,4 +427,4 @@
 - **本对话花费始终显示**：新对话 / 对话刚开始（尚无记账）时不再隐藏，显示 `本对话 ¥0.000`；hover 仍可查看持久化的 今天 / 近一月 / 全部
 - **原生统计行**：完整模式下对话刚开始即显示 `0 轮 · 0 步`，不再等第一步完成才出现
 
-[1.0.0]: https://github.com/songoao25/dsh-bottom-info-bar/releases/tag/v1.0.0
+[1.0.0]: https://github.com/SONGOAO25/dsh-bottom-info-bar/releases/tag/v1.0.0

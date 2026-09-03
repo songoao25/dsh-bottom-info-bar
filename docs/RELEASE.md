@@ -23,7 +23,7 @@
 5. CI 通过后 squash 合并 → 本地 `git reset --hard origin/main` 对齐 → tag v1.9.0 → `gh release create`
 
 ## 发布产物
-- GitHub Release：https://github.com/songoao25/dsh-bottom-info-bar/releases/tag/v1.9.0
+- GitHub Release：https://github.com/SONGOAO25/dsh-bottom-info-bar/releases/tag/v1.9.0
 - 合并提交：`2cfc84c`（PR #27 squash）；tag v1.9.0 指向该提交（与 origin/main 一致，已复核 rev-parse 相等）
 - Release 说明：本仓库 CHANGELOG [1.9.0] 用户视角内容
 - 徽章更新：README Release 徽章随 tag 自动指向 v1.9.0（curl -I 均 200）

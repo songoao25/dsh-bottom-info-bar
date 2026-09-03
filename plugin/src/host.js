@@ -1002,7 +1002,7 @@ export default {
     // 安全边界：仅接受"声明式数字"（统一价 + 白名单币种），绝不执行远程代码；
     //          匿名 GET 不携带任何密钥/用户标识；失败静默降级缓存与内置表，不影响信息栏。
     const REMOTE_PRICING_URL = process.env.DSH_BOTTOM_INFO_BAR_PRICING_URL
-      || 'https://raw.githubusercontent.com/songoao25/dsh-bottom-info-bar/main/catalog/pricing.json';
+      || 'https://raw.githubusercontent.com/SONGOAO25/dsh-bottom-info-bar/main/catalog/pricing.json';
     const REMOTE_PRICING_REFRESH_MS = 6 * 60 * 60 * 1000; // 定时刷新：6 小时
     const PRICING_CACHE_FILE = join(DATA_DIR, 'pricing-cache.json');
     let remotePricingEtag = null;

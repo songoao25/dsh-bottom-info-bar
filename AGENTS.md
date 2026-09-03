@@ -25,7 +25,7 @@
 - 花费记录持久化到 `~/.dsh/dsh-bottom-info-bar/usage-records.json`，重启不丢
 - 对外文档（README/CHANGELOG）只写用户视角功能，严禁开发过程流水账与内部代号
 - 提交遵循 Conventional Commits（feat/fix/docs/test/chore）
-- 分发铁律：零密钥、零个人路径、作者署名 songoao25、只用语义化版本号
+- 分发铁律：零密钥、零个人路径、作者署名 SONGOAO25、只用语义化版本号
 
 ## 常用命令
 

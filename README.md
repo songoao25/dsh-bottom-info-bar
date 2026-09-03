@@ -2,10 +2,10 @@
 
 **English** | [**中文**](README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/releases)
-[![Last commit](https://img.shields.io/github/last-commit/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar)
-[![CI](https://img.shields.io/github/actions/workflow/status/songoao25/dsh-bottom-info-bar/ci.yml)](https://github.com/songoao25/dsh-bottom-info-bar/actions)
+[![License: MIT](https://img.shields.io/github/license/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar/releases)
+[![Last commit](https://img.shields.io/github/last-commit/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar)
+[![CI](https://img.shields.io/github/actions/workflow/status/SONGOAO25/dsh-bottom-info-bar/ci.yml)](https://github.com/SONGOAO25/dsh-bottom-info-bar/actions)
 
 The **best-adapted bottom info bar for [DeepSeek Harness](https://github.com/deepseek-ai)**, and a drop-in replacement for the native stats row under the composer. It shows **live balance** and **subscription quota** (ChatGPT & OpenCode Go) at a glance, alongside provider & model, peak/off-peak pricing, and real spend — **smart and concise**, **conflict-free**, and **native in look and feel**: it auto-detects the billing mode, replaces the native row instead of duplicating it, and matches the model switcher exactly. Install once; it activates automatically on every launch.
 
@@ -19,7 +19,7 @@ From top to bottom, the combined screenshot shows **ChatGPT subscription**, **De
 
 - **Dual-mode billing bar** — Auto-detects whether the active provider is subscription-based (Codex / OpenCode Go) or balance-based. The two modes replace each other, never overlap; balance mode stays exactly as before.
 - **Three-state billing bar** — Auto-detects whether the active provider is **subscription-based** (quota windows: Codex / OpenCode Go / Zhipu / Xiaomi MiMo Token Plan), **cloud-billing-based** (this month's real bill: Together / Fireworks / AWS Bedrock / Cloudflare), or **balance-based**. The three modes replace each other, never overlap; balance mode stays exactly as before.
-- **ChatGPT subscription card (pure local)** — When the active provider is **ChatGPT / Codex**, the bar decodes `~/.codex/auth.json` locally and shows the **real plan tier + expiry date**, e.g. `ChatGPT · Plus | 到期 2026-09-16` — zero network, real fields straight from OpenAI's own login token (chatgpt_plan_type / subscription_active_until), no local estimation. Not signed in → "not bound" hint. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) to bind your ChatGPT account; this bar only reads the token.
+- **ChatGPT subscription card (pure local)** — When the active provider is **ChatGPT / Codex**, the bar decodes `~/.codex/auth.json` locally and shows the **real plan tier + expiry date**, e.g. `ChatGPT · Plus | 到期 2026-09-16` — zero network, real fields straight from OpenAI's own login token (chatgpt_plan_type / subscription_active_until), no local estimation. Not signed in → "not bound" hint. Binding, token refresh and the `openai-codex` model route are **not part of this plugin** — install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/SONGOAO25) (separate repo) to bind your ChatGPT account; this bar only reads the token.
 - **Subscription quota display (OpenCode Go / Zhipu / Xiaomi MiMo Token Plan)** — When the active provider is a subscription service, the bar shows the **subscription service · model** (e.g. `OpenCode Go · V4 Flash`, `小米 MiMo · Mimo-V2.5`), the **5-hour / weekly / monthly quota remaining** per window (remaining = 100 − used), and a **countdown to the next reset** (e.g. `距重置 1d 21h`). **Quota and countdown always match** — both come from the same window. Quota sources:
   - **OpenCode Go** — reads quota from `opencode.ai/zen/go/v1/usage` via `OPENCODE_GO_API_KEY` (Settings → Models) or the opencode CLI login (`~/.local/share/opencode/auth.json`); missing key → "not configured" hint instead of an error.
   - **Zhipu (zai / zai-coding-cn)** — reads GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback: `ZAI_API_KEY`); shows plan tier + 5-hour window remaining.
@@ -79,7 +79,7 @@ The bar auto-detects your provider from the DSH model catalog — **zero configu
 ### Option 1 — One-command script (recommended)
 
 ```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+git clone https://github.com/SONGOAO25/dsh-bottom-info-bar.git
 cd dsh-bottom-info-bar
 ./install.sh                # installs to the "web" profile; use --profile <name> to override
 ```
@@ -99,7 +99,7 @@ dsh plugin --profile web update dsh-bottom-info-bar --latest
 ### Option 3 — dsh plugin command from a local checkout
 
 ```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+git clone https://github.com/SONGOAO25/dsh-bottom-info-bar.git
 dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
 ```
 
@@ -119,7 +119,7 @@ For detailed installation, troubleshooting, and upgrade instructions, see [docs/
 - **Data scope**: in Beijing time, peak hours are 09:00–12:00 and 14:00–18:00 on weekdays; Saturday and Sunday use off-peak prices all day. Built-in pricing covers DeepSeek V4 models plus OpenAI reference prices; models not in the table are excluded from spend statistics.
 - **Mode**: the bar switches automatically between balance mode and subscription mode based on the active provider (`codex` / `chatgpt` / `opencode-go` / `opencode` / `openai-codex` → subscription; everything else → balance). An internal `billingMode: 'auto' | 'balance' | 'subscription'` setting (default `auto`) allows forcing a mode.
 - **Subscription sources**:
-  - **ChatGPT (Codex)**: install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/songoao25) (separate repo) and bind your ChatGPT account once — it maintains the token in `~/.codex/auth.json` (mode `0600`) and registers the ChatGPT models. This bar only **reads** that token to fetch quota (`chatgpt.com/backend-api/wham/usage`); it never refreshes, writes back, or injects credentials. Without a token the bar shows a "not bound — install dsh-chatgpt-subscription to authorize" hint; an expired token shows a "re-bind" hint.
+  - **ChatGPT (Codex)**: install the companion plugin [**dsh-chatgpt-subscription**](https://github.com/SONGOAO25) (separate repo) and bind your ChatGPT account once — it maintains the token in `~/.codex/auth.json` (mode `0600`) and registers the ChatGPT models. This bar only **reads** that token to fetch quota (`chatgpt.com/backend-api/wham/usage`); it never refreshes, writes back, or injects credentials. Without a token the bar shows a "not bound — install dsh-chatgpt-subscription to authorize" hint; an expired token shows a "re-bind" hint.
   - **OpenCode Go**: set `OPENCODE_GO_API_KEY` under **Settings → Models**, or log in with the opencode CLI (writes the `opencode-go` entry in `~/.local/share/opencode/auth.json`). Without a key the bar shows a "not configured" hint instead of an error.
 
 #### ChatGPT subscription: known limitations
@@ -181,4 +181,4 @@ After restarting, the native stats row returns automatically with no residue (th
 
 ## License
 
-[MIT](LICENSE) © 2026 songoao25
+[MIT](LICENSE) © 2026 SONGOAO25

@@ -2,10 +2,10 @@
 
 [**English**](README.md) | **中文**
 
-[![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/releases)
-[![Last commit](https://img.shields.io/github/last-commit/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar)
-[![CI](https://img.shields.io/github/actions/workflow/status/songoao25/dsh-bottom-info-bar/ci.yml)](https://github.com/songoao25/dsh-bottom-info-bar/actions)
+[![License: MIT](https://img.shields.io/github/license/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar/releases)
+[![Last commit](https://img.shields.io/github/last-commit/SONGOAO25/dsh-bottom-info-bar)](https://github.com/SONGOAO25/dsh-bottom-info-bar)
+[![CI](https://img.shields.io/github/actions/workflow/status/SONGOAO25/dsh-bottom-info-bar/ci.yml)](https://github.com/SONGOAO25/dsh-bottom-info-bar/actions)
 
 **DeepSeek Harness 适配度最高的底部信息栏**，也是原生统计栏的一体替换：单行展示**实时余额**与**订阅额度**（ChatGPT & OpenCode Go），以及服务商与模型、峰谷定价、真实花费，一眼看清。**智能简洁**——自动识别余额制/订阅制、严格单行、完整/简洁两态切换；**不冲突**——替换原生栏而非叠加，两种计费模式互斥绝不重叠；**和原生一样**——模型名/服务商名与模型切换器完全一致、布局与原生统计栏一致。安装一次，每次启动自动生效。
 
@@ -18,7 +18,7 @@
 ## 特性
 
 - **三态信息栏**：自动检测当前服务商是**订阅制**（额度窗口，如 Codex / OpenCode Go / 智谱 / 小米 Token Plan）、**账单制**（本月真实账单，如 Together / Fireworks / AWS Bedrock / Cloudflare）还是**余额制**，三种模式互斥替换、绝不叠加；余额制保持原样。
-- **ChatGPT 订阅卡（纯本地）**：当前服务商为 **ChatGPT / Codex** 时，本地解码 `~/.codex/auth.json` 的登录令牌，直接显示**真实套餐档位 + 到期日期**，例如 `ChatGPT · Plus | 到期 2026-09-16`——纯本地解析、零网络请求，展示 OpenAI 官方登录态中的真实订阅信息，不做任何本地估算。未登录时显示「未绑定」引导。**绑定 / 令牌续期 / ChatGPT 模型路由不在本插件内**——请安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）绑定 ChatGPT 账号；本插件只读令牌显示信息。
+- **ChatGPT 订阅卡（纯本地）**：当前服务商为 **ChatGPT / Codex** 时，本地解码 `~/.codex/auth.json` 的登录令牌，直接显示**真实套餐档位 + 到期日期**，例如 `ChatGPT · Plus | 到期 2026-09-16`——纯本地解析、零网络请求，展示 OpenAI 官方登录态中的真实订阅信息，不做任何本地估算。未登录时显示「未绑定」引导。**绑定 / 令牌续期 / ChatGPT 模型路由不在本插件内**——请安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/SONGOAO25)（独立仓库）绑定 ChatGPT 账号；本插件只读令牌显示信息。
 - **订阅额度显示（OpenCode Go / 智谱 / 小米 MiMo Token Plan）**：当前服务商为订阅制时，信息栏显示**订阅服务 + 模型**（如 `OpenCode Go · V4 Flash`，小米显示 `小米 MiMo`），**5小时 / 周 / 月** 窗口**剩余额度**（剩余 = 100 − 已用，数值加粗），以及**距重置倒计时**（如 `距重置 1d 21h`）。**额度与倒计时严格来自同一窗口**。额度来源：
   - **OpenCode Go**：经 `OPENCODE_GO_API_KEY`（设置 → 模型）或 opencode CLI 登录（`~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）读取 `opencode.ai/zen/go/v1/usage` 额度；未配置时显示「未配置 OpenCode Go」引导，不报错
   - **智谱**：经 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 套餐额度；未配置时显示引导，不报错
@@ -78,7 +78,7 @@
 ### 方式一：一键脚本（推荐）
 
 ```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+git clone https://github.com/SONGOAO25/dsh-bottom-info-bar.git
 cd dsh-bottom-info-bar
 ./install.sh                # 默认安装到 web profile；可用 --profile <name> 指定
 ```
@@ -98,7 +98,7 @@ dsh plugin --profile web update dsh-bottom-info-bar --latest
 ### 方式三：从本地代码安装
 
 ```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+git clone https://github.com/SONGOAO25/dsh-bottom-info-bar.git
 dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
 ```
 
@@ -118,7 +118,7 @@ dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
 - **模式**：按当前服务商自动切换 余额制 / 订阅制（`codex` / `chatgpt` / `opencode-go` / `opencode` / `openai-codex` → 订阅制，其余 → 余额制）；内部提供 `billingMode: 'auto' | 'balance' | 'subscription'` 开关（默认 `auto`）可强制指定模式。
 - **数据口径**：高峰时段为北京时间 9:00–12:00、14:00–18:00；价格表内置 DeepSeek V4 系列与 OpenAI 参考价，未收录模型不参与花费统计。
 - **订阅额度数据源**：
-  - **ChatGPT（Codex）**：安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）并绑定 ChatGPT 账号一次——该插件负责维护 `~/.codex/auth.json`（0600）中的令牌并注册 ChatGPT 模型。本信息栏**只读**该令牌查询额度（`chatgpt.com/backend-api/wham/usage`），**不续期、不写回、不注入凭据**；无令牌显示「未绑定 — 安装 dsh-chatgpt-subscription 授权」引导，令牌失效显示「重新绑定」引导。token 绝不打印 / 进日志 / 入库
+  - **ChatGPT（Codex）**：安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/SONGOAO25)（独立仓库）并绑定 ChatGPT 账号一次——该插件负责维护 `~/.codex/auth.json`（0600）中的令牌并注册 ChatGPT 模型。本信息栏**只读**该令牌查询额度（`chatgpt.com/backend-api/wham/usage`），**不续期、不写回、不注入凭据**；无令牌显示「未绑定 — 安装 dsh-chatgpt-subscription 授权」引导，令牌失效显示「重新绑定」引导。token 绝不打印 / 进日志 / 入库
   - **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`，或先用 opencode CLI 登录订阅（写入 `~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）。未配置时显示"未配置 OpenCode Go"引导，不报错。
 
 #### ChatGPT 订阅：已知限制
@@ -176,4 +176,4 @@ ChatGPT 订阅（绑定与令牌维护）由独立插件 `dsh-chatgpt-subscripti
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 songoao25
+[MIT](LICENSE) © 2026 SONGOAO25

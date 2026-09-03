@@ -53,7 +53,7 @@
 
 ## 三、远程价目目录运行规范
 
-- URL（默认）: `https://raw.githubusercontent.com/songoao25/dsh-bottom-info-bar/main/catalog/pricing.json`
+- URL（默认）: `https://raw.githubusercontent.com/SONGOAO25/dsh-bottom-info-bar/main/catalog/pricing.json`
   （可用环境变量 `DSH_BOTTOM_INFO_BAR_PRICING_URL` 覆盖，便于私有部署）
 - 时序: 启动磁盘缓存同步合并 → 回填 → 异步网络拉取 → 合并成功再回填一次 → 每 6 小时定时
 - 校验白名单: key `[A-Za-z0-9._-]{1,64}`；mode 仅 flat；币种仅 CNY/USD；`0 < miss`、`hit ≤ miss`、`out ≥ 0`；条目 ≤512
