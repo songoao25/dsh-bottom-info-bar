@@ -34,3 +34,5 @@
 - 用 dsh plugin 命令安装：`dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin`
 - 跑测试：见 `tests/run-all.mjs`
 - CI 检查项：`.github/workflows/ci.yml`
+
+- 版本发布铁律（2026-09-04 用户明确要求）：每一次小 bug 修复、小更新都必须走一个版本发布（bump patch + CHANGELOG + tag + npm），严禁“修了不发”；已实现的版本更新提醒功能依赖此纪律，否则浪费
