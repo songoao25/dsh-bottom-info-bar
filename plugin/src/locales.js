@@ -267,7 +267,9 @@ export const LOCALES = {
     "ui.turnCount": "{count} 轮",
     "ui.turnCountPlural": "{count} 轮",
     "ui.stepCount": "{count} 步",
-    "ui.stepCountPlural": "{count} 步"
+    "ui.stepCountPlural": "{count} 步",
+    "ui.languageSettings": "界面语言",
+    "ui.languageSettingsDesc": "切换插件界面的显示语言，改动即时生效。"
   },
   "en": {
     "ui.requestTimedOut": "Request timed out",
@@ -536,6 +538,8 @@ export const LOCALES = {
     "ui.turnCount": "{count} turn",
     "ui.turnCountPlural": "{count} turns",
     "ui.stepCount": "{count} step",
-    "ui.stepCountPlural": "{count} steps"
+    "ui.stepCountPlural": "{count} steps",
+    "ui.languageSettings": "Language",
+    "ui.languageSettingsDesc": "Switch the display language of this plugin. Changes take effect immediately."
   }
 }

@@ -131,7 +131,11 @@ await new Promise((resolve) => setImmediate(resolve))
 const alerts = nodes(render()).filter((node) => node.props.role === 'alert').map(text)
 assert.ok(alerts.includes('"Balance": Could not save: Offline'), JSON.stringify(alerts))
 assert.equal(states[0].fields.balance, true, 'A failed save must restore field visibility')
-assert.doesNotMatch(text(render()), /\p{Script=Han}|[「」]/u)
+// Language switcher shows native language names (中文 / English) in both locales — standard UI convention.
+// Strip the language option text before checking for stray Chinese characters.
+const langNames = ['中文', 'English']
+const textWithoutLangOpts = text(render()).replace(new RegExp(langNames.join('|'), 'g'), '')
+assert.doesNotMatch(textWithoutLangOpts, /\p{Script=Han}|[「」]/u)
 console.log('PASS  Failed field saves use English punctuation and preserve rollback behavior')
 
 // The same registered components and bound translator follow the LocaleFace.
