@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // v1.7 新增适配器单测（指向正式源码 plugin/src/host.js + plugin/src/client-bundle.js）：
 // ① FR-8 本地 JWT 解码（嵌套命名空间实测形态 / 扁平兜底 / padding / 失败静默）
 // ② FR-9 小米 MiMo 解析（tokenPlan/usage、tokenPlan/balance、按量 balance；百分比 0-1 与 0-100 双形态）
@@ -286,14 +287,14 @@ check('三态：deepseek → balance', detectBillingMode('deepseek', 'auto').mod
 // ================= ⑧ client 静态检查（v1.7 渲染面） =================
 const billFn = extractClientFnBody('pushBillingGroups');
 check('client：账单型分支（三态互斥）', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('pushBillingGroups(groups, trailingErrorGroups)'), true);
-check('client：账单型显示本月 $X', clientSrc.includes("metric('本月', symbol + fmt(d.currentPeriodSpend, 2))"), true);
-check('client：账单型显示预算 Y%', clientSrc.includes("metric('预算', fmt(d.budgetPercent, 0) + '%')"), true);
+check('client：账单型显示本月 $X', clientSrc.includes("metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))"), true);
+check('client：账单型显示预算 Y%', clientSrc.includes("metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')"), true);
 check('client：账单型不显示余额类字段（本会话也不显示）', !billFn.includes('余额 ') && !billFn.includes('本会话 '), true);
-check('client：JWT 到期卡片（到期 YYYY-MM-DD）', clientSrc.includes("metric('到期', formatDate(sub.expiryAt))"), true);
+check('client：JWT 到期卡片（到期 YYYY-MM-DD）', clientSrc.includes("metric(t('ui.expires'), formatDate(sub.expiryAt))"), true);
 check('client：JWT 套餐档位短名', clientSrc.includes('subscriptionPlanShort('), true);
 check('client：BILLING_PROVIDERS 兜底注入', clientSrc.includes('BILLING_PROVIDERS.indexOf(activeSessionModel.provider)'), true);
 check('client：账单服务名映射', clientSrc.includes("return 'AWS Bedrock'") && clientSrc.includes("return 'Cloudflare'") && clientSrc.includes("return 'Together'"), true);
-check('client：订阅服务名含小米 MiMo', clientSrc.includes("return '小米 MiMo'"), true);
+check('client：订阅服务名含小米 MiMo', clientSrc.includes("return t('ui.xiaomiMiMo')"), true);
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

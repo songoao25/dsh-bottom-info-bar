@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // 客户端失败处理原子性回归（docs/AUDIT-CODE-REVIEW.md 缺陷 #1，高）：
 // ① rpc 超时 / 中止：20s 超时兜底 + AbortController + 组件卸载取消 → 杜绝永久"加载中…"
 // ② load 逐接口容错：Promise.allSettled，单端点 RPC 失败不丢弃其他成功数据
@@ -119,12 +120,12 @@ check('无 reason 的失败兜底为 RPC 失败', bareFail.errors.balance, 'RPC 
 check('整栏 fatal 分支已移除（不再整栏"加载失败"）', !clientSrc.includes('state.fatal'), true);
 check('信息栏不渲染任何加载中文案（会话模型未到时留空）', !clientSrc.includes("key: 'loading' }, '加载中…'")
   && !clientSrc.includes("key: 'subload' }, '订阅额度加载中…'"), true);
-check('全局降级提示统一为刷新失败', clientSrc.includes("'刷新失败'"), true);
-check('余额块 RPC 失败且无旧数据 → 简短失败信息（只降级余额块）', clientSrc.includes("title: '余额获取失败。请检查网络和 API Key。'"), true);
+check('全局降级提示统一为刷新失败', clientSrc.includes("t('ui.refreshFailed')"), true);
+check('余额块 RPC 失败且无旧数据 → 简短失败信息（只降级余额块）', clientSrc.includes("title: t('ui.couldNotLoadBalanceCheck')"), true);
 check('余额块失败保留旧快照提示（host 快照失败 / RPC 失败共用）', clientSrc.includes('bal.error || errors.balance'), true);
-check('订阅块 RPC 失败且无旧数据 → 只显示刷新失败并提供悬停说明', clientSrc.includes("'刷新失败'") && clientSrc.includes('subscriptionFailureHint'), true);
+check('订阅块 RPC 失败且无旧数据 → 只显示刷新失败并提供悬停说明', clientSrc.includes("t('ui.refreshFailed')") && clientSrc.includes('subscriptionFailureHint'), true);
 check('订阅块失败保留旧快照提示（host 快照失败 / RPC 失败共用）', clientSrc.includes('sub.error || errors.sub'), true);
-check('花费块 RPC 失败且无旧数据 → 简短降级提示', clientSrc.includes("title: '花费暂不可用；不会影响对话。'"), true);
+check('花费块 RPC 失败且无旧数据 → 简短降级提示', clientSrc.includes("title: t('ui.spendIsTemporarilyUnavailableChat')"), true);
 
 // ---- ⑤ v1.9 PR2 回归：降级节点包上 data-field 容器（fieldSpan 着色）后，
 //      多个「刷新失败」仍必须合并为一个——文案解析要穿透包装层（功能性验证） ----
