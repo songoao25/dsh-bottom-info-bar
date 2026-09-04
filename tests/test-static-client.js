@@ -22,8 +22,8 @@ check('本会话块在 usg 存在时始终渲染（pushSessionCost 公共小部�
   && clientSrc.includes('const usg = state.usage;')
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
 check('无记账时显示 ¥0.000 回退', clientSrc.includes('symbol + (0).toFixed(3)'), true);
-check('hover 仍含 今天/近一月/全部', clientSrc.includes("'Today ' + symbol + fmt(usg.todaySpend, 3)"), true);
-check('hover 仍含 全部', clientSrc.includes("'All time ' + symbol + fmt(usg.totalSpend, 3)"), true);
+check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) })"), true);
+check('hover 仍含 全部', clientSrc.includes("t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) })"), true);
 
 // 2) 原生统计行不再以 steps > 0 为门槛；简洁模式下保留 DOM 供动画收合
 check('原生统计行由 statsProj 驱动，简洁模式保留 DOM 以支持收合', clientSrc.includes('if (statsProj) {')
@@ -71,25 +71,25 @@ check('主题颜色以 DSH 实际外观属性切换，并在增强对比度下�
 check('低余额和低额度使用无框“低”字，状态不只依赖颜色且不制造额外视觉焦点', !clientSrc.includes('⚠')
   && clientSrc.includes('.bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }')
   && !clientSrc.includes('bi-low-badge')
-  && clientSrc.includes("alertActive ? React.createElement('span', { className: 'bi-low-status' }, 'Low')")
-  && clientSrc.includes("key: 'low' + i, className: 'bi-low-status' }, 'Low'"), true);
+  && clientSrc.includes("alertActive ? React.createElement('span', { className: 'bi-low-status' }, t('ui.low'))")
+  && clientSrc.includes("key: 'low' + i, className: 'bi-low-status' }, t('ui.low')"), true);
 check('外部分组为 6px、标签与数据为 4px、模型内部圆点为 4px，层级清晰而不过松', clientSrc.includes('.bi-sep { color: var(--bi-separator); margin: 0 6px; }')
   && clientSrc.includes('.bi-metric-data { margin-left: 4px; }')
   && clientSrc.includes('.bi-model-dot { margin: 0 4px; flex: 0 0 auto; }'), true);
-check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric('Balance', symbol + fmt(bal.data.total)")
+check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
   && clientSrc.includes("num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s')")
-  && clientSrc.includes("group([num(statsProj.turns + (statsProj.turns === 1 ? ' turn' : ' turns')), ' · ', num(statsProj.steps + (statsProj.steps === 1 ? ' step' : ' steps'))], false, 'turnsSteps')")
-  && clientSrc.includes("group([metric('Input', formatTokens(billedInput(usageProj)) + ' tok')"), true);
+  && clientSrc.includes("group([num(t(statsProj.turns === 1 ? 'ui.turnCount' : 'ui.turnCountPlural', { count: statsProj.turns })), ' · ', num(t(statsProj.steps === 1 ? 'ui.stepCount' : 'ui.stepCountPlural', { count: statsProj.steps }))], false, 'turnsSteps')")
+  && clientSrc.includes("group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok')"), true);
 check('标签与数据通过 metric 组件统一 4px 边界，不依赖普通字符空格', clientSrc.includes("function metric(label, value, extraClass)")
-  && clientSrc.includes("metric('Balance', symbol + fmt(bal.data.total)")
-  && clientSrc.includes("metric('Session', costTxt)")
-  && clientSrc.includes("metric('Cache hit', hit + '%')"), true);
+  && clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
+  && clientSrc.includes("metric(t('ui.session'), costTxt)")
+  && clientSrc.includes("metric(t('ui.cacheHit'), hit + '%')"), true);
 check('超长模型名不会被根容器裁切：模型详情可整体换行，视觉胶囊保留能力词并省略过长型号', !clientSrc.includes('display: block; overflow: hidden; font-size: 12px')
   && clientSrc.includes('.bi-row2 > .bi-model-group { white-space: normal; }')
   && clientSrc.includes('.bi-model-detail { display: inline-flex;')
   && clientSrc.includes('.bi-vision-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }')
-  && clientSrc.includes("React.createElement('span', { className: 'bi-vision-kind' }, 'Vision')"), true);
-check('整条信息栏的读屏名称引用当前可见信息，切换操作作为独立说明而不覆盖内容', !clientSrc.includes("'aria-label': full ? 'Switch to compact view'")
+  && clientSrc.includes("React.createElement('span', { className: 'bi-vision-kind' }, t('ui.vision'))"), true);
+check('整条信息栏的读屏名称引用当前可见信息，切换操作作为独立说明而不覆盖内容', !clientSrc.includes("'aria-label': full ? '切换为简洁模式'")
   && clientSrc.includes("'aria-labelledby': full && row1 !== null ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary'")
   && clientSrc.includes("'aria-describedby': 'dsh-bottom-info-bar-action'")
   && clientSrc.includes("id: 'dsh-bottom-info-bar-action'")
@@ -98,7 +98,7 @@ check('报错标签统一延后到居中信息组的末尾', clientSrc.includes(
   && clientSrc.includes('trailingErrorGroups.push')
   && clientSrc.includes("const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);"), true);
 check('多个刷新失败合并为一个右侧标签', clientSrc.includes('const seenRefreshFailure = { value: false };')
-  && clientSrc.includes("if (text !== 'Refresh failed') return true;"), true);
+  && clientSrc.includes("if (text !== t('ui.refreshFailed')) return true;"), true);
 check('状态说明维持原生悬浮提示，不额外引入读屏文案', !clientSrc.includes("'aria-label': title")
   && !clientSrc.includes("'aria-label': modelLabel"), true);
 

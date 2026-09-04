@@ -12,6 +12,8 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 // v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
 import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
+import * as hostLocale from './host-locale.js'
+const t = hostLocale.createHostTranslator()
 
 const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
@@ -95,7 +97,7 @@ const SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
 const BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
 // 订阅窗口时长（秒）：5 小时 / 7 天 / 30 天；映射带 5% 容差（接口值可能微调）
 const WINDOW_SECONDS = { five_hour: 18000, seven_day: 604800, monthly: 2592000 }
-const WINDOW_LABELS = { five_hour: '5-hour', seven_day: 'Weekly', monthly: 'Monthly' }
+const WINDOW_LABELS = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') }
 // 订阅窗口预警阈值由客户端本判定（剩余 ≤20% → 警示红 + 无框“低”字，见 client 的 LOW_QUOTA_PERCENT）；
 // host 仅下发额度/重置数据，不重复判定，故移除原 WINDOW_ALERT_PERCENT=90 的死常量。
 const CODEX_PLAN_NAMES = { plus: 'ChatGPT Plus', pro: 'ChatGPT Pro', team: 'ChatGPT Team', enterprise: 'ChatGPT Enterprise' }
@@ -169,18 +171,20 @@ function billingSourceFor(providerId) {
 // 模型切换器显示 DSH LLM 目录的 model.name（如 id=deepseek-v4-flash 的 name="DeepSeek-V4-Flash"）。
 // 以下两个纯函数只做"缓存优先 → 回退"解析；缓存由 apply 内异步填充（llm.listModels / llm.listProviders）。
 // modelDisplay：优先缓存里的 DSH 目录 name；缓存缺失/未知模型回退原始 model id（不做自建美化）
-function modelDisplayFromCache(model, provider, cache) {
+function modelDisplayFromCache(model, provider, cache, translate) {
+  if (translate === undefined) translate = t
   if (model && provider && cache) {
     const provMap = cache[provider]
     if (provMap && typeof provMap[model] === 'string' && provMap[model].length > 0) return provMap[model]
   }
-  return model || 'Unknown model'
+  return model || translate('ui.unknownModel')
 }
 // providerDisplay：优先 DSH 目录 name（llm.listProviders()）；缺失回退静态映射；再回退大写首字母
-function providerDisplayFromCache(providerId, cache, staticMap) {
-  if (!providerId) return 'Unknown provider'
+function providerDisplayFromCache(providerId, cache, staticMap, translate) {
+  if (translate === undefined) translate = t
+  if (!providerId) return translate('host.unknownProvider')
   if (cache && typeof cache[providerId] === 'string' && cache[providerId].length > 0) return cache[providerId]
-  if (staticMap && staticMap[providerId]) return staticMap[providerId]
+  if (staticMap && staticMap[providerId]) return translate.json ? translate.json('displayName', staticMap[providerId]) : staticMap[providerId]
   return providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 
@@ -282,12 +286,13 @@ function parseOpenCodeGoUsage(body) {
 }
 
 // 快照更新规则（"失败保留旧快照"的纯函数形态）：失败保留旧 data/fetchedAt 只换 error；成功换 data 并更新 fetchedAt
-function mergeSubscriptionResult(prev, result) {
+function mergeSubscriptionResult(prev, result, translate) {
+  if (translate === undefined) translate = t
   if (!result || result.error) {
     return {
       data: prev && prev.data ? prev.data : null,
       fetchedAt: prev && prev.fetchedAt ? prev.fetchedAt : null,
-      error: result ? result.error : { kind: 'exception', message: 'Unexpected subscription quota request failure' },
+      error: result ? result.error : { kind: 'exception', message: translate('host.unexpectedSubscriptionQuotaRequestFailure') },
     }
   }
   return { data: result.data || null, fetchedAt: Date.now(), error: null }
@@ -885,7 +890,8 @@ function loadSettingsFromDisk() {
 }
 
 // 原子写：tmp 文件写满 + fsync 后 rename 覆盖（与 writeAndSync 快照路径同一模式，避免半截文件）
-function writeFileAtomic(filePath, content) {
+function writeFileAtomic(filePath, content, translate) {
+  if (translate === undefined) translate = t
   mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
   const tmp = filePath + '.tmp.' + process.pid + '.' + randomUUID()
   let fd = null
@@ -895,7 +901,7 @@ function writeFileAtomic(filePath, content) {
     let offset = 0
     while (offset < bytes.length) {
       const written = writeSync(fd, bytes, offset, bytes.length - offset)
-      if (!written) throw new Error('Settings file could not be saved')
+      if (!written) throw new Error(translate('host.settingsFileCouldNotBe'))
       offset += written
     }
     fsyncSync(fd)
@@ -925,6 +931,7 @@ export const __settingsInternals = {
 export default {
   inject: ['credentials', 'timer'],
   apply(ctx) {
+    const t = hostLocale.createHostTranslator(ctx);
     // 版本检查只在 host 进程启动时发起一次；客户端后续只读取这个缓存结果。
     const updateInfoPromise = checkLatestVersion()
 
@@ -1079,11 +1086,11 @@ export default {
     }
 
     const SCENARIOS = [
-      { id: 'qa',       label: 'Everyday questions',            outputK: 2,   inputK: 4 },
-      { id: 'coding',   label: 'Medium coding task',        outputK: 15,  inputK: 30 },
-      { id: 'doc',      label: 'Long document analysis / code review', outputK: 40,  inputK: 120 },
-      { id: 'refactor', label: 'Large project refactor across multiple turns',  outputK: 150, inputK: 500 },
-      { id: 'subagent', label: 'Subagent workflow',        outputK: 300, inputK: 1000 },
+      { id: 'qa',       label: t('host.everydayQuestions'),            outputK: 2,   inputK: 4 },
+      { id: 'coding',   label: t('host.mediumCodingTask'),        outputK: 15,  inputK: 30 },
+      { id: 'doc',      label: t('host.longDocumentAnalysisCodeReview'), outputK: 40,  inputK: 120 },
+      { id: 'refactor', label: t('host.largeProjectRefactorAcrossMultiple'),  outputK: 150, inputK: 500 },
+      { id: 'subagent', label: t('host.subagentWorkflow'),        outputK: 300, inputK: 1000 },
     ];
     const CALIB_SESSIONS = 10;
     const SPEND_DAYS = 7;
@@ -1177,7 +1184,7 @@ export default {
       },
       // v1.7 FR-9：xiaomi（MiMo 按量）余额适配器——B 级半公开端点，Bearer API Key 零设置
       xiaomi: {
-        id: 'xiaomi', displayName: 'Xiaomi MiMo', credential: 'XIAOMI_API_KEY',
+        id: 'xiaomi', displayName: t('ui.xiaomiMiMo'), credential: 'XIAOMI_API_KEY',
         balanceAPI: 'https://api.xiaomimimo.com/v1/user/balance',
         estimate: false,
         parseBalance: parseXiaomiPaygBalance,
@@ -1202,10 +1209,10 @@ export default {
     function persistSettings() {
       // 落盘失败不阻断内存态生效（本会话内一致），但显式 warn 并把结果带回客户端
       try {
-        writeFileAtomic(SETTINGS_FILE, JSON.stringify(fieldSettings));
+        writeFileAtomic(SETTINGS_FILE, JSON.stringify(fieldSettings), t);
         return null;
       } catch (err) {
-        const message = 'Could not save settings.json: ' + String((err && err.message) || err);
+        const message = t('host.couldNotSaveSettingsJson', { value: String((err && err.message) || err) });
         console.warn('[dsh-bottom-info-bar] ' + message);
         return message;
       }
@@ -1254,12 +1261,12 @@ export default {
           cred = await ctx.credentials.resolve(prov.credential);
         } catch (err) {
           // 与下方 http/parse/exception 分支一致：失败保留旧 data/fetchedAt，仅换 error；seq guard 防慢请求覆盖新快照
-          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'credentials', message: 'Could not read credentials' } };
+          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'credentials', message: t('host.couldNotReadCredentials') } };
           return;
         }
         if (!cred || !cred.value) {
           // no-key 同样保留旧快照：一次瞬断/未配置不把好数据清空（客户端据 error 显示配置引导/警示）
-          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'no-key', message: 'Not configured: ' + prov.credential } };
+          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'no-key', message: t('host.notConfigured', { credential: prov.credential }) } };
           return;
         }
         try {
@@ -1269,13 +1276,13 @@ export default {
             signal: AbortSignal.timeout(15000),
           });
           if (!res.ok) {
-            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '.' } };
+            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
             return;
           }
           const body = await res.json();
           const parsed = prov.parseBalance(body);
           if (!parsed) {
-            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'parse', message: 'Unexpected response format' } };
+            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
             return;
           }
           if (balanceSeq[pid] === seq) balances[pid] = { data: parsed, fetchedAt: Date.now(), error: null };
@@ -1305,12 +1312,12 @@ export default {
     async function fetchCodexUsage() {
       const read = readCodexAuthFile(CODEX_AUTH_FILE);
       if (!read.ok) {
-        return { error: { kind: 'no-key', message: 'ChatGPT subscription is not connected: credentials not found in ~/.codex/auth.json. Install dsh-chatgpt-subscription and sign in.' } };
+        return { error: { kind: 'no-key', message: t('host.chatgptSubscriptionIsNotConnected') } };
       }
       const tokens = read.auth && read.auth.tokens;
       const idToken = tokens && typeof tokens.id_token === 'string' && tokens.id_token.length > 0 ? tokens.id_token : null;
       if (!idToken) {
-        return { error: { kind: 'no-key', message: 'ChatGPT subscription credentials are missing id_token. Install dsh-chatgpt-subscription and reauthorize.' } };
+        return { error: { kind: 'no-key', message: t('host.chatgptSubscriptionCredentialsAreMissing') } };
       }
       let parsed = null;
       try { parsed = parseCodexJwt(idToken); } catch (err) { /* 解码异常 → 静默降级 */ }
@@ -1344,17 +1351,17 @@ export default {
     async function fetchOpenCodeGoUsage() {
       const key = await resolveOpenCodeGoKey();
       if (!key) {
-        return { error: { kind: 'no-key', message: 'OpenCode Go is not configured. Set OPENCODE_GO_API_KEY or use opencode auth.json.' } };
+        return { error: { kind: 'no-key', message: t('host.opencodeGoIsNotConfigured') } };
       }
       try {
         const res = await fetch('https://opencode.ai/zen/go/v1/usage', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!res.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '.' } };
+        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
         const body = await res.json();
         const parsed = parseOpenCodeGoUsage(body);
-        if (!parsed) return { error: { kind: 'parse', message: 'Unexpected response format' } };
+        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
         return { data: { provider: 'opencode-go', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
@@ -1422,7 +1429,7 @@ export default {
       if (typeof data.level === 'string' && data.level.length > 0) {
         const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' };
         const mapped = levelMap[data.level.toLowerCase()];
-        planName = mapped ? 'Zhipu ' + mapped : ('Zhipu ' + data.level.charAt(0).toUpperCase() + data.level.slice(1));
+        planName = mapped ? t('host.zhipu', { mapped: mapped }) : (t('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }));
       } else if (typeof body.planName === 'string' && body.planName.length > 0) {
         planName = body.planName;
       }
@@ -1450,7 +1457,7 @@ export default {
       const resolvedProvider = providerId === 'zai-coding-cn' ? 'zai-coding-cn' : 'zai';
       const key = await resolveZaiKey(resolvedProvider);
       if (!key) {
-        return { error: { kind: 'no-key', message: 'Zhipu API key is not configured. Set ZAI_API_KEY or ZAI_CODING_CN_API_KEY.' } };
+        return { error: { kind: 'no-key', message: t('host.zhipuAPIKeyIsNot') } };
       }
       const host = zaiHostForProvider(resolvedProvider);
 
@@ -1469,12 +1476,12 @@ export default {
             return fetchZaiBalanceFallback(host, key, resolvedProvider);
           }
           if (body.code === 401 || /过期|不正确|unauthorized|expired/i.test(msg))
-            return { error: { kind: 'auth', message: 'Zhipu API authentication failed: the key is expired or invalid.' } };
-          return { error: { kind: 'http', message: 'Request failed: ' + (body.code || '') + ' ' + msg + '.' } };
+            return { error: { kind: 'auth', message: t('host.zhipuAPIAuthenticationFailedThe') } };
+          return { error: { kind: 'http', message: t('host.requestFailed', { value: body.code || '', msg: msg }) } };
         }
-        if (!res.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '.' } };
+        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
         const parsed = parseZaiQuota(body);
-        if (!parsed) return { error: { kind: 'parse', message: 'Unexpected response format' } };
+        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
         return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
@@ -1494,14 +1501,14 @@ export default {
         if (body && body.success === false) {
           const msg = body.msg || body.message || '';
           if (body.code === 401 || body.code === 1000 || /过期|不正确|unauthorized|expired/i.test(msg))
-            return { error: { kind: 'auth', message: 'Zhipu API authentication failed: the key is expired or invalid.' } };
-          return { error: { kind: 'http', message: 'Request failed: ' + (body.code || '') + ' ' + msg + '.' } };
+            return { error: { kind: 'auth', message: t('host.zhipuAPIAuthenticationFailedThe') } };
+          return { error: { kind: 'http', message: t('host.requestFailed', { value: body.code || '', msg: msg }) } };
         }
-        if (!res.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '.' } };
+        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
         const parsed = parseZaiBalance(body);
-        if (!parsed) return { error: { kind: 'parse', message: 'Unexpected response format' } };
+        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
         // 返回充值余额：balance 字段携带金额，windows 为空（无额度窗口）
-        return { data: { provider: 'zai', plan: 'Prepaid balance', windows: [], balance: parsed.balance } };
+        return { data: { provider: 'zai', plan: t('ui.prepaidBalance'), windows: [], balance: parsed.balance } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -1542,7 +1549,7 @@ export default {
           ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
         };
         const credName = regionNames[region] || 'XIAOMI_TOKEN_PLAN_*_API_KEY';
-        return { error: { kind: 'no-key', message: 'Xiaomi MiMo Token Plan credentials are not configured: ' + credName + ' or XIAOMI_API_KEY.' } };
+        return { error: { kind: 'no-key', message: t('host.xiaomiMiMoTokenPlanCredentials', { credName: credName }) } };
       }
       const base = xiaomiRegionBaseUrl(region);
       const endpoints = [base + '/v1/tokenPlan/usage', base + '/v1/user/balance'];
@@ -1563,13 +1570,13 @@ export default {
           return { error: { kind: 'exception', message: String((err && err.message) || err) } };
         }
       }
-      return { error: { kind: 'http', message: 'Request failed: HTTP ' + (lastStatus || '?') + '.' } };
+      return { error: { kind: 'http', message: t('host.requestFailedHTTP.fetchXiaomiTokenPlanUsage', { value: lastStatus || '?' }) } };
     }
 
     // v1.7 FR-10：Together 本月真实账单（USD）。api.together.xyz 为主，api.together.ai 回退（A8 记录确认同源 API）。
     async function fetchTogetherBilling() {
       const key = await resolveCredentialValue('TOGETHER_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: 'Not configured: TOGETHER_API_KEY' } };
+      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredTOGETHERAPIKEY') } };
       const hosts = ['https://api.together.xyz', 'https://api.together.ai'];
       let lastStatus = null;
       for (let i = 0; i < hosts.length; i++) {
@@ -1581,41 +1588,41 @@ export default {
           if (!res.ok) {
             lastStatus = res.status;
             if (i < hosts.length - 1) continue;
-            return { error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '.' } };
+            return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
           }
           const body = await res.json();
           const spend = parseTogetherUsage(body);
-          if (spend == null) return { error: { kind: 'parse', message: 'Unexpected response format' } };
-          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: 'Actual monthly bill from the Together Usage API' } };
+          if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: t('host.actualMonthlyBillFromThe') } };
         } catch (err) {
           if (i < hosts.length - 1) continue;
           return { error: { kind: 'exception', message: String((err && err.message) || err) } };
         }
       }
-      return { error: { kind: 'http', message: 'Request failed: HTTP ' + (lastStatus || '?') + '.' } };
+      return { error: { kind: 'http', message: t('host.requestFailedHTTP.fetchXiaomiTokenPlanUsage', { value: lastStatus || '?' }) } };
     }
 
     // v1.7 FR-11：Fireworks 本周期真实账单。先 GET /v1/accounts 解析 account_id，
     // 主端点 billing/summary（美元）；404 → 回退 billingUsage（token 用量，无金额时降级展示用量）。
     async function fetchFireworksBilling() {
       const key = await resolveCredentialValue('FIREWORKS_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: 'Not configured: FIREWORKS_API_KEY' } };
+      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredFIREWORKSAPIKEY') } };
       try {
         const accRes = await fetch('https://api.fireworks.ai/v1/accounts', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!accRes.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + accRes.status + '.' } };
+        if (!accRes.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: accRes.status }) } };
         const accountId = parseFireworksAccountId(await accRes.json());
-        if (!accountId) return { error: { kind: 'parse', message: 'Could not read account (account_id missing)' } };
+        if (!accountId) return { error: { kind: 'parse', message: t('host.couldNotReadAccountAccount') } };
         const summaryRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billing/summary?granularity=DAILY', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
         if (summaryRes.ok) {
           const spend = parseFireworksSummary(await summaryRes.json());
-          if (spend == null) return { error: { kind: 'parse', message: 'Unexpected response format' } };
-          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: 'Actual bill for this period (Fireworks Billing Summary)' } };
+          if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+          return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: t('host.actualBillForThisPeriod') } };
         }
         if (summaryRes.status === 404) {
           const usageRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billingUsage', {
@@ -1624,12 +1631,12 @@ export default {
           });
           if (usageRes.ok) {
             const usage = parseFireworksUsage(await usageRes.json());
-            if (usage != null) return { data: { kind: 'billing', usage: usage, usageUnit: 'tokens', currency: 'USD', note: 'Actual usage for this period (billingUsage fallback; no spend amount)' } };
-            return { error: { kind: 'parse', message: 'Unexpected response format' } };
+            if (usage != null) return { data: { kind: 'billing', usage: usage, usageUnit: 'tokens', currency: 'USD', note: t('host.actualUsageForThisPeriod') } };
+            return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
           }
-          return { error: { kind: 'http', message: 'Request failed: HTTP ' + usageRes.status + '.' } };
+          return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: usageRes.status }) } };
         }
-        return { error: { kind: 'http', message: 'Request failed: HTTP ' + summaryRes.status + '.' } };
+        return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: summaryRes.status }) } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -1669,7 +1676,7 @@ export default {
     async function fetchBedrockBilling() {
       const aws = await resolveAwsCredentials();
       if (!aws) {
-        return { error: { kind: 'no-key', message: 'Not configured: AWS credentials — AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY' } };
+        return { error: { kind: 'no-key', message: t('host.notConfiguredAWSCredentialsAWS') } };
       }
       try {
         const now = new Date();
@@ -1679,12 +1686,12 @@ export default {
           Granularity: 'MONTHLY',
           Filter: { Dimensions: { Key: 'SERVICE', Values: ['Amazon Bedrock'] } },
         }, aws);
-        if (!ce.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + ce.status + '. The token may lack ce:GetCostAndUsage permission' } };
+        if (!ce.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTPTheToken', { status: ce.status }) } };
         const spend = parseBedrockCost(ce.json);
-        if (spend == null) return { error: { kind: 'parse', message: 'Unexpected response format' } };
+        if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
         let budgetPercent = null;
         try { budgetPercent = await fetchBedrockBudget(aws); } catch (err) { budgetPercent = null; } // 预算失败静默
-        return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, budgetPercent: budgetPercent, currency: 'USD', note: 'Actual monthly bill from AWS Cost Explorer — about 24 hours behind' } };
+        return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, budgetPercent: budgetPercent, currency: 'USD', note: t('host.actualMonthlyBillFromAWS') } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -1712,18 +1719,18 @@ export default {
     // 免费额度仅当接口显式返回 limit/allowance 字段时展示（拿不到只显示真实用量，绝不编造）；失败静默降级。
     async function fetchCloudflareBilling() {
       const key = await resolveCredentialValue('CLOUDFLARE_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: 'Not configured: CLOUDFLARE_API_KEY — requires an account-level token with Billing read permission' } };
+      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredCLOUDFLAREAPIKEY') } };
       const accountId = await resolveCredentialValue('CLOUDFLARE_ACCOUNT_ID');
-      if (!accountId) return { error: { kind: 'no-key', message: 'Not configured: CLOUDFLARE_ACCOUNT_ID' } };
+      if (!accountId) return { error: { kind: 'no-key', message: t('host.notConfiguredCLOUDFLAREACCOUNTID') } };
       try {
         const res = await fetch('https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(accountId) + '/billing/usage/paygo', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!res.ok) return { error: { kind: 'http', message: 'Request failed: HTTP ' + res.status + '. The token requires Billing read permission' } };
+        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTPTheToken.fetchCloudflareBilling', { status: res.status }) } };
         const parsed = parseCloudflareBilling(await res.json());
-        if (!parsed) return { error: { kind: 'parse', message: 'Unexpected response format' } };
-        return { data: Object.assign({ kind: 'billing', currency: 'USD', note: 'Actual monthly usage from the Cloudflare Billable Usage API — Alpha' }, parsed) };
+        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        return { data: Object.assign({ kind: 'billing', currency: 'USD', note: t('host.actualMonthlyUsageFromThe') }, parsed) };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -1749,7 +1756,7 @@ export default {
       subscriptionSeq[sourceKey] = seq;
       subscriptionInFlight[sourceKey] = src.fetch(providerId).then(function (result) {
         if (subscriptionSeq[sourceKey] === seq) {
-          subscriptions[sourceKey] = mergeSubscriptionResult(subscriptions[sourceKey], result);
+          subscriptions[sourceKey] = mergeSubscriptionResult(subscriptions[sourceKey], result, t);
           // 失败退避记录：失败记时刻（期内不重试），成功清零
           if (result && result.error) subscriptionLastFailAt[sourceKey] = Date.now();
           else subscriptionLastFailAt[sourceKey] = 0;
@@ -1792,7 +1799,7 @@ export default {
         return {
           data: prev && prev.data ? prev.data : null,
           fetchedAt: prev && prev.fetchedAt ? prev.fetchedAt : null,
-          error: result ? result.error : { kind: 'exception', message: 'Unexpected billing request failure' },
+          error: result ? result.error : { kind: 'exception', message: t('host.unexpectedBillingRequestFailure') },
         };
       }
       return { data: result.data || null, fetchedAt: Date.now(), error: null };
@@ -2005,10 +2012,10 @@ export default {
       xai: 'xAI',
       groq: 'Groq',
       // v1.7：新增服务商显示名（模型目录缺失时的兜底；账单/订阅行另有品牌名映射）
-      xiaomi: 'Xiaomi MiMo',
-      'xiaomi-token-plan-cn': 'Xiaomi MiMo',
-      'xiaomi-token-plan-sgp': 'Xiaomi MiMo',
-      'xiaomi-token-plan-ams': 'Xiaomi MiMo',
+      xiaomi: t('ui.xiaomiMiMo'),
+      'xiaomi-token-plan-cn': t('ui.xiaomiMiMo'),
+      'xiaomi-token-plan-sgp': t('ui.xiaomiMiMo'),
+      'xiaomi-token-plan-ams': t('ui.xiaomiMiMo'),
       together: 'Together',
       fireworks: 'Fireworks',
       'amazon-bedrock': 'AWS Bedrock',
@@ -2111,8 +2118,8 @@ export default {
       return {
         model: sel.model,
         provider: sel.provider,
-        providerDisplay: providerDisplayFromCache(sel.provider, providerNameCache, PROVIDER_DISPLAY),
-        modelDisplay: modelDisplayFromCache(sel.model, sel.provider, modelNameCache),
+        providerDisplay: providerDisplayFromCache(sel.provider, providerNameCache, PROVIDER_DISPLAY, t),
+        modelDisplay: modelDisplayFromCache(sel.model, sel.provider, modelNameCache, t),
         acceptsImageInput: !!(modelImageInputCache[sel.provider] && modelImageInputCache[sel.provider][sel.model]),
         fallback: sel.fallback || !entry,
         mode: entry ? entry.mode : 'unknown',
@@ -2141,7 +2148,7 @@ export default {
       const pid = balanceProviderKey(providerId || modelSelection().provider || config.activeProvider);
       // v1.6 T7：未知账户返回 unmapped=true，客户端渲染"未适配"引导
       if (pid === null) {
-        return { provider: null, displayName: 'Not supported', unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
+        return { provider: null, displayName: t('ui.notSupported'), unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
       }
       const prov = PROVIDERS[pid] || PROVIDERS.deepseek;
       const snap = balances[pid] || { data: null, fetchedAt: null, error: null };
@@ -2328,7 +2335,7 @@ export default {
       // 绝不静默：控制台显式 warn + 客户端可见「账单待整理」（persistence 走既有 snapshot-stale 通道），
       // 冷归档 usage-archive/ 仍保留记录级明细，可人工恢复。
       if (!fileSummaries && archiveHasFoldedRecords()) {
-        const message = 'Spend summary file missing: archived amounts are not included in displayed totals. Details remain in usage-archive/ for manual recovery.';
+        const message = t('host.spendSummaryFileMissingArchived');
         console.warn('[dsh-bottom-info-bar] ' + message);
         ledgerError = { kind: 'snapshot-stale', message: message, at: Date.now() };
       }
@@ -2701,7 +2708,7 @@ export default {
         let offset = 0;
         while (offset < bytes.length) {
           const written = writeSync(fd, bytes, offset, bytes.length - offset);
-          if (!written) throw new Error('Spend ledger could not be saved');
+          if (!written) throw new Error(t('host.spendLedgerCouldNotBe'));
           offset += written;
         }
         fsyncSync(fd);
@@ -2731,7 +2738,7 @@ export default {
           writeSummariesFile(summariesState.foldedUpTo, foldedSessionsDelta, foldedAccountTotals);
           summariesDirty = false;
         } catch (err) {
-          ledgerError = { kind: 'snapshot-stale', message: 'Could not save archived spend summaries: ' + String((err && err.message) || err), at: Date.now() };
+          ledgerError = { kind: 'snapshot-stale', message: t('host.couldNotSaveArchivedSpend', { value: String((err && err.message) || err) }), at: Date.now() };
           console.warn('[dsh-bottom-info-bar] 折叠汇总落盘失败（内存聚合继续，重启前重试）', ledgerError.message);
         }
       }
@@ -2937,7 +2944,7 @@ export default {
       const count = recent.length;
       return {
         count: count,
-        label: 'Based on your last ' + count + ' sessions',
+        label: t('host.basedOnYourLastSessions', { count: count }),
         medianInput: median(recent.map(function (s) { return s.input; })),
         medianCacheRead: median(recent.map(function (s) { return s.cacheRead; })),
         medianCacheWrite: median(recent.map(function (s) { return s.cacheWrite; })),
@@ -3084,7 +3091,7 @@ export default {
         daysLeft: dailySpend > 0 ? Math.round(balance / dailySpend * 10) / 10 : null,
         offpeakDailySpend: Math.round(offpeakDailySpend * 100) / 100,
         offpeakDaysLeft: offpeakDailySpend > 0 ? Math.round(balance / offpeakDailySpend * 10) / 10 : null,
-        note: 'Estimated from spending over the last ' + SPEND_DAYS + ' days',
+        note: t('host.estimatedFromSpendingOverThe', { SPEND_DAYS: SPEND_DAYS }),
       };
     }
 
@@ -3195,7 +3202,7 @@ export default {
         const calib = calibrationFrom(allSessions, CALIB_SESSIONS);
         if (calib && calib.medianOutput > 0) {
           const sc = {
-            id: 'calibrated', label: 'Your typical session',
+            id: 'calibrated', label: t('host.yourTypicalSession'),
             outputK: Math.max(1, Math.round(calib.medianOutput / 1000)),
             inputK: Math.max(1, Math.round((calib.medianInput + calib.medianCacheRead + calib.medianCacheWrite) / 1000)),
             calibrated: true, calibrationCount: calib.count,
@@ -3413,30 +3420,30 @@ export default {
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
         if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors'))) {
-          throw invalidArgument('patch must include fields or colors');
+          throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
         let normalizedFields = null;
         let normalizedColors = null;
         if (Object.hasOwn(patch, 'fields')) {
           const patchFields = patch.fields;
-          if (!isPlainSettingsObject(patchFields)) throw invalidArgument('fields must be an object');
+          if (!isPlainSettingsObject(patchFields)) throw invalidArgument(t('host.fieldsMustBeAnObject'));
           normalizedFields = {};
           for (const key of Object.keys(patchFields)) {
-            if (!FIELD_ID_SET.has(key)) throw invalidArgument('Unknown field id: ' + key);
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument(t('host.unknownFieldId', { key: key }));
             // D6 用户拍板：锚点字段与其他字段同等可隐藏——白名单只校验 id 合法性，不再对锚点特殊拒绝
-            if (typeof patchFields[key] !== 'boolean') throw invalidArgument('Field visibility must be a boolean: ' + key);
+            if (typeof patchFields[key] !== 'boolean') throw invalidArgument(t('host.fieldVisibilityMustBeA', { key: key }));
             normalizedFields[key] = patchFields[key];
           }
         }
         if (Object.hasOwn(patch, 'colors')) {
           const patchColors = patch.colors;
-          if (!isPlainSettingsObject(patchColors)) throw invalidArgument('colors must be an object');
+          if (!isPlainSettingsObject(patchColors)) throw invalidArgument(t('host.colorsMustBeAnObject'));
           normalizedColors = {};
           for (const key of Object.keys(patchColors)) {
-            if (!FIELD_ID_SET.has(key)) throw invalidArgument('Unknown field id: ' + key);
+            if (!FIELD_ID_SET.has(key)) throw invalidArgument(t('host.unknownFieldId', { key: key }));
             const value = normalizeColorValue(patchColors[key]);
-            if (value === undefined) throw invalidArgument('Color must be a preset name or #RRGGBB: ' + key);
+            if (value === undefined) throw invalidArgument(t('host.colorMustBeAPreset', { key: key }));
             normalizedColors[key] = value;
           }
         }
@@ -3519,7 +3526,7 @@ export default {
     }
 
     function respond(res, status, payload) {
-      const body = JSON.stringify(payload);
+      const body = JSON.stringify(payload, t.json);
       res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Length': Buffer.byteLength(body),

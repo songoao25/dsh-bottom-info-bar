@@ -71,7 +71,9 @@ The bar auto-detects your provider from the DSH model catalog — **zero configu
 
 ## UI language
 
-The plugin UI, tooltips and user-facing host messages use English. This release does not follow the DSH language setting. Chinese documentation remains available.
+The plugin follows **Settings → General → Language** in DSH. Choose Chinese to keep the original Chinese UI or English for the labels shown in this README. Switching languages updates the UI without reloading; there is no separate plugin language selector. Chinese documentation remains available.
+
+Host messages use DSH’s saved language preference. A remote browser’s unsaved language choice cannot change host-only text. External provider/system messages keep their original wording. See [localization notes](docs/LOCALIZATION.md) for scope and verification.
 
 ## Requirements
 

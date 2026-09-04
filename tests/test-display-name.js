@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // 显示名逻辑审计（M5：与模型切换器完全一致）——注入 llm 桩的集成测试：
 // ① DSH 目录名优先（llm.listModels 的 model.name / llm.listProviders 的 provider.name）
 // ② 无 llm 服务 → 模型名回退原始 id、服务商名回退静态映射
@@ -250,8 +251,8 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
   // ================= ⑤b 纯函数边界（模块级，直接提取） =================
   const modelDisplayFromCache = extractFn('modelDisplayFromCache');
   const providerDisplayFromCache = extractFn('providerDisplayFromCache');
-  check('纯函数：空模型 → 未知模型', modelDisplayFromCache('', 'p', {}), 'Unknown model');
-  check('纯函数：空 provider → 未知服务商', providerDisplayFromCache('', {}, {}), 'Unknown provider');
+  check('纯函数：空模型 → 未知模型', modelDisplayFromCache('', 'p', {}), '未知模型');
+  check('纯函数：空 provider → 未知服务商', providerDisplayFromCache('', {}, {}), '未知服务商');
   check('纯函数：缓存命中优先于原始 id', modelDisplayFromCache('m1', 'p', { p: { m1: 'Nice-Name' } }), 'Nice-Name');
   check('纯函数：缓存缺失回退原始 id', modelDisplayFromCache('m2', 'p', { p: { m1: 'Nice-Name' } }), 'm2');
   check('纯函数：provider 缓存优先于静态映射', providerDisplayFromCache('deepseek', { deepseek: 'DS' }, { deepseek: 'DeepSeek' }), 'DS');
@@ -268,8 +269,8 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
   check('client 仅在服务商名后存在分隔符时去重，避免误截断真实模型名',
     clientSrc.includes("if (!/^[\\s·._/-]+/.test(suffix)) return modelLabel;"), true);
   check('client 只在 host 明确返回视觉能力时，复刻“模型名 视觉”靛蓝椭圆并将服务商置于椭圆外',
-    clientSrc.includes("pr.acceptsImageInput !== true") && clientSrc.includes("className: 'bi-vision-kind' }, 'Vision'")
-      && clientSrc.includes("modelLabelWithoutProvider(modelLabel, provLabel)") && clientSrc.includes("Supports image input."), true);
+    clientSrc.includes("pr.acceptsImageInput !== true") && clientSrc.includes("className: 'bi-vision-kind' }, t('ui.vision')")
+      && clientSrc.includes("modelLabelWithoutProvider(modelLabel, provLabel)") && clientSrc.includes("t('ui.supportsImageInput')"), true);
 
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

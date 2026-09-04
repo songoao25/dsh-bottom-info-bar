@@ -20,47 +20,47 @@ export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cl
 //   provider 锚点组（正文 + 服务商名主色）| muted 弱提示灰。未自定义颜色时回退这些原语义色，默认外观零变化。
 export const FIELD_REGISTRY = [
   // 插件字段 · 服务锚点（D6：与其他字段同等可隐藏）
-  { id: 'anchorGroup', label: 'Provider and model', group: 'plugin', modes: ['balance'], anchor: true, colorKind: 'provider', note: 'Identifies the provider and model used in this conversation.' },
-  { id: 'subServiceGroup', label: 'Subscription service and model', group: 'plugin', modes: ['subscription'], anchor: true, colorKind: 'provider', note: 'Subscription service (ChatGPT, Codex, OpenCode Go, Zhipu or Xiaomi MiMo) and model or plan tier.' },
-  { id: 'billingServiceGroup', label: 'Billing service and model', group: 'plugin', modes: ['billing'], anchor: true, colorKind: 'provider', note: 'Cloud billing service (Together, Fireworks, AWS Bedrock or Cloudflare) and model.' },
+  { id: 'anchorGroup', label: "field.anchorGroup.label", group: 'plugin', modes: ['balance'], anchor: true, colorKind: 'provider', note: "field.anchorGroup.note" },
+  { id: 'subServiceGroup', label: "field.subServiceGroup.label", group: 'plugin', modes: ['subscription'], anchor: true, colorKind: 'provider', note: "field.subServiceGroup.note" },
+  { id: 'billingServiceGroup', label: "field.billingServiceGroup.label", group: 'plugin', modes: ['billing'], anchor: true, colorKind: 'provider', note: "field.billingServiceGroup.note" },
   // 插件字段 · 通用（多模式共用）
-  { id: 'sessionCost', label: 'Session spend', group: 'plugin', modes: ['balance', 'subscription'], colorKind: 'inherit', note: 'Actual session spend, including subagents; shows ¥0.000 before any records exist. Hover for today, the last 30 days and all time.' },
+  { id: 'sessionCost', label: "field.sessionCost.label", group: 'plugin', modes: ['balance', 'subscription'], colorKind: 'inherit', note: "field.sessionCost.note" },
   // 插件字段 · 余额制
-  { id: 'balance', label: 'Balance', group: 'plugin', modes: ['balance'], colorKind: 'inherit', note: 'Actual account balance. A low balance appears in red with a Low label.' },
-  { id: 'period', label: 'Pricing period', group: 'plugin', modes: ['balance'], colorKind: 'period', note: 'For models with peak/off-peak pricing (currently DeepSeek): red for peak, green for off-peak.' },
-  { id: 'countdown', label: 'Price switch countdown', group: 'plugin', modes: ['balance'], colorKind: 'inherit', note: 'Time until peak/off-peak pricing changes, for models with time-based pricing.' },
+  { id: 'balance', label: "ui.balance.pushBalanceGroups", group: 'plugin', modes: ['balance'], colorKind: 'inherit', note: "field.balance.note" },
+  { id: 'period', label: "field.period.label", group: 'plugin', modes: ['balance'], colorKind: 'period', note: "field.period.note" },
+  { id: 'countdown', label: "field.countdown.label", group: 'plugin', modes: ['balance'], colorKind: 'inherit', note: "field.countdown.note" },
   // 插件字段 · 订阅制
-  { id: 'expiry', label: 'Subscription expiry', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Shown when subscription credentials include an expiry date, such as a Codex plan.' },
-  { id: 'subWindow5h', label: '5-hour quota', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Remaining quota in the rolling 5-hour window. Compact view shows only the shortest available window.' },
-  { id: 'subWindowWeek', label: 'Weekly quota', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Weekly quota remaining. Shown in full view; compact view prioritizes shorter windows.' },
-  { id: 'subWindowMonth', label: 'Monthly quota', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Monthly quota remaining. Shown in full view; compact view prioritizes shorter windows.' },
-  { id: 'resetCountdown', label: 'Quota reset countdown', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Time until the displayed quota window resets.' },
-  { id: 'subBalance', label: 'Prepaid balance', group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: 'Shown for prepaid accounts, such as Zhipu pay-as-you-go, in place of quota windows.' },
+  { id: 'expiry', label: "field.expiry.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.expiry.note" },
+  { id: 'subWindow5h', label: "field.subWindow5h.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subWindow5h.note" },
+  { id: 'subWindowWeek', label: "field.subWindowWeek.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subWindowWeek.note" },
+  { id: 'subWindowMonth', label: "field.subWindowMonth.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subWindowMonth.note" },
+  { id: 'resetCountdown', label: "field.resetCountdown.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.resetCountdown.note" },
+  { id: 'subBalance', label: "ui.prepaidBalance", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subBalance.note" },
   // 插件字段 · 账单制
-  { id: 'billingSpend', label: 'Monthly spend / usage', group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: 'Actual cloud spend or usage for the current billing period.' },
-  { id: 'budget', label: 'Budget used', group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: 'Shown for providers that support budget queries (currently AWS Bedrock).' },
-  { id: 'freeQuota', label: 'Free quota and reset', group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: 'Shown only when the API reports a daily free allowance and reset time.' },
+  { id: 'billingSpend', label: "field.billingSpend.label", group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: "field.billingSpend.note" },
+  { id: 'budget', label: "field.budget.label", group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: "field.budget.note" },
+  { id: 'freeQuota', label: "field.freeQuota.label", group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: "field.freeQuota.note" },
   // 原生字段（DeepSeek 原生底部栏原有；完整模式独占可见）
-  { id: 'turnsSteps', label: 'Turns and steps', group: 'native', modes: ['native'], colorKind: 'inherit', note: 'Conversation progress: N turns · M steps.' },
-  { id: 'llmTime', label: 'LLM time', group: 'native', modes: ['native'], colorKind: 'inherit', note: 'Total model inference time.' },
-  { id: 'toolTime', label: 'Tool time', group: 'native', modes: ['native'], colorKind: 'inherit', note: 'Total tool execution time.' },
-  { id: 'cacheHit', label: 'Cache hit', group: 'native', modes: ['native'], colorKind: 'inherit', note: 'Prompt cache hit rate as a percentage.' },
-  { id: 'tokensIO', label: 'Input / output tokens', group: 'native', modes: ['native'], colorKind: 'inherit', note: 'Total session usage: Input X tok · Output Y tok.' },
+  { id: 'turnsSteps', label: "field.turnsSteps.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.turnsSteps.note" },
+  { id: 'llmTime', label: "field.llmTime.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.llmTime.note" },
+  { id: 'toolTime', label: "field.toolTime.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.toolTime.note" },
+  { id: 'cacheHit', label: "ui.cacheHit", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.cacheHit.note" },
+  { id: 'tokensIO', label: "field.tokensIO.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.tokensIO.note" },
   // 插件字段 · 状态与提醒（建议保留）
-  { id: 'unmapped', label: 'Unsupported provider hint', group: 'plugin', modes: ['balance'], colorKind: 'muted', note: 'Shown when balance lookup is not supported for the current provider.' },
-  { id: 'noKeyHint', label: 'Missing credentials hint', group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: 'Setup instructions when an API key is missing.' },
-  { id: 'balanceError', label: 'Balance error', group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: 'Shown when balance lookup fails or the last data is being displayed.' },
-  { id: 'usageError', label: 'Spend error', group: 'plugin', modes: ['balance', 'subscription'], suggestKeep: true, colorKind: 'alert', note: 'Shown when spend data is temporarily unavailable.' },
-  { id: 'refreshFailure', label: 'Refresh error', group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: 'One alert at the end of the bar when any data source fails; duplicate alerts are combined.' },
-  { id: 'persistWarning', label: 'Unsaved spend alert', group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: 'Shown when the ledger cannot be saved. Keep enabled to spot missing amounts.' },
-  { id: 'updateNotice', label: 'Update available', group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: 'Shown when a new version is available on npm.' },
+  { id: 'unmapped', label: "field.unmapped.label", group: 'plugin', modes: ['balance'], colorKind: 'muted', note: "field.unmapped.note" },
+  { id: 'noKeyHint', label: "field.noKeyHint.label", group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.noKeyHint.note" },
+  { id: 'balanceError', label: "field.balanceError.label", group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.balanceError.note" },
+  { id: 'usageError', label: "field.usageError.label", group: 'plugin', modes: ['balance', 'subscription'], suggestKeep: true, colorKind: 'alert', note: "field.usageError.note" },
+  { id: 'refreshFailure', label: "field.refreshFailure.label", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.refreshFailure.note" },
+  { id: 'persistWarning', label: "field.persistWarning.label", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.persistWarning.note" },
+  { id: 'updateNotice', label: "ui.updateAvailable", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.updateNotice.note" },
 ]
 
 // 字段分组在设置页的展示顺序与中文标题（D6 用户拍板两类：原生在前、插件在后；经构建注入客户端）
 export const FIELD_GROUP_ORDER = ['native', 'plugin']
 export const FIELD_GROUP_LABELS = {
-  native: 'Native fields',
-  plugin: 'Plugin fields',
+  native: "group.native",
+  plugin: "group.plugin",
 }
 
 // ---------- v1.9.0 PR2：预设色板（语义色名） ----------

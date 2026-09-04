@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // v1.9.0 PR2 → v1.9.1 客户端静态断言：字段自选/配色 + 设置页单文件化
 // ① 过滤逻辑嵌在三态渲染函数内部 + 分隔符正确收合 ② 默认配置渲染与旧版一致
 // ③ 颜色变量默认不注入（未自定义零回归）④ 字段注册表一致性（宿主白名单 = 客户端渲染 = 设置页）
@@ -62,8 +63,8 @@ check('状态语义色变量保持三套成对（零回归基线不动）', clie
   && clientSrc.includes('--bi-state-alert: #ff6961')
   && clientSrc.includes('--bi-state-price-low: #087f5b')
   && clientSrc.includes('--bi-state-price-low: #86efac'), true);
-check('文字标签保留（低/估算），颜色永不是唯一信息载体', clientSrc.includes("className: 'bi-low-status' }, 'Low'")
-  && clientSrc.includes("'(estimated)'"), true);
+check('文字标签保留（低/估算），颜色永不是唯一信息载体', clientSrc.includes("className: 'bi-low-status' }, t('ui.low')")
+  && clientSrc.includes("t('ui.estimated')"), true);
 
 // ---------- ④ 字段注册表一致性（宿主白名单 = 客户端渲染 = 设置页） ----------
 check('注册表非空且 id 稳定唯一', Array.isArray(FIELD_REGISTRY) && FIELD_REGISTRY.length >= 25
@@ -82,7 +83,7 @@ check('每个注册字段都在信息栏渲染层被引用（id ↔ 渲染片段
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
 check('D6 分组：仅「原生字段/插件字段」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
-  && FIELD_GROUP_LABELS.native === 'Native fields' && FIELD_GROUP_LABELS.plugin === 'Plugin fields', true);
+  && t(FIELD_GROUP_LABELS.native) === '原生字段' && t(FIELD_GROUP_LABELS.plugin) === '插件字段', true);
 check('D6 分组：原生组恰 5 个 DeepSeek 原生标签', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
 check('D6 分组：其余 23 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 23
@@ -94,7 +95,7 @@ check('构建注入锚点存在于客户端源码', clientSrc.includes('const FI
 check('设置页注册 DSH settings.section 插座（apply 内直接 slots.inject）', clientSrc.includes("slots.inject('settings.section'"), true);
 check('注册条目含 id/order/label（侧栏导航行自动生成）', clientSrc.includes("id: 'bottom-info-bar'")
   && clientSrc.includes('order: 100')
-  && clientSrc.includes("label: 'Info Bar'"), true);
+  && clientSrc.includes("label: function () { return t('ui.infoBar'); }"), true);
 check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
   && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
 check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼接第二源码', (function () {
@@ -121,28 +122,28 @@ check('M2 屏显防护：渲染主体包在 try/catch，任何渲染期异常 �
   const catchIdx = body.indexOf('} catch (err) {');
   return tryIdx !== -1 && catchIdx !== -1 && catchIdx > tryIdx
     && body.includes("role: 'alert'")
-    && body.includes('Could not display Info Bar settings')
+    && body.includes("t('ui.couldNotDisplayInfoBar'")
     && body.includes('bibSetOperationMessage(err)');
 })(), true);
 check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设置」（bibSetPageTitle → h1）', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return clientSrc.includes('function bibSetPageTitle()')
-    && clientSrc.includes("React.createElement('h1', { className: 'bib-set-page-title' }, 'Info Bar settings')")
-    && body.includes('Loading Info Bar settings…')
+    && clientSrc.includes("React.createElement('h1', { className: 'bib-set-page-title' }, t('ui.infoBarSettings'))")
+    && body.includes("t('ui.loadingInfoBarSettings')")
     && body.includes('bibSetPageTitle()');
 })(), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
-  && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("'Show ' + field.label"), true);
+  && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("t('ui.show', { label: t(field.label) })"), true);
 check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return !body.includes('disabled: isAnchor') && !body.includes('Always visible');
+  return !body.includes('disabled: isAnchor') && !body.includes('始终显示');
 })(), true);
-check('D6 解锁：「身份锚点」仅作为说明文字保留', clientSrc.includes("'Identifies the provider and model for this conversation.'"), true);
-check('错误/提醒类字段带「建议保留」徽标', clientSrc.includes("'Recommended'"), true);
+check('D6 解锁：「身份锚点」仅作为说明文字保留', clientSrc.includes("t('ui.identifiesTheProviderAndModel')"), true);
+check('错误/提醒类字段带「建议保留」徽标', clientSrc.includes("t('ui.recommended')"), true);
 check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', clientSrc.includes("role: 'radiogroup'")
   && clientSrc.includes("role: 'radio'") && clientSrc.includes('ArrowRight') && clientSrc.includes("'Home'"), true);
-check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', clientSrc.includes("'aria-label': field.label + ' custom color'")
-  && clientSrc.includes("'aria-label': field.label + ' hex color'")
+check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', clientSrc.includes("'aria-label': t('ui.customColor', { label: t(field.label) })")
+  && clientSrc.includes("'aria-label': t('ui.hexColor', { label: t(field.label) })")
   && clientSrc.includes("'aria-invalid': hexInvalid ? 'true' : 'false'"), true);
 check('hex 非法拒绝回退：仅 Enter/失焦提交且非法值不入库', clientSrc.includes('if (!BIB_SET_HEX_PATTERN.test(value))')
   && clientSrc.includes("onBlur: function () { commitHex(field.id); }"), true);
@@ -152,7 +153,7 @@ check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）'
 check('保存成功后派发 CustomEvent 联动信息栏', clientSrc.includes('bibSetDispatchChanged()')
   && clientSrc.includes("document.dispatchEvent(new CustomEvent(BIB_SET_EVENT))"), true);
 check('重置标签/重置颜色为两个独立按钮', clientSrc.includes("runReset('fields')") && clientSrc.includes("runReset('colors')")
-  && clientSrc.includes("'Reset labels'") && clientSrc.includes("'Reset colors'"), true);
+  && clientSrc.includes("t('ui.resetLabels')") && clientSrc.includes("t('ui.resetColors')"), true);
 check('保存失败有 role=alert 文案；状态通知 aria-live=polite', clientSrc.includes("role: 'alert'")
   && clientSrc.includes("'aria-live': 'polite'"), true);
 check('焦点可见 + 减少动效降级', clientSrc.includes(':focus-visible')
@@ -333,11 +334,11 @@ function withFakeDocument(run) {
     return nodes.length === 5 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 2;
   })(), true);
   check('D6：组与错误组之间的分隔符正确收合（1 组 + 2 错误 → 2 个分隔符）', (function () {
-    const nodes = assembleInfoBarRow([{}], [errNode('Refresh failed'), errNode('Spend not saved')], stubCreate);
+    const nodes = assembleInfoBarRow([{}], [errNode('刷新失败'), errNode('账单未保存')], stubCreate);
     return nodes.length === 5 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 2;
   })(), true);
   check('D6：多个「刷新失败」去重仍生效（组装函数内）', (function () {
-    const nodes = assembleInfoBarRow([], [errNode('Refresh failed'), errNode('Spend not saved'), errNode('Refresh failed')], stubCreate);
+    const nodes = assembleInfoBarRow([], [errNode('刷新失败'), errNode('账单未保存'), errNode('刷新失败')], stubCreate);
     return nodes.length === 3 && nodes.filter(function (n) { return n.props.className === 'bi-sep'; }).length === 1;
   })(), true);
   check('D6：配置层面全隐藏判定（注册表全关 → true；任一可见 → false）', infoBarShouldRemoveAll(FIELD_REGISTRY, function () { return false; }) === true
@@ -349,7 +350,7 @@ function withFakeDocument(run) {
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
   check('D6：构建产物含注入的两级分组常量（设置页渲染不落空）', (function () {
     const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
-    return lib.indexOf("['native', 'plugin']") !== -1 && lib.indexOf("native: 'Native fields'") !== -1 && lib.indexOf("plugin: 'Plugin fields'") !== -1;
+    return lib.indexOf("['native', 'plugin']") !== -1 && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"');
   })(), true);
   check('310防复发：含 React hooks 的组件 bibSetPalette 必须以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
     clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1 && clientSrc.indexOf('bibSetPalette({') === -1, true);

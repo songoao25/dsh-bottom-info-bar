@@ -14,6 +14,13 @@
 'use strict';
 
 const React = require('react');
+const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
+const LOCALES = /*__LOCALES__*/{};
+let t;
+// Compatibility with existing host snapshots, whose display fields are text.
+// Known labels and messages follow the browser locale even while snapshots are cached.
+/*__HOST_TEXT__*/
+function hostText(message) { return localizeHostText(message, t, LOCALES); }
 
 const RPC_BASE = '/_dsh/dsh-bottom-info-bar';
 
@@ -35,8 +42,8 @@ const FORCE_REFRESH_WINDOW_MS = 6000;
 function rpc(method, args, externalSignal) {
   let abortReason = null;
   const controller = new AbortController();
-  const timer = window.setTimeout(function () { abortReason = 'Request timed out'; controller.abort(); }, RPC_TIMEOUT_MS);
-  function onExternalAbort() { abortReason = 'Request canceled'; controller.abort(); }
+  const timer = window.setTimeout(function () { abortReason = t('ui.requestTimedOut'); controller.abort(); }, RPC_TIMEOUT_MS);
+  function onExternalAbort() { abortReason = t('ui.requestCanceled'); controller.abort(); }
   function cleanup() {
     window.clearTimeout(timer);
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
@@ -44,7 +51,7 @@ function rpc(method, args, externalSignal) {
   if (externalSignal) {
     if (externalSignal.aborted) {
       cleanup();
-      return Promise.reject(new Error('Request canceled'));
+      return Promise.reject(new Error(t('ui.requestCanceled')));
     }
     externalSignal.addEventListener('abort', onExternalAbort);
   }
@@ -62,12 +69,12 @@ function rpc(method, args, externalSignal) {
       });
     }
     return res.text().then(function (raw) {
-      try { return JSON.parse(raw); } catch (e) { throw new Error('Could not parse response'); }
+      try { return JSON.parse(raw); } catch (e) { throw new Error(t('ui.couldNotParseResponse')); }
     });
   }).catch(function (err) {
     // 本函数主动 abort（超时/外部取消）→ 统一为可读错误；其余错误原样抛出
     if (abortReason !== null) throw new Error(abortReason);
-    if (err && err.name === 'AbortError') throw new Error('Request canceled');
+    if (err && err.name === 'AbortError') throw new Error(t('ui.requestCanceled'));
     throw err;
   }).finally(cleanup);
 }
@@ -86,7 +93,7 @@ function mergeLoadResults(prev, results) {
     } else {
       next[key] = prev[key];
       const reason = r && r.reason;
-      next.errors[key] = reason && reason.message ? String(reason.message) : String(reason || 'RPC failed');
+      next.errors[key] = reason && reason.message ? String(reason.message) : String(reason || t('ui.rpcFailed'));
     }
   }
   return next;
@@ -284,7 +291,7 @@ function assembleInfoBarRow(groups, trailingErrorGroups, createElement) {
   const seenRefreshFailure = { value: false };
   const visibleErrors = trailingErrorGroups.filter(function (node) {
     const text = trailingErrorText(node);
-    if (text !== 'Refresh failed') return true;
+    if (text !== t('ui.refreshFailed')) return true;
     if (seenRefreshFailure.value) return false;
     seenRefreshFailure.value = true;
     return true;
@@ -382,7 +389,7 @@ function installStyles() {
 // （官方 dsh-client-ui-settings-general 同型写法），不再有 async 串接。
 // 约定：本段顶层标识符一律 bibSet* / InfoBarSettings* 前缀，绝不与主包重名。
 const BIB_SET_EVENT = 'dsh-bib-config-changed';
-const BIB_SET_PRESET_LABELS = { red: 'Red', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange', neutral: 'Neutral' };
+const BIB_SET_PRESET_LABELS = { red: "color.red", green: "color.green", blue: "color.blue", purple: "color.purple", orange: "color.orange", neutral: "color.neutral" };
 // 原生取色器（input[type=color]）在未自定义时显示的代表色（浅色主题值；实际信息栏渲染仍按主题变量）
 const BIB_SET_PRESET_WELL_HEX = { red: '#D92D20', green: '#087F5B', blue: '#0044CC', purple: '#6941C6', orange: '#B54708', neutral: '#333333' };
 const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -390,16 +397,17 @@ const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const FIELD_GROUP_ORDER = /*__FIELD_GROUP_ORDER__*/[];
 const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
 // 每行出现条件文案：modes → 中文（余额制/订阅制/账单制/原生统计行/通用）
-const BIB_SET_MODE_LABELS = { balance: 'Balance', subscription: 'Subscription', billing: 'Billing', native: 'Native stats', common: 'General' };
+const BIB_SET_MODE_LABELS = { balance: "mode.balance", subscription: "mode.subscription", billing: "mode.billing", native: "mode.native", common: "mode.common" };
 function bibSetModeText(field) {
   if (!field || !Array.isArray(field.modes) || field.modes.length === 0) return '';
-  if (field.modes.length === 1 && field.modes[0] === 'native') return 'Native stats field';
+  if (field.modes.length === 1 && field.modes[0] === 'native') return t('ui.nativeStatsField');
   const labels = [];
   for (let i = 0; i < field.modes.length; i++) {
-    const label = BIB_SET_MODE_LABELS[field.modes[i]];
+    const key = BIB_SET_MODE_LABELS[field.modes[i]];
+    const label = key && t(key);
     if (label && labels.indexOf(label) === -1) labels.push(label);
   }
-  return labels.length > 0 ? 'Shown in: ' + labels.join(', ') : '';
+  return labels.length > 0 ? t('ui.shownIn') + labels.join(t('ui.listSeparator')) : '';
 }
 
 function bibSetDispatchChanged() {
@@ -408,7 +416,7 @@ function bibSetDispatchChanged() {
 }
 
 function bibSetOperationMessage(err) {
-  return String((err && err.message) || err || 'Please try again later');
+  return String((err && err.message) || err || t('ui.pleaseTryAgainLater'));
 }
 
 // ---------- 设置页样式（融入 DSH 设置面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
@@ -522,7 +530,7 @@ function bibSetPalette(props) {
     const isDefault = option === 'default';
     const coreStyle = {};
     if (!isDefault) coreStyle.background = 'var(--bi-palette-' + option + ')';
-    const ariaLabel = isDefault ? 'Restore default color' : (BIB_SET_PRESET_LABELS[option] || option);
+    const ariaLabel = isDefault ? t('ui.restoreDefaultColor') : (t(BIB_SET_PRESET_LABELS[option]) || option);
     return React.createElement('button', {
       key: option,
       type: 'button',
@@ -543,7 +551,7 @@ function bibSetPalette(props) {
 // ---------- 页面组件 ----------
 // M2 首渲骨架：页面标题行——任何状态下都先输出可见标题（数据未到、加载失败也一样有东西看）
 function bibSetPageTitle() {
-  return React.createElement('h1', { className: 'bib-set-page-title' }, 'Info Bar settings');
+  return React.createElement('h1', { className: 'bib-set-page-title' }, t('ui.infoBarSettings'));
 }
 
 function InfoBarSettingsSection(props) {
@@ -566,7 +574,7 @@ function InfoBarSettingsSection(props) {
         setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
-        setLoadError('Settings are temporarily unavailable'); setStatus('error');
+        setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
       }
     }).catch(function (err) {
       if (!active) return;
@@ -591,13 +599,13 @@ function InfoBarSettingsSection(props) {
     if (status === 'loading') {
       return React.createElement('div', { className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
-        React.createElement('p', { className: 'bib-set-status' }, 'Loading Info Bar settings…'));
+        React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings')));
     }
     // RPC 加载失败：照旧显示可见错误文字（角色 alert），页面不空白
     if (status === 'error') {
       return React.createElement('div', { className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
-        React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, 'Could not load Info Bar settings: ' + (loadError || 'Please try again later')));
+        React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater'))));
     }
 
   const fieldsById = {};
@@ -607,7 +615,7 @@ function InfoBarSettingsSection(props) {
     const value = snapshot.colors[id];
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
-  function labelOf(id) { const f = fieldsById[id]; return f ? f.label : id; }
+  function labelOf(id) { const f = fieldsById[id]; return f ? t(f.label) : id; }
   function makePair(key, value) { const pair = {}; pair[key] = value; return pair; }
 
   // 服务端快照回写（configVersion 一并更新；persisted=false 时如实提示落盘失败）
@@ -620,7 +628,7 @@ function InfoBarSettingsSection(props) {
         configVersion: typeof res.configVersion === 'number' ? res.configVersion : ((prev && prev.configVersion) || 0),
       };
     });
-    if (res.persisted === false) setNotice('Changes applied, but could not be saved locally: ' + (res.warning || 'Unknown reason'));
+    if (res.persisted === false) setNotice({ text: function () { return t('ui.changesAppliedButCouldNot') + (hostText(res.warning) || t('ui.unknownReason')); } });
   }
 
   // 乐观更新 + 失败回退（参照 density toggle）+ 版本号守卫
@@ -639,7 +647,9 @@ function InfoBarSettingsSection(props) {
       if (seq !== opSeqRef.current) { endOp(); return; }
       endOp();
       revertOptimistic();
-      setOpError(errorPrefix + 'Could not save: ' + bibSetOperationMessage(err));
+      // Translate feedback during rendering, including its field label. The
+      // object wrapper prevents React from treating the thunk as a state updater.
+      setOpError({ text: function () { return t('ui.couldNotSave', { errorPrefix: errorPrefix(), value: hostText(bibSetOperationMessage(err)) }); } });
     });
   }
 
@@ -649,7 +659,7 @@ function InfoBarSettingsSection(props) {
     commit({ fields: makePair(id, next) },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { fields: Object.assign({}, s.fields, makePair(id, next)) }); }); },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { fields: Object.assign({}, s.fields, makePair(id, previous)) }); }); },
-      '"' + labelOf(id) + '": ');
+      function () { return t('ui.fieldErrorPrefix', { label: labelOf(id) }); });
   }
 
   function setColor(id, next) {
@@ -661,7 +671,7 @@ function InfoBarSettingsSection(props) {
     commit({ colors: makePair(id, next) },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { colors: Object.assign({}, s.colors, makePair(id, next)) }); }); },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { colors: Object.assign({}, s.colors, makePair(id, previous)) }); }); },
-      '"' + labelOf(id) + '" color: ');
+      function () { return t('ui.color', { value: labelOf(id) }); });
   }
 
   // hex 输入：输入中仅标记非法（描红 + aria-invalid）；Enter/失焦时合法才提交，非法回退当前值
@@ -684,7 +694,7 @@ function InfoBarSettingsSection(props) {
     setHexDrafts(function (drafts) { return Object.assign({}, drafts, makePair(id, undefined)); });
     if (value.length === 0) return;
     if (!BIB_SET_HEX_PATTERN.test(value)) {
-      setOpError('"' + labelOf(id) + '" has an invalid color. Enter #RRGGBB (for example, #0044CC).');
+      setOpError({ text: function () { return t('ui.hasAnInvalidColorEnter', { value: labelOf(id) }); } });
       return;
     }
     setColor(id, value.toUpperCase());
@@ -700,11 +710,11 @@ function InfoBarSettingsSection(props) {
       endOp();
       applyServerResult(res);
       bibSetDispatchChanged();
-      setNotice(kind === 'colors' ? 'Default colors restored' : 'Default labels restored');
+      setNotice({ text: function () { return kind === 'colors' ? t('ui.defaultColorsRestored') : t('ui.defaultLabelsRestored'); } });
     }).catch(function (err) {
       if (seq !== opSeqRef.current) { endOp(); return; }
       endOp();
-      setOpError('Could not reset: ' + bibSetOperationMessage(err));
+      setOpError({ text: function () { return t('ui.couldNotReset', { value: hostText(bibSetOperationMessage(err)) }); } });
     });
   }
 
@@ -720,26 +730,26 @@ function InfoBarSettingsSection(props) {
       const isAnchor = field.anchor === true;
       const descParts = [];
       // D6：锚点与其他字段同等可隐藏——「身份锚点」仅作为说明保留，不再恒开/禁用
-      if (isAnchor) descParts.push('Identifies the provider and model for this conversation.');
+      if (isAnchor) descParts.push(t('ui.identifiesTheProviderAndModel'));
       const modeText = bibSetModeText(field);
-      if (modeText) descParts.push(modeText + '.');
-      if (field.note) descParts.push(field.note);
-      if (field.suggestKeep) descParts.push('Keep enabled to see these alerts.');
+      if (modeText) descParts.push(modeText + t('ui.sentenceEnd'));
+      if (field.note) descParts.push(t(field.note));
+      if (field.suggestKeep) descParts.push(t('ui.keepEnabledToSeeThese'));
       rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row' },
         React.createElement('div', { className: 'bib-set-rowText' },
           React.createElement('div', { className: 'bib-set-rowTitle' },
-            field.label,
-            field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, 'Recommended') : null),
-          React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(' '))),
+            t(field.label),
+            field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
+          React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
         bibSetSwitch({
-          label: 'Show ' + field.label,
+          label: t('ui.show', { label: t(field.label) }),
           checked: fieldOn(field.id),
-          title: fieldOn(field.id) ? 'Click to hide' : 'Click to show',
+          title: fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
           onToggle: function (next) { setFieldFlag(field.id, next); },
         })));
     }
     groupsChildren.push(React.createElement('div', { key: 'g-' + group },
-      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] || group),
+      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
       rows));
   }
 
@@ -758,23 +768,23 @@ function InfoBarSettingsSection(props) {
       const hexValue = draft !== null ? draft : committedHexText(field.id);
       const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
       const wellValue = isHex ? value : (isPreset ? (BIB_SET_PRESET_WELL_HEX[value] || '#333333') : '#333333');
-      const valueText = value === null ? 'Default'
-        : (isPreset ? (BIB_SET_PRESET_LABELS[value] || value) : value.toUpperCase());
+      const valueText = value === null ? t('ui.default')
+        : (isPreset ? (t(BIB_SET_PRESET_LABELS[value]) || value) : value.toUpperCase());
       rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row' },
         React.createElement('div', { className: 'bib-set-rowText' },
-          React.createElement('div', { className: 'bib-set-rowTitle' }, field.label),
-          React.createElement('div', { className: 'bib-set-rowDesc' }, 'Current: ' + valueText + (field.anchor === true ? ' (provider and model)' : ''))),
+          React.createElement('div', { className: 'bib-set-rowTitle' }, t(field.label)),
+          React.createElement('div', { className: 'bib-set-rowDesc' }, t('ui.current', { valueText: valueText }) + (field.anchor === true ? t('ui.providerAndModel') : ''))),
         React.createElement('div', { className: 'bib-set-controls' },
           React.createElement(bibSetPalette, {
-            label: field.label + ' preset color',
+            label: t('ui.presetColor', { label: t(field.label) }),
             value: value,
             onSelect: function (next) { setColor(field.id, next); },
           }),
           React.createElement('label', { className: 'bib-set-well' },
             React.createElement('input', {
               type: 'color',
-              'aria-label': field.label + ' custom color',
-              title: 'Custom color (open color picker)',
+              'aria-label': t('ui.customColor', { label: t(field.label) }),
+              title: t('ui.customColorOpenColorPicker'),
               value: wellValue,
               onChange: function (event) {
                 const picked = event && event.target ? event.target.value : null;
@@ -784,7 +794,7 @@ function InfoBarSettingsSection(props) {
           React.createElement('input', {
             type: 'text',
             className: 'bib-set-hex',
-            'aria-label': field.label + ' hex color',
+            'aria-label': t('ui.hexColor', { label: t(field.label) }),
             'aria-invalid': hexInvalid ? 'true' : 'false',
             'data-invalid': hexInvalid ? 'true' : 'false',
             placeholder: '#RRGGBB',
@@ -797,52 +807,54 @@ function InfoBarSettingsSection(props) {
           }))));
     }
     colorChildren.push(React.createElement('div', { key: 'c-' + group },
-      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] || group),
+      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
       rows));
   }
 
   const feedback = [];
-  if (opError) feedback.push(React.createElement('p', { key: 'err', className: 'bib-set-alert', role: 'alert' }, opError));
-  else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice));
-  else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, 'Saving…'));
+  if (opError) feedback.push(React.createElement('p', { key: 'err', className: 'bib-set-alert', role: 'alert' }, opError.text()));
+  else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice.text()));
+  else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, t('ui.saving')));
 
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
-      'Choose which fields to show and customize their colors. Changes apply immediately and are saved across restarts. Hiding a field does not delete spend records.'),
+      t('ui.chooseWhichFieldsToShow')),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
       React.createElement('div', { className: 'bib-set-card-header' },
-        React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, 'Visible fields'),
+        React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields')),
         React.createElement('div', { className: 'bib-set-card-desc' },
-          'Hidden fields take no space. Keep alerts such as Refresh failed and Spend not saved enabled to spot data issues.')),
+          t('ui.hiddenFieldsTakeNoSpace'))),
       React.createElement('div', { className: 'bib-set-body' }, groupsChildren)),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-colors-title' },
       React.createElement('div', { className: 'bib-set-card-header' },
-        React.createElement('h2', { id: 'bib-set-colors-title', className: 'bib-set-card-title' }, 'Field colors'),
+        React.createElement('h2', { id: 'bib-set-colors-title', className: 'bib-set-card-title' }, t('ui.fieldColors')),
         React.createElement('div', { className: 'bib-set-card-desc' },
-          'Choose a preset, use the color picker, or enter a hex color. Colors adjust for readability in light and dark themes. Unchanged fields keep their default appearance.')),
+          t('ui.chooseAPresetUseThe'))),
       React.createElement('div', { className: 'bib-set-body' }, colorChildren)),
     React.createElement('div', { className: 'bib-set-footer' },
       feedback,
       React.createElement('button', {
         type: 'button', className: 'bib-set-btn', disabled: saving,
         onClick: function () { runReset('fields'); },
-      }, 'Reset labels'),
+      }, t('ui.resetLabels')),
       React.createElement('button', {
         type: 'button', className: 'bib-set-btn', disabled: saving,
         onClick: function () { runReset('colors'); },
-      }, 'Reset colors')));
+      }, t('ui.resetColors'))));
   } catch (err) {
     // M2：渲染期异常绝不以白屏收场——改为页面内可见的红色错误框（role=alert，含错误信息）
     return React.createElement('div', { className: 'bib-set-root bib-settings' },
       bibSetPageTitle(),
-      React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, 'Could not display Info Bar settings: ' + bibSetOperationMessage(err)));
+      React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) })));
   }
 }
 
 module.exports = {
-  inject: ['slots'],
+  inject: ['slots', 'locale'],
   async apply(ctx) {
+    ctx.effect(function () { return ctx.locale.register(LOCALE_NAMESPACE, LOCALES); }, 'info bar: dictionaries');
+    t = ctx.locale.bind(LOCALE_NAMESPACE);
     // slots 服务可能晚于 apply 就绪：优先 ctx.slots（inject 注入属性），回退 ctx.get('slots')；
     // 仍不可用则轮询等待（最多 60×300ms ≈ 18s），绝不提前退出导致注册丢失
     let slots = ctx.slots || ctx.get('slots');
@@ -874,7 +886,7 @@ module.exports = {
       if (occupantDispose) { occupantDispose(); occupantDispose = null; }
       occupantDispose = slots.register(
         // 静态注册无动态沙箱的优先级自动分配：显式给低 priority（最低者渲染）以遮蔽原生 stats 栏（priority 0）
-        { name: 'conversation.composer.dock', id: 'stats', priority: -1000 },
+        { name: 'conversation.composer.dock', id: 'stats', priority: -1000, locale: LOCALE_NAMESPACE },
         function (slotProps) {
           return React.createElement(BottomInfoBar, Object.assign({}, slotProps, { density: density, onToggleDensity: onToggleDensity }));
         }
@@ -923,7 +935,7 @@ module.exports = {
     }, 'dsh-bottom-info-bar: settings styles');
     slots.inject('settings.section', function () {
       return slots.register(
-        { name: 'settings.section', id: 'bottom-info-bar', order: 100, label: 'Info Bar' },
+        { name: 'settings.section', id: 'bottom-info-bar', order: 100, locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
         InfoBarSettingsSection);
     });
 
@@ -1199,11 +1211,15 @@ module.exports = {
         return Math.max(0, 100 - w.usedPercent);
       }
       // 订阅窗口紧凑行标签（5小时 → '5h'，周 → '周'，月 → '月'）；hover 明细仍用完整标签
+      function quotaWindowLabel(window) {
+        const keys = { five_hour: 'host.hour', seven_day: 'ui.weekly', monthly: 'ui.monthly' };
+        return keys[window.key] ? t(keys[window.key]) : window.label;
+      }
       function compactWindowLabel(key) {
         if (key === 'five_hour') return '5h';
-        if (key === 'seven_day') return 'Weekly';
-        if (key === 'monthly') return 'Monthly';
-        return 'Window';
+        if (key === 'seven_day') return t('ui.weekly');
+        if (key === 'monthly') return t('ui.monthly');
+        return t('ui.window');
       }
 
       // 数字统一加粗（仅数字本身）
@@ -1224,9 +1240,9 @@ module.exports = {
           return React.createElement('span', { className: 'bi-model-capability-pending', 'aria-hidden': 'true' }, modelLabel);
         }
         if (!pr || pr.acceptsImageInput !== true) return React.createElement('span', { className: 'bi-model-name' }, modelLabel);
-        return React.createElement('span', { className: 'bi-vision', title: 'Supports image input.' },
+        return React.createElement('span', { className: 'bi-vision', title: t('ui.supportsImageInput') },
           React.createElement('span', { className: 'bi-vision-model' }, modelLabel),
-          React.createElement('span', { className: 'bi-vision-kind' }, 'Vision'));
+          React.createElement('span', { className: 'bi-vision-kind' }, t('ui.vision')));
       }
 
       function modelSeparator() {
@@ -1252,15 +1268,15 @@ module.exports = {
       // 既保留服务商信息，也不让模型名重复前缀。
       function providerGroup() {
         const pr = visiblePricing;
-        const provLabel = (pr && pr.providerDisplay) ? pr.providerDisplay : 'Unknown';
+        const provLabel = (pr && pr.providerDisplay) ? pr.providerDisplay : t('ui.unknown');
         const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
-          : (pr && pr.model ? pr.model : 'Unknown model');
+          : (pr && pr.model ? pr.model : t('ui.unknownModel'));
         const modelName = modelLabelWithoutProvider(modelLabel, provLabel);
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
-          ? '\nPlugin version: ' + updateInfo.current : '';
-        const provTitle = 'Provider: ' + provLabel + ' ' + modelLabel + '\n'
-          + (pr && pr.mode === 'peak-valley' ? 'Pricing: peak/off-peak (Beijing time; weekday peaks 09:00–12:00 and 14:00–18:00; weekends off-peak)'
-            : (pr && pr.mode === 'flat' ? 'Pricing: fixed' : 'Pricing: not listed; using defaults'))
+          ? t('ui.pluginVersion', { current: updateInfo.current }) : '';
+        const provTitle = t('ui.provider', { provLabel: provLabel, modelLabel: modelLabel })
+          + (pr && pr.mode === 'peak-valley' ? t('ui.pricingPeakOffPeakBeijing')
+            : (pr && pr.mode === 'flat' ? t('ui.pricingFixed') : t('ui.pricingNotListedUsingDefaults')))
           + versionLine;
         return React.createElement('span', { key: 'prov', className: 'bi-model-group', title: provTitle },
           React.createElement('b', { className: 'bi-model-provider' }, provLabel),
@@ -1274,9 +1290,9 @@ module.exports = {
         if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';
         if (provider === 'codex') return 'Codex';
         if (provider === 'opencode-go' || provider === 'opencode') return 'OpenCode Go';
-        if (provider === 'zai' || provider === 'zai-coding-cn') return 'Zhipu';
-        if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return 'Xiaomi MiMo';
-        return 'Subscription';
+        if (provider === 'zai' || provider === 'zai-coding-cn') return t('ui.zhipu');
+        if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return t('ui.xiaomiMiMo');
+        return t('ui.subscription');
       }
 
       // 账单型服务名（v1.7：云账单 provider 显示品牌名，未知保持兜底）
@@ -1285,7 +1301,7 @@ module.exports = {
         if (provider === 'fireworks') return 'Fireworks';
         if (provider === 'amazon-bedrock') return 'AWS Bedrock';
         if (provider === 'cloudflare-ai-gateway' || provider === 'cloudflare-workers-ai') return 'Cloudflare';
-        return 'Cloud billing';
+        return t('ui.cloudBilling');
       }
 
       // 套餐档位短名（JWT 订阅卡：plus/pro/team/enterprise → Plus/Pro/Team/Enterprise；未知返回 null 显示模型名）
@@ -1311,14 +1327,14 @@ module.exports = {
         const subSnapshot = state.sub;
         const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;
         const rawModelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
-          : (pr && pr.model ? pr.model : 'Unknown model');
+          : (pr && pr.model ? pr.model : t('ui.unknownModel'));
         const modelLabel = planShort ? planShort : rawModelLabel;
         const modelName = modelLabelWithoutProvider(modelLabel, serviceName);
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
-          ? '\nPlugin version: ' + updateInfo.current : '';
-        const planLine = subSnapshot && subSnapshot.plan ? '\nPlan: ' + subSnapshot.plan : '';
-        const expiryLine = subSnapshot && subSnapshot.expiryAt ? '\nExpires: ' + formatDate(subSnapshot.expiryAt) + ' (local time)' : '';
-        const title = 'Subscription service: ' + serviceName + '\nModel: ' + rawModelLabel + planLine + expiryLine + versionLine;
+          ? t('ui.pluginVersion', { current: updateInfo.current }) : '';
+        const planLine = subSnapshot && subSnapshot.plan ? t('ui.plan', { plan: hostText(subSnapshot.plan) }) : '';
+        const expiryLine = subSnapshot && subSnapshot.expiryAt ? t('ui.expiresLocalTime', { value: formatDate(subSnapshot.expiryAt) }) : '';
+        const title = t('ui.subscriptionServiceModel', { serviceName: serviceName, rawModelLabel: rawModelLabel, planLine: planLine, expiryLine: expiryLine, versionLine: versionLine });
         return React.createElement('span', { key: 'subprov', className: 'bi-model-group', title: title },
           React.createElement('b', { className: 'bi-model-provider' }, serviceName),
           modelDetail(pr, modelName),
@@ -1345,45 +1361,45 @@ module.exports = {
         if (bal && bal.unmapped) {
           if (fieldVisible('unmapped')) {
             trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
-              React.createElement('span', { className: 'bi-muted', title: 'Balance lookup is not yet supported for this provider.' }, 'Not supported')));
+              React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
           }
         }
         // 余额（纯金额；hover 仅展示余额，不显示充值/赠金）
         // v1.6 T7：未配置提示改为按账户显示凭据名（去掉写死的 DeepSeek 文案）
         else if (bal && bal.error && bal.error.kind === 'no-key') {
           if (fieldVisible('noKeyHint')) {
-            const credName = bal.error.message ? String(bal.error.message).replace('Not configured: ', '') : 'API_KEY';
+            const credName = bal.error.message ? String(hostText(bal.error.message)).replace(/(?:未配置 |Not configured: )/, '') : 'API_KEY';
             trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
-              React.createElement('span', { className: 'bi-err', title: 'Not configured: ' + credName + '. Configure it in Settings → Models.' },
-                'Not configured: ' + credName + ' → Settings → Models')));
+              React.createElement('span', { className: 'bi-err', title: t('ui.notConfiguredConfigureItIn', { credName: credName }) },
+                t('ui.notConfiguredSettingsModels', { credName: credName }))));
           }
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';
           const balTitle = bal.estimate
-            ? 'Estimated balance: ' + symbol + fmt(bal.data.total)
-            : 'Balance: ' + symbol + fmt(bal.data.total);
+            ? t('ui.estimatedBalance', { symbol: symbol, value: fmt(bal.data.total) })
+            : t('ui.balance', { symbol: symbol, value: fmt(bal.data.total) });
           if (fieldVisible('balance')) {
             groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balTitle },
-              metric('Balance', symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
-              alertActive ? React.createElement('span', { className: 'bi-low-status' }, 'Low') : null,
-              bal.estimate ? React.createElement('span', { className: 'bi-muted' }, '(estimated)') : null,
+              metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
+              alertActive ? React.createElement('span', { className: 'bi-low-status' }, t('ui.low')) : null,
+              bal.estimate ? React.createElement('span', { className: 'bi-muted' }, t('ui.estimated')) : null,
             )));
           }
           // host 快照失败（bal.error）或本次 RPC 失败（errors.balance）→ 均保留旧数据 + 降级标记
           if (fieldVisible('balanceError') && (bal.error || errors.balance)) {
             trailingErrorGroups.push(fieldSpan('balanceError', 'balerr',
-              React.createElement('span', { className: 'bi-stale', title: 'Balance is temporarily unavailable. Showing the last data and retrying automatically.' }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: t('ui.balanceIsTemporarilyUnavailableShowing') }, t('ui.refreshFailed'))));
           }
         } else if (bal && bal.error) {
           if (fieldVisible('balanceError')) {
             trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: 'Could not load balance. Check your connection and API key.' }, 'Balance unavailable')));
+              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
           }
         } else if (errors.balance) {
           // 本次 RPC 失败且无旧数据：只降级余额块，其余端点数据照常渲染
           if (fieldVisible('balanceError')) {
             trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: 'Could not load balance. Check your connection and API key.' }, 'Balance unavailable')));
+              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
           }
         }
 
@@ -1392,19 +1408,19 @@ module.exports = {
         if (pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
           const peakNow = pr.period === 'peak';
           const p = pr.prices || {};
-          const periodTitle = 'Beijing time: ' + (peakNow ? 'Peak price' : 'Off-peak price') + ': input ¥' + (p.inputCacheMiss != null ? p.inputCacheMiss : '?')
-            + '/M · cached input ¥' + (p.inputCacheHit != null ? p.inputCacheHit : '?')
-            + '/M · output ¥' + (p.output != null ? p.output : '?') + '/M';
+          const periodTitle = t('ui.beijingTime') + (peakNow ? t('ui.peakPrice') : t('ui.offPeakPrice')) + t('ui.input') + (p.inputCacheMiss != null ? p.inputCacheMiss : '?')
+            + t('ui.mCachedInput') + (p.inputCacheHit != null ? p.inputCacheHit : '?')
+            + t('ui.mOutput') + (p.output != null ? p.output : '?') + '/M';
           groups.push(fieldSpan('period', 'period', React.createElement('span', { className: peakNow ? 'bi-peak' : 'bi-offpeak', title: periodTitle },
-            peakNow ? 'Peak price' : 'Off-peak price')));
+            peakNow ? t('ui.peakPrice') : t('ui.offPeakPrice'))));
         }
 
         // 倒计时：仅峰谷价服务商显示"距高峰/距空闲"（hover 展示下次切换时刻；数字加粗）
         if (pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
           const peakNow = pr.period === 'peak';
-          const countdownTitle = 'Beijing time: ' + pr.nextSwitch.atLabel + ' switches to ' + (peakNow ? 'Off-peak price' : 'Peak price') + '.';
+          const countdownTitle = t('ui.beijingTimeSwitchesTo', { atLabel: pr.nextSwitch.atLabel }) + (peakNow ? t('ui.offPeakPrice') : t('ui.peakPrice')) + t('ui.sentenceEnd');
           groups.push(fieldSpan('countdown', 'countdown', React.createElement('span', { title: countdownTitle },
-            metric('Until ' + (peakNow ? 'off-peak' : 'peak'), fmtCountdown(pr.nextSwitch.at - now)))));
+            metric(t('ui.until') + (peakNow ? t('ui.offPeak') : t('ui.peak')), fmtCountdown(pr.nextSwitch.at - now)))));
         }
 
         // 本会话花费（公共小部件 pushSessionCost：只显示钱；hover 显示 今天/近一月/全部）
@@ -1427,17 +1443,17 @@ module.exports = {
             const symbol = usdSymbol ? '$' : '¥';
             const costTxt = costCNY != null ? '¥' + costCNY.toFixed(3)
               : (costUSD != null ? '$' + costUSD.toFixed(3) : symbol + (0).toFixed(3));
-            const today = usg.todaySpend != null ? 'Today ' + symbol + fmt(usg.todaySpend, 3) : '';
-            const month = usg.monthSpend != null ? 'Last 30 days ' + symbol + fmt(usg.monthSpend, 3) : '';
-            const total = usg.totalSpend != null ? 'All time ' + symbol + fmt(usg.totalSpend, 3) : '';
+            const today = usg.todaySpend != null ? t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) }) : '';
+            const month = usg.monthSpend != null ? t('ui.lastDays', { symbol: symbol, value: fmt(usg.monthSpend, 3) }) : '';
+            const total = usg.totalSpend != null ? t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) }) : '';
             const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
             groups.push(fieldSpan('sessionCost', 'convo', React.createElement('span', {
-              title: 'Session ' + costTxt + ' (including subagents)' + (detail ? '\n' + detail : '') },
-              metric('Session', costTxt))));
+              title: t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' }) },
+              metric(t('ui.session'), costTxt))));
           }
         } else if (errs.usage && fieldVisible('usageError')) {
           trailingErrorGroups.push(fieldSpan('usageError', 'usageerr',
-            React.createElement('span', { className: 'bi-err', title: 'Spend is temporarily unavailable. Chat is unaffected.' }, 'Spend unavailable')));
+            React.createElement('span', { className: 'bi-err', title: t('ui.spendIsTemporarilyUnavailableChat') }, t('ui.spendUnavailable'))));
         }
       }
 
@@ -1447,16 +1463,16 @@ module.exports = {
        function subscriptionFailureHint(error, source) {
          const kind = error && error.kind;
          const serviceName = subscriptionServiceName(source);
-         const message = error && typeof error.message === 'string' ? error.message : '';
+         const message = error && typeof error.message === 'string' ? hostText(error.message) : '';
          const statusMatch = message.match(/HTTP (\d{3})/);
          const status = statusMatch ? statusMatch[1] : '';
-         if (kind === 'no-key') return 'No sign-in credentials found for ' + serviceName + '. Please reauthorize.';
-         if (kind === 'auth' || status === '401') return serviceName + ' credentials have expired. Please reauthorize.';
-         if (status === '403') return serviceName + ' denied access. Reauthorize or try again later.';
-         if (status === '429') return serviceName + ' rate limit reached. Please try again later.';
-         if (kind === 'timeout' || /timeout|timed out|abort/i.test(message)) return serviceName + ' timed out. Check your connection and try again.';
-         if (kind === 'parse') return serviceName + ' returned an unrecognized response. Please try again later.';
-         return serviceName + ' is temporarily unavailable. Check your connection and try again.';
+         if (kind === 'no-key') return t('ui.noSignInCredentialsFound', { serviceName: serviceName });
+         if (kind === 'auth' || status === '401') return t('ui.credentialsHaveExpiredPleaseReauthorize', { serviceName: serviceName });
+         if (status === '403') return t('ui.deniedAccessReauthorizeOrTry', { serviceName: serviceName });
+         if (status === '429') return t('ui.rateLimitReachedPleaseTry', { serviceName: serviceName });
+         if (kind === 'timeout' || /timeout|timed out|abort/i.test(message)) return t('ui.timedOutCheckYourConnection', { serviceName: serviceName });
+         if (kind === 'parse') return t('ui.returnedAnUnrecognizedResponsePlease', { serviceName: serviceName });
+         return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
        }
 
        function pushSubscriptionGroups(groups, trailingErrorGroups) {
@@ -1468,14 +1484,14 @@ module.exports = {
         const errors = state.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
         if (sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
-          groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: 'Subscription expires: ' + formatDate(sub.expiryAt) + ' (local time)' },
-            metric('Expires', formatDate(sub.expiryAt)))));
+          groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: t('ui.subscriptionExpiresLocalTime', { value: formatDate(sub.expiryAt) }) },
+            metric(t('ui.expires'), formatDate(sub.expiryAt)))));
         }
         if (!sub) {
           if (errors.sub && fieldVisible('refreshFailure')) {
             // 本次 RPC 失败且无旧数据：显示失败信息而非永久"加载中…"
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'suberr',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
           }
           return;
         }
@@ -1491,7 +1507,7 @@ module.exports = {
         if (sub.error && !hasData) {
           if (fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
           return;
         }
@@ -1500,17 +1516,17 @@ module.exports = {
         if (!hasData && typeof sub.balance === 'number' && isFinite(sub.balance)) {
           if (fieldVisible('subBalance')) {
             const balTxt = '¥' + fmt(sub.balance, 2);
-            const titleLines = ['Subscription source: ' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + ' (' + (sub.plan || 'Prepaid balance') + ')',
-              'Available balance: ' + balTxt];
+            const titleLines = [t('ui.subscriptionSource', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (hostText(sub.plan) || t('ui.prepaidBalance')) + ')',
+              t('ui.availableBalance', { balTxt: balTxt })];
             groups.push(fieldSpan('subBalance', 'subbal', React.createElement('span', { title: titleLines.join('\n') },
-              metric('Balance', balTxt))));
+              metric(t('ui.balance.pushBalanceGroups'), balTxt))));
           }
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
           pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
           if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
           return;
         }
@@ -1533,10 +1549,10 @@ module.exports = {
 
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
           const LOW_QUOTA_PERCENT = 20;
-          const titleLines = ['Subscription source: ' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) + (sub.plan ? ' (' + sub.plan + ')' : '')]
+          const titleLines = [t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (sub.plan ? ' (' + hostText(sub.plan) + ')' : '')]
             .concat(windows.map(function (w) {
-              return w.label + ' window: remaining ' + remainingPercent(w) + '% (used ' + w.usedPercent + '%)'
-                + (w.resetsAt ? ' · Resets ' + formatDateTime(w.resetsAt) + ' · Resets in ' + fmtResetCountdown(w.resetsAt - now) : '');
+              return t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })
+                + (w.resetsAt ? t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) }) : '');
             }));
           const winNodes = [];
           for (let i = 0; i < visible.length; i++) {
@@ -1547,7 +1563,7 @@ module.exports = {
             // 每个窗口独立 data-field（subWindow5h/Week/Month），色变量按字段注入；「低」字标签保留
             winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,
               metric(compactWindowLabel(w.key), remaining + '%', numberClass)));
-            if (remaining <= LOW_QUOTA_PERCENT) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, 'Low'));
+            if (remaining <= LOW_QUOTA_PERCENT) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, t('ui.low')));
           }
           // 全部窗口被隐藏（或紧凑模式无候选）→ 整组不推送，分隔符由组装层正确收合
           if (winNodes.length > 0) {
@@ -1556,14 +1572,13 @@ module.exports = {
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 均保留旧数据 + 降级标记
           if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
           // 距重置倒计时（与显示的窗口一致，确保额度与倒计时匹配）
           if (displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
-            const cdTitle = displayWindow.label + ' window: remaining ' + remainingPercent(displayWindow)
-              + '% (used ' + displayWindow.usedPercent + '%) · Resets ' + formatDateTime(displayWindow.resetsAt);
+            const cdTitle = t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) });
             groups.push(fieldSpan('resetCountdown', 'subcd', React.createElement('span', { title: cdTitle },
-              metric('Resets in', fmtResetCountdown(displayWindow.resetsAt - now)))));
+              metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now)))));
           }
         }
       }
@@ -1572,14 +1587,14 @@ module.exports = {
       //      账单服务+模型 → 本月真实花费 →（预算%）→（免费额度+重置倒计时）；余额/额度/本会话花费均不显示 ----
       function billingFailureHint(error, provider) {
         const serviceName = billingServiceName(provider);
-        const message = error && typeof error.message === 'string' ? error.message : '';
+        const message = error && typeof error.message === 'string' ? hostText(error.message) : '';
         const statusMatch = message.match(/HTTP (\d{3})/);
         const status = statusMatch ? statusMatch[1] : '';
-        if (error && error.kind === 'no-key') return 'Not configured: ' + message.replace('Not configured: ', '') + '. Configure it in Settings → Models.';
-        if (status === '403' || /lack .*permission/.test(message)) return serviceName + ' denied access: the token may lack billing read permissions.';
-        if (error && error.kind === 'parse') return serviceName + ' returned an unrecognized response. Please try again later.';
-        if (/timeout|timed out|abort/i.test(message)) return serviceName + ' timed out. Check your connection and try again.';
-        return serviceName + ' billing is temporarily unavailable. Check your connection and permissions, then try again.';
+        if (error && error.kind === 'no-key') return t('ui.notConfigured') + message.replace(/(?:未配置 |Not configured: )/, '') + t('ui.configureItInSettingsModels');
+        if (status === '403' || /缺少 .*权限|lack .*permission/.test(message)) return t('ui.deniedAccessTheTokenMay', { serviceName: serviceName });
+        if (error && error.kind === 'parse') return t('ui.returnedAnUnrecognizedResponsePlease', { serviceName: serviceName });
+        if (/timeout|timed out|abort/i.test(message)) return t('ui.timedOutCheckYourConnection', { serviceName: serviceName });
+        return t('ui.billingIsTemporarilyUnavailableCheck', { serviceName: serviceName });
       }
 
       function pushBillingGroups(groups, trailingErrorGroups) {
@@ -1592,7 +1607,7 @@ module.exports = {
         if (!bill) {
           if (errors.billing && fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billerr',
-              React.createElement('span', { className: 'bi-stale', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
           }
           return;
         }
@@ -1601,39 +1616,39 @@ module.exports = {
         if (bill.error && !hasSpend) {
           if (fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
-              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
           return;
         }
         if (hasSpend) {
           const symbol = d.currency === 'CNY' ? '¥' : '$';
-          const titleLines = ['Billing source: ' + billingServiceName(visibleBillingMode && visibleBillingMode.provider)]
-            .concat(d.note ? [d.note] : [])
-            .concat(d.currentPeriodSpend != null ? ['This month’s spend: ' + symbol + fmt(d.currentPeriodSpend, 2)] : [])
-            .concat(d.budgetPercent != null ? ['Budget used: ' + fmt(d.budgetPercent, 0) + '%'] : [])
-            .concat(d.freeRemaining != null ? ['Daily free quota remaining: ' + fmt(d.freeRemaining, 0)] : []);
+          const titleLines = [t('ui.billingSource', { value: billingServiceName(visibleBillingMode && visibleBillingMode.provider) })]
+            .concat(d.note ? [hostText(d.note)] : [])
+            .concat(d.currentPeriodSpend != null ? [t('ui.thisMonthSSpend', { symbol: symbol, value: fmt(d.currentPeriodSpend, 2) })] : [])
+            .concat(d.budgetPercent != null ? [t('ui.budgetUsed', { value: fmt(d.budgetPercent, 0) })] : [])
+            .concat(d.freeRemaining != null ? [t('ui.dailyFreeQuotaRemaining', { value: fmt(d.freeRemaining, 0) })] : []);
           // v1.9.0 PR2：本月/预算/免费额度三片段各自显隐，分隔符只在可见片段之间
           const nodes = [];
           if (d.currentPeriodSpend != null && fieldVisible('billingSpend')) {
-            nodes.push(fieldSpan('billingSpend', 'billspend', metric('This month', symbol + fmt(d.currentPeriodSpend, 2))));
+            nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))));
           } else if (d.usage != null && fieldVisible('billingSpend')) {
-            nodes.push(fieldSpan('billingSpend', 'billspend', metric('This month’s usage', fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
+            nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
           }
           if (d.budgetPercent != null && fieldVisible('budget')) {
             if (nodes.length > 0) nodes.push(' · ');
-            nodes.push(fieldSpan('budget', 'billbudget', metric('Budget', fmt(d.budgetPercent, 0) + '%')));
+            nodes.push(fieldSpan('budget', 'billbudget', metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')));
           }
           // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
           if (d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
             if (nodes.length > 0) nodes.push(' · ');
-            nodes.push(fieldSpan('freeQuota', 'billfree', metric('Free', fmt(d.freeRemaining, 0) + ' · Resets in ' + fmtResetCountdown(d.resetsAt - now))));
+            nodes.push(fieldSpan('freeQuota', 'billfree', metric(t('ui.free'), t('ui.resetsIn.pushBillingGroups', { value: fmt(d.freeRemaining, 0), value2: fmtResetCountdown(d.resetsAt - now) }))));
           }
           if (nodes.length > 0) {
             groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
           }
           if (fieldVisible('refreshFailure') && (bill.error || errors.billing)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
-              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, 'Refresh failed')));
+              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
         }
       }
@@ -1643,11 +1658,11 @@ module.exports = {
         const pr = visiblePricing;
         const serviceName = billingServiceName(visibleBillingMode && visibleBillingMode.provider);
         const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
-          : (pr && pr.model ? pr.model : 'Unknown model');
+          : (pr && pr.model ? pr.model : t('ui.unknownModel'));
         const modelName = modelLabelWithoutProvider(modelLabel, serviceName);
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
-          ? '\nPlugin version: ' + updateInfo.current : '';
-        const title = 'Billing service: ' + serviceName + '\nModel: ' + modelLabel + versionLine;
+          ? t('ui.pluginVersion', { current: updateInfo.current }) : '';
+        const title = t('ui.billingServiceModel', { serviceName: serviceName, modelLabel: modelLabel, versionLine: versionLine });
         return React.createElement('span', { key: 'billprov', className: 'bi-model-group', title: title },
           React.createElement('b', { className: 'bi-model-provider' }, serviceName),
           modelDetail(pr, modelName),
@@ -1678,16 +1693,16 @@ module.exports = {
       // 全局降级提示：任一端点失败 → 旧数据照常渲染 + 角落提示（title 列出失败项），仅失败项降级
       const errors = state.errors || {};
       const failedLabels = [];
-      if (errors.balance) failedLabels.push('Balance');
-      if (errors.pricing) failedLabels.push('Pricing');
-      if (errors.usage) failedLabels.push('Spend');
-      if (errors.billingMode) failedLabels.push('Mode');
-      if (errors.sub) failedLabels.push('Subscription quota');
-      if (errors.billing) failedLabels.push('Billing');
+      if (errors.balance) failedLabels.push(t('ui.balance.pushBalanceGroups'));
+      if (errors.pricing) failedLabels.push(t('ui.pricing'));
+      if (errors.usage) failedLabels.push(t('ui.spend'));
+      if (errors.billingMode) failedLabels.push(t('ui.mode'));
+      if (errors.sub) failedLabels.push(t('ui.subscriptionQuota'));
+      if (errors.billing) failedLabels.push(t('ui.billing'));
       if (failedLabels.length > 0 && fieldVisible('refreshFailure')) {
         trailingErrorGroups.push(fieldSpan('refreshFailure', 'degraded',
           React.createElement('span', { className: 'bi-stale', key: 'degraded',
-            title: failedLabels.join(', ') + ': temporarily unavailable. Keeping the last data and retrying automatically.' }, 'Refresh failed')));
+            title: failedLabels.join(t('ui.listSeparator')) + t('ui.temporarilyUnavailableKeepingTheLast') }, t('ui.refreshFailed'))));
       }
       const persistence = state.usage && state.usage.persistence;
       if (persistence && persistence.state && persistence.state !== 'ok' && fieldVisible('persistWarning')) {
@@ -1695,15 +1710,15 @@ module.exports = {
         trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {
           className: snapshotOnly ? 'bi-stale' : 'bi-err',
           title: snapshotOnly
-            ? 'Spend journal saved, but the readable ledger has not been updated: ' + (persistence.message || 'Unknown reason')
-            : 'This spend record was not saved and will not be added to totals: ' + (persistence.message || 'Unknown reason'),
-        }, snapshotOnly ? 'Ledger update pending' : 'Spend not saved')));
+            ? t('ui.spendJournalSavedButThe') + (hostText(persistence.message) || t('ui.unknownReason'))
+            : t('ui.thisSpendRecordWasNot') + (hostText(persistence.message) || t('ui.unknownReason')),
+        }, snapshotOnly ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved'))));
       }
 
        if (updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
          groups.push(fieldSpan('updateNotice', 'update', React.createElement('span', {
-           className: 'bi-update', title: 'Ask your agent to update this plugin to version ' + updateInfo.latest + '.',
-       }, 'Update available')));
+           className: 'bi-update', title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest }),
+       }, t('ui.updateAvailable'))));
        }
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
@@ -1736,28 +1751,28 @@ module.exports = {
         // v1.9.0 PR2：原生统计行字段按设置过滤（隐藏组完全不进 ng，不占版式也不进 title）
         if (fieldVisible('turnsSteps')) {
           // 中文界面遵循数字与汉字混排留白：数值与量词视觉上分开，便于快速扫读。
-          group([num(statsProj.turns + (statsProj.turns === 1 ? ' turn' : ' turns')), ' · ', num(statsProj.steps + (statsProj.steps === 1 ? ' step' : ' steps'))], false, 'turnsSteps');
+          group([num(t(statsProj.turns === 1 ? 'ui.turnCount' : 'ui.turnCountPlural', { count: statsProj.turns })), ' · ', num(t(statsProj.steps === 1 ? 'ui.stepCount' : 'ui.stepCountPlural', { count: statsProj.steps }))], false, 'turnsSteps');
         }
 
         const durations = [];
         if (statsProj.llmMs > 0 && fieldVisible('llmTime')) durations.push(fieldSpan('llmTime', 'durl', metric('LLM', formatDuration(statsProj.llmMs))));
         if (statsProj.toolMs > 0 && fieldVisible('toolTime')) {
           if (durations.length > 0) durations.push(' · ');
-          durations.push(fieldSpan('toolTime', 'durt', metric('Tools', formatDuration(statsProj.toolMs))));
+          durations.push(fieldSpan('toolTime', 'durt', metric(t('ui.tools'), formatDuration(statsProj.toolMs))));
         }
         if (durations.length > 0) group(durations);
 
         const speeds = [];
-        if (statsProj.ttftSteps > 0) speeds.push(metric('Avg. TTFT', formatDuration(statsProj.ttftMs / statsProj.ttftSteps)));
+        if (statsProj.ttftSteps > 0) speeds.push(metric(t('ui.avgTTFT'), formatDuration(statsProj.ttftMs / statsProj.ttftSteps)));
         if (statsProj.decodeMs > 0) speeds.push(' · ', num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s'));
         if (speeds.length > 0) group(speeds, HIDE_SPEED_FIELDS); // 不占可见版式，title 浮窗保留（官方隐藏字段，非用户可配）
 
         if (usageProj && (billedInput(usageProj) > 0 || (usageProj.outputTokens || 0) > 0)) {
           const denom = billedInput(usageProj);
           const hit = denom > 0 ? Math.round(((usageProj.cacheReadTokens || 0) / denom) * 100) : null;
-          if (hit != null && fieldVisible('cacheHit')) group([metric('Cache hit', hit + '%')], false, 'cacheHit');
+          if (hit != null && fieldVisible('cacheHit')) group([metric(t('ui.cacheHit'), hit + '%')], false, 'cacheHit');
           if (fieldVisible('tokensIO')) {
-            group([metric('Input', formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric('Output', formatTokens(usageProj.outputTokens || 0) + ' tok')], false, 'tokensIO');
+            group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric(t('ui.output'), formatTokens(usageProj.outputTokens || 0) + ' tok')], false, 'tokensIO');
           }
         }
 
@@ -1807,10 +1822,10 @@ module.exports = {
         'aria-disabled': isDensitySaving,
         'data-density': displayDensity,
         'data-density-saving': isDensitySaving,
-        title: isDensitySaving ? 'Saving view…' : 'Click to switch full/compact view',
+        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
       }, animatedRow1, row2,
       React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
-        full ? 'Press Enter or Space for compact view.' : 'Press Enter or Space for full view.'));
+        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
     }
   },
 };

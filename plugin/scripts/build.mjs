@@ -8,12 +8,17 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LOCALES } from '../src/locales.js'
+import { localizeHostText } from '../src/host-locale.js'
 
 const root = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const libDir = join(root, 'lib')
 
 await rm(libDir, { recursive: true, force: true })
 await mkdir(libDir, { recursive: true })
+for (const file of ['locales.js', 'host-locale.js']) {
+  await copyFile(join(root, 'src', file), join(libDir, file))
+}
 
 // 从 constants.js 读取单一生源的共享常量（v1.6：SUBSCRIPTION_PROVIDERS；v1.7：+BILLING_PROVIDERS；
 // v1.9：+FIELD_REGISTRY / PRESET_COLOR_NAMES / FIELD_GROUP_ORDER / FIELD_GROUP_LABELS）。
@@ -68,7 +73,8 @@ await copyFile(join(root, 'src', 'constants.js'), join(libDir, 'constants.js'))
 //    工厂直接导出最朴素的 module.exports = { inject, apply }——v1.9.1 起不再拼接第二个源码文件，
 //    也不再做 module.exports 重写/async 串接式的设置页包装。
 let clientSource = await readFile(join(root, 'src', 'client-bundle.js'), 'utf8')
-clientSource = injectSharedConstants(clientSource)
+clientSource = injectSharedConstants(clientSource).replace('/*__LOCALES__*/{}', () => JSON.stringify(LOCALES))
+  .replace('/*__HOST_TEXT__*/', () => localizeHostText.toString())
 const wrapped = [
   'window.__ModuleLoader__.load({ id: "dsh-bottom-info-bar", factory: (require) => {',
   'var module = { exports: {} }; var exports = module.exports;',

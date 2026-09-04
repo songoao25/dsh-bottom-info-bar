@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // 双模式（余额制 / 订阅制）逻辑审计：
 // ① 模式检测（provider 映射 + 手动覆盖）② Codex wham 响应解析（含窗口缺失边界）
 // ③ OpenCode Go 响应解析（含 status 非 ok）④ 快照失败回退（失败保留旧快照 + error 标记）
@@ -136,7 +137,7 @@ check('3600（1h，不在映射）→ null', codexWindowKey(3600), null);
 check('非数字 → null', codexWindowKey(undefined), null);
 check('null → null', codexWindowKey(null), null);
 check('窗口时长表配置正确', JSON.stringify(WINDOW_SECONDS), JSON.stringify({ five_hour: 18000, seven_day: 604800, monthly: 2592000 }));
-check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5-hour', seven_day: 'Weekly', monthly: 'Monthly' }));
+check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5 小时', seven_day: '周', monthly: '月' }));
 
 // ---- 3) Codex 响应解析（真实响应形态：rate_limit 在顶层，无 usage 包装层） ----
 // 完整双窗口（5 小时 + 7 天）
@@ -149,8 +150,8 @@ const codexFull = {
 };
 const parsedFull = parseCodexUsage(codexFull);
 check('Codex 完整双窗口：窗口数 = 2', parsedFull.windows.length, 2);
-check('Codex 完整双窗口：5 小时窗口', parsedFull.windows[0], { key: 'five_hour', label: '5-hour', usedPercent: 9, resetsAt: 1784000000000 });
-check('Codex 完整双窗口：周窗口', parsedFull.windows[1], { key: 'seven_day', label: 'Weekly', usedPercent: 62, resetsAt: 1785000000000 });
+check('Codex 完整双窗口：5 小时窗口', parsedFull.windows[0], { key: 'five_hour', label: '5 小时', usedPercent: 9, resetsAt: 1784000000000 });
+check('Codex 完整双窗口：周窗口', parsedFull.windows[1], { key: 'seven_day', label: '周', usedPercent: 62, resetsAt: 1785000000000 });
 check('Codex plan_type=plus → ChatGPT Plus', parsedFull.plan, 'ChatGPT Plus');
 check('Codex plan_type=pro → ChatGPT Pro', parseCodexUsage({ plan_type: 'pro', rate_limit: {} }).plan, 'ChatGPT Pro');
 
@@ -213,7 +214,7 @@ check('OpenCode Go null → null', parseOpenCodeGoUsage(null), null);
 
 // ---- 5) 快照失败回退（mergeSubscriptionResult：失败保留旧 data/fetchedAt，仅换 error） ----
 const prevSnap = {
-  data: { provider: 'codex', plan: 'ChatGPT Plus', windows: [{ key: 'seven_day', label: 'Weekly', usedPercent: 43, resetsAt: 1787200342000 }] },
+  data: { provider: 'codex', plan: 'ChatGPT Plus', windows: [{ key: 'seven_day', label: '周', usedPercent: 43, resetsAt: 1787200342000 }] },
   fetchedAt: 12345,
   error: null,
 };
@@ -254,15 +255,15 @@ check('client 余额制渲染函数独立保留', clientSrc.includes('function p
 check('client 订阅制渲染函数存在', clientSrc.includes('function pushSubscriptionGroups(groups, trailingErrorGroups)'), true);
 check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌；v1.9 PR2 每窗口独立 data-field）', clientSrc.includes("winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,"), true);
 check('client compact 密度精简为最紧窗口', clientSrc.includes('const visible = full ? windows : (displayWindow ? [displayWindow] : []);'), true);
-check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn.includes("'Loading subscription quota…'"), false);
+check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn.includes("'订阅额度加载中…'"), false);
 check('client 窗口渲染由 hasData 门控（空窗口跳过不占位）', subFn.includes('if (hasData) {'), true);
-check('client 订阅失败原因统一通过简短悬停说明', clientSrc.includes('subscriptionFailureHint') && clientSrc.includes('Check your connection and try again'), true);
+check('client 订阅失败原因统一通过简短悬停说明', clientSrc.includes('subscriptionFailureHint') && clientSrc.includes("t('ui.isTemporarilyUnavailableCheckYour'"), true);
 check('client 预警阈值常量 = 20（剩余 ≤20% 即告警，与 host 余额 ALERT_THRESHOLD=20 一致）', clientSrc.includes('const LOW_QUOTA_PERCENT = 20'), true);
 check('client 预警触发条件：剩余 ≤20% 时将对应额度数字标红', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''"), true);
-check('client 距重置倒计时使用同一窗口，并通过统一 metric 间距呈现', clientSrc.includes("metric('Resets in', fmtResetCountdown(displayWindow.resetsAt - now))"), true);
+check('client 距重置倒计时使用同一窗口，并通过统一 metric 间距呈现', clientSrc.includes("metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now))"), true);
 check('client fmtResetCountdown 天级格式（1d 21h）', clientSrc.includes("d + 'd ' + h + 'h'"), true);
-check('client hover 明细含重置时刻（formatDateTime）', clientSrc.includes("' · Resets ' + formatDateTime(w.resetsAt)"), true);
-check('client hover 距重置用天级格式（避免与剩余%混淆）', clientSrc.includes("' · Resets in ' + fmtResetCountdown(w.resetsAt - now)"), true);
+check('client hover 明细含重置时刻（formatDateTime）', clientSrc.includes("t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) })"), true);
+check('client hover 距重置用天级格式（避免与剩余%混淆）', clientSrc.includes("value2: fmtResetCountdown(w.resetsAt - now)"), true);
 check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup；v1.9 PR2 经 subServiceGroup 门控+着色）', clientSrc.includes("const subAnchor = subscriptionProviderGroup();")
   && clientSrc.includes("groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));"), true);
 check('client 订阅服务名映射含 OpenCode Go / Codex / ChatGPT', clientSrc.includes("return 'OpenCode Go'") && clientSrc.includes("return 'Codex'") && clientSrc.includes("return 'ChatGPT'"), true);
@@ -271,28 +272,28 @@ check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.
 check('client codex → Codex 保持（映射不变）', clientSrc.includes("if (provider === 'codex') return 'Codex';"), true);
 check('client 剩余 = 100 - 已用（钳制 ≥0）', clientSrc.includes('return Math.max(0, 100 - w.usedPercent);'), true);
 check('client 紧凑标签 five_hour → 5h', clientSrc.includes("if (key === 'five_hour') return '5h';"), true);
-check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("' window: remaining ' + remainingPercent(w) + '% (used ' + w.usedPercent + '%)'"), true);
+check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })"), true);
 check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
-check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("'Subscription source: ' + subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider)"), true);
+check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) })"), true);
 check('client 订阅制显示充值余额（sub.balance）', subFn.includes('sub.balance'), true);
 check('client 订阅·充值余额形态追加本会话花费块（共用 pushSessionCost）', subFn.includes('pushSessionCost(groups, trailingErrorGroups, false)'), true);
-check('client 订阅制不显示距高峰倒计时', subFn.includes('Until peak'), false);
+check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
 check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
-check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("'Refresh failed'") && clientSrc.includes('subscriptionFailureHint'), true);
+check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("t('ui.refreshFailed')") && clientSrc.includes('subscriptionFailureHint'), true);
 
 // ---- 6.5) v1.7 三态互斥 + JWT 订阅卡 + 账单型静态检查 ----
 const billFn = extractClientFnBody('pushBillingGroups');
 check('client 账单型渲染分支存在（pushBillingGroups）', clientSrc.includes('function pushBillingGroups(groups, trailingErrorGroups)'), true);
 check('client 三态互斥：row2 依次判定 billing → subscription → balance', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('} else if (isSub) {') && clientSrc.includes('} else {') && clientSrc.includes('pushBalanceGroups(groups, trailingErrorGroups)'), true);
-check('client 账单型不显示余额/本会话花费/峰谷时段', !billFn.includes("metric('Balance'") && !billFn.includes('pushSessionCost(') && !billFn.includes('Peak price'), true);
-check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric('This month', symbol + fmt(d.currentPeriodSpend, 2))"), true);
-check('client 账单型显示预算%（本月 $X · 预算 Y%）', clientSrc.includes("metric('Budget', fmt(d.budgetPercent, 0) + '%')"), true);
+check('client 账单型不显示余额/本会话花费/峰谷时段', !billFn.includes('余额 ') && !billFn.includes('本会话 ') && !billFn.includes("t('ui.peakPrice')"), true);
+check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))"), true);
+check('client 账单型显示预算%（本月 $X · 预算 Y%）', clientSrc.includes("metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')"), true);
 check('client 账单型免费额度仅在接口给出免费字段时显示（绝不编造）', clientSrc.includes('d.freeRemaining != null && d.resetsAt'), true);
-check('client 账单型无金额时按真实用量展示', clientSrc.includes("metric('This month’s usage', fmt(d.usage, 2)"), true);
+check('client 账单型无金额时按真实用量展示', clientSrc.includes("metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2)"), true);
 check('client 账单服务名映射：Together/Fireworks/AWS Bedrock/Cloudflare', clientSrc.includes("return 'Together'") && clientSrc.includes("return 'Fireworks'") && clientSrc.includes("return 'AWS Bedrock'") && clientSrc.includes("return 'Cloudflare'"), true);
-check('client 订阅服务名含小米 MiMo', clientSrc.includes("return 'Xiaomi MiMo'"), true);
+check('client 订阅服务名含小米 MiMo', clientSrc.includes("return t('ui.xiaomiMiMo')"), true);
 check('client JWT 订阅卡：套餐档位短名映射（plus→Plus 等）', clientSrc.includes("const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };"), true);
-check('client JWT 订阅卡：到期日期渲染（到期 YYYY-MM-DD）', clientSrc.includes("metric('Expires', formatDate(sub.expiryAt))"), true);
+check('client JWT 订阅卡：到期日期渲染（到期 YYYY-MM-DD）', clientSrc.includes("metric(t('ui.expires'), formatDate(sub.expiryAt))"), true);
 check('client JWT 订阅卡：模型位显示套餐档位（ChatGPT · Plus）', clientSrc.includes('const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;'), true);
 check('client 账单型失败保留旧快照提示（bill.error || errors.billing）', billFn.includes('bill.error || errors.billing'), true);
 check('client load 含 getBillingStatus 端点', clientSrc.includes("rpc('getBillingStatus'"), true);

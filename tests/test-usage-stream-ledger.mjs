@@ -117,7 +117,7 @@ const unpricedRecord = beforeFailure.find((record) => record.model === 'unknown-
 check('中断账单标为 interrupted', interruptedRecord && interruptedRecord.status === 'interrupted', JSON.stringify(interruptedRecord))
 check('未知价格模型保留用量但标为 unpriced', unpricedRecord && unpricedRecord.pricingStatus === 'unpriced' && !Object.hasOwn(unpricedRecord, 'cost'), JSON.stringify(unpricedRecord))
 const clientSource = readFileSync(new URL('../plugin/src/client-bundle.js', import.meta.url), 'utf8')
-check('底栏为账单未保存提供明确提示', clientSource.includes("'Spend not saved'") && clientSource.includes('persistence.state'), '')
+check('底栏为账单未保存提供明确提示', clientSource.includes("t('ui.spendNotSaved')") && clientSource.includes('persistence.state'), '')
 
 // Turn the journal pathname into a directory: appending must fail, and the
 // failed bill must not appear in the visible total or snapshot.

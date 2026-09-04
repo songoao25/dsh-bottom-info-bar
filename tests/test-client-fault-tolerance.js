@@ -1,3 +1,4 @@
+const { t } = require('./locale-fixture.cjs');
 // 客户端失败处理原子性回归（docs/AUDIT-CODE-REVIEW.md 缺陷 #1，高）：
 // ① rpc 超时 / 中止：20s 超时兜底 + AbortController + 组件卸载取消 → 杜绝永久"加载中…"
 // ② load 逐接口容错：Promise.allSettled，单端点 RPC 失败不丢弃其他成功数据
@@ -65,10 +66,10 @@ const OLD = {
 
 // 混合：balance 失败（保留旧）、pricing 成功（新值）、usage 成功、billingMode 失败（保留旧）、sub 成功
 const mixed = mergeLoadResults(OLD, [
-  { status: 'rejected', reason: ERR('Request timed out') },
+  { status: 'rejected', reason: ERR('请求超时') },
   { status: 'fulfilled', value: { mode: 'flat', period: null, providerDisplay: 'DeepSeek', modelDisplay: 'V4' } },
   { status: 'fulfilled', value: { currentSession: { costs: { CNY: 2.5 } }, todaySpend: 2.5 } },
-  { status: 'rejected', reason: ERR('Request canceled') },
+  { status: 'rejected', reason: ERR('请求已取消') },
   { status: 'fulfilled', value: { mode: 'balance', provider: 'deepseek', plan: null, windows: [] } },
 ]);
 check('失败端点保留旧值（balance）', mixed.balance, OLD.balance);
@@ -76,20 +77,20 @@ check('成功端点写入新值（pricing）', mixed.pricing.mode, 'flat');
 check('成功端点写入新值（usage）', mixed.usage.todaySpend, 2.5);
 check('失败端点保留旧值（billingMode）', mixed.billingMode, OLD.billingMode);
 check('成功端点写入新值（sub）', mixed.sub.mode, 'balance');
-check('失败端点记录错误信息（balance）', mixed.errors.balance, 'Request timed out');
+check('失败端点记录错误信息（balance）', mixed.errors.balance, '请求超时');
 check('成功端点错误清除（pricing）', mixed.errors.pricing, null);
-check('失败端点记录错误信息（billingMode）', mixed.errors.billingMode, 'Request canceled');
+check('失败端点记录错误信息（billingMode）', mixed.errors.billingMode, '请求已取消');
 check('成功端点错误清除（sub）', mixed.errors.sub, null);
 check('settled 后 loading 恒为 false（不再"加载中"）', mixed.loading, false);
 
 // 首帧全失败（无旧数据）：值保持 null、错误表逐项记录、不产生整栏 fatal
 const firstFail = mergeLoadResults(
   { loading: true, balance: null, pricing: null, usage: null, billingMode: null, sub: null },
-  [{ status: 'rejected', reason: ERR('Request timed out') }, { status: 'rejected', reason: ERR('Request timed out') }, { status: 'rejected', reason: ERR('Request timed out') }, { status: 'rejected', reason: ERR('Request timed out') }, { status: 'rejected', reason: ERR('Request timed out') }]
+  [{ status: 'rejected', reason: ERR('请求超时') }, { status: 'rejected', reason: ERR('请求超时') }, { status: 'rejected', reason: ERR('请求超时') }, { status: 'rejected', reason: ERR('请求超时') }, { status: 'rejected', reason: ERR('请求超时') }]
 );
 check('首帧全失败：balance 保持 null', firstFail.balance, null);
 check('首帧全失败：pricing 保持 null', firstFail.pricing, null);
-check('首帧全失败：全部端点错误表非空', firstFail.errors.balance === 'Request timed out' && firstFail.errors.pricing === 'Request timed out' && firstFail.errors.usage === 'Request timed out' && firstFail.errors.billingMode === 'Request timed out' && firstFail.errors.sub === 'Request timed out', true);
+check('首帧全失败：全部端点错误表非空', firstFail.errors.balance === '请求超时' && firstFail.errors.pricing === '请求超时' && firstFail.errors.usage === '请求超时' && firstFail.errors.billingMode === '请求超时' && firstFail.errors.sub === '请求超时', true);
 check('首帧全失败：loading = false（不永久加载中）', firstFail.loading, false);
 
 // 全部成功：全写新值、错误表清空
@@ -113,18 +114,18 @@ const bareFail = mergeLoadResults(OLD, [
   { status: 'fulfilled', value: OLD.billingMode },
   { status: 'fulfilled', value: OLD.sub },
 ]);
-check('无 reason 的失败兜底为 RPC 失败', bareFail.errors.balance, 'RPC failed');
+check('无 reason 的失败兜底为 RPC 失败', bareFail.errors.balance, 'RPC 失败');
 
 // ---- ④ 渲染降级（静态） ----
 check('整栏 fatal 分支已移除（不再整栏"加载失败"）', !clientSrc.includes('state.fatal'), true);
-check('信息栏不渲染任何加载中文案（会话模型未到时留空）', !clientSrc.includes("key: 'loading' }, 'Loading…'")
-  && !clientSrc.includes("key: 'subload' }, 'Loading subscription quota…'"), true);
-check('全局降级提示统一为刷新失败', clientSrc.includes("'Refresh failed'"), true);
-check('余额块 RPC 失败且无旧数据 → 简短失败信息（只降级余额块）', clientSrc.includes("title: 'Could not load balance. Check your connection and API key.'"), true);
+check('信息栏不渲染任何加载中文案（会话模型未到时留空）', !clientSrc.includes("key: 'loading' }, '加载中…'")
+  && !clientSrc.includes("key: 'subload' }, '订阅额度加载中…'"), true);
+check('全局降级提示统一为刷新失败', clientSrc.includes("t('ui.refreshFailed')"), true);
+check('余额块 RPC 失败且无旧数据 → 简短失败信息（只降级余额块）', clientSrc.includes("title: t('ui.couldNotLoadBalanceCheck')"), true);
 check('余额块失败保留旧快照提示（host 快照失败 / RPC 失败共用）', clientSrc.includes('bal.error || errors.balance'), true);
-check('订阅块 RPC 失败且无旧数据 → 只显示刷新失败并提供悬停说明', clientSrc.includes("'Refresh failed'") && clientSrc.includes('subscriptionFailureHint'), true);
+check('订阅块 RPC 失败且无旧数据 → 只显示刷新失败并提供悬停说明', clientSrc.includes("t('ui.refreshFailed')") && clientSrc.includes('subscriptionFailureHint'), true);
 check('订阅块失败保留旧快照提示（host 快照失败 / RPC 失败共用）', clientSrc.includes('sub.error || errors.sub'), true);
-check('花费块 RPC 失败且无旧数据 → 简短降级提示', clientSrc.includes("title: 'Spend is temporarily unavailable. Chat is unaffected.'"), true);
+check('花费块 RPC 失败且无旧数据 → 简短降级提示', clientSrc.includes("title: t('ui.spendIsTemporarilyUnavailableChat')"), true);
 
 // ---- ⑤ v1.9 PR2 回归：降级节点包上 data-field 容器（fieldSpan 着色）后，
 //      多个「刷新失败」仍必须合并为一个——文案解析要穿透包装层（功能性验证） ----
@@ -134,22 +135,22 @@ function errNode(text, wrapperProps) {
   return wrapperProps ? { props: Object.assign({}, wrapperProps, { children: inner }) } : inner;
 }
 const mixedErrors = [
-  errNode('Refresh failed', { 'data-field': 'refreshFailure' }),
-  errNode('Spend not saved', { 'data-field': 'persistWarning' }),
-  errNode('Refresh failed', { 'data-field': 'refreshFailure' }),
+  errNode('刷新失败', { 'data-field': 'refreshFailure' }),
+  errNode('账单未保存', { 'data-field': 'persistWarning' }),
+  errNode('刷新失败', { 'data-field': 'refreshFailure' }),
 ];
-check('降级文案解析穿透 data-field 包装层', trailingErrorText(mixedErrors[0]) === 'Refresh failed'
-  && trailingErrorText(mixedErrors[1]) === 'Spend not saved', true);
+check('降级文案解析穿透 data-field 包装层', trailingErrorText(mixedErrors[0]) === '刷新失败'
+  && trailingErrorText(mixedErrors[1]) === '账单未保存', true);
 const seen = { value: false };
 const visibleNow = mixedErrors.filter(function (node) {
   const text = trailingErrorText(node);
-  if (text !== 'Refresh failed') return true;
+  if (text !== '刷新失败') return true;
   if (seen.value) return false;
   seen.value = true;
   return true;
 });
 check('包装后的多个「刷新失败」仍合并为一个（账单未保存保留）', visibleNow.length === 2
-  && trailingErrorText(visibleNow[0]) === 'Refresh failed' && trailingErrorText(visibleNow[1]) === 'Spend not saved', true);
+  && trailingErrorText(visibleNow[0]) === '刷新失败' && trailingErrorText(visibleNow[1]) === '账单未保存', true);
 check('去重过滤器确实改用穿透式文案解析（防回归字面锁定）', clientSrc.includes('const text = trailingErrorText(node);'), true);
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

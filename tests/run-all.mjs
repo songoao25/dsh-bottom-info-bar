@@ -43,7 +43,7 @@ const cases = [
   ['test-update-check（启动版本检查与红色提醒）', ['tests/test-update-check.js'], join(root), process.execPath],
   ['test-pricing-catalog（远程价目目录体系 + 官方价目校验）', ['tests/test-pricing-catalog.mjs'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.js', HOST], join(root), process.execPath],
-  ['test-localization（English settings and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
+  ['test-localization（zh/en rendering and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
 ]
 
 let failed = 0
