@@ -358,6 +358,10 @@ function withFakeDocument(run) {
     const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
     return lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
   })(), true);
+  // ---------- 语言切换反色保障（2026-09-04 吞字事故防复发，严禁白字被吞） ----------
+  check('语言切换选中态反色保障：brand 固定 #4d6bfe 且 active 白字', clientSrc.includes('--bib-set-brand: #4d6bfe;') && clientSrc.includes('.bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff;'), true);
+  check('语言切换未选中态用 label-primary 保證深色可見', clientSrc.includes('.bib-set-lang-opt {') && clientSrc.includes('color: var(--dsw-alias-label-primary)'), true);
+  check('语言切换选中态 hover 仍保持品牌色白字（防透明吞字）', clientSrc.includes('.bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff;'), true);
 }
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

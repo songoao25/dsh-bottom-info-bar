@@ -429,7 +429,7 @@ function bibSetInstallStyles() {
   style.dataset.plugin = 'dsh-bottom-info-bar';
   style.dataset.pluginCss = id;
   style.textContent = `
-      .bib-set-root { --bib-set-brand: var(--dsw-alias-brand-primary, #4d6bfe); }
+      .bib-set-root { --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */ }
       /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
       .bib-set-page-title { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
       .bib-settings { max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
@@ -481,12 +481,14 @@ function bibSetInstallStyles() {
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-alert { margin: 0; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
-      /* 语言切换分段控件：两按钮并排，选中态用品牌色填充，与开关/色板同套令牌 */
-      .bib-set-lang-segment { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); }
-      .bib-set-lang-opt { appearance: none; font: inherit; cursor: pointer; padding: 5px 16px; font-size: 13px; line-height: 1.5; border: none; background: transparent; color: var(--dsw-alias-label-secondary); transition: background-color 160ms var(--ds-ease-in-out, ease), color 160ms var(--ds-ease-in-out, ease); }
+      /* 语言切换分段控件：两按钮并排，选中态用品牌色填充，与开关/色板同套令牌 — 反色必須保證對比度，嚴禁白字被吞 */
+      .bib-set-lang-segment { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.06)); }
+      .bib-set-lang-opt { appearance: none; font: inherit; cursor: pointer; padding: 5px 16px; font-size: 13px; line-height: 1.5; border: none; background: transparent; color: var(--dsw-alias-label-primary); transition: background-color 160ms var(--ds-ease-in-out, ease), color 160ms var(--ds-ease-in-out, ease); }
       .bib-set-lang-opt:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); }
       .bib-set-lang-opt:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
-      .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; }
+      .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; font-weight: 600; }
+      .bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff; filter: brightness(1.08); }
+      @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
       @media (prefers-reduced-motion: reduce) { .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
   document.head.appendChild(style);
