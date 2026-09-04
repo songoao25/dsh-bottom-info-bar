@@ -17,6 +17,7 @@ const React = require('react');
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
+let localeService;
 // Compatibility with existing host snapshots, whose display fields are text.
 // Known labels and messages follow the browser locale even while snapshots are cached.
 /*__HOST_TEXT__*/
@@ -480,7 +481,13 @@ function bibSetInstallStyles() {
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-alert { margin: 0; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
-      @media (prefers-reduced-motion: reduce) { .bib-set-switch-track, .bib-set-switch-thumb { transition: none; } }
+      /* 语言切换分段控件：两按钮并排，选中态用品牌色填充，与开关/色板同套令牌 */
+      .bib-set-lang-segment { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); }
+      .bib-set-lang-opt { appearance: none; font: inherit; cursor: pointer; padding: 5px 16px; font-size: 13px; line-height: 1.5; border: none; background: transparent; color: var(--dsw-alias-label-secondary); transition: background-color 160ms var(--ds-ease-in-out, ease), color 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-lang-opt:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); }
+      .bib-set-lang-opt:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; }
+      @media (prefers-reduced-motion: reduce) { .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -565,6 +572,16 @@ function InfoBarSettingsSection(props) {
   const [hexDrafts, setHexDrafts] = React.useState({});
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
+
+  // 语言切换：订阅 DSH locale 变化，驱动重渲染
+  const getLocale = function () {
+    try { return (localeService && typeof localeService.getSnapshot === 'function') ? localeService.getSnapshot().active : 'zh'; } catch { return 'zh'; }
+  };
+  const [localeActive, setLocaleActive] = React.useState(getLocale);
+  React.useEffect(function () {
+    if (!localeService || typeof localeService.subscribe !== 'function') return undefined;
+    return localeService.subscribe(function () { setLocaleActive(getLocale()); });
+  }, []);
 
   React.useEffect(function () {
     let active = true;
@@ -832,6 +849,33 @@ function InfoBarSettingsSection(props) {
         React.createElement('div', { className: 'bib-set-card-desc' },
           t('ui.chooseAPresetUseThe'))),
       React.createElement('div', { className: 'bib-set-body' }, colorChildren)),
+    React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
+      React.createElement('div', { className: 'bib-set-card-header' },
+        React.createElement('h2', { id: 'bib-set-lang-title', className: 'bib-set-card-title' }, t('ui.languageSettings')),
+        React.createElement('div', { className: 'bib-set-card-desc' },
+          t('ui.languageSettingsDesc'))),
+      React.createElement('div', { className: 'bib-set-body' },
+        React.createElement('div', { className: 'bib-set-row', style: { borderBottom: 'none' } },
+          React.createElement('div', { className: 'bib-set-rowText' },
+            React.createElement('div', { className: 'bib-set-rowTitle' }, t('ui.languageSettings'))),
+          React.createElement('div', { className: 'bib-set-controls' },
+            React.createElement('div', { className: 'bib-set-lang-segment', role: 'radiogroup', 'aria-label': t('ui.languageSettings') },
+              React.createElement('button', {
+                type: 'button',
+                className: 'bib-set-lang-opt',
+                role: 'radio',
+                'aria-checked': localeActive !== 'en',
+                'data-active': localeActive !== 'en' ? 'true' : 'false',
+                onClick: function () { if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale('zh'); },
+              }, '中文'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'bib-set-lang-opt',
+                role: 'radio',
+                'aria-checked': localeActive === 'en',
+                'data-active': localeActive === 'en' ? 'true' : 'false',
+                onClick: function () { if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale('en'); },
+              }, 'English')))))),
     React.createElement('div', { className: 'bib-set-footer' },
       feedback,
       React.createElement('button', {
@@ -854,7 +898,8 @@ module.exports = {
   inject: ['slots', 'locale'],
   async apply(ctx) {
     ctx.effect(function () { return ctx.locale.register(LOCALE_NAMESPACE, LOCALES); }, 'info bar: dictionaries');
-    t = ctx.locale.bind(LOCALE_NAMESPACE);
+    localeService = ctx.locale;
+    t = localeService.bind(LOCALE_NAMESPACE);
     // slots 服务可能晚于 apply 就绪：优先 ctx.slots（inject 注入属性），回退 ctx.get('slots')；
     // 仍不可用则轮询等待（最多 60×300ms ≈ 18s），绝不提前退出导致注册丢失
     let slots = ctx.slots || ctx.get('slots');
