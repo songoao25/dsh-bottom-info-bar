@@ -26,6 +26,7 @@
 - 对外文档（README/CHANGELOG）只写用户视角功能，严禁开发过程流水账与内部代号
 - 提交遵循 Conventional Commits（feat/fix/docs/test/chore）
 - 分发铁律：零密钥、零个人路径、作者署名 songoao25、只用语义化版本号
+- 反色/對比度鐵律（2026-09-04 血的教訓，嚴禁復發）：所有帶背景色的按鈕/分段控件（如 `.bib-set-lang-opt` 語言切換）選中態必須保證文字與背景對比度 ≥ 4.5:1，嚴禁白字被吞（白底白字、透明底白字、同色系低對比）；`--bib-set-brand` 固定 `#4d6bfe` 不跟隨主題變淺，選中態 `background: var(--bib-set-brand); color: #fff; font-weight:600` 且 `hover` 仍保持品牌色；明/暗主題分別截圖驗證，測試中鎖定（見 `tests/test-field-config-client.js` 的對比度斷言）
 
 ## 常用命令
 
