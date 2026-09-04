@@ -97,7 +97,9 @@ const SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
 const BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
 // 订阅窗口时长（秒）：5 小时 / 7 天 / 30 天；映射带 5% 容差（接口值可能微调）
 const WINDOW_SECONDS = { five_hour: 18000, seven_day: 604800, monthly: 2592000 }
-const WINDOW_LABELS = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') }
+// 窗口标签：模块顶层用硬编码中文兜底（避免加载时触发 translate）；
+// apply 内部会重新计算以响应当前语言偏好（见 windowLabels 定义）。
+const WINDOW_LABELS = { five_hour: '5 小时', seven_day: '周', monthly: '月' }
 // 订阅窗口预警阈值由客户端本判定（剩余 ≤20% → 警示红 + 无框“低”字，见 client 的 LOW_QUOTA_PERCENT）；
 // host 仅下发额度/重置数据，不重复判定，故移除原 WINDOW_ALERT_PERCENT=90 的死常量。
 const CODEX_PLAN_NAMES = { plus: 'ChatGPT Plus', pro: 'ChatGPT Pro', team: 'ChatGPT Team', enterprise: 'ChatGPT Enterprise' }
@@ -212,8 +214,8 @@ function planDisplayName(planType) {
 }
 
 // 解析 Codex wham usage 响应：顶层 rate_limit.primary_window / secondary_window → 统一窗口数组
-// （wham 响应无 usage 包装层；结构异常返回 null；窗口缺失 / 未知时长 / 无百分比自动跳过，不报错、不占位）
-function parseCodexUsage(body) {
+// 注：v1.10.1 审计确认暂无调用点（Codex 额度接口已改用其他解析器），保留供测试覆盖与历史兼容。
+function parseCodexUsage(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const rl = body.rate_limit
   if (!rl || typeof rl !== 'object') return null
@@ -227,7 +229,7 @@ function parseCodexUsage(body) {
     if (typeof used !== 'number' || !isFinite(used)) continue
     windows.push({
       key: key,
-      label: WINDOW_LABELS[key],
+      label: (windowLabels || WINDOW_LABELS)[key],
       usedPercent: Math.round(used),
       resetsAt: typeof win.reset_at === 'number' && isFinite(win.reset_at) ? win.reset_at * 1000 : null,
     })
@@ -263,7 +265,7 @@ function normalizeResetAt(value) {
 
 // 解析 OpenCode Go usage 响应：usage.rolling / weekly / monthly → 统一窗口数组
 // status 非 'ok' 的窗口跳过（如额度超限 / 接口异常）；结构异常返回 null
-function parseOpenCodeGoUsage(body) {
+function parseOpenCodeGoUsage(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const usage = body.usage
   if (!usage || typeof usage !== 'object') return null
@@ -277,7 +279,7 @@ function parseOpenCodeGoUsage(body) {
     const key = openCodeGoWindowKey(apiKey)
     windows.push({
       key: key,
-      label: WINDOW_LABELS[key],
+      label: (windowLabels || WINDOW_LABELS)[key],
       usedPercent: Math.round(percent),
       resetsAt: normalizeResetAt(win.resetsAt),
     })
@@ -376,7 +378,7 @@ function xiaomiPercentToUsed(percent) {
 
 // 解析 /v1/tokenPlan/usage：data.monthUsage（used/limit/percent）或 items[] 中 month_total_token；
 // plan_name → 套餐名；返回统一月度窗口（重置时刻由本地推导：下月 1 日零点）
-function parseXiaomiTokenPlanUsage(body) {
+function parseXiaomiTokenPlanUsage(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const data = body.data && typeof body.data === 'object' ? body.data : body
   let used = null
@@ -405,11 +407,12 @@ function parseXiaomiTokenPlanUsage(body) {
   let planName = null
   const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : (data.planName != null ? data.planName : null))
   if (typeof maybePlan === 'string' && maybePlan.length > 0) planName = maybePlan
-  return { plan: planName, windows: [{ key: 'monthly', label: WINDOW_LABELS.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
+  const wl = windowLabels || WINDOW_LABELS
+  return { plan: planName, windows: [{ key: 'monthly', label: wl.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
 }
 
 // 解析 Token Plan /v1/user/balance 的套餐形态：{token_balance, token_limit, plan_name} → 月度额度窗
-function parseXiaomiTokenPlanBalance(body) {
+function parseXiaomiTokenPlanBalance(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const data = body.data && typeof body.data === 'object' ? body.data : body
   const tokenBalance = data.token_balance != null ? parseFloat(data.token_balance) : NaN
@@ -419,7 +422,8 @@ function parseXiaomiTokenPlanBalance(body) {
   let planName = null
   const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : null)
   if (typeof maybePlan === 'string' && maybePlan.length > 0) planName = maybePlan
-  return { plan: planName, windows: [{ key: 'monthly', label: WINDOW_LABELS.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
+  const wl = windowLabels || WINDOW_LABELS
+  return { plan: planName, windows: [{ key: 'monthly', label: wl.monthly, usedPercent: usedPercent, resetsAt: nextMonthStartMs() }] }
 }
 
 // 解析按量 /v1/user/balance：{data:{balance, charge_balance, granted_balance, plan}}（balance 为字符串）
@@ -932,6 +936,8 @@ export default {
   inject: ['credentials', 'timer'],
   apply(ctx) {
     const t = hostLocale.createHostTranslator(ctx);
+    // 窗口标签：在 apply 内部按当前语言偏好重新计算（模块顶层 WINDOW_LABELS 仅作安全兜底）。
+    const windowLabels = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') };
     // 版本检查只在 host 进程启动时发起一次；客户端后续只读取这个缓存结果。
     const updateInfoPromise = checkLatestVersion()
 
@@ -1360,7 +1366,7 @@ export default {
         });
         if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
         const body = await res.json();
-        const parsed = parseOpenCodeGoUsage(body);
+        const parsed = parseOpenCodeGoUsage(body, windowLabels);
         if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
         return { data: { provider: 'opencode-go', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
@@ -1419,7 +1425,7 @@ export default {
           : (typeof limit.nextResetTime === 'string' ? Date.parse(limit.nextResetTime) : null);
         windows.push({
           key: key,
-          label: WINDOW_LABELS[key],
+          label: windowLabels[key],
           usedPercent: Math.round(usedPercent),
           resetsAt: isNaN(resetsAt) ? null : resetsAt,
         });
@@ -1562,7 +1568,7 @@ export default {
           });
           if (!res.ok) { lastStatus = res.status; continue; }
           const body = await res.json();
-          const parsed = i === 0 ? parseXiaomiTokenPlanUsage(body) : parseXiaomiTokenPlanBalance(body);
+          const parsed = i === 0 ? parseXiaomiTokenPlanUsage(body, windowLabels) : parseXiaomiTokenPlanBalance(body, windowLabels);
           if (!parsed) continue; // 响应形态不符 → 尝试下一个端点
           return { data: { provider: 'xiaomi-' + region, plan: parsed.plan, windows: parsed.windows } };
         } catch (err) {
