@@ -31,6 +31,21 @@ assert.equal(hostT('host.unknownProvider'), 'Unknown provider')
 preference = '<invalid>'
 assert.equal(hostT('host.unknownProvider'), '未知服务商')
 
+// 防复发（v1.10.0 启动崩溃回归）：cordis 宿主 ctx 未 inject settings 时，直接访问
+// ctx.settings 会抛 "cannot get property 'settings' without inject"。translate 必须
+// 走 ctx.get('settings') 安全读取、不崩、回退 zh。修复前本用例在此抛错（=崩溃现场）。
+const cordisLikeCtx = new Proxy({ get: () => undefined }, {
+  get(target, prop, receiver) {
+    if (prop === 'settings') throw new Error('cannot get property "settings" without inject')
+    return Reflect.get(target, prop, receiver)
+  },
+})
+const resilientT = createHostTranslator(cordisLikeCtx)
+assert.equal(resilientT('host.unknownProvider'), '未知服务商')
+assert.equal(resilientT('host.everydayQuestions'), dictionaries.zh['host.everydayQuestions'])
+assert.equal(JSON.stringify({ message: '请求失败（HTTP 503）' }, resilientT.json), '{"message":"请求失败（HTTP 503）"}')
+console.log('PASS  translate survives a host ctx that throws on direct .settings access (cordis without inject)')
+
 const checker = readFileSync(new URL('./check-host.js', import.meta.url), 'utf8')
 const host = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
 function checkSource(source) {
