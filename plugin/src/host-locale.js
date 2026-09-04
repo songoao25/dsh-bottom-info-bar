@@ -2,9 +2,25 @@ import { LOCALES } from './locales.js'
 
 // Host-only presentation: DSH's browser registry is not a host service.
 // Read the supported persisted preference on demand, never copy locale state.
+//
+// v1.10.1 crash fix (DSH boot): a cordis context proxy throws
+// "cannot get property 'settings' without inject" whenever a plugin touches
+// ctx.settings without declaring it in `inject`. The supported way to read a
+// host service is ctx.get(name), which returns undefined when the service is
+// not (yet) provided instead of throwing. Prefer ctx.get('settings'); fall
+// back to the bare property only for non-cordis hosts that expose it directly.
+function readHostSettings(ctx) {
+  if (!ctx) return undefined
+  if (typeof ctx.get === 'function') {
+    try { return ctx.get('settings') } catch { /* unknown host: treat as no settings */ }
+  }
+  try { return ctx.settings } catch { /* cordis without inject: treat as no settings */ }
+  return undefined
+}
+
 export function createHostTranslator(ctx) {
   const translate = function (key, params) {
-    const settings = ctx && (ctx.settings || (typeof ctx.get === 'function' ? ctx.get('settings') : undefined))
+    const settings = readHostSettings(ctx)
     const preference = settings && typeof settings.get === 'function' ? settings.get('locale')?.preference : undefined
     const locale = preference === 'en' ? 'en' : 'zh'
     return formatHostText(locale, key, params)
