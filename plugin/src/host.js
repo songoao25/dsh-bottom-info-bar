@@ -2812,6 +2812,11 @@ export default {
         output: sanitizeTokens(u.outputTokens),
         status: status === 'interrupted' ? 'interrupted' : 'completed',
       };
+      // 单调时间戳：保证同毫秒内的并发记账仍严格递增，避免 currentSession 按 ts>=起点 过滤时把同毫秒的其他会话误合并
+      if (usageRecords.length > 0) {
+        const lastTs = usageRecords[usageRecords.length - 1].ts;
+        if (rec.ts <= lastTs) rec.ts = lastTs + 1;
+      }
       // Freeze the actual price at usage time.  Historical totals must not
       // change merely because the plugin's reference price table is updated.
       const billed = costOf(rec, false);
