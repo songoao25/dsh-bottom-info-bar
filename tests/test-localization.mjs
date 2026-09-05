@@ -74,7 +74,7 @@ const React = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   useState(initial) {
     const index = stateIndex++
-    if (index >= states.length) states[index] = initial
+    if (index >= states.length) states[index] = typeof initial === 'function' ? initial() : initial
     return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value }]
   },
   useRef: (initial) => ({ current: initial }),
@@ -152,6 +152,31 @@ assert.match(text(render()), /原生字段/)
 assert.match(text(render()), /服务商账户的真实余额/)
 locale.setLocale('en')
 assert.match(text(render()), /Info Bar settings/)
+
+// The in-plugin control delegates to DSH's shared locale service. Reset the
+// state array so localeActive is initialized from the current LocaleFace, as it
+// would be on a fresh React mount.
+states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, {}]
+locale.setLocale('zh')
+let languageOptions = nodes(render()).filter(node => node.props.role === 'radio')
+let chineseOption = languageOptions.find(node => text(node) === '中文')
+let englishOption = languageOptions.find(node => text(node) === 'English')
+assert.ok(chineseOption && englishOption, 'Both native language options must render')
+assert.equal(chineseOption.props['aria-checked'], true)
+assert.equal(englishOption.props['aria-checked'], false)
+englishOption.props.onClick()
+assert.equal(locale.getSnapshot().active, 'en', 'English option must call the shared DSH locale service')
+states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, {}]
+languageOptions = nodes(render()).filter(node => node.props.role === 'radio')
+chineseOption = languageOptions.find(node => text(node) === '中文')
+englishOption = languageOptions.find(node => text(node) === 'English')
+assert.equal(chineseOption.props['aria-checked'], false)
+assert.equal(englishOption.props['aria-checked'], true)
+assert.match(text(render()), /Switch the DeepSeek Harness display language/)
+chineseOption.props.onClick()
+assert.equal(locale.getSnapshot().active, 'zh', 'Chinese option must call the shared DSH locale service')
+locale.setLocale('en')
+console.log('PASS  Language control changes the shared DSH locale and reflects the active option')
 
 function expand(tree) {
   if (Array.isArray(tree)) return tree.map(expand)
