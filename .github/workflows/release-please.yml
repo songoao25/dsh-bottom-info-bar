@@ -2,15 +2,25 @@ name: Release Please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
   pull-requests: write
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify automation token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN must be an owner PAT so release PRs can run CI and auto-merge."
+            exit 1
+          fi
       - uses: google-github-actions/release-please-action@v4
         with:
-          release-type: node
-          path: plugin
-          package-name: dsh-bottom-info-bar
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
