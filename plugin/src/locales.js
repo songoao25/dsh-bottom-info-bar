@@ -269,7 +269,7 @@ export const LOCALES = {
     "ui.stepCount": "{count} 步",
     "ui.stepCountPlural": "{count} 步",
     "ui.languageSettings": "界面语言",
-    "ui.languageSettingsDesc": "切换插件界面的显示语言，改动即时生效。"
+    "ui.languageSettingsDesc": "切换 DeepSeek Harness 的显示语言，改动会即时应用到整个界面。"
   },
   "en": {
     "ui.requestTimedOut": "Request timed out",
@@ -540,6 +540,6 @@ export const LOCALES = {
     "ui.stepCount": "{count} step",
     "ui.stepCountPlural": "{count} steps",
     "ui.languageSettings": "Language",
-    "ui.languageSettingsDesc": "Switch the display language of this plugin. Changes take effect immediately."
+    "ui.languageSettingsDesc": "Switch the DeepSeek Harness display language. Changes apply immediately across the interface."
   }
 }
