@@ -93,7 +93,7 @@ async function mount(section) {
   const s = await mount(newSection('roundtrip'))
   const route = s.stub.captured.route
   const first = await invokeRoute(route, 'getFieldConfig')
-  check('getFieldConfig 默认全部显示', Object.values(first.body.fields).every(Boolean) && Object.keys(first.body.fields).length >= 20, Object.keys(first.body.fields).length)
+  check('getFieldConfig 默认全部显示', Object.entries(first.body.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.keys(first.body.fields).length >= 20, Object.keys(first.body.fields).length)
   check('getFieldConfig 默认颜色全部为 null', Object.values(first.body.colors).every((v) => v === null), true)
   check('getFieldConfig 初始 configVersion=0', first.body.configVersion === 0, first.body.configVersion)
   check('getFieldConfig 带 version/persisted', first.body.version === 1 && first.body.persisted === true, first.body)
@@ -135,7 +135,7 @@ function copySettings(fromDir, toDir) {
     console.warn = originalWarn
   }
   const body = (await invokeRoute(s.stub.captured.route, 'getFieldConfig')).body
-  check('损坏文件回退默认：字段全部显示', Object.values(body.fields).every(Boolean), true)
+  check('损坏文件回退默认：字段全部显示', Object.entries(body.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)), true)
   check('损坏文件回退默认：颜色全部为 null', Object.values(body.colors).every((v) => v === null), true)
   check('损坏文件触发显式 warn', warns.some((w) => w.indexOf('settings.json') !== -1), warns)
 }
@@ -221,7 +221,7 @@ function copySettings(fromDir, toDir) {
   check('normalize：非法返回 undefined', n('#12345') === undefined && n('nope') === undefined && n(7) === undefined, true)
   check('sanitize：默认结构含全部注册字段且颜色为 null', (() => {
     const d = s.mod.internals.defaultFieldSettings()
-    return d.version === 1 && d.infoDensity === 'full' && Object.values(d.fields).every(Boolean) && Object.values(d.colors).every((v) => v === null)
+    return d.version === 1 && d.infoDensity === 'full' && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeFormat && d.timeZones && typeof d.customText === 'string'
   })(), true)
 }
 
