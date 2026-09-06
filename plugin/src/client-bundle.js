@@ -106,7 +106,7 @@ const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 const PRESET_COLOR_SET = new Set(PRESET_COLORS);
 
-let fieldConfig = { fields: {}, colors: {} };
+let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '' };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -117,7 +117,11 @@ function applyFieldConfigSnapshot(next) {
   fieldConfig = {
     fields: next && next.fields && typeof next.fields === 'object' ? next.fields : {},
     colors: next && next.colors && typeof next.colors === 'object' ? next.colors : {},
+    timeFormat: next && next.timeFormat && typeof next.timeFormat === 'object' ? next.timeFormat : { year: true, month: true, day: true, hour: true, minute: true, second: false },
+    timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
+    customText: typeof (next && next.customText) === 'string' ? next.customText : '',
   };
+  if (next && typeof next.customTextValue === 'string' && !next.customText) fieldConfig.customText = next.customTextValue;
   fieldConfigVersion += 1;
   fieldConfigListeners.forEach(function (listener) { listener(); });
 }
@@ -166,6 +170,56 @@ function fieldColor(id) {
   const value = fieldConfig.colors[id];
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
+
+// 时间格式化（主/世界共用）：年/月/日/时/分/秒 6 开关，自由组合
+const _formatClockCache = new Map();
+function _getClockFormatter(timeZone) {
+  const zone = typeof timeZone === 'string' && timeZone.length > 0 ? timeZone : 'UTC';
+  let f = _formatClockCache.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    if (_formatClockCache.size >= 16) {
+      const first = _formatClockCache.keys().next().value;
+      _formatClockCache.delete(first);
+    }
+    _formatClockCache.set(zone, f);
+  }
+  return f;
+}
+function formatClock(nowMs, timeZone, fmt) {
+  if (!fmt || typeof fmt !== 'object') return '';
+  const hasYear = !!fmt.year, hasMonth = !!fmt.month, hasDay = !!fmt.day, hasHour = !!fmt.hour, hasMinute = !!fmt.minute, hasSecond = !!fmt.second;
+  if (!hasYear && !hasMonth && !hasDay && !hasHour && !hasMinute && !hasSecond) return '';
+  const zone = typeof timeZone === 'string' && timeZone.length > 0 ? timeZone : 'UTC';
+  try {
+    const parts = _getClockFormatter(zone).formatToParts(new Date(nowMs));
+    const map = {};
+    for (let i = 0; i < parts.length; i++) { const p = parts[i]; if (p.type !== 'literal') map[p.type] = p.value; }
+    let dateStr = '';
+    const y = hasYear ? map.year : null, mo = hasMonth ? map.month : null, d = hasDay ? map.day : null;
+    if (y && mo && d) dateStr = y + '-' + mo + '-' + d;
+    else if (y && mo) dateStr = y + '-' + mo;
+    else if (y && d) dateStr = y + '-' + d;
+    else if (mo && d) dateStr = mo + '-' + d;
+    else if (y) dateStr = y;
+    else if (mo) dateStr = mo;
+    else if (d) dateStr = d;
+    let timeStr = '';
+    const h = hasHour ? map.hour : null, mi = hasMinute ? map.minute : null, s = hasSecond ? map.second : null;
+    if (h && mi && s) timeStr = h + ':' + mi + ':' + s;
+    else if (h && mi) timeStr = h + ':' + mi;
+    else if (h && s) timeStr = h + ':' + s;
+    else if (mi && s) timeStr = mi + ':' + s;
+    else if (h) timeStr = h;
+    else if (mi) timeStr = mi;
+    else if (s) timeStr = s;
+    if (dateStr && timeStr) return dateStr + ' ' + timeStr;
+    return dateStr || timeStr;
+  } catch (e) {
+    return '';
+  }
+}
+const TIME_ZONE_OPTIONS = ['Asia/Shanghai', 'UTC', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Dubai', 'Europe/London', 'Europe/Berlin', 'Europe/Moscow', 'America/New_York', 'America/Los_Angeles', 'Australia/Sydney'];
 
 // 深色主题下把自定义 hex 向白色混合 45%，避免深底上不可读；预设色名走三套主题变量，无需处理
 function readableDarkVariant(hex) {
@@ -369,7 +423,7 @@ function installStyles() {
       .bi-vision-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .bi-vision-kind { flex: 0 0 auto; margin-left: 4px; }
       /* 会话目录未给出能力时，不先把模型错误画成文本模型；保留宽度，等待本地能力结果。 */
-      .bi-model-capability-pending { visibility: hidden; }
+      .bi-model-capability-pending { visibility: hidden; pointer-events: none; }
       /* 读屏说明不参与视觉排版。 */
       .bi-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       /* v1.9.0 PR2 预设色板：浅色默认 → 深色覆盖 → 增强对比三套成对（与现有语义色同一套规则）；设置页共用 .bib-set-root 取同一色板 */
@@ -572,6 +626,7 @@ function InfoBarSettingsSection(props) {
   const [notice, setNotice] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [hexDrafts, setHexDrafts] = React.useState({});
+  const [customTextDraft, setCustomTextDraft] = React.useState(null);
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
 
@@ -584,13 +639,25 @@ function InfoBarSettingsSection(props) {
     if (!localeService || typeof localeService.subscribe !== 'function') return undefined;
     return localeService.subscribe(function () { setLocaleActive(getLocale()); });
   }, []);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [collapsed, setCollapsed] = React.useState({ fields: true, colors: true, time: true });
+  function toggleCollapsed(key) { setCollapsed(function (c) { const n = Object.assign({}, c); n[key] = !n[key]; return n; }); }
+  function matchesSearch(field, query) {
+    if (!query) return true;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const label = t(field.label).toLowerCase();
+    const note = field.note ? t(field.note).toLowerCase() : '';
+    const id = field.id.toLowerCase();
+    return label.indexOf(q) !== -1 || note.indexOf(q) !== -1 || id.indexOf(q) !== -1;
+  }
 
   React.useEffect(function () {
     let active = true;
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -644,6 +711,9 @@ function InfoBarSettingsSection(props) {
       return {
         fields: res.fields || (prev && prev.fields) || {},
         colors: res.colors || (prev && prev.colors) || {},
+        timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
+        timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
+        customText: typeof res.customText === 'string' ? res.customText : ((prev && prev.customText) || ''),
         configVersion: typeof res.configVersion === 'number' ? res.configVersion : ((prev && prev.configVersion) || 0),
       };
     });
@@ -718,6 +788,46 @@ function InfoBarSettingsSection(props) {
     }
     setColor(id, value.toUpperCase());
   }
+  function timeFormatOf() { return snapshot.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }; }
+  function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
+  function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
+  function setTimeFormatPart(key, next) {
+    const current = timeFormatOf();
+    if (current[key] === next) return;
+    const patch = { timeFormat: Object.assign({}, current, makePair(key, next)) };
+    const prev = current[key];
+    commit(patch,
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeFormat: Object.assign({}, s.timeFormat, makePair(key, next)) }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeFormat: Object.assign({}, s.timeFormat, makePair(key, prev)) }); }); },
+      function () { return t('ui.timeFormat'); });
+  }
+  function setTimeZone(which, next) {
+    const current = timeZonesOf();
+    if (current[which] === next) return;
+    const patch = { timeZones: Object.assign({}, current, makePair(which, next)) };
+    const prev = current[which];
+    commit(patch,
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeZones: Object.assign({}, s.timeZones, makePair(which, next)) }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeZones: Object.assign({}, s.timeZones, makePair(which, prev)) }); }); },
+      function () { return which === 'main' ? t('ui.mainTimeZone') : t('ui.worldTimeZone'); });
+  }
+  function onCustomTextChange(raw) { setCustomTextDraft(raw); }
+  function committedCustomText() { return customTextOf(); }
+  function commitCustomText() {
+    const draft = customTextDraft;
+    if (draft === null) return;
+    const value = draft;
+    setCustomTextDraft(null);
+    if (value === committedCustomText()) return;
+    if (value.length > 64) {
+      setOpError({ text: function () { return t('host.customTextTooLong'); } });
+      return;
+    }
+    commit({ customText: value },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { customText: value }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { customText: committedCustomText() }); }); },
+      function () { return t('ui.customText'); });
+  }
 
   function runReset(kind) {
     setOpError(null);
@@ -741,8 +851,16 @@ function InfoBarSettingsSection(props) {
   const groupsChildren = [];
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
-    const groupFields = FIELD_REGISTRY.filter(function (f) { return f.group === group; });
+    let groupFields = FIELD_REGISTRY.filter(function (f) { return f.group === group; });
+    groupFields = groupFields.filter(function (f) { return matchesSearch(f, searchQuery); });
     if (groupFields.length === 0) continue;
+    // 折叠逻辑：默认折叠时只展示未启用（fieldOn false）的字段，已启用折叠起来；搜索时展开全部匹配
+    const isFieldsCollapsed = collapsed.fields && !searchQuery;
+    if (isFieldsCollapsed) {
+      const disabledOnly = groupFields.filter(function (f) { return !fieldOn(f.id); });
+      if (disabledOnly.length === 0) continue;
+      groupFields = disabledOnly;
+    }
     const rows = [];
     for (let i = 0; i < groupFields.length; i++) {
       const field = groupFields[i];
@@ -754,32 +872,6 @@ function InfoBarSettingsSection(props) {
       if (modeText) descParts.push(modeText + t('ui.sentenceEnd'));
       if (field.note) descParts.push(t(field.note));
       if (field.suggestKeep) descParts.push(t('ui.keepEnabledToSeeThese'));
-      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row' },
-        React.createElement('div', { className: 'bib-set-rowText' },
-          React.createElement('div', { className: 'bib-set-rowTitle' },
-            t(field.label),
-            field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
-          React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
-        bibSetSwitch({
-          label: t('ui.show', { label: t(field.label) }),
-          checked: fieldOn(field.id),
-          title: fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
-          onToggle: function (next) { setFieldFlag(field.id, next); },
-        })));
-    }
-    groupsChildren.push(React.createElement('div', { key: 'g-' + group },
-      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
-      rows));
-  }
-
-  const colorChildren = [];
-  for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
-    const group = FIELD_GROUP_ORDER[g];
-    const groupFields = FIELD_REGISTRY.filter(function (f) { return f.group === group; });
-    if (groupFields.length === 0) continue;
-    const rows = [];
-    for (let i = 0; i < groupFields.length; i++) {
-      const field = groupFields[i];
       const value = colorOf(field.id);
       const isPreset = value !== null && PRESET_COLOR_SET.has(value);
       const isHex = value !== null && !isPreset;
@@ -787,45 +879,83 @@ function InfoBarSettingsSection(props) {
       const hexValue = draft !== null ? draft : committedHexText(field.id);
       const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
       const wellValue = isHex ? value : (isPreset ? (BIB_SET_PRESET_WELL_HEX[value] || '#333333') : '#333333');
-      const valueText = value === null ? t('ui.default')
-        : (isPreset ? (t(BIB_SET_PRESET_LABELS[value]) || value) : value.toUpperCase());
-      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row' },
-        React.createElement('div', { className: 'bib-set-rowText' },
-          React.createElement('div', { className: 'bib-set-rowTitle' }, t(field.label)),
-          React.createElement('div', { className: 'bib-set-rowDesc' }, t('ui.current', { valueText: valueText }) + (field.anchor === true ? t('ui.providerAndModel') : ''))),
-        React.createElement('div', { className: 'bib-set-controls' },
-          React.createElement(bibSetPalette, {
-            label: t('ui.presetColor', { label: t(field.label) }),
-            value: value,
-            onSelect: function (next) { setColor(field.id, next); },
+      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row', style: { flexDirection: 'column', alignItems: 'stretch', gap: '8px' } },
+        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', width: '100%' } },
+          React.createElement('div', { className: 'bib-set-rowText', style: { flex: '1 1 200px' } },
+            React.createElement('div', { className: 'bib-set-rowTitle' },
+              t(field.label),
+              field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
+            React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
+          bibSetSwitch({
+            label: t('ui.show', { label: t(field.label) }),
+            checked: fieldOn(field.id),
+            title: fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
+            onToggle: function (next) { setFieldFlag(field.id, next); },
           }),
-          React.createElement('label', { className: 'bib-set-well' },
+          React.createElement('div', { className: 'bib-set-controls', style: { flex: '0 0 auto' } },
+            React.createElement(bibSetPalette, {
+              label: t('ui.presetColor', { label: t(field.label) }),
+              value: value,
+              onSelect: function (next) { setColor(field.id, next); },
+            }),
+            React.createElement('label', { className: 'bib-set-well' },
+              React.createElement('input', {
+                type: 'color',
+                'aria-label': t('ui.customColor', { label: t(field.label) }),
+                title: t('ui.customColorOpenColorPicker'),
+                value: wellValue,
+                onChange: function (event) {
+                  const picked = event && event.target ? event.target.value : null;
+                  if (picked && BIB_SET_HEX_PATTERN.test(picked)) setColor(field.id, picked.toUpperCase());
+                },
+              })),
             React.createElement('input', {
-              type: 'color',
-              'aria-label': t('ui.customColor', { label: t(field.label) }),
-              title: t('ui.customColorOpenColorPicker'),
-              value: wellValue,
-              onChange: function (event) {
-                const picked = event && event.target ? event.target.value : null;
-                if (picked && BIB_SET_HEX_PATTERN.test(picked)) setColor(field.id, picked.toUpperCase());
-              },
-            })),
-          React.createElement('input', {
-            type: 'text',
-            className: 'bib-set-hex',
-            'aria-label': t('ui.hexColor', { label: t(field.label) }),
-            'aria-invalid': hexInvalid ? 'true' : 'false',
-            'data-invalid': hexInvalid ? 'true' : 'false',
-            placeholder: '#RRGGBB',
-            spellCheck: false,
-            maxLength: 7,
-            value: hexValue,
-            onChange: function (event) { onHexChange(field.id, event && event.target ? event.target.value : ''); },
-            onBlur: function () { commitHex(field.id); },
-            onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); commitHex(field.id); } },
-          }))));
+              type: 'text',
+              className: 'bib-set-hex',
+              'aria-label': t('ui.hexColor', { label: t(field.label) }),
+              'aria-invalid': hexInvalid ? 'true' : 'false',
+              'data-invalid': hexInvalid ? 'true' : 'false',
+              placeholder: '#RRGGBB',
+              spellCheck: false,
+              maxLength: 7,
+              value: hexValue,
+              onChange: function (event) { onHexChange(field.id, event && event.target ? event.target.value : ''); },
+              onBlur: function () { commitHex(field.id); },
+              onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); commitHex(field.id); } },
+            }))),
+            (field.id === 'mainTime' || field.id === 'worldTime') ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', paddingLeft: '8px', width: '100%' } },
+              React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, field.id === 'mainTime' ? t('ui.mainTimeZone') : t('ui.worldTimeZone')),
+              React.createElement('select', {
+                value: field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world,
+                onChange: function (e) { setTimeZone(field.id === 'mainTime' ? 'main' : 'world', e.target.value); },
+                style: { padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' }
+              }, TIME_ZONE_OPTIONS.map(function (z) { return React.createElement('option', { key: z, value: z }, z); })),
+              field.id === 'mainTime' ? React.createElement('span', { style: { display: 'inline-flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+                ['year','month','day','hour','minute','second'].map(function (k) {
+                  const labelKey = { year: 'ui.year', month: 'ui.month', day: 'ui.day', hour: 'ui.hour', minute: 'ui.minute', second: 'ui.second' }[k];
+                  return React.createElement('span', { key: k, style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } },
+                    React.createElement('span', { style: { fontSize: '11px' } }, t(labelKey)),
+                    bibSetSwitch({ label: t(labelKey), checked: !!timeFormatOf()[k], onToggle: function (next) { setTimeFormatPart(k, next); } }));
+                })) : null,
+              React.createElement('span', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('ui.timePreview') + formatClock(Date.now(), field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world, timeFormatOf())))
+            : null,
+            field.id === 'customText' ? React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', width: '100%', paddingLeft: '8px' } },
+              React.createElement('input', {
+                type: 'text',
+                placeholder: t('ui.customTextPlaceholder'),
+                maxLength: 64,
+                value: customTextDraft !== null ? customTextDraft : committedCustomText(),
+                onChange: function (e) { onCustomTextChange(e.target.value); },
+                onBlur: function () { commitCustomText(); },
+                onKeyDown: function (e) { if (e.key === 'Enter') { e.preventDefault(); commitCustomText(); } },
+                style: { flex: '1 1 200px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' },
+                'aria-label': t('ui.customTextTitle')
+              }),
+              React.createElement('span', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' } }, customTextOf().length + '/64')
+            ) : null
+          ));
     }
-    colorChildren.push(React.createElement('div', { key: 'c-' + group },
+    groupsChildren.push(React.createElement('div', { key: 'g-' + group },
       React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
       rows));
   }
@@ -835,22 +965,48 @@ function InfoBarSettingsSection(props) {
   else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice.text()));
   else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, t('ui.saving')));
 
+  const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsTotal = FIELD_REGISTRY.length;
+  const disabledCount = fieldsTotal - fieldsEnabledCount;
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
+    React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' } },
+      React.createElement('input', {
+        type: 'search',
+        placeholder: t('ui.searchPlaceholder') || '搜索标签…',
+        value: searchQuery,
+        onChange: function (e) { setSearchQuery(e.target.value); },
+        style: { flex: '1 1 200px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '13px' },
+        'aria-label': 'Search fields'
+      }),
+      searchQuery ? React.createElement('button', {
+        type: 'button',
+        className: 'bib-set-btn',
+        onClick: function () { setSearchQuery(''); },
+        style: { flex: 'none' }
+      }, '×') : null,
+      React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, fieldsEnabledCount + '/' + fieldsTotal + (searchQuery ? ' · ' + t('ui.searchResults') : ''))),
+    React.createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+      React.createElement('button', {
+        type: 'button',
+        className: 'bib-set-btn',
+        onClick: function () { setCollapsed({ fields: false, colors: false, time: false }); }
+      }, t('ui.expandAll') || '展开全部'),
+      React.createElement('button', {
+        type: 'button',
+        className: 'bib-set-btn',
+        onClick: function () { setCollapsed({ fields: true, colors: true, time: true }); }
+      }, t('ui.collapseAll') || '折叠全部')),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
-      React.createElement('div', { className: 'bib-set-card-header' },
-        React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields')),
+      React.createElement('div', { className: 'bib-set-card-header', onClick: function () { toggleCollapsed('fields'); }, style: { cursor: 'pointer', userSelect: 'none' }, role: 'button', tabIndex: 0, 'aria-expanded': !collapsed.fields, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapsed('fields'); } } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields') + (collapsed.fields && !searchQuery ? ' (' + t('ui.collapsedShowingDisabled', { count: disabledCount }) + ')' : '')),
+          React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, collapsed.fields ? '▶' : '▼')),
         React.createElement('div', { className: 'bib-set-card-desc' },
-          t('ui.hiddenFieldsTakeNoSpace'))),
-      React.createElement('div', { className: 'bib-set-body' }, groupsChildren)),
-    React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-colors-title' },
-      React.createElement('div', { className: 'bib-set-card-header' },
-        React.createElement('h2', { id: 'bib-set-colors-title', className: 'bib-set-card-title' }, t('ui.fieldColors')),
-        React.createElement('div', { className: 'bib-set-card-desc' },
-          t('ui.chooseAPresetUseThe'))),
-      React.createElement('div', { className: 'bib-set-body' }, colorChildren)),
+          collapsed.fields && !searchQuery ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
+      !collapsed.fields || searchQuery ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : (disabledCount > 0 ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : null)),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
       React.createElement('div', { className: 'bib-set-card-header' },
         React.createElement('h2', { id: 'bib-set-lang-title', className: 'bib-set-card-title' }, t('ui.languageSettings')),
@@ -903,14 +1059,15 @@ module.exports = {
     localeService = ctx.locale;
     t = localeService.bind(LOCALE_NAMESPACE);
     // slots 服务可能晚于 apply 就绪：优先 ctx.slots（inject 注入属性），回退 ctx.get('slots')；
-    // 仍不可用则轮询等待（最多 60×300ms ≈ 18s），绝不提前退出导致注册丢失
+    // 轮询等待采用渐进退避（300ms 起步，逐步增至 1s，总计约 45s），避免固定间隔在启动慢时过早放弃
     let slots = ctx.slots || ctx.get('slots');
-    for (let i = 0; slots === undefined && i < 60; i++) {
-      await new Promise(function (resolve) { window.setTimeout(resolve, 300); });
+    for (let i = 0; slots === undefined && i < 80; i++) {
+      const delay = Math.min(300 + i * 20, 1000);
+      await new Promise(function (resolve) { window.setTimeout(resolve, delay); });
       slots = ctx.slots || ctx.get('slots');
     }
     if (slots === undefined) {
-      console.warn('[dsh-bottom-info-bar] slots 服务 18s 内未就绪，信息栏未注册');
+      console.warn('[dsh-bottom-info-bar] slots 服务 45s 内未就绪，信息栏未注册');
       return;
     }
 
@@ -1101,6 +1258,10 @@ module.exports = {
               acceptsImageInput: inputModalities === null ? null : inputModalities.indexOf('image') !== -1,
             };
             sessionModelCache.set(sessionId, value);
+            if (sessionModelCache.size > 128) {
+              const firstKey = sessionModelCache.keys().next().value;
+              sessionModelCache.delete(firstKey);
+            }
             setSessionModel(value);
           };
           publish();
@@ -1181,9 +1342,35 @@ module.exports = {
       ]);
 
       React.useEffect(function () {
-        const id = window.setInterval(function () { setNow(Date.now()); }, 1000);
-        return function () { window.clearInterval(id); };
-      }, []);
+        function needsTick() {
+          return fieldVisible('mainTime') || fieldVisible('worldTime') || fieldVisible('countdown') || fieldVisible('resetCountdown');
+        }
+        if (!needsTick()) return undefined;
+        let id = null;
+        function start() {
+          if (id !== null) return;
+          id = window.setInterval(function () { setNow(Date.now()); }, 1000);
+        }
+        function stop() {
+          if (id !== null) { window.clearInterval(id); id = null; }
+        }
+        start();
+        function onVisibility() {
+          if (document.hidden) stop();
+          else if (needsTick()) start();
+        }
+        document.addEventListener('visibilitychange', onVisibility);
+        const cfgListener = function () {
+          if (needsTick()) start();
+          else stop();
+        };
+        fieldConfigListeners.add(cfgListener);
+        return function () {
+          stop();
+          document.removeEventListener('visibilitychange', onVisibility);
+          fieldConfigListeners.delete(cfgListener);
+        };
+      }, [fieldConfigTick]);
 
       // While background RPCs catch up, render the newly activated session's
       // model and suppress details from the prior session rather than showing
@@ -1199,7 +1386,7 @@ module.exports = {
       var BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
       const visibleBillingMode = activeSessionModel && (!state.billingMode
         || state.billingMode.provider !== activeSessionModel.provider || state.billingMode.model !== activeSessionModel.model)
-        ? { provider: activeSessionModel.provider, model: activeSessionModel.model, mode: SUBSCRIPTION_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'subscription' : (BILLING_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'billing' : 'balance') }
+        ? { provider: activeSessionModel.provider, model: activeSessionModel.model, mode: BILLING_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'billing' : (SUBSCRIPTION_PROVIDERS.indexOf(activeSessionModel.provider) >= 0 ? 'subscription' : 'balance') }
         : (waitForSessionModel ? null : state.billingMode);
       // ---- 与原生一致格式工具 ----
       function formatTokens(n) {
@@ -1393,16 +1580,46 @@ module.exports = {
         return React.createElement('span', { key: key, 'data-field': id, style: fieldStyle(id) }, children);
       }
 
+      // 自定义文本：默认位于服务商/模型左侧；为空时不渲染（开关可保持开启，空白无占位）
+      function pushCustomText(groups) {
+        if (!fieldVisible('customText')) return;
+        const txt = fieldConfig.customText;
+        if (typeof txt !== 'string' || txt.trim().length === 0) return;
+        const title = txt.trim();
+        groups.push(fieldSpan('customText', 'ct', React.createElement('span', { title: title }, title)));
+      }
+      // 时间：主/世界 各自独立时区，格式共用
+      function pushTimeGroups(groups) {
+        const fmt = fieldConfig.timeFormat;
+        const zones = fieldConfig.timeZones;
+        if (fieldVisible('mainTime')) {
+          const txt = formatClock(now, zones && zones.main, fmt);
+          if (txt) {
+            const zoneLabel = zones && zones.main ? zones.main : '';
+            groups.push(fieldSpan('mainTime', 'mt', React.createElement('span', { title: zoneLabel ? (t('ui.mainTime') + ' (' + zoneLabel + ')') : t('ui.mainTime') }, metric(t('ui.mainTime'), txt))));
+          }
+        }
+        if (fieldVisible('worldTime')) {
+          const txt = formatClock(now, zones && zones.world, fmt);
+          if (txt) {
+            const zoneLabel = zones && zones.world ? zones.world : '';
+            groups.push(fieldSpan('worldTime', 'wt', React.createElement('span', { title: zoneLabel ? (t('ui.worldTime') + ' (' + zoneLabel + ')') : t('ui.worldTime') }, metric(t('ui.worldTime'), txt))));
+          }
+        }
+      }
+
       // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       // v1.9.0 PR2：每个渲染片段按设置过滤（fieldVisible）；隐藏不占位，组间分隔符由组装层自动收合
       function pushBalanceGroups(groups, trailingErrorGroups) {
         const bal = state.balance;
         const errors = state.errors || {};
         const alertActive = !!(bal && bal.alert && bal.alert.active);
+        pushCustomText(groups);
         if (fieldVisible('anchorGroup')) {
           const anchor = providerGroup();
           groups.push(React.cloneElement(anchor, { 'data-field': 'anchorGroup', style: fieldStyle('anchorGroup') }));
         }
+        pushTimeGroups(groups);
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
@@ -1523,10 +1740,12 @@ module.exports = {
        }
 
        function pushSubscriptionGroups(groups, trailingErrorGroups) {
+        pushCustomText(groups);
         if (fieldVisible('subServiceGroup')) {
           const subAnchor = subscriptionProviderGroup();
           groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));
         }
+        pushTimeGroups(groups);
         const sub = state.sub;
         const errors = state.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
@@ -1645,10 +1864,12 @@ module.exports = {
       }
 
       function pushBillingGroups(groups, trailingErrorGroups) {
+        pushCustomText(groups);
         if (fieldVisible('billingServiceGroup')) {
           const billAnchor = billingProviderGroup();
           groups.push(React.cloneElement(billAnchor, { 'data-field': 'billingServiceGroup', style: fieldStyle('billingServiceGroup') }));
         }
+        pushTimeGroups(groups);
         const bill = state.billing;
         const errors = state.errors || {};
         if (!bill) {

@@ -2,6 +2,33 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.3] - 2026-09-06
+
+> v1.10.3：独立审计全量修复——数据正确性、安全、性能与可维护性 17 项加固。
+
+### Fixed
+
+- **余额视图污染**：`balanceProviderKey` 误把 `together / fireworks / amazon-bedrock / cloudflare-*` 云账单账户当余额账户，现显式排除 `billingSourceFor`，`activeBalanceSummary` 不再回退到 DeepSeek 余额
+- **中位数偏差**：`median` 偶数长度 `Math.round` 改为真实均值，避免“典型会话”场景可跑次数系统性偏小 1
+- **国际模型币种**：`modelCurrency` 新增 `openai/openrouter/anthropic/google/mistral/groq/xai` 与 `claude/gemini/grok/o1/o3` 前缀的 USD 回退，`anthropic/claude-*` 等不再误算为 ¥
+- **模式判优**：客户端 `visibleBillingMode` 改为账单优先于订阅，防止未来误配时账单被吞
+- **本地化崩溃**：`formatHostText` 丢键从抛错改为 `warn + return key`，新增字段未同步时不再导致整栏不渲染
+- **同源校验**：`sameOrigin` 拒绝 `sec-fetch-site:none` 写入 `settings.json`，堵住跨站表单写文件路径
+- **构建脆弱**：`scripts/build.mjs` `extractLiteral` 增加字符串感知（跳过引号内括号），`FIELD_REGISTRY.note` 含括号不再截断
+
+### Changed
+
+- **启动韧性**：`slots` 轮询 60×300ms 改为 80 次渐进退避（300ms→1s，约 45s），慢启动不再 18s 后永久丢栏
+- **会话缓存 LRU**：`sessionModelCache` 超 128 条自动淘汰最旧，避免多工作区内存线性增长
+- **时间格式化缓存**：`formatClock` 按 `timeZone` 缓存 `Intl.DateTimeFormat`（最多 16 个），1s 滴答不再每秒新建格式化器
+- **时钟按需**：1s 滴答仅当 `mainTime/worldTime/countdown/resetCountdown` 任一可见时启动，隐藏时自动暂停且监听 `visibilitychange`
+- **价目校验收紧**：远程目录 `key` 正则改为 `^[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)?$`（拒绝前后缀冒号/空段），保留旧字符集注释以兼容审计用例
+- **视觉占位**：`.bi-model-capability-pending` 增加 `pointer-events:none`，减少窄宽度下隐藏节点参与换行的抖动
+
+### Docs
+
+- `parseCodexUsage` 标注 `@deprecated`，明确 v1.10.1 起无生产调用，仅测试保留
+
 ## [1.10.2] - 2026-09-04
 
 > v1.10.2：修复信息底栏设置页“界面语言”分段控件的反色对比度问题（深色主题下选中态白字被吞），并落实「每修必发」版本纪律。

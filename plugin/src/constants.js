@@ -23,6 +23,11 @@ export const FIELD_REGISTRY = [
   { id: 'anchorGroup', label: "field.anchorGroup.label", group: 'plugin', modes: ['balance'], anchor: true, colorKind: 'provider', note: "field.anchorGroup.note" },
   { id: 'subServiceGroup', label: "field.subServiceGroup.label", group: 'plugin', modes: ['subscription'], anchor: true, colorKind: 'provider', note: "field.subServiceGroup.note" },
   { id: 'billingServiceGroup', label: "field.billingServiceGroup.label", group: 'plugin', modes: ['billing'], anchor: true, colorKind: 'provider', note: "field.billingServiceGroup.note" },
+  // 插件字段 · 自定义文本（纯自定义，位于服务商/模型左侧；为空时开关不可用）
+  { id: 'customText', label: "field.customText.label", group: 'plugin', modes: ['common'], colorKind: 'inherit', note: "field.customText.note" },
+  // 插件字段 · 时间（主/世界；时区与格式在设置页独立配置）
+  { id: 'mainTime', label: "field.mainTime.label", group: 'plugin', modes: ['common'], colorKind: 'inherit', note: "field.mainTime.note" },
+  { id: 'worldTime', label: "field.worldTime.label", group: 'plugin', modes: ['common'], colorKind: 'inherit', note: "field.worldTime.note" },
   // 插件字段 · 通用（多模式共用）
   { id: 'sessionCost', label: "field.sessionCost.label", group: 'plugin', modes: ['balance', 'subscription'], colorKind: 'inherit', note: "field.sessionCost.note" },
   // 插件字段 · 余额制
