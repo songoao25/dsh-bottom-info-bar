@@ -22,7 +22,7 @@ for (const file of ['locales.js', 'host-locale.js']) {
 
 // 从 constants.js 读取单一生源的共享常量（v1.6：SUBSCRIPTION_PROVIDERS；v1.7：+BILLING_PROVIDERS；
 // v1.9：+FIELD_REGISTRY / PRESET_COLOR_NAMES / FIELD_GROUP_ORDER / FIELD_GROUP_LABELS）。
-// 数组/对象字面量按括号配对提取（注册表内嵌数组，非贪婪正则会截断）。
+// 字面量按括号配对提取，支持字符串内的括号（注册表 note 含特殊字符），避免非贪婪正则截断。
 const constantsSource = await readFile(join(root, 'src', 'constants.js'), 'utf8')
 function extractLiteral(name) {
   const marker = 'export const ' + name + ' = '
@@ -37,8 +37,17 @@ function extractLiteral(name) {
   }
   if (openIdx === -1) throw new Error(name + ' 不是数组/对象字面量')
   let depth = 0
+  let inStr = null
+  let escaped = false
   for (let i = openIdx; i < constantsSource.length; i++) {
     const ch = constantsSource[i]
+    if (inStr) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === inStr) inStr = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue }
     if (ch === openCh) depth++
     else if (ch === closeCh) {
       depth--

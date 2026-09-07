@@ -36,7 +36,10 @@ export function createHostTranslator(ctx) {
 
 export function formatHostText(locale, key, params) {
   const template = LOCALES[locale === 'en' ? 'en' : 'zh'][key]
-  if (template === undefined) throw new Error('Unknown localization key: ' + key)
+  if (template === undefined) {
+    console.warn('[dsh-bottom-info-bar] missing locale key: ' + key)
+    return key
+  }
   return template.replace(/\{(\w+)\}/g, function (match, name) {
     return params && Object.hasOwn(params, name) ? String(params[name]) : match
   })

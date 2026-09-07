@@ -86,7 +86,7 @@ check('D6 分组：仅「原生字段/插件字段」两类且原生在前', JSO
   && t(FIELD_GROUP_LABELS.native) === '原生字段' && t(FIELD_GROUP_LABELS.plugin) === '插件字段', true);
 check('D6 分组：原生组恰 5 个 DeepSeek 原生标签', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
-check('D6 分组：其余 23 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 23
+check('D6 分组：其余 26 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 26
   && FIELD_REGISTRY.every((f) => f.group === 'native' || f.group === 'plugin'), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
