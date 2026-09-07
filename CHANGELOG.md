@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.5...v1.10.6) (2026-09-07)
+
+### Bug Fixes
+
+* **client:** align the settings disclosure arrow with native DSH dropdown chevrons
+
 ## [1.10.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.4...v1.10.5) (2026-09-07)
 
 ### Bug Fixes
