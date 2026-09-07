@@ -33,6 +33,10 @@ const USAGE_ARCHIVE_DIR = join(DATA_DIR, 'usage-archive')
 const SETTINGS_FILE = join(DATA_DIR, 'settings.json')
 const SETTINGS_FORMAT_VERSION = 1
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/
+const CUSTOM_TEXT_MAX_LEN = 64
+const TIME_FORMAT_KEYS = ['year', 'month', 'day', 'hour', 'minute', 'second']
+const DEFAULT_TIME_FORMAT = { year: true, month: true, day: true, hour: true, minute: true, second: false }
+const DEFAULT_TIME_ZONES = { main: 'Asia/Shanghai', world: 'UTC' }
 const SUMMARIES_FORMAT_VERSION = 1
 const DETAIL_RETENTION_DAYS = 90 // 明细保留窗：更早的 priced 明细折叠进日桶
 const DETAIL_HARD_CAP = 100000 // 明细硬顶：unpriced 永不折叠，故硬顶只对 priced 明细逐日推进折叠边界
@@ -214,7 +218,7 @@ function planDisplayName(planType) {
 }
 
 // 解析 Codex wham usage 响应：顶层 rate_limit.primary_window / secondary_window → 统一窗口数组
-// 注：v1.10.1 审计确认暂无调用点（Codex 额度接口已改用其他解析器），保留供测试覆盖与历史兼容。
+// @deprecated v1.10.1 起无生产调用（Codex 额度已改走本地 JWT），仅为测试与历史兼容保留；后续主版本可移除。
 function parseCodexUsage(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const rl = body.rate_limit
@@ -833,10 +837,44 @@ function shallowSettingsCopy(map) {
   return out
 }
 
+function isValidTimeZone(tz) {
+  if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return false
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true } catch { return false }
+}
+function normalizeTimeFormatValue(raw) {
+  if (!isPlainSettingsObject(raw)) return undefined
+  const out = {}
+  for (const k of TIME_FORMAT_KEYS) {
+    const v = raw[k]
+    if (typeof v !== 'boolean') return undefined
+    out[k] = v
+  }
+  return out
+}
+function normalizeTimeZonesValue(raw) {
+  if (!isPlainSettingsObject(raw)) return undefined
+  const out = {}
+  if ('main' in raw) {
+    if (!isValidTimeZone(raw.main)) return undefined
+    out.main = raw.main
+  }
+  if ('world' in raw) {
+    if (!isValidTimeZone(raw.world)) return undefined
+    out.world = raw.world
+  }
+  if (Object.keys(out).length === 0) return undefined
+  return out
+}
+function normalizeCustomTextValue(value) {
+  if (typeof value !== 'string') return undefined
+  if (value.length > CUSTOM_TEXT_MAX_LEN) return undefined
+  return value
+}
 function defaultFieldSettings() {
-  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {} }
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '' }
   for (const field of FIELD_REGISTRY) {
-    settings.fields[field.id] = true // 默认值全部=显示（与既有行为一致）
+    const isNewField = field.id === 'mainTime' || field.id === 'worldTime' || field.id === 'customText'
+    settings.fields[field.id] = isNewField ? false : true
     settings.colors[field.id] = null // null=未自定义 → 客户端沿用原语义色（零回归）
   }
   return settings
@@ -875,6 +913,30 @@ function sanitizeSettings(raw) {
       settings.colors[key] = normalized
     }
   } else dropped.push('colors')
+  if (isPlainSettingsObject(raw.timeFormat)) {
+    const normalized = normalizeTimeFormatValue(raw.timeFormat)
+    if (normalized === undefined) dropped.push('timeFormat')
+    else settings.timeFormat = normalized
+  } else if ('timeFormat' in raw) dropped.push('timeFormat')
+  if (isPlainSettingsObject(raw.timeZones)) {
+    const out = { ...settings.timeZones }
+    let ok = true
+    if ('main' in raw.timeZones) {
+      if (!isValidTimeZone(raw.timeZones.main)) { dropped.push('timeZones.main'); ok = false }
+      else out.main = raw.timeZones.main
+    }
+    if ('world' in raw.timeZones) {
+      if (!isValidTimeZone(raw.timeZones.world)) { dropped.push('timeZones.world'); ok = false }
+      else out.world = raw.timeZones.world
+    }
+    if (ok) settings.timeZones = out
+    if (!('main' in raw.timeZones) && !('world' in raw.timeZones) && Object.keys(raw.timeZones).length > 0) dropped.push('timeZones')
+  } else if ('timeZones' in raw) dropped.push('timeZones')
+  if ('customText' in raw) {
+    const normalized = normalizeCustomTextValue(raw.customText)
+    if (normalized === undefined) dropped.push('customText')
+    else settings.customText = normalized
+  }
   return { settings: settings, dropped: dropped }
 }
 
@@ -930,6 +992,13 @@ export const __settingsInternals = {
   normalizeColorValue: normalizeColorValue,
   defaultFieldSettings: defaultFieldSettings,
   settingsFile: SETTINGS_FILE,
+  isValidTimeZone: isValidTimeZone,
+  normalizeTimeFormatValue: normalizeTimeFormatValue,
+  normalizeTimeZonesValue: normalizeTimeZonesValue,
+  normalizeCustomTextValue: normalizeCustomTextValue,
+  CUSTOM_TEXT_MAX_LEN: CUSTOM_TEXT_MAX_LEN,
+  DEFAULT_TIME_FORMAT: DEFAULT_TIME_FORMAT,
+  DEFAULT_TIME_ZONES: DEFAULT_TIME_ZONES,
 }
 
 export default {
@@ -1004,7 +1073,10 @@ export default {
       // 服务商作用域键优先：同名模型跨计费域时（Kimi 国内外），币种必须跟作用域走
       const entry = pricingEntryFor(provider, model);
       if (entry && entry.currency) return entry.currency;
-      return model && model.indexOf('gpt') === 0 ? 'USD' : 'CNY';
+      if (provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'google' || provider === 'gemini' || provider === 'mistral' || provider === 'groq' || provider === 'xai') return 'USD';
+      if (provider === 'openai-codex' || provider === 'chatgpt' || provider === 'codex') return 'USD';
+      if (model && /^(gpt|o1|o3|claude|gemini|grok)/.test(model)) return 'USD';
+      return 'CNY';
     }
     const DEFAULT_MODEL = 'deepseek-v4-flash';
 
@@ -1026,7 +1098,8 @@ export default {
       const entries = {};
       for (const key of Object.keys(raw)) {
         if (Object.keys(entries).length >= 512) break; // 容量上限，防滥用
-        if (!/^[A-Za-z0-9._:-]{1,64}$/.test(key)) continue; // 允许 "provider:model" 作用域键（跨币种同名模型）
+        // 字符集 [A-Za-z0-9._:-] 允许 "provider:model" 作用域键，拒绝空段/前后缀冒号
+        if (!/^[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)?$/.test(key) || key.length > 64) continue;
         const e = raw[key];
         if (!e || typeof e !== 'object') continue;
         // v1 仅接受统一价（flat）；分时价的窗口规则须随框架参数化后再开放远程下发
@@ -1207,6 +1280,9 @@ export default {
         infoDensity: config.infoDensity,
         fields: shallowSettingsCopy(fieldSettings.fields),
         colors: shallowSettingsCopy(fieldSettings.colors),
+        timeFormat: { ...fieldSettings.timeFormat },
+        timeZones: { ...fieldSettings.timeZones },
+        customText: fieldSettings.customText,
         configVersion: settingsConfigVersion,
         persisted: persistError == null,
         warning: persistError == null ? null : String(persistError),
@@ -2142,10 +2218,10 @@ export default {
     // 目的：余额/币种跟随"活跃模型的服务商"，避免 OpenAI 模型激活时仍显示 DeepSeek ¥ 余额与 ¥0 花费。
     function balanceProviderKey(pid) {
       if (!pid) return null;
+      if (billingSourceFor(pid)) return null;
+      if (subscriptionSourceFor(pid)) return null;
       const acct = accountForProvider(pid);
       if (acct !== null) return acct;
-      // 订阅源账户不走余额制，直接返回 null
-      if (subscriptionSourceFor(pid)) return null;
       return null;
     }
 
@@ -2925,7 +3001,7 @@ export default {
       if (!arr || arr.length === 0) return 0;
       const s = arr.slice().sort(function (a, b) { return a - b; });
       const mid = Math.floor(s.length / 2);
-      return s.length % 2 === 1 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+      return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
     }
 
     // v1.6：sessionTotals 增加账户维度参数——本对话统计只聚合当前账户记录
@@ -3430,12 +3506,16 @@ export default {
       },
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
-        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors'))) {
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue'))) {
           throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
         let normalizedFields = null;
         let normalizedColors = null;
+        let normalizedTimeFormat = null;
+        let normalizedTimeZones = null;
+        let normalizedCustomText = null;
+        let hasCustomTextPatch = false;
         if (Object.hasOwn(patch, 'fields')) {
           const patchFields = patch.fields;
           if (!isPlainSettingsObject(patchFields)) throw invalidArgument(t('host.fieldsMustBeAnObject'));
@@ -3458,6 +3538,42 @@ export default {
             normalizedColors[key] = value;
           }
         }
+        if (Object.hasOwn(patch, 'timeFormat')) {
+          const tf = patch.timeFormat;
+          if (!isPlainSettingsObject(tf)) throw invalidArgument(t('host.timeFormatMustBeAnObject'));
+          normalizedTimeFormat = {};
+          for (const k of TIME_FORMAT_KEYS) {
+            if (!Object.hasOwn(tf, k)) continue
+            if (typeof tf[k] !== 'boolean') throw invalidArgument(t('host.timeFieldMustBeABoolean', { key: k }));
+            normalizedTimeFormat[k] = tf[k]
+          }
+          if (Object.keys(normalizedTimeFormat).length === 0) throw invalidArgument(t('host.timeFormatMustBeAnObject'));
+        }
+        if (Object.hasOwn(patch, 'timeZones')) {
+          const tz = patch.timeZones;
+          if (!isPlainSettingsObject(tz)) throw invalidArgument(t('host.timeZonesMustBeAnObject'));
+          normalizedTimeZones = {};
+          if (Object.hasOwn(tz, 'main')) {
+            if (!isValidTimeZone(tz.main)) throw invalidArgument(t('host.timeZoneMustBeAValid', { key: 'main' }));
+            normalizedTimeZones.main = tz.main
+          }
+          if (Object.hasOwn(tz, 'world')) {
+            if (!isValidTimeZone(tz.world)) throw invalidArgument(t('host.timeZoneMustBeAValid', { key: 'world' }));
+            normalizedTimeZones.world = tz.world
+          }
+          if (Object.keys(normalizedTimeZones).length === 0) throw invalidArgument(t('host.timeZonesMustBeAnObject'));
+        }
+        const customTextKey = Object.hasOwn(patch, 'customText') ? 'customText' : (Object.hasOwn(patch, 'customTextValue') ? 'customTextValue' : null)
+        if (customTextKey) {
+          hasCustomTextPatch = true
+          const raw = patch[customTextKey]
+          const normalized = normalizeCustomTextValue(raw)
+          if (normalized === undefined) {
+            if (typeof raw !== 'string') throw invalidArgument(t('host.customTextMustBeAString'));
+            else throw invalidArgument(t('host.customTextTooLong'));
+          }
+          normalizedCustomText = normalized
+        }
         let changed = false;
         let persistError = null;
         for (const key of Object.keys(normalizedFields || {})) {
@@ -3472,6 +3588,24 @@ export default {
             changed = true;
           }
         }
+        for (const key of Object.keys(normalizedTimeFormat || {})) {
+          if (fieldSettings.timeFormat[key] !== normalizedTimeFormat[key]) {
+            fieldSettings.timeFormat[key] = normalizedTimeFormat[key];
+            changed = true;
+          }
+        }
+        for (const key of Object.keys(normalizedTimeZones || {})) {
+          if (fieldSettings.timeZones[key] !== normalizedTimeZones[key]) {
+            fieldSettings.timeZones[key] = normalizedTimeZones[key];
+            changed = true;
+          }
+        }
+        if (hasCustomTextPatch) {
+          if (fieldSettings.customText !== normalizedCustomText) {
+            fieldSettings.customText = normalizedCustomText
+            changed = true;
+          }
+        }
         if (changed) {
           settingsConfigVersion += 1;
           persistError = persistSettings();
@@ -3479,8 +3613,13 @@ export default {
         return settingsPayload(persistError);
       },
       resetFieldConfig: function () {
-        // 只重置标签显隐；颜色保持不动（两个重置按钮彼此独立）
-        fieldSettings.fields = shallowSettingsCopy(defaultFieldSettings().fields);
+        // 只重置标签显隐 + 时间格式/时区/自定义文本；颜色保持不动（两个重置按钮彼此独立）
+        const defaults = defaultFieldSettings()
+        fieldSettings.fields = shallowSettingsCopy(defaults.fields);
+        fieldSettings.timeFormat = { ...defaults.timeFormat }
+        fieldSettings.timeZones = { ...defaults.timeZones }
+        fieldSettings.customText = defaults.customText
+        // 自定义文本重置后为空，开关已为 false，无需额外修正
         settingsConfigVersion += 1;
         const persistError = persistSettings();
         return settingsPayload(persistError);
@@ -3505,7 +3644,7 @@ export default {
       const fetchSite = req.headers['sec-fetch-site'];
       if (fetchSite === 'cross-site') return false;
       const origin = req.headers.origin;
-      if (origin === undefined) return fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none';
+      if (origin === undefined) return fetchSite === 'same-origin' || fetchSite === 'same-site';
       const host = req.headers.host;
       if (host === undefined) return false;
       try {
