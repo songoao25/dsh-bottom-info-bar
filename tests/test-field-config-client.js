@@ -134,6 +134,22 @@ check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设�
 })(), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
   && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("t('ui.show', { label: t(field.label) })"), true);
+check('折叠箭头使用独立 SVG chevron 且不暴露字符箭头', clientSrc.includes('function bibSetChevron(props)')
+  && clientSrc.includes("className: 'bib-set-chevron'")
+  && clientSrc.includes("React.createElement('svg'")
+  && clientSrc.includes("React.createElement('path'")
+  && clientSrc.includes("viewBox: '0 0 14 14'")
+  && clientSrc.includes("'aria-hidden': 'true'")
+  && !clientSrc.includes("collapsed.fields ? '▶' : '▼'"), true);
+check('折叠箭头方向与实际展开状态同步（含搜索强制展开）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
+  && clientSrc.includes('const fieldsExpanded = !collapsed.fields || searchActive;')
+  && clientSrc.includes("'aria-expanded': fieldsExpanded")
+  && clientSrc.includes('bibSetChevron({ expanded: fieldsExpanded })')
+  && clientSrc.includes("fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren)"), true);
+check('设置页搜索工具栏使用系统清除操作与本地化匹配数量', clientSrc.includes("className: 'bib-set-toolbar'")
+  && clientSrc.includes("type: 'search'")
+  && clientSrc.includes("className: 'bib-set-search'")
+  && clientSrc.includes("t('ui.searchResultCount', { count: fieldsMatchCount })"), true);
 check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('disabled: isAnchor') && !body.includes('始终显示');
