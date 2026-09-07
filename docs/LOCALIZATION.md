@@ -2,11 +2,13 @@
 
 The original Chinese copy and English translations live together in
 `plugin/src/locales.js`. The plugin follows DSH's Settings → General language
-preference by default and also provides an in-plugin language switcher
-("**Language**" card in Info Bar settings) that calls `ctx.locale.setLocale()`
-to change the language immediately. The switcher uses a segmented control
-(radiogroup) with native language names (中文 / English) that remain in their
-native script regardless of the active locale.
+preference and also provides a shortcut to that same DSH-wide preference in the
+"**Language**" card in Info Bar settings. The shortcut calls
+`ctx.locale.setLocale()`, so it changes the whole DSH interface immediately and
+uses DSH's existing persistence path; it does not maintain plugin-only locale
+state. The switcher uses a segmented control (radiogroup) with native language
+names (中文 / English) that remain in their native script regardless of the
+active locale.
 
 ## Framework integration
 
