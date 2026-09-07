@@ -486,21 +486,37 @@ function bibSetInstallStyles() {
       .bib-set-root { --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */ }
       /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
       .bib-set-page-title { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-      .bib-settings { max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
+      .bib-settings { max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
       .bib-set-intro { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
-      .bib-set-card { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 12px; }
-      .bib-set-card-header { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
-      .bib-set-card-title { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-      .bib-set-card-desc { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+      .bib-set-toolbar { display: flex; flex-direction: column; gap: 8px; margin: -2px 0 0; }
+      .bib-set-search-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .bib-set-search-shell { position: relative; flex: 1 1 240px; min-width: 180px; }
+      .bib-set-search { box-sizing: border-box; display: block; width: 100%; min-height: 34px; padding: 7px 30px 7px 11px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 18px; }
+      .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
+      .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
+      .bib-set-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .bib-set-toolbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+      .bib-set-card { overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 12px; }
+      .bib-set-card-header { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; transition: background-color 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-card-header[role="button"] { cursor: pointer; user-select: none; -webkit-user-select: none; }
+      .bib-set-card-header[role="button"]:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.05)); }
+      .bib-set-card-header[role="button"]:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-card-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+      .bib-set-card-desc { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
       .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding: 0 0 6px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
       .bib-set-row:last-child { border-bottom: none; }
       .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
-      .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-primary); }
+      .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+      /* 折叠指示器：使用独立 SVG chevron，避免字符箭头受字体影响；收起向右，展开向下 */
+      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 16px; height: 16px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: color 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(-90deg); transform-origin: center; transition: transform 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-chevron[data-expanded="true"] svg { transform: rotate(0deg); }
+      .bib-set-card-header:hover .bib-set-chevron { color: var(--dsw-alias-label-primary); }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
       .bib-set-switch:disabled { cursor: default; opacity: 0.5; }
@@ -510,8 +526,8 @@ function bibSetInstallStyles() {
       .bib-set-switch-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--dsw-alias-bg-layer-1, #fff); box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform 160ms var(--ds-ease-in-out, ease); }
       .bib-set-switch-track[data-on="true"] .bib-set-switch-thumb { transform: translateX(16px); }
       /* 色板圆点：role:radio + roving tabindex（方向键/Home/End 可达），选中态外圈描边 */
-      .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
-      .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; flex: 0 0 auto; }
+      .bib-set-dots { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
       .bib-set-dot { appearance: none; width: 20px; height: 20px; padding: 0; margin: 0; border-radius: 50%; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
       .bib-set-dot:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
       .bib-set-dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-3, #fff), 0 0 0 4px var(--bib-set-brand); }
@@ -528,9 +544,9 @@ function bibSetInstallStyles() {
       .bib-set-hex { box-sizing: border-box; width: 88px; padding: 4px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2, transparent); border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); border-radius: 8px; }
       .bib-set-hex:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
-      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 2px 0 10px; }
-      .bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-secondary); background: 0 0; border-radius: 8px; padding: 5px 14px; font-size: 13px; line-height: 1.5; }
-      .bib-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); }
+      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-secondary); background: 0 0; border-radius: 9px; padding: 6px 12px; font-size: 13px; font-weight: 500; line-height: 1.4; transition: background-color 160ms var(--ds-ease-in-out, ease), border-color 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2)); }
       .bib-set-btn:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-alert { margin: 0; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
@@ -543,7 +559,9 @@ function bibSetInstallStyles() {
       .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; font-weight: 600; }
       .bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff; filter: brightness(1.08); }
       @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-      @media (prefers-reduced-motion: reduce) { .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
+      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { margin: 0 12px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-toolbar-actions .bib-set-btn { flex: 1 1 0; } .bib-set-footer { justify-content: flex-start; } }
+      @media (max-width: 420px) { .bib-set-search-row { align-items: stretch; flex-wrap: wrap; } .bib-set-search-shell { flex-basis: 100%; } .bib-set-count { margin-left: 2px; } }
+      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron, .bib-set-chevron svg, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -615,6 +633,25 @@ function bibSetPalette(props) {
 // M2 首渲骨架：页面标题行——任何状态下都先输出可见标题（数据未到、加载失败也一样有东西看）
 function bibSetPageTitle() {
   return React.createElement('h1', { className: 'bib-set-page-title' }, t('ui.infoBarSettings'));
+}
+
+function bibSetChevron(props) {
+  return React.createElement('span', {
+    className: 'bib-set-chevron',
+    'data-expanded': props.expanded ? 'true' : 'false',
+    'aria-hidden': 'true',
+  }, React.createElement('svg', {
+    viewBox: '0 0 14 14',
+    focusable: 'false',
+    'aria-hidden': 'true',
+  }, React.createElement('path', {
+    d: 'M3.25 5.25 7 9l3.75-3.75',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  })));
 }
 
 function InfoBarSettingsSection(props) {
@@ -848,6 +885,9 @@ function InfoBarSettingsSection(props) {
   }
 
   // ---- 渲染 ----
+  // 搜索时内容会强制展开，箭头和 aria-expanded 必须跟随实际可见状态，而不是只看手动折叠开关。
+  const searchActive = searchQuery.trim().length > 0;
+  const fieldsExpanded = !collapsed.fields || searchActive;
   const groupsChildren = [];
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
@@ -855,7 +895,7 @@ function InfoBarSettingsSection(props) {
     groupFields = groupFields.filter(function (f) { return matchesSearch(f, searchQuery); });
     if (groupFields.length === 0) continue;
     // 折叠逻辑：默认折叠时只展示未启用（fieldOn false）的字段，已启用折叠起来；搜索时展开全部匹配
-    const isFieldsCollapsed = collapsed.fields && !searchQuery;
+    const isFieldsCollapsed = !fieldsExpanded;
     if (isFieldsCollapsed) {
       const disabledOnly = groupFields.filter(function (f) { return !fieldOn(f.id); });
       if (disabledOnly.length === 0) continue;
@@ -967,28 +1007,28 @@ function InfoBarSettingsSection(props) {
 
   const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
   const fieldsTotal = FIELD_REGISTRY.length;
+  const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const disabledCount = fieldsTotal - fieldsEnabledCount;
+  const fieldSummary = searchActive
+    ? t('ui.searchResultCount', { count: fieldsMatchCount })
+    : fieldsEnabledCount + ' / ' + fieldsTotal;
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
-    React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' } },
-      React.createElement('input', {
-        type: 'search',
-        placeholder: t('ui.searchPlaceholder') || '搜索标签…',
-        value: searchQuery,
-        onChange: function (e) { setSearchQuery(e.target.value); },
-        style: { flex: '1 1 200px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '13px' },
-        'aria-label': 'Search fields'
-      }),
-      searchQuery ? React.createElement('button', {
-        type: 'button',
-        className: 'bib-set-btn',
-        onClick: function () { setSearchQuery(''); },
-        style: { flex: 'none' }
-      }, '×') : null,
-      React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, fieldsEnabledCount + '/' + fieldsTotal + (searchQuery ? ' · ' + t('ui.searchResults') : ''))),
-    React.createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+    React.createElement('div', { className: 'bib-set-toolbar' },
+      React.createElement('div', { className: 'bib-set-search-row' },
+        React.createElement('div', { className: 'bib-set-search-shell' },
+          React.createElement('input', {
+            type: 'search',
+            className: 'bib-set-search',
+            placeholder: t('ui.searchPlaceholder') || '搜索标签…',
+            value: searchQuery,
+            onChange: function (e) { setSearchQuery(e.target.value); },
+            'aria-label': t('ui.searchPlaceholder') || 'Search fields'
+          })),
+        React.createElement('span', { className: 'bib-set-count' }, fieldSummary)),
+      React.createElement('div', { className: 'bib-set-toolbar-actions' },
       React.createElement('button', {
         type: 'button',
         className: 'bib-set-btn',
@@ -998,15 +1038,15 @@ function InfoBarSettingsSection(props) {
         type: 'button',
         className: 'bib-set-btn',
         onClick: function () { setCollapsed({ fields: true, colors: true, time: true }); }
-      }, t('ui.collapseAll') || '折叠全部')),
+      }, t('ui.collapseAll') || '折叠全部'))),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
-      React.createElement('div', { className: 'bib-set-card-header', onClick: function () { toggleCollapsed('fields'); }, style: { cursor: 'pointer', userSelect: 'none' }, role: 'button', tabIndex: 0, 'aria-expanded': !collapsed.fields, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapsed('fields'); } } },
+      React.createElement('div', { className: 'bib-set-card-header', onClick: function () { toggleCollapsed('fields'); }, role: 'button', tabIndex: 0, 'aria-expanded': fieldsExpanded, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapsed('fields'); } } },
         React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
-          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields') + (collapsed.fields && !searchQuery ? ' (' + t('ui.collapsedShowingDisabled', { count: disabledCount }) + ')' : '')),
-          React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, collapsed.fields ? '▶' : '▼')),
+          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields') + (collapsed.fields && !searchActive ? ' (' + t('ui.collapsedShowingDisabled', { count: disabledCount }) + ')' : '')),
+          bibSetChevron({ expanded: fieldsExpanded })),
         React.createElement('div', { className: 'bib-set-card-desc' },
-          collapsed.fields && !searchQuery ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
-      !collapsed.fields || searchQuery ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : (disabledCount > 0 ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : null)),
+          collapsed.fields && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
+      fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : (disabledCount > 0 ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : null)),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
       React.createElement('div', { className: 'bib-set-card-header' },
         React.createElement('h2', { id: 'bib-set-lang-title', className: 'bib-set-card-title' }, t('ui.languageSettings')),
