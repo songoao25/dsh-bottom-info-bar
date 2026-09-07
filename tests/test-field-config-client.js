@@ -134,20 +134,37 @@ check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设�
 })(), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
   && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("t('ui.show', { label: t(field.label) })"), true);
-check('折叠箭头使用独立 SVG chevron 且不暴露字符箭头', clientSrc.includes('function bibSetChevron(props)')
+check('折叠箭头复用 DSH 原生 IconChevronDownOutline14 且不暴露字符箭头', clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
   && clientSrc.includes("className: 'bib-set-chevron'")
-  && clientSrc.includes("React.createElement('svg'")
-  && clientSrc.includes("React.createElement('path'")
-  && clientSrc.includes("viewBox: '0 0 14 14'")
+  && clientSrc.includes('React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14 })')
   && clientSrc.includes("'aria-hidden': 'true'")
   && !clientSrc.includes("collapsed.fields ? '▶' : '▼'"), true);
 check('折叠箭头方向与实际展开状态同步（含搜索强制展开）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
-  && clientSrc.includes('const fieldsExpanded = !collapsed.fields || searchActive;')
+  && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed || searchActive;')
   && clientSrc.includes("'aria-expanded': fieldsExpanded")
   && clientSrc.includes('bibSetChevron({ expanded: fieldsExpanded })')
-  && clientSrc.includes("fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren)")
-  && clientSrc.includes('.bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(0deg)')
-  && clientSrc.includes('.bib-set-chevron[data-expanded="true"] svg { transform: rotate(180deg);'), true);
+  && clientSrc.includes("'aria-controls': fieldsExpanded ? 'bib-set-fields-body' : undefined")
+  && clientSrc.includes("const fieldsBody = fieldsExpanded ? React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' }")
+  && clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);'), true);
+check('折叠是真正收起：不再渲染未启用字段预览或幽灵内容层', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
+    && body.includes('const fieldsBody = fieldsExpanded ?')
+    && body.includes(': null;')
+    && !body.includes('disabledOnly')
+    && !body.includes('disabledCount')
+    && !body.includes('collapsed.fields')
+    && !body.includes('colors: true')
+    && !body.includes('time: true');
+})(), true);
+check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return !body.includes('style:')
+    && clientSrc.includes('.bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; }')
+    && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
+})(), true);
+check('搜索无结果有明确空状态，避免空白内容块', clientSrc.includes("t('ui.noSearchResults')")
+  && clientSrc.includes('.bib-set-empty {'), true);
 check('设置页搜索工具栏使用系统清除操作与本地化匹配数量', clientSrc.includes("className: 'bib-set-toolbar'")
   && clientSrc.includes("type: 'search'")
   && clientSrc.includes("className: 'bib-set-search'")
@@ -193,6 +210,7 @@ check('构建产物含被注入的字段注册表与设置页注册（非空锚�
   const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
   const fakeRequire = function (name) {
     if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
+    if (name === '@deepseek-ai/dsh-client-ui-primitives') return { IconChevronDownOutline14: function () { return null; } };
     throw new Error('unexpected require: ' + name);
   };
   try {

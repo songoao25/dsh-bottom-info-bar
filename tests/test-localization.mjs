@@ -68,7 +68,7 @@ assert.equal(missing.status, 1, missing.output)
 assert.match(missing.output, /FAIL[^\n]*missingCall/)
 console.log('PASS  English host prose passes; a quote in a regex cannot hide missingCall()')
 
-let states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'en', '', { fields: false, colors: false, time: false }]
+let states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'en', '', false]
 let stateIndex = 0
 const React = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -146,7 +146,7 @@ assert.equal(bound, locale.bind('dsh-bottom-info-bar'))
 assert.equal(navLabel(), '信息底栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
-states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'zh', '', { fields: false, colors: false, time: false }]
+states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'zh', '', false]
 assert.match(text(render()), /信息底栏设置/)
 assert.match(text(render()), /原生字段/)
 assert.match(text(render()), /服务商账户的真实余额/)
