@@ -482,28 +482,33 @@ function bibSetInstallStyles() {
   style.textContent = `
       .bib-set-root { --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */ }
       /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
-      .bib-set-page-title { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-      .bib-settings { max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
-      .bib-set-intro { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+      .bib-set-page-title { width: 100%; margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+      /* 设置页是 DSH 面板中的可收缩内容：显式锁定内容轨道，避免卡片按当前子树的最小内容宽度跳动。 */
+      .bib-settings { width: 100%; max-width: 720px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
+      .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
-      .bib-set-toolbar { display: flex; flex-direction: column; gap: 8px; margin: -2px 0 0; }
-      .bib-set-search-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-      .bib-set-search-shell { position: relative; flex: 1 1 240px; min-width: 180px; }
+      .bib-set-toolbar { width: 100%; min-width: 0; margin: -2px 0 0; }
+      .bib-set-search-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+      /* 输入框使用剩余轨道，宽度不会再被结果数量或折叠内容的最小宽度牵动。 */
+      .bib-set-search-shell { position: relative; flex: 1 1 auto; width: 0; min-width: 0; }
       .bib-set-search { box-sizing: border-box; display: block; width: 100%; min-height: 34px; padding: 7px 30px 7px 11px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 18px; }
       .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .bib-set-toolbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-      .bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px; }
+      .bib-set-count { flex: 0 0 84px; width: 84px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+      .bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px; }
       .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 0; padding: 14px 16px; border: 0; background: var(--bib-set-surface); color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
       .bib-set-card-header:not(.bib-set-card-header--static):hover { background: var(--bib-set-surface); }
       .bib-set-card-header:not(.bib-set-card-header--static):focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
       .bib-set-card-header--static { cursor: default; }
-      .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
-      .bib-set-card-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-      .bib-set-card-desc { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
+      .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 22px; }
+      .bib-set-card-title { min-width: 0; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+      .bib-set-card-desc { width: 100%; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+      /* 内容树始终保留，折叠只改变纵向 grid 轨道；这样不会因卸载字段行而重新计算卡片宽度。 */
+      .bib-set-collapse { display: grid; grid-template-rows: 1fr; width: 100%; min-width: 0; border-top: 1px solid var(--dsw-alias-border-l2); transition: grid-template-rows 180ms var(--ds-ease-in-out, ease), border-color 180ms var(--ds-ease-in-out, ease); }
+      .bib-set-collapse--collapsed { grid-template-rows: 0fr; border-top-color: transparent; }
+      .bib-set-collapse-inner { width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+      .bib-set-body { width: 100%; min-width: 0; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
       .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
@@ -516,10 +521,11 @@ function bibSetInstallStyles() {
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      /* 使用 DSH 原生上下箭头组件，不依赖旋转或左右箭头的 CSS 变换。 */
-      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: color 140ms var(--ds-ease-in-out, ease); }
+      /* 只使用 DSH 已验证的原生下箭头；展开态旋转 SVG 本身，确保跨宿主版本仍是上下方向。 */
+      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
       .bib-set-card-header:not(.bib-set-card-header--static):hover .bib-set-chevron, .bib-set-card-header:not(.bib-set-card-header--static):focus-visible .bib-set-chevron { color: var(--dsw-alias-label-primary); }
-      .bib-set-chevron svg { display: block; width: 14px; height: 14px; }
+      .bib-set-chevron-icon { display: block; width: 14px; height: 14px; transform-origin: center; transition: transform 140ms var(--ds-ease-in-out, ease), color 140ms var(--ds-ease-in-out, ease); }
+      .bib-set-chevron-icon--expanded { transform: rotate(180deg); }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
       .bib-set-switch:disabled { cursor: default; opacity: 0.5; }
@@ -559,7 +565,7 @@ function bibSetInstallStyles() {
       .bib-set-hex { box-sizing: border-box; width: 88px; padding: 4px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2, transparent); border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); border-radius: 8px; }
       .bib-set-hex:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
-      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; box-sizing: border-box; padding: 12px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2); }
       .bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 1px solid var(--dsw-alias-border-l2); color: var(--dsw-alias-label-secondary); background: 0 0; border-radius: 9px; padding: 6px 12px; font-size: 13px; font-weight: 500; line-height: 1.4; transition: background-color 160ms var(--ds-ease-in-out, ease), border-color 160ms var(--ds-ease-in-out, ease); }
       .bib-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2)); }
       .bib-set-btn:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
@@ -574,9 +580,9 @@ function bibSetInstallStyles() {
       .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; font-weight: 600; }
       .bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff; filter: brightness(1.08); }
       @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-row--language { justify-content: flex-start; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-controls--language { margin-left: 0; } .bib-set-toolbar-actions .bib-set-btn { flex: 1 1 0; } .bib-set-footer { justify-content: flex-start; } }
+      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-row--language { justify-content: flex-start; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-controls--language { margin-left: 0; } .bib-set-footer { justify-content: flex-start; } }
       @media (max-width: 420px) { .bib-set-search-row { align-items: stretch; flex-wrap: wrap; } .bib-set-search-shell { flex-basis: 100%; } .bib-set-count { margin-left: 2px; } }
-      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
+      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -651,12 +657,12 @@ function bibSetPageTitle() {
 }
 
 function bibSetChevron(props) {
-  const Chevron = props.expanded ? BIB_SET_PRIMITIVES.IconChevronUpOutline14 : BIB_SET_PRIMITIVES.IconChevronDownOutline14;
+  const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');
   return React.createElement('span', {
     className: 'bib-set-chevron',
     'data-expanded': props.expanded ? 'true' : 'false',
     'aria-hidden': 'true',
-  }, React.createElement(Chevron, { size: 14 }));
+  }, React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14, className: iconClass }));
 }
 
 function bibSetCardHeader(props) {
@@ -676,7 +682,7 @@ function bibSetCardHeader(props) {
     type: 'button',
     className: className,
     'aria-expanded': props.expanded,
-    'aria-controls': props.expanded ? props.contentId : undefined,
+    'aria-controls': props.contentId,
     onClick: props.onToggle,
   }, main, description);
 }
@@ -1094,10 +1100,15 @@ function InfoBarSettingsSection() {
   const fieldSummary = searchActive
     ? t('ui.searchResultCount', { count: fieldsMatchCount })
     : fieldsEnabledCount + ' / ' + fieldsTotal;
-  const fieldsBody = fieldsExpanded ? React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' },
-    searchActive && fieldsMatchCount === 0
-      ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
-      : groupsChildren) : null;
+  const fieldsBody = React.createElement('div', {
+    className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed'),
+    'aria-hidden': fieldsExpanded ? undefined : 'true',
+    inert: fieldsExpanded ? undefined : true,
+  }, React.createElement('div', { className: 'bib-set-collapse-inner' },
+    React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' },
+      searchActive && fieldsMatchCount === 0
+        ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
+        : groupsChildren)));
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
@@ -1114,19 +1125,7 @@ function InfoBarSettingsSection() {
             'aria-label': t('ui.searchPlaceholder') || 'Search fields'
           })),
         React.createElement('span', { className: 'bib-set-count' }, fieldSummary)),
-      React.createElement('div', { className: 'bib-set-toolbar-actions' },
-      React.createElement('button', {
-        type: 'button',
-        className: 'bib-set-btn',
-        disabled: !fieldsCollapsed || searchActive,
-        onClick: function () { setFieldsCollapsed(false); }
-      }, t('ui.expandAll') || '展开全部'),
-      React.createElement('button', {
-        type: 'button',
-        className: 'bib-set-btn',
-        disabled: fieldsCollapsed || searchActive,
-        onClick: function () { setFieldsCollapsed(true); }
-      }, t('ui.collapseAll') || '折叠全部'))),
+      ),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
       bibSetCardHeader({
         titleId: 'bib-set-fields-title',
