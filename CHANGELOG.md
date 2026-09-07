@@ -2,8 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.10.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.3...v1.10.4) (2026-09-07)
+## [1.10.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.4...v1.10.5) (2026-09-07)
 
+### Bug Fixes
+
+* **client:** refine the settings-page disclosure control and layout, with a native-style accessible chevron and search-aware state
+
+## [1.10.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.3...v1.10.4) (2026-09-07)
 
 ### Bug Fixes
 
