@@ -14,6 +14,7 @@
 'use strict';
 
 const React = require('react');
+const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
@@ -437,18 +438,14 @@ function installStyles() {
   return function () { style.remove(); };
 }
 
-// ---------- v1.9.0 PR2 → v1.9.1 设置页（并入本文件，单文件化） ----------
-// 原 plugin/src/client-settings.js 整体迁移至此（v1.9.1 拆除 build 跨文件拼接与 module.exports 重写机制）：
-// 与信息栏同一 factory 作用域，直接复用 React/rpc/FIELD_REGISTRY/PRESET_COLORS/PRESET_COLOR_SET；
-// 注册动作进 apply()，与信息栏共用等好的 slots 变量、走同一 slots.inject 路径
-// （官方 dsh-client-ui-settings-general 同型写法），不再有 async 串接。
-// 约定：本段顶层标识符一律 bibSet* / InfoBarSettings* 前缀，绝不与主包重名。
+// ---------- 设置页 ----------
+// 与信息栏共用同一 bundle 作用域；页面只负责呈现设置状态和提交用户操作。
 const BIB_SET_EVENT = 'dsh-bib-config-changed';
 const BIB_SET_PRESET_LABELS = { red: "color.red", green: "color.green", blue: "color.blue", purple: "color.purple", orange: "color.orange", neutral: "color.neutral" };
 // 原生取色器（input[type=color]）在未自定义时显示的代表色（浅色主题值；实际信息栏渲染仍按主题变量）
 const BIB_SET_PRESET_WELL_HEX = { red: '#D92D20', green: '#087F5B', blue: '#0044CC', purple: '#6941C6', orange: '#B54708', neutral: '#333333' };
 const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
-// 「显示字段」两级分组（D6 用户拍板：原生在前、插件在后）——构建从 constants.js 注入（单一来源）
+// 字段分组由 constants.js 注入，保持宿主白名单、信息栏和设置页一致。
 const FIELD_GROUP_ORDER = /*__FIELD_GROUP_ORDER__*/[];
 const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
 // 每行出现条件文案：modes → 中文（余额制/订阅制/账单制/原生统计行/通用）
@@ -498,25 +495,30 @@ function bibSetInstallStyles() {
       .bib-set-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .bib-set-toolbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
       .bib-set-card { overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 12px; }
-      .bib-set-card-header { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; transition: background-color 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-card-header { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
       .bib-set-card-header[role="button"] { cursor: pointer; user-select: none; -webkit-user-select: none; }
-      .bib-set-card-header[role="button"]:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.05)); }
+      .bib-set-card-header[role="button"]:hover { background: transparent; }
       .bib-set-card-header[role="button"]:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
       .bib-set-card-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
       .bib-set-card-desc { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding: 0 0 6px; }
+      .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; }
+      .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
       .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 8px; }
+      .bib-set-row--language { justify-content: flex-end; }
+      .bib-set-row-main { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; }
       .bib-set-row:last-child { border-bottom: none; }
       .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
+      .bib-set-rowText--field { flex: 1 1 200px; }
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      /* 下拉/折叠指示器：使用独立 SVG V 形，与 DSH 原生弹出式按钮的下拉箭头保持同向；收起向下，展开向上 */
-      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 16px; height: 16px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: color 160ms var(--ds-ease-in-out, ease); }
-      .bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(0deg); transform-origin: center; transition: transform 160ms var(--ds-ease-in-out, ease); }
-      .bib-set-chevron[data-expanded="true"] svg { transform: rotate(180deg); }
-      .bib-set-card-header:hover .bib-set-chevron { color: var(--dsw-alias-label-primary); }
+      /* 复用 DSH 原生 IconChevronDownOutline14；关闭向下，打开旋转为向上。 */
+      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: transform 140ms var(--ds-ease-in-out, ease), color 140ms var(--ds-ease-in-out, ease); }
+      .bib-set-chevron[data-expanded="true"] { transform: rotate(180deg); color: var(--dsw-alias-label-primary); }
+      .bib-set-chevron svg { display: block; width: 14px; height: 14px; }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
       .bib-set-switch:disabled { cursor: default; opacity: 0.5; }
@@ -527,6 +529,18 @@ function bibSetInstallStyles() {
       .bib-set-switch-track[data-on="true"] .bib-set-switch-thumb { transform: translateX(16px); }
       /* 色板圆点：role:radio + roving tabindex（方向键/Home/End 可达），选中态外圈描边 */
       .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; flex: 0 0 auto; }
+      .bib-set-controls--field { flex: 0 0 auto; }
+      .bib-set-controls--language { margin-left: auto; }
+      .bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; padding-left: 8px; }
+      .bib-set-subcontrol-label { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+      .bib-set-time-parts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .bib-set-time-part { display: inline-flex; align-items: center; gap: 4px; }
+      .bib-set-time-part-label { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }
+      .bib-set-time-preview { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
+      .bib-set-custom-text-input { flex: 1 1 200px; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; line-height: 18px; }
+      .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
+      .bib-set-custom-text-count { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; white-space: nowrap; }
+      .bib-set-time-zone { padding: 4px 8px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; line-height: 18px; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
       .bib-set-dot { appearance: none; width: 20px; height: 20px; padding: 0; margin: 0; border-radius: 50%; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
       .bib-set-dot:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
@@ -559,7 +573,7 @@ function bibSetInstallStyles() {
       .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; font-weight: 600; }
       .bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff; filter: brightness(1.08); }
       @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { margin: 0 12px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-toolbar-actions .bib-set-btn { flex: 1 1 0; } .bib-set-footer { justify-content: flex-start; } }
+      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-row--language { justify-content: flex-start; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-controls--language { margin-left: 0; } .bib-set-toolbar-actions .bib-set-btn { flex: 1 1 0; } .bib-set-footer { justify-content: flex-start; } }
       @media (max-width: 420px) { .bib-set-search-row { align-items: stretch; flex-wrap: wrap; } .bib-set-search-shell { flex-basis: 100%; } .bib-set-count { margin-left: 2px; } }
       @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron, .bib-set-chevron svg, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
@@ -640,23 +654,11 @@ function bibSetChevron(props) {
     className: 'bib-set-chevron',
     'data-expanded': props.expanded ? 'true' : 'false',
     'aria-hidden': 'true',
-  }, React.createElement('svg', {
-    viewBox: '0 0 14 14',
-    focusable: 'false',
-    'aria-hidden': 'true',
-  }, React.createElement('path', {
-    d: 'M3.25 5.25 7 9l3.75-3.75',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.5,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-  })));
+  }, React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14 }));
 }
 
-function InfoBarSettingsSection(props) {
-  void props; // 与官方 section 组件同签名（外壳会传入 renderSlot/close 等，本页不使用）
-  const [snapshot, setSnapshot] = React.useState(null); // { fields, colors, configVersion }
+function InfoBarSettingsSection() {
+  const [snapshot, setSnapshot] = React.useState(null);
   const [status, setStatus] = React.useState('loading');
   const [loadError, setLoadError] = React.useState(null);
   const [opError, setOpError] = React.useState(null);
@@ -667,7 +669,7 @@ function InfoBarSettingsSection(props) {
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
 
-  // 语言切换：订阅 DSH locale 变化，驱动重渲染
+  // 语言切换：订阅 DSH locale 变化，驱动重渲染。
   const getLocale = function () {
     try { return (localeService && typeof localeService.getSnapshot === 'function') ? localeService.getSnapshot().active : 'zh'; } catch { return 'zh'; }
   };
@@ -677,8 +679,8 @@ function InfoBarSettingsSection(props) {
     return localeService.subscribe(function () { setLocaleActive(getLocale()); });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [collapsed, setCollapsed] = React.useState({ fields: true, colors: true, time: true });
-  function toggleCollapsed(key) { setCollapsed(function (c) { const n = Object.assign({}, c); n[key] = !n[key]; return n; }); }
+  const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);
+  function toggleFields() { setFieldsCollapsed(function (value) { return !value; }); }
   function matchesSearch(field, query) {
     if (!query) return true;
     const q = query.trim().toLowerCase();
@@ -715,16 +717,13 @@ function InfoBarSettingsSection(props) {
     if (savingCountRef.current === 0) setSaving(false);
   }, []);
 
-  // M2 屏显防护（铁律：绝不允许白屏）：渲染主体整体包进 try/catch——
-  // 任何渲染期异常都在页面内渲染为可见红色错误框（role=alert，含错误信息），而不是中断成白屏
+  // 渲染期异常显示在页面内，避免设置页变成白屏。
   try {
-    // 首渲骨架：即便配置尚未取回，也立刻渲染「信息底栏设置」标题行 + 载入说明
     if (status === 'loading') {
       return React.createElement('div', { className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
         React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings')));
     }
-    // RPC 加载失败：照旧显示可见错误文字（角色 alert），页面不空白
     if (status === 'error') {
       return React.createElement('div', { className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
@@ -885,22 +884,18 @@ function InfoBarSettingsSection(props) {
   }
 
   // ---- 渲染 ----
-  // 搜索时内容会强制展开，箭头和 aria-expanded 必须跟随实际可见状态，而不是只看手动折叠开关。
+  // 搜索时自动展开，箭头和 aria-expanded 始终反映实际可见状态。
   const searchActive = searchQuery.trim().length > 0;
-  const fieldsExpanded = !collapsed.fields || searchActive;
+  const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsTotal = FIELD_REGISTRY.length;
+  const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
+  const fieldsExpanded = !fieldsCollapsed || searchActive;
   const groupsChildren = [];
-  for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
+  if (fieldsExpanded) for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
     let groupFields = FIELD_REGISTRY.filter(function (f) { return f.group === group; });
     groupFields = groupFields.filter(function (f) { return matchesSearch(f, searchQuery); });
     if (groupFields.length === 0) continue;
-    // 折叠逻辑：默认折叠时只展示未启用（fieldOn false）的字段，已启用折叠起来；搜索时展开全部匹配
-    const isFieldsCollapsed = !fieldsExpanded;
-    if (isFieldsCollapsed) {
-      const disabledOnly = groupFields.filter(function (f) { return !fieldOn(f.id); });
-      if (disabledOnly.length === 0) continue;
-      groupFields = disabledOnly;
-    }
     const rows = [];
     for (let i = 0; i < groupFields.length; i++) {
       const field = groupFields[i];
@@ -919,9 +914,9 @@ function InfoBarSettingsSection(props) {
       const hexValue = draft !== null ? draft : committedHexText(field.id);
       const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
       const wellValue = isHex ? value : (isPreset ? (BIB_SET_PRESET_WELL_HEX[value] || '#333333') : '#333333');
-      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row', style: { flexDirection: 'column', alignItems: 'stretch', gap: '8px' } },
-        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', width: '100%' } },
-          React.createElement('div', { className: 'bib-set-rowText', style: { flex: '1 1 200px' } },
+      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row bib-set-row--field' },
+        React.createElement('div', { className: 'bib-set-row-main' },
+          React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
             React.createElement('div', { className: 'bib-set-rowTitle' },
               t(field.label),
               field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
@@ -932,7 +927,7 @@ function InfoBarSettingsSection(props) {
             title: fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
             onToggle: function (next) { setFieldFlag(field.id, next); },
           }),
-          React.createElement('div', { className: 'bib-set-controls', style: { flex: '0 0 auto' } },
+          React.createElement('div', { className: 'bib-set-controls bib-set-controls--field' },
             React.createElement(bibSetPalette, {
               label: t('ui.presetColor', { label: t(field.label) }),
               value: value,
@@ -963,35 +958,35 @@ function InfoBarSettingsSection(props) {
               onBlur: function () { commitHex(field.id); },
               onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); commitHex(field.id); } },
             }))),
-            (field.id === 'mainTime' || field.id === 'worldTime') ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', paddingLeft: '8px', width: '100%' } },
-              React.createElement('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-tertiary)' } }, field.id === 'mainTime' ? t('ui.mainTimeZone') : t('ui.worldTimeZone')),
+            (field.id === 'mainTime' || field.id === 'worldTime') ? React.createElement('div', { className: 'bib-set-subcontrols' },
+              React.createElement('span', { className: 'bib-set-subcontrol-label' }, field.id === 'mainTime' ? t('ui.mainTimeZone') : t('ui.worldTimeZone')),
               React.createElement('select', {
+                className: 'bib-set-time-zone',
                 value: field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world,
                 onChange: function (e) { setTimeZone(field.id === 'mainTime' ? 'main' : 'world', e.target.value); },
-                style: { padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' }
               }, TIME_ZONE_OPTIONS.map(function (z) { return React.createElement('option', { key: z, value: z }, z); })),
-              field.id === 'mainTime' ? React.createElement('span', { style: { display: 'inline-flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+              field.id === 'mainTime' ? React.createElement('span', { className: 'bib-set-time-parts' },
                 ['year','month','day','hour','minute','second'].map(function (k) {
                   const labelKey = { year: 'ui.year', month: 'ui.month', day: 'ui.day', hour: 'ui.hour', minute: 'ui.minute', second: 'ui.second' }[k];
-                  return React.createElement('span', { key: k, style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } },
-                    React.createElement('span', { style: { fontSize: '11px' } }, t(labelKey)),
+                  return React.createElement('span', { key: k, className: 'bib-set-time-part' },
+                    React.createElement('span', { className: 'bib-set-time-part-label' }, t(labelKey)),
                     bibSetSwitch({ label: t(labelKey), checked: !!timeFormatOf()[k], onToggle: function (next) { setTimeFormatPart(k, next); } }));
                 })) : null,
-              React.createElement('span', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' } }, t('ui.timePreview') + formatClock(Date.now(), field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world, timeFormatOf())))
+              React.createElement('span', { className: 'bib-set-time-preview' }, t('ui.timePreview') + formatClock(Date.now(), field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world, timeFormatOf())))
             : null,
-            field.id === 'customText' ? React.createElement('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', width: '100%', paddingLeft: '8px' } },
+            field.id === 'customText' ? React.createElement('div', { className: 'bib-set-subcontrols' },
               React.createElement('input', {
                 type: 'text',
+                className: 'bib-set-custom-text-input',
                 placeholder: t('ui.customTextPlaceholder'),
                 maxLength: 64,
                 value: customTextDraft !== null ? customTextDraft : committedCustomText(),
                 onChange: function (e) { onCustomTextChange(e.target.value); },
                 onBlur: function () { commitCustomText(); },
                 onKeyDown: function (e) { if (e.key === 'Enter') { e.preventDefault(); commitCustomText(); } },
-                style: { flex: '1 1 200px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', fontSize: '12px' },
                 'aria-label': t('ui.customTextTitle')
               }),
-              React.createElement('span', { style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' } }, customTextOf().length + '/64')
+              React.createElement('span', { className: 'bib-set-custom-text-count' }, customTextOf().length + '/64')
             ) : null
           ));
     }
@@ -1005,13 +1000,13 @@ function InfoBarSettingsSection(props) {
   else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice.text()));
   else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, t('ui.saving')));
 
-  const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsTotal = FIELD_REGISTRY.length;
-  const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
-  const disabledCount = fieldsTotal - fieldsEnabledCount;
   const fieldSummary = searchActive
     ? t('ui.searchResultCount', { count: fieldsMatchCount })
     : fieldsEnabledCount + ' / ' + fieldsTotal;
+  const fieldsBody = fieldsExpanded ? React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' },
+    searchActive && fieldsMatchCount === 0
+      ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
+      : groupsChildren) : null;
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
@@ -1032,31 +1027,31 @@ function InfoBarSettingsSection(props) {
       React.createElement('button', {
         type: 'button',
         className: 'bib-set-btn',
-        onClick: function () { setCollapsed({ fields: false, colors: false, time: false }); }
+        disabled: !fieldsCollapsed || searchActive,
+        onClick: function () { setFieldsCollapsed(false); }
       }, t('ui.expandAll') || '展开全部'),
       React.createElement('button', {
         type: 'button',
         className: 'bib-set-btn',
-        onClick: function () { setCollapsed({ fields: true, colors: true, time: true }); }
+        disabled: fieldsCollapsed || searchActive,
+        onClick: function () { setFieldsCollapsed(true); }
       }, t('ui.collapseAll') || '折叠全部'))),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
-      React.createElement('div', { className: 'bib-set-card-header', onClick: function () { toggleCollapsed('fields'); }, role: 'button', tabIndex: 0, 'aria-expanded': fieldsExpanded, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapsed('fields'); } } },
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
-          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields') + (collapsed.fields && !searchActive ? ' (' + t('ui.collapsedShowingDisabled', { count: disabledCount }) + ')' : '')),
+      React.createElement('div', { className: 'bib-set-card-header', onClick: toggleFields, role: 'button', tabIndex: 0, 'aria-expanded': fieldsExpanded, 'aria-controls': fieldsExpanded ? 'bib-set-fields-body' : undefined, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFields(); } } },
+        React.createElement('div', { className: 'bib-set-card-header-main' },
+          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields')),
           bibSetChevron({ expanded: fieldsExpanded })),
         React.createElement('div', { className: 'bib-set-card-desc' },
-          collapsed.fields && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
-      fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : (disabledCount > 0 ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren) : null)),
+          fieldsCollapsed && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
+      fieldsBody),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
       React.createElement('div', { className: 'bib-set-card-header' },
         React.createElement('h2', { id: 'bib-set-lang-title', className: 'bib-set-card-title' }, t('ui.languageSettings')),
         React.createElement('div', { className: 'bib-set-card-desc' },
           t('ui.languageSettingsDesc'))),
       React.createElement('div', { className: 'bib-set-body' },
-        React.createElement('div', { className: 'bib-set-row', style: { borderBottom: 'none' } },
-          React.createElement('div', { className: 'bib-set-rowText' },
-            React.createElement('div', { className: 'bib-set-rowTitle' }, t('ui.languageSettings'))),
-          React.createElement('div', { className: 'bib-set-controls' },
+        React.createElement('div', { className: 'bib-set-row bib-set-row--language' },
+          React.createElement('div', { className: 'bib-set-controls bib-set-controls--language' },
             React.createElement('div', { className: 'bib-set-lang-segment', role: 'radiogroup', 'aria-label': t('ui.languageSettings') },
               React.createElement('button', {
                 type: 'button',
@@ -1085,7 +1080,6 @@ function InfoBarSettingsSection(props) {
         onClick: function () { runReset('colors'); },
       }, t('ui.resetColors'))));
   } catch (err) {
-    // M2：渲染期异常绝不以白屏收场——改为页面内可见的红色错误框（role=alert，含错误信息）
     return React.createElement('div', { className: 'bib-set-root bib-settings' },
       bibSetPageTitle(),
       React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) })));
