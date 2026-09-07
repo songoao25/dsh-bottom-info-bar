@@ -145,7 +145,9 @@ check('折叠箭头方向与实际展开状态同步（含搜索强制展开）'
   && clientSrc.includes('const fieldsExpanded = !collapsed.fields || searchActive;')
   && clientSrc.includes("'aria-expanded': fieldsExpanded")
   && clientSrc.includes('bibSetChevron({ expanded: fieldsExpanded })')
-  && clientSrc.includes("fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren)"), true);
+  && clientSrc.includes("fieldsExpanded ? React.createElement('div', { className: 'bib-set-body' }, groupsChildren)")
+  && clientSrc.includes('.bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(0deg)')
+  && clientSrc.includes('.bib-set-chevron[data-expanded="true"] svg { transform: rotate(180deg);'), true);
 check('设置页搜索工具栏使用系统清除操作与本地化匹配数量', clientSrc.includes("className: 'bib-set-toolbar'")
   && clientSrc.includes("type: 'search'")
   && clientSrc.includes("className: 'bib-set-search'")

@@ -512,10 +512,10 @@ function bibSetInstallStyles() {
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      /* 折叠指示器：使用独立 SVG chevron，避免字符箭头受字体影响；收起向右，展开向下 */
+      /* 下拉/折叠指示器：使用独立 SVG V 形，与 DSH 原生弹出式按钮的下拉箭头保持同向；收起向下，展开向上 */
       .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 16px; height: 16px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: color 160ms var(--ds-ease-in-out, ease); }
-      .bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(-90deg); transform-origin: center; transition: transform 160ms var(--ds-ease-in-out, ease); }
-      .bib-set-chevron[data-expanded="true"] svg { transform: rotate(0deg); }
+      .bib-set-chevron svg { display: block; width: 14px; height: 14px; transform: rotate(0deg); transform-origin: center; transition: transform 160ms var(--ds-ease-in-out, ease); }
+      .bib-set-chevron[data-expanded="true"] svg { transform: rotate(180deg); }
       .bib-set-card-header:hover .bib-set-chevron { color: var(--dsw-alias-label-primary); }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
