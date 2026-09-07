@@ -6,8 +6,6 @@ name: Auto-merge own PRs
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   pull-requests: write
@@ -16,12 +14,24 @@ permissions:
 jobs:
   enable-auto-merge:
     # 只有 owner 的 PR 才進入；draft PR 不自動合
-    if: github.event.pull_request.user.login == 'songoao25' && github.event.pull_request.draft == false
+    if: github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
+      - name: Report automation token mode
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::warning::RELEASE_PLEASE_TOKEN is not configured; auto-merge will work, but release/publish workflows may need manual dispatch."
+          else
+            echo "RELEASE_PLEASE_TOKEN is configured; downstream workflow triggers are enabled."
+          fi
       - name: Enable auto-merge (squash) for owner PR
         run: |
           echo "Owner PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }} → enable auto-merge (squash)"
           gh pr merge --auto --squash "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer an owner PAT so merged PRs can trigger downstream workflows;
+          # fall back to GITHUB_TOKEN so missing optional configuration does not
+          # block the repository owner's normal auto-merge path.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}

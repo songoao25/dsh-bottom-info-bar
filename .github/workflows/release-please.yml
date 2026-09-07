@@ -2,15 +2,29 @@ name: Release Please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
   pull-requests: write
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      - name: Report release token mode
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::warning::RELEASE_PLEASE_TOKEN is not configured; Release Please can prepare a release, but tag/publish follow-up may need manual dispatch."
+          else
+            echo "RELEASE_PLEASE_TOKEN is configured; automatic release follow-up is enabled."
+          fi
       - uses: google-github-actions/release-please-action@v4
         with:
-          release-type: node
-          path: plugin
-          package-name: dsh-bottom-info-bar
+          # A PAT lets the generated release commit/tag trigger downstream
+          # workflows. The built-in token remains a safe manual-dispatch
+          # fallback when the optional secret is not configured.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
