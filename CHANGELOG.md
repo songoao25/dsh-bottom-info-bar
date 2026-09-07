@@ -2,6 +2,14 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.3...v1.10.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **client:** clarify language selector scope ([094d971](https://github.com/songoao25/dsh-bottom-info-bar/commit/094d971ec229594396aa5ebbe0a6051265bd6bfa))
+* **host:** attribute session spend by lineage ([#46](https://github.com/songoao25/dsh-bottom-info-bar/issues/46)) ([0c51060](https://github.com/songoao25/dsh-bottom-info-bar/commit/0c5106094bfe822cdf63a08ec0e6410ff53642ca))
+
 ## [1.10.3] - 2026-09-06
 
 > v1.10.3：独立审计全量修复——数据正确性、安全、性能与可维护性 17 项加固。
