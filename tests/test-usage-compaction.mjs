@@ -157,18 +157,36 @@ function refSpendSummary(records, nowMs, account, currency, balance) {
     offpeakDaysLeft: offpeakDailySpend > 0 ? Math.round(balance / offpeakDailySpend * 10) / 10 : null,
   }
 }
-function refCurrentSession(records, account, sessionId) {
-  if (!sessionId) return null
-  const norm = refNormalize(sessionId)
-  let start = null
-  for (const r of records) {
-    if (refNormalize(r.sessionId) !== norm) continue
-    if (start === null || r.ts < start) start = r.ts
+function refLineageIds(entries, sessionId) {
+  const root = refNormalize(sessionId)
+  const owned = new Set(root ? [root] : [])
+  const childrenByParent = new Map()
+  for (const entry of entries || []) {
+    if (!entry || entry.origin !== 'subagent') continue
+    const id = refNormalize(entry.sessionId || entry.id)
+    const parent = refNormalize(entry.parentSessionId || entry.parentId)
+    if (!id || !parent) continue
+    const children = childrenByParent.get(parent) || []
+    children.push(id)
+    childrenByParent.set(parent, children)
   }
-  if (start === null) return null
+  const pending = [root]
+  while (pending.length > 0) {
+    const parent = pending.shift()
+    for (const child of childrenByParent.get(parent) || []) {
+      if (owned.has(child)) continue
+      owned.add(child)
+      pending.push(child)
+    }
+  }
+  return owned
+}
+function refCurrentSession(records, account, sessionId, lineageEntries) {
+  if (!sessionId) return null
+  const owned = lineageEntries ? refLineageIds(lineageEntries, sessionId) : new Set([refNormalize(sessionId)])
   const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} }
   for (const r of records) {
-    if (r.ts < start) continue
+    if (!owned.has(refNormalize(r.sessionId))) continue
     if (refAccount(r) !== account) continue
     acc.input += r.input
     acc.cacheRead += r.cacheRead
@@ -193,10 +211,14 @@ function refSessionCount(records, account) {
 }
 
 // ---------- 桩环境（与 test-usage-ledger 同构；余额桩让 spendSummary 物化） ----------
-function makeStub() {
+function makeStub(sessionEntries) {
   const captured = { route: null, llmListener: null }
   const ctx = {
-    get(name) { return name === 'agentDefaultModel' ? { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) } : undefined },
+    get(name) {
+      if (name === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) }
+      if (name === 'sessionController' && sessionEntries) return { list: async () => ({ items: sessionEntries }) }
+      return undefined
+    },
     credentials: { resolve: async (name) => (name === 'DEEPSEEK_API_KEY' ? { value: 'sk-test' } : null) },
     interval() { return () => {} },
     timeout() { return () => {} },
@@ -352,7 +374,11 @@ const fixture = buildBigFixture()
 writeFixture(dataDir1, fixture.snapshot, fixture.journalLines)
 const allRecords = fixture.snapshot.concat(fixture.journalLines.map((line) => JSON.parse(line)))
 
-const first = makeStub()
+const recentLineage = [
+  { sessionId: 'recent-check' },
+  { sessionId: 'recent-check-sub', parentSessionId: 'recent-check', origin: 'subagent' },
+]
+const first = makeStub(recentLineage)
 const dispose1 = m1.plugin.apply(first.ctx)
 await new Promise((resolve) => setTimeout(resolve, 50))
 const summary1 = await invokeSummary(first.captured.route, 'recent-check')
@@ -374,11 +400,10 @@ check('① 大账本折叠后 getUsageSummary 返回 200', !!summary1 && typeof 
     && sameMoney(summary1.spend.offpeakDailySpend, wantSpend.offpeakDailySpend)
     && sameMoney(summary1.spend.daysLeft, wantSpend.daysLeft),
     { got: summary1.spend, want: wantSpend })
-  const wantSession = refCurrentSession(allRecords, account, 'recent-check')
-  const wantSub = refCurrentSession(allRecords, account, 'recent-check-sub')
-  // v1.7 语义：主会话聚合 = 起点 + 同账户全部记录 → 本身已并入子代理记录（wantMain 含 sub），
-  // 故主会话与基线逐字段相等 + 子代理自身聚合也与基线相等，即为等价（且证明子代理未被丢账）
-  check('① currentSessionSummary 逐字段相等（主会话含同账户子代理并入）',
+  const wantSession = refCurrentSession(allRecords, account, 'recent-check', recentLineage)
+  const wantSub = refCurrentSession(allRecords, account, 'recent-check-sub', recentLineage)
+  // Issue #44 语义：主会话聚合 = 根会话 + origin=subagent 后代；同账户其他会话不再靠时间窗猜测并入。
+  check('① currentSessionSummary 逐字段相等（主会话只含明确子代理）',
     summary1.currentSession && summary1Sub.currentSession
     && summary1.currentSession.tokens === wantSession.tokens
     && close(summary1.currentSession.costs.CNY, wantSession.costs.CNY)
@@ -406,7 +431,7 @@ dispose1() // 冲刷：快照重写为窗内明细 + journal 滚动压缩 + summ
 }
 
 // 重启（重新 load）后总额不变（幂等）
-const second = makeStub()
+const second = makeStub(recentLineage)
 const dispose2 = m1.plugin.apply(second.ctx)
 await new Promise((resolve) => setTimeout(resolve, 50))
 const summary2 = await invokeSummary(second.captured.route, 'recent-check')
@@ -467,18 +492,26 @@ dispose2()
   legacy.push(makeRecord('mid-2', beijingTs(10, 9, 30), 'mid-session-sub', { cost: 0.125, input: 60, cacheRead: 0, cacheWrite: 0, output: 10 }))
   legacy.push(makeRecord('mid-3', NOW - 2 * 3600 * 1000, 'mid-session', { cost: 0.25, input: 100, cacheRead: 0, cacheWrite: 0, output: 20 }))
   writeFixture(dataDir2, legacy, [])
-  const stub2 = makeStub()
+  const legacyLineage = [
+    { sessionId: 'legacy-long' },
+    { sessionId: 'legacy-sub', parentSessionId: 'legacy-long', origin: 'subagent' },
+    { sessionId: 'legacy-other' },
+    { sessionId: 'mid-session' },
+    { sessionId: 'mid-session-sub', parentSessionId: 'mid-session', origin: 'subagent' },
+    { sessionId: 'mid-noise-sess' },
+  ]
+  const stub2 = makeStub(legacyLineage)
   const dispose2b = m2.plugin.apply(stub2.ctx)
   await new Promise((resolve) => setTimeout(resolve, 50))
   const legacyNow = await invokeSummary(stub2.captured.route, 'legacy-long')
-  const wantLegacy = refCurrentSession(legacy, 'deepseek', 'legacy-long')
-  check('② 会话起点早于压缩窗：currentSessionSummary 压缩前后 tokens 相等（含子代理与同日后续会话）',
+  const wantLegacy = refCurrentSession(legacy, 'deepseek', 'legacy-long', legacyLineage)
+  check('② 压缩窗外会话：currentSessionSummary 只含明确子代理，压缩前后 tokens 相等',
     legacyNow.currentSession && legacyNow.currentSession.tokens === wantLegacy.tokens, { got: legacyNow.currentSession, want: wantLegacy })
-  check('② 会话起点早于压缩窗：costs 压缩前后相等',
+  check('② 压缩窗外会话：明确子代理 costs 压缩前后相等',
     legacyNow.currentSession && close(legacyNow.currentSession.costs.CNY, wantLegacy.costs.CNY), { got: legacyNow.currentSession && legacyNow.currentSession.costs, want: wantLegacy.costs })
   const midNow = await invokeSummary(stub2.captured.route, 'mid-session')
-  const wantMid = refCurrentSession(legacy, 'deepseek', 'mid-session')
-  check('② 窗内会话保持起点当天逐条过滤：起点之前的同日噪声绝不混入',
+  const wantMid = refCurrentSession(legacy, 'deepseek', 'mid-session', legacyLineage)
+  check('② 窗内会话只含明确子代理：同日噪声和其他会话绝不混入',
     midNow.currentSession && midNow.currentSession.tokens === wantMid.tokens && close(midNow.currentSession.costs.CNY, wantMid.costs.CNY),
     { got: midNow.currentSession, want: wantMid })
   dispose2b()

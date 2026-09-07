@@ -33,6 +33,7 @@ const cases = [
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.js'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.js'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
+  ['test-session-lineage（Issue #44 父子会话精确归属）', ['tests/test-session-lineage.mjs'], join(root), process.execPath],
   ['test-usage-compaction（v1.9 压缩等价/会话锁/回填/扫描量/崩溃安全）', ['tests/test-usage-compaction.mjs'], join(root), process.execPath],
   ['test-field-settings（v1.9 PR2 设置落盘/白名单/密度持久/双重置/configVersion）', ['tests/test-field-settings.mjs'], join(root), process.execPath],
   ['test-field-config-client（v1.9 PR2 客户端过滤/零回归着色/注册表一致性）', ['tests/test-field-config-client.js'], join(root), process.execPath],
