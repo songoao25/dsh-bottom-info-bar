@@ -17,18 +17,21 @@ jobs:
     if: github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Verify automation token
+      - name: Report automation token mode
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::RELEASE_PLEASE_TOKEN must be an owner PAT so merged PRs can trigger downstream workflows."
-            exit 1
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::warning::RELEASE_PLEASE_TOKEN is not configured; auto-merge will work, but release/publish workflows may need manual dispatch."
+          else
+            echo "RELEASE_PLEASE_TOKEN is configured; downstream workflow triggers are enabled."
           fi
       - name: Enable auto-merge (squash) for owner PR
         run: |
           echo "Owner PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }} → enable auto-merge (squash)"
           gh pr merge --auto --squash "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}"
         env:
-          # A repository GITHUB_TOKEN suppresses push-triggered workflows.
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Prefer an owner PAT so merged PRs can trigger downstream workflows;
+          # fall back to GITHUB_TOKEN so missing optional configuration does not
+          # block the repository owner's normal auto-merge path.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}

@@ -13,14 +13,18 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify automation token
+      - name: Report release token mode
         env:
           RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
           if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
-            echo "::error::RELEASE_PLEASE_TOKEN must be an owner PAT so release PRs can run CI and auto-merge."
-            exit 1
+            echo "::warning::RELEASE_PLEASE_TOKEN is not configured; Release Please can prepare a release, but tag/publish follow-up may need manual dispatch."
+          else
+            echo "RELEASE_PLEASE_TOKEN is configured; automatic release follow-up is enabled."
           fi
       - uses: google-github-actions/release-please-action@v4
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # A PAT lets the generated release commit/tag trigger downstream
+          # workflows. The built-in token remains a safe manual-dispatch
+          # fallback when the optional secret is not configured.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
