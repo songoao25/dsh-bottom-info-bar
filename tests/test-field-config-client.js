@@ -133,19 +133,37 @@ check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设�
     && body.includes('bibSetPageTitle()');
 })(), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
-  && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("t('ui.show', { label: t(field.label) })"), true);
-check('折叠箭头复用 DSH 原生 IconChevronDownOutline14 且不暴露字符箭头', clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
+  && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("label: t('ui.show', { label: fieldLabel })"), true);
+check('折叠箭头复用 DSH 原生上下箭头且不暴露字符箭头', clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
+  && clientSrc.includes('IconChevronUpOutline14')
+  && clientSrc.includes('IconChevronDownOutline14')
+  && clientSrc.includes('const Chevron = props.expanded ? BIB_SET_PRIMITIVES.IconChevronUpOutline14 : BIB_SET_PRIMITIVES.IconChevronDownOutline14;')
   && clientSrc.includes("className: 'bib-set-chevron'")
-  && clientSrc.includes('React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14 })')
   && clientSrc.includes("'aria-hidden': 'true'")
+  && !clientSrc.includes('IconChevronLeftOutline14')
   && !clientSrc.includes("collapsed.fields ? '▶' : '▼'"), true);
 check('折叠箭头方向与实际展开状态同步（含搜索强制展开）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
   && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed || searchActive;')
-  && clientSrc.includes("'aria-expanded': fieldsExpanded")
-  && clientSrc.includes('bibSetChevron({ expanded: fieldsExpanded })')
-  && clientSrc.includes("'aria-controls': fieldsExpanded ? 'bib-set-fields-body' : undefined")
+  && clientSrc.includes("'aria-expanded': props.expanded")
+  && clientSrc.includes('expanded: fieldsExpanded')
+  && clientSrc.includes("'aria-controls': props.expanded ? props.contentId : undefined")
   && clientSrc.includes("const fieldsBody = fieldsExpanded ? React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' }")
-  && clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);'), true);
+  && !clientSrc.includes('rotate(180deg)')
+  && !clientSrc.includes('IconChevronLeftOutline14'), true);
+check('设置页基础结构拆分为可复用卡片/行组件', clientSrc.includes('function bibSetCardHeader(props)')
+  && clientSrc.includes('function bibSetFieldRow(field, props)')
+  && clientSrc.includes('function bibSetFieldGroups(props)')
+  && clientSrc.includes('function bibSetLanguageCard(props)')
+  && clientSrc.includes('React.createElement(bibSetPalette, {')
+  && clientSrc.includes('bibSetCardHeader({'), true);
+check('折叠头部使用原生 button 语义，避免 div role=button 与自定义键盘逻辑', (function () {
+  const header = extractFunctionFrom(clientSrc, 'bibSetCardHeader');
+  return header.includes("type: 'button'")
+    && header.includes("className: className")
+    && header.includes("'aria-expanded': props.expanded")
+    && !header.includes("role: 'button'")
+    && !header.includes('tabIndex: 0');
+})(), true);
 check('折叠是真正收起：不再渲染未启用字段预览或幽灵内容层', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
@@ -160,7 +178,7 @@ check('折叠是真正收起：不再渲染未启用字段预览或幽灵内容�
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
-    && clientSrc.includes('.bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; }')
+    && clientSrc.includes('.bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
 check('搜索无结果有明确空状态，避免空白内容块', clientSrc.includes("t('ui.noSearchResults')")
@@ -177,11 +195,12 @@ check('D6 解锁：「身份锚点」仅作为说明文字保留', clientSrc.inc
 check('错误/提醒类字段带「建议保留」徽标', clientSrc.includes("t('ui.recommended')"), true);
 check('色板为 radiogroup/radio + roving tabindex（方向键/Home/End 键盘可达）', clientSrc.includes("role: 'radiogroup'")
   && clientSrc.includes("role: 'radio'") && clientSrc.includes('ArrowRight') && clientSrc.includes("'Home'"), true);
-check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', clientSrc.includes("'aria-label': t('ui.customColor', { label: t(field.label) })")
-  && clientSrc.includes("'aria-label': t('ui.hexColor', { label: t(field.label) })")
+check('原生取色器与 hex 输入各带可读名 + 非法描红（aria-invalid）', clientSrc.includes("'aria-label': t('ui.customColor', { label: fieldLabel })")
+  && clientSrc.includes("'aria-label': t('ui.hexColor', { label: fieldLabel })")
   && clientSrc.includes("'aria-invalid': hexInvalid ? 'true' : 'false'"), true);
 check('hex 非法拒绝回退：仅 Enter/失焦提交且非法值不入库', clientSrc.includes('if (!BIB_SET_HEX_PATTERN.test(value))')
-  && clientSrc.includes("onBlur: function () { commitHex(field.id); }"), true);
+  && clientSrc.includes("onBlur: function () { props.onHexCommit(field.id); }")
+  && clientSrc.includes("props.onHexCommit(field.id);"), true);
 check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）', clientSrc.includes('applyOptimistic();')
   && clientSrc.includes('revertOptimistic();') && clientSrc.includes('const seq = ++opSeqRef.current;')
   && clientSrc.includes('if (seq !== opSeqRef.current)'), true);
@@ -210,7 +229,10 @@ check('构建产物含被注入的字段注册表与设置页注册（非空锚�
   const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
   const fakeRequire = function (name) {
     if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
-    if (name === '@deepseek-ai/dsh-client-ui-primitives') return { IconChevronDownOutline14: function () { return null; } };
+    if (name === '@deepseek-ai/dsh-client-ui-primitives') return {
+      IconChevronDownOutline14: function () { return null; },
+      IconChevronUpOutline14: function () { return null; },
+    };
     throw new Error('unexpected require: ' + name);
   };
   try {
