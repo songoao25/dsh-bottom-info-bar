@@ -1,7 +1,7 @@
 // Bottom Info Bar（底部信息栏插件）— host half（静态 bundle 形态）
 // 业务：余额真实 API / 峰谷定价 / llm/stream 记账 / 会话聚合 / 显示名识别 / 订阅额度显示
 // RPC：webServer HTTP 路由（GET/POST /_dsh/dsh-bottom-info-bar/<method>，JSON 进出，同源防护）
-// 依赖：inject ['credentials', 'timer']；可选服务 webServer（ctx.inject 等待）
+// 依赖：inject ['credentials', 'timer']；可选服务 webServer / sessionController（按能力读取）
 // 记账持久化：追加账本 + 可恢复快照落盘 ~/.dsh/dsh-bottom-info-bar/（可用环境变量
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
@@ -817,6 +817,8 @@ export const __usageInternals = {
     aggregatesVersion: 0,
   },
   reset: resetUsageInternals,
+  normalizeSessionId: normalizeSessionIdValue,
+  sessionLineageIds: sessionLineageIds,
 }
 
 // ---------- v1.9.0 PR2：settings.json（字段显隐/颜色/信息密度）读写 ----------
@@ -986,6 +988,40 @@ function hardenLedgerFilePermissions() {
   } catch (err) { /* 尽力而为，不因权限问题崩溃 */ }
 }
 
+// DSH 的 sessionController 在宿主侧提供冷安全的会话摘要。这里仍接受
+// id/parentId 两种字段名，方便和不同版本的宿主/测试桩对接。
+function normalizeSessionIdValue(id) {
+  if (!id) return ''
+  return String(id).replace(/^session-/, '')
+}
+
+function sessionLineageIds(entries, rootSessionId) {
+  const root = normalizeSessionIdValue(rootSessionId)
+  const owned = new Set(root ? [root] : [])
+  if (!root || !Array.isArray(entries)) return owned
+  const childrenByParent = new Map()
+  for (const entry of entries) {
+    if (!entry || entry.origin !== 'subagent') continue
+    const id = normalizeSessionIdValue(entry.sessionId != null ? entry.sessionId : entry.id)
+    const parent = normalizeSessionIdValue(entry.parentSessionId != null ? entry.parentSessionId : entry.parentId)
+    if (!id || !parent) continue
+    const children = childrenByParent.get(parent) || []
+    children.push(id)
+    childrenByParent.set(parent, children)
+  }
+  const pending = [root]
+  while (pending.length > 0) {
+    const parent = pending.shift()
+    const children = childrenByParent.get(parent) || []
+    for (const child of children) {
+      if (owned.has(child)) continue
+      owned.add(child)
+      pending.push(child)
+    }
+  }
+  return owned
+}
+
 export const __settingsInternals = {
   // 测试/诊断专用：不参与任何业务判定
   sanitizeSettings: sanitizeSettings,
@@ -1009,6 +1045,51 @@ export default {
     const windowLabels = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') };
     // 版本检查只在 host 进程启动时发起一次；客户端后续只读取这个缓存结果。
     const updateInfoPromise = checkLatestVersion()
+    // 会话谱系列表是冷安全读取，但仍可能触发持久化查询；短暂缓存避免信息栏轮询
+    // 每次都重新扫描全部会话。缓存失效时再次读取，保证新建子代理最终能被纳入。
+    const SESSION_LINEAGE_CACHE_MS = 1000
+    let sessionLineageCache = { items: null, expiresAt: 0, pending: null }
+    let sessionLineageWarningShown = false
+
+    function sessionControllerForLineage() {
+      try {
+        if (ctx.get) {
+          const service = ctx.get('sessionController')
+          if (service && typeof service.list === 'function') return service
+        }
+      } catch (err) { /* 老版本宿主没有该可选服务，退回精确主会话 */ }
+      const direct = ctx.sessionController
+      if (direct && typeof direct.list === 'function') return direct
+      return null
+    }
+
+    async function readSessionLineageItems() {
+      const controller = sessionControllerForLineage()
+      if (!controller) return null
+      const now = Date.now()
+      if (sessionLineageCache.expiresAt > now) return sessionLineageCache.items
+      if (sessionLineageCache.pending) return sessionLineageCache.pending
+      sessionLineageCache.pending = (async function () {
+        try {
+          const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+            ? AbortSignal.timeout(1500)
+            : undefined
+          const result = signal === undefined ? await controller.list({}) : await controller.list({}, signal)
+          const items = Array.isArray(result) ? result : (result && Array.isArray(result.items) ? result.items : null)
+          if (!items) throw new Error('sessionController.list returned no items')
+          sessionLineageCache = { items: items, expiresAt: Date.now() + SESSION_LINEAGE_CACHE_MS, pending: null }
+          return items
+        } catch (err) {
+          sessionLineageCache = { items: null, expiresAt: Date.now() + SESSION_LINEAGE_CACHE_MS, pending: null }
+          if (!sessionLineageWarningShown) {
+            sessionLineageWarningShown = true
+            console.warn('[dsh-bottom-info-bar] session lineage unavailable; current-session totals use the selected session only: ' + String((err && err.message) || err))
+          }
+          return null
+        }
+      })()
+      return sessionLineageCache.pending
+    }
 
     // ---------- 定价表（元/美元 · 百万 tokens；来源与人工复核规则见 docs/PRICING-SOURCES.md） ----------
     const PRICING = {
@@ -2277,7 +2358,6 @@ export default {
       foldedUpTo: null, // 折叠边界（北京日起点 ms）；null = 从未折叠
       dayBuckets: {},   // day → account → currency → bucket
       sessions: {},     // accountKey\0sessionKey → { sessionId, account, input, cacheRead, cacheWrite, output, costs, minTs, maxTs }
-      sessionStarts: {}, // normalizeSessionId → minTs（跨账户取最小，本会话语义的 O(1) 起点）
       accountTotals: {}, // account → Σ costOf（币种混算，保持旧 providerSpend 口径）
     };
     let foldedSessionsDelta = {}; // 折叠记录的会话增量（持久化于 summaries；与明细重建部分不相交）
@@ -2355,12 +2435,6 @@ export default {
       }
       if (record.ts < entry.minTs) entry.minTs = record.ts;
       if (record.ts > entry.maxTs) entry.maxTs = record.ts;
-      // 本会话起点 = 该归一化 sessionId 的最早记录（跨账户取最小，与旧全扫口径一致）
-      const norm = normalizeSessionId(record.sessionId);
-      if (norm) {
-        const known = summariesState.sessionStarts[norm];
-        if (known == null || record.ts < known) summariesState.sessionStarts[norm] = record.ts;
-      }
     }
 
     // 记账 O(1) 路径：push 后增量更新当日桶 + 会话索引 + 账户累计器
@@ -2425,7 +2499,6 @@ export default {
       summariesState.foldedUpTo = boundary;
       summariesState.dayBuckets = {};
       summariesState.sessions = {};
-      summariesState.sessionStarts = {};
       summariesState.accountTotals = {};
       if (fileSummaries) {
         for (const day of Object.keys(fileSummaries.foldedDayBuckets)) {
@@ -2454,11 +2527,6 @@ export default {
             minTs: Number(entry.minTs) || 0,
             maxTs: Number(entry.maxTs) || 0,
           };
-          const norm = normalizeSessionId(entry.sessionId);
-          if (norm) {
-            const known = summariesState.sessionStarts[norm];
-            if (known == null || entry.minTs < known) summariesState.sessionStarts[norm] = entry.minTs;
-          }
         }
         for (const key of Object.keys(fileSummaries.foldedAccountTotals)) {
           summariesState.accountTotals[safeMapKey(key)] = Number(fileSummaries.foldedAccountTotals[key]) || 0;
@@ -3039,66 +3107,32 @@ export default {
       };
     }
 
-    // 会话 ID 归一化：DSH 部分路径会给 sessionId 加 'session-' 前缀，去掉后统一比较
-    function normalizeSessionId(id) {
-      if (!id) return '';
-      return String(id).replace(/^session-/, '');
-    }
-
-    // v1.7（发布前微调）：本会话聚合含子代理花费——从"按 sessionId 精确匹配"改为
-    // "会话起点 = 当前 sessionId 的最早记录时间戳；聚合同账户（recordAccount === activeAccount）
-    //  且 ts >= 会话起点的全部记录"——子代理/同账户不同 sessionId 的并行记录自然被纳入。
-    // 未知账户（activeAccount=null）时匹配无主记录（recordAccount 同为 null），绝不混入其他账户。
-    // v1.9：起点由会话索引 O(1) 取得；起点之后的天读日桶，起点当天（边界天）在明细上
-    // 二分后逐条过滤 r.ts >= start——边界天不读桶、桶不含边界天，与旧两遍全扫逐字段等价。
-    // 例外（退化）：起点早于 90 天折叠窗时边界天的 priced 明细已折叠，只能整天读桶，
-    // 无法再剔除起点之前的同日同账户记录（见 docs/PERF-AUDIT-v1.9.md §⑤ 风险表）。
-    function accumulateBucketDay(acc, day, accountKey) {
-      const dayBuckets = summariesState.dayBuckets[day];
-      const accountBuckets = dayBuckets && dayBuckets[accountKey];
-      if (!accountBuckets) return;
-      for (const currency of Object.keys(accountBuckets)) {
-        const bucket = accountBuckets[currency];
-        acc.input += bucket.input;
-        acc.cacheRead += bucket.cacheRead;
-        acc.cacheWrite += bucket.cacheWrite;
-        acc.output += bucket.output;
-        if (bucket.records > 0) acc.costs[currency] = (acc.costs[currency] || 0) + bucket.cost;
-      }
-    }
-
-    function currentSessionSummary(activeAccount, sessionId) {
+    // Issue #44：本会话只聚合当前会话及 DSH 明确标记为 origin=subagent 的后代。
+    // 旧实现用“当前会话最早时间 + 同账户后续所有记录”推测子代理，会把并行的其他会话
+    // 一并算进来；没有 sessionController 的老宿主则安全退回“只算选中会话”，绝不猜测。
+    async function currentSessionSummary(activeAccount, sessionId) {
       if (usageRecords.length === 0) return null;
       if (!sessionId) return null; // 无可用会话 ID：不猜测归属，客户端显示 ¥0.000，而非回退最近会话
-      const norm = normalizeSessionId(sessionId);
-      const sessionStart = summariesState.sessionStarts[norm];
-      if (sessionStart == null) return null; // 明确传入但未命中（新会话尚无记账）→ 客户端显示 ¥0.000
-      const accountKey = accountBucketKey(activeAccount);
+      const norm = normalizeSessionIdValue(sessionId);
+      if (!norm) return null;
+      const lineageItems = await readSessionLineageItems();
+      const ownedSessionIds = lineageItems ? sessionLineageIds(lineageItems, norm) : new Set([norm]);
       const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} };
-      const boundaryDay = beijingDayKey(sessionStart);
-      const boundaryStartMs = beijingDayStartMs(boundaryDay);
-      if (summariesState.foldedUpTo == null || boundaryStartMs >= summariesState.foldedUpTo) {
-        // 边界天仍在保留窗内：明细完整，逐条过滤（ts 有序 → 二分定位，只扫边界天）
-        scanDetailRange(boundaryStartMs, boundaryStartMs + MS_PER_DAY, function (r) {
-          if (r.ts < sessionStart) return;
-          if (recordAccount(r) !== activeAccount) return; // 只聚合当前账户（含无主 null 账户匹配）
-          acc.input += r.input;
-          acc.cacheRead += r.cacheRead;
-          acc.cacheWrite += r.cacheWrite;
-          acc.output += r.output;
-          const c = costOf(r, false);
-          if (c != null) {
-            const cur = recordCurrency(r);
-            acc.costs[cur] = (acc.costs[cur] || 0) + c;
-          }
-        });
-      } else {
-        accumulateBucketDay(acc, boundaryDay, accountKey);
+      let matched = false;
+      for (const key of Object.keys(summariesState.sessions)) {
+        const entry = summariesState.sessions[key];
+        if (!entry || entry.account !== activeAccount) continue;
+        if (!ownedSessionIds.has(normalizeSessionIdValue(entry.sessionId))) continue;
+        matched = true;
+        acc.input += entry.input;
+        acc.cacheRead += entry.cacheRead;
+        acc.cacheWrite += entry.cacheWrite;
+        acc.output += entry.output;
+        for (const currency of Object.keys(entry.costs || {})) {
+          acc.costs[currency] = (acc.costs[currency] || 0) + (Number(entry.costs[currency]) || 0);
+        }
       }
-      for (const day of Object.keys(summariesState.dayBuckets)) {
-        if (day <= boundaryDay) continue;
-        accumulateBucketDay(acc, day, accountKey);
-      }
+      if (!matched) return null; // 明确传入但未命中（新会话尚无记账）→ 客户端显示 ¥0.000
       const denom = acc.input + acc.cacheRead + acc.cacheWrite;
       return {
         input: acc.input,
@@ -3336,9 +3370,9 @@ export default {
     }
 
     // ---------- 用量汇总 ----------
-    // v1.9：全部字段由日桶/会话索引组装（O(桶数+会话数)+边界天扫描），明细遍历只剩
-    // “当前会话边界天 + 各滚动窗截止日”，不再随总记录数增长
-    function getUsageSummary(nowMs, sessionId, selection) {
+    // v1.9：全部字段由日桶/会话索引组装（O(桶数+会话数)+边界天扫描）；本会话改为
+    // 会话索引 + DSH 谱系读取，各滚动窗仍只扫描截止日，不再随总记录数增长。
+    async function getUsageSummary(nowMs, sessionId, selection) {
       const sel = selection || modelSelection();
       // v1.6：计算当前活跃账户，用于会话聚合过滤
       const activeAccount = accountForProvider(sel.provider);
@@ -3346,7 +3380,7 @@ export default {
       return {
         sessions: sessions.length,
         calibration: calibrationFrom(sessions, CALIB_SESSIONS),
-        currentSession: currentSessionSummary(activeAccount, sessionId),
+        currentSession: await currentSessionSummary(activeAccount, sessionId),
         spend: spendSummary(nowMs, selection),
         todaySpend: todaySpend(nowMs, selection),
         monthSpend: monthSpend(nowMs, selection),
@@ -3445,7 +3479,7 @@ export default {
       getEstimate: function () {
         return computeEstimate(Date.now());
       },
-      getUsageSummary: function (args) {
+      getUsageSummary: async function (args) {
         const sessionId = args && typeof args === 'object' ? String(args.sessionId || '') : '';
         return getUsageSummary(Date.now(), sessionId, selectionFromArgs(args));
       },

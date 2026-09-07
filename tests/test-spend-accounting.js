@@ -99,8 +99,7 @@ function sessionTotals() {
   return Array.from(map.values()).sort(function (a, b) { return a.lastTs - b.lastTs; });
 }
 
-// ---- v1.7 本会话聚合（含子代理）复刻——与 host.js currentSessionSummary 逐行一致：
-// 会话起点 = 当前 sessionId 最早记录 ts；聚合同账户（recordAccount === activeAccount）且 ts >= 起点的全部记录 ----
+// ---- Issue #44 本会话聚合复刻：只沿 DSH 的 origin=subagent 父子关系归属 ----
 function normalizeSessionId(id) {
   if (!id) return '';
   return String(id).replace(/^session-/, '');
@@ -110,21 +109,44 @@ function recordAccount(r) {
   if (r.provider === 'openai') return 'openai';
   return null;
 }
-function currentSessionSummary(usageRecords, activeAccount, sessionId) {
+const sessionLineage = [
+  { sessionId: 'session-A' },
+  { sessionId: 'session-A-sub', parentSessionId: 'session-A', origin: 'subagent' },
+  { sessionId: 'session-B' },
+  { sessionId: 'session-C' },
+]
+function lineageIds(entries, sessionId) {
+  const root = normalizeSessionId(sessionId)
+  const owned = new Set([root])
+  const childrenByParent = new Map()
+  for (const entry of entries) {
+    if (!entry || entry.origin !== 'subagent') continue
+    const id = normalizeSessionId(entry.sessionId)
+    const parent = normalizeSessionId(entry.parentSessionId)
+    if (!id || !parent) continue
+    const children = childrenByParent.get(parent) || []
+    children.push(id)
+    childrenByParent.set(parent, children)
+  }
+  const pending = [root]
+  while (pending.length > 0) {
+    const parent = pending.shift()
+    for (const child of childrenByParent.get(parent) || []) {
+      if (owned.has(child)) continue
+      owned.add(child)
+      pending.push(child)
+    }
+  }
+  return owned
+}
+function currentSessionSummary(usageRecords, activeAccount, sessionId, entries) {
   if (!usageRecords || usageRecords.length === 0) return null;
   if (!sessionId) return null; // 无可用会话 ID：不猜测归属，显示 ¥0.000
-  const norm = normalizeSessionId(sessionId);
-  let sessionStart = null;
-  for (let i = 0; i < usageRecords.length; i++) {
-    const r = usageRecords[i];
-    if (normalizeSessionId(r.sessionId) !== norm) continue;
-    if (sessionStart === null || r.ts < sessionStart) sessionStart = r.ts;
-  }
-  if (sessionStart === null) return null;
+  const owned = entries ? lineageIds(entries, sessionId) : new Set([normalizeSessionId(sessionId)]);
   const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} };
   for (let i = 0; i < usageRecords.length; i++) {
     const r = usageRecords[i];
-    if (r.ts < sessionStart) continue;
+    if (!owned.has(normalizeSessionId(r.sessionId))) continue;
     if (recordAccount(r) !== activeAccount) continue;
     acc.input += r.input;
     acc.cacheRead += r.cacheRead;
@@ -171,22 +193,19 @@ function totalSpend() {
 const sessions = sessionTotals();
 
 // ---- 断言 ----
-// 1) 本会话聚合（含子代理）：会话起点 = 当前 sessionId 最早记录 ts；聚合同账户 ts>=起点的全部记录
-const sA = currentSessionSummary(usageRecords, 'deepseek', 'session-A');
-const sB = currentSessionSummary(usageRecords, 'deepseek', 'session-B');
-const sC = currentSessionSummary(usageRecords, 'deepseek', 'session-C');
+// 1) 本会话聚合：主会话只包含自己和明确的子代理，不受同账户其他会话污染
+const sA = currentSessionSummary(usageRecords, 'deepseek', 'session-A', sessionLineage);
+const sB = currentSessionSummary(usageRecords, 'deepseek', 'session-B', sessionLineage);
+const sC = currentSessionSummary(usageRecords, 'deepseek', 'session-C', sessionLineage);
 const A2Tokens = 1000 + 500 + 0 + 2000 + 800 + 600 + 0 + 1500; // 会话 A 两条记录
 const subTokens = subRecord.input + subRecord.cacheRead + subRecord.cacheWrite + subRecord.output; // 子代理记录
 const B2Tokens = 2000 + 0 + 0 + 3000 + 500 + 100 + 0 + 1000; // 会话 B 两条记录
 const C1Tokens = 3000 + 0 + 0 + 5000; // 会话 C
 check('本会话 A tokens（A 2 次 + 同账户子代理 1 次）', sA.tokens, A2Tokens + subTokens);
-check('子代理记录被并入本会话 A（独立 sessionId、同账户、同时间窗）', sA.tokens > A2Tokens, true);
-check('本会话 B tokens（起点后同账户全部 = A + 子代理 + B）', sB.tokens, A2Tokens + subTokens + B2Tokens);
-check('本会话 C tokens（最旧起点 → 同账户全量）', sC.tokens, A2Tokens + subTokens + B2Tokens + C1Tokens);
-// A 与 B/C 花费不同（会话起点不同 → 聚合范围不同）
-check('A 花费 ≠ B 花费', sA.costs.CNY !== sB.costs.CNY, true);
-check('B 花费 ≠ C 花费', sB.costs.CNY !== sC.costs.CNY, true);
-check('会话聚合随起点单调：C >= B >= A（含子代理的会话窗重叠）', sC.costs.CNY >= sB.costs.CNY && sB.costs.CNY >= sA.costs.CNY, true);
+check('子代理记录被并入本会话 A（origin=subagent）', sA.tokens > A2Tokens, true);
+check('本会话 B 不再混入 A 或子代理', sB.tokens, B2Tokens);
+check('本会话 C 不再混入更早的其他会话', sC.tokens, C1Tokens);
+check('会话花费按谱系独立，不再随时间窗单调重叠', sA.costs.CNY !== sB.costs.CNY && sB.costs.CNY !== sC.costs.CNY, true);
 // 2) 今天/近一月/近30天/全部 与总账一致（会话聚合重叠不影响汇总口径）
 const totalOfAll = usageRecords.reduce(function (sum, r) { const c = costOf(r); return c != null ? sum + c : sum; }, 0);
 check('全部花费 = 全量记录直接求和（会话窗重叠不重复计费）', Math.round(totalSpend() * 1000) / 1000, Math.round(totalOfAll * 1000) / 1000);
