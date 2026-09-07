@@ -494,15 +494,16 @@ function bibSetInstallStyles() {
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .bib-set-toolbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-      .bib-set-card { overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 12px; }
-      .bib-set-card-header { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
-      .bib-set-card-header[role="button"] { cursor: pointer; user-select: none; -webkit-user-select: none; }
-      .bib-set-card-header[role="button"]:hover { background: transparent; }
-      .bib-set-card-header[role="button"]:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px; }
+      .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 0; padding: 14px 16px; border: 0; background: var(--bib-set-surface); color: inherit; font: inherit; text-align: left; }
+      .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
+      .bib-set-card-header:not(.bib-set-card-header--static):hover { background: var(--bib-set-surface); }
+      .bib-set-card-header:not(.bib-set-card-header--static):focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-card-header--static { cursor: default; }
       .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
       .bib-set-card-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
       .bib-set-card-desc { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; }
+      .bib-set-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
       .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
@@ -515,9 +516,9 @@ function bibSetInstallStyles() {
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      /* 复用 DSH 原生 IconChevronDownOutline14；关闭向下，打开旋转为向上。 */
-      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: transform 140ms var(--ds-ease-in-out, ease), color 140ms var(--ds-ease-in-out, ease); }
-      .bib-set-chevron[data-expanded="true"] { transform: rotate(180deg); color: var(--dsw-alias-label-primary); }
+      /* 使用 DSH 原生上下箭头组件，不依赖旋转或左右箭头的 CSS 变换。 */
+      .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; transition: color 140ms var(--ds-ease-in-out, ease); }
+      .bib-set-card-header:not(.bib-set-card-header--static):hover .bib-set-chevron, .bib-set-card-header:not(.bib-set-card-header--static):focus-visible .bib-set-chevron { color: var(--dsw-alias-label-primary); }
       .bib-set-chevron svg { display: block; width: 14px; height: 14px; }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
@@ -575,7 +576,7 @@ function bibSetInstallStyles() {
       @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
       @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-row--language { justify-content: flex-start; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-controls--language { margin-left: 0; } .bib-set-toolbar-actions .bib-set-btn { flex: 1 1 0; } .bib-set-footer { justify-content: flex-start; } }
       @media (max-width: 420px) { .bib-set-search-row { align-items: stretch; flex-wrap: wrap; } .bib-set-search-shell { flex-basis: 100%; } .bib-set-count { margin-left: 2px; } }
-      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron, .bib-set-chevron svg, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
+      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -650,11 +651,184 @@ function bibSetPageTitle() {
 }
 
 function bibSetChevron(props) {
+  const Chevron = props.expanded ? BIB_SET_PRIMITIVES.IconChevronUpOutline14 : BIB_SET_PRIMITIVES.IconChevronDownOutline14;
   return React.createElement('span', {
     className: 'bib-set-chevron',
     'data-expanded': props.expanded ? 'true' : 'false',
     'aria-hidden': 'true',
-  }, React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14 }));
+  }, React.createElement(Chevron, { size: 14 }));
+}
+
+function bibSetCardHeader(props) {
+  const className = 'bib-set-card-header' + (props.static ? ' bib-set-card-header--static' : '');
+  const title = React.createElement('span', {
+    id: props.titleId,
+    className: 'bib-set-card-title',
+    role: 'heading',
+    'aria-level': 2,
+  }, props.title);
+  const main = React.createElement('span', { className: 'bib-set-card-header-main' },
+    title,
+    props.static ? null : bibSetChevron({ expanded: props.expanded }));
+  const description = React.createElement('span', { className: 'bib-set-card-desc' }, props.description);
+  if (props.static) return React.createElement('div', { className: className }, main, description);
+  return React.createElement('button', {
+    type: 'button',
+    className: className,
+    'aria-expanded': props.expanded,
+    'aria-controls': props.expanded ? props.contentId : undefined,
+    onClick: props.onToggle,
+  }, main, description);
+}
+
+function bibSetFieldRow(field, props) {
+  const isAnchor = field.anchor === true;
+  const descParts = [];
+  if (isAnchor) descParts.push(t('ui.identifiesTheProviderAndModel'));
+  const modeText = bibSetModeText(field);
+  if (modeText) descParts.push(modeText + t('ui.sentenceEnd'));
+  if (field.note) descParts.push(t(field.note));
+  if (field.suggestKeep) descParts.push(t('ui.keepEnabledToSeeThese'));
+
+  const value = props.colorOf(field.id);
+  const isPreset = value !== null && PRESET_COLOR_SET.has(value);
+  const isHex = value !== null && !isPreset;
+  const draft = props.hexDraftOf(field.id);
+  const hexValue = draft !== null ? draft : props.committedHexText(field.id);
+  const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
+  const wellValue = isHex ? value : (isPreset ? (BIB_SET_PRESET_WELL_HEX[value] || '#333333') : '#333333');
+  const fieldLabel = t(field.label);
+
+  const rowMain = React.createElement('div', { className: 'bib-set-row-main' },
+    React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
+      React.createElement('div', { className: 'bib-set-rowTitle' },
+        fieldLabel,
+        field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
+      React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
+    bibSetSwitch({
+      label: t('ui.show', { label: fieldLabel }),
+      checked: props.fieldOn(field.id),
+      title: props.fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
+      onToggle: function (next) { props.onFieldToggle(field.id, next); },
+    }),
+    React.createElement('div', { className: 'bib-set-controls bib-set-controls--field' },
+      React.createElement(bibSetPalette, {
+        label: t('ui.presetColor', { label: fieldLabel }),
+        value: value,
+        onSelect: function (next) { props.onColorChange(field.id, next); },
+      }),
+      React.createElement('label', { className: 'bib-set-well' },
+        React.createElement('input', {
+          type: 'color',
+          'aria-label': t('ui.customColor', { label: fieldLabel }),
+          title: t('ui.customColorOpenColorPicker'),
+          value: wellValue,
+          onChange: function (event) {
+            const picked = event && event.target ? event.target.value : null;
+            if (picked && BIB_SET_HEX_PATTERN.test(picked)) props.onColorChange(field.id, picked.toUpperCase());
+          },
+        })),
+      React.createElement('input', {
+        type: 'text',
+        className: 'bib-set-hex',
+        'aria-label': t('ui.hexColor', { label: fieldLabel }),
+        'aria-invalid': hexInvalid ? 'true' : 'false',
+        'data-invalid': hexInvalid ? 'true' : 'false',
+        placeholder: '#RRGGBB',
+        spellCheck: false,
+        maxLength: 7,
+        value: hexValue,
+        onChange: function (event) { props.onHexChange(field.id, event && event.target ? event.target.value : ''); },
+        onBlur: function () { props.onHexCommit(field.id); },
+        onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onHexCommit(field.id); } },
+      })));
+
+  const subcontrols = [];
+  if (field.id === 'mainTime' || field.id === 'worldTime') {
+    subcontrols.push(React.createElement('span', { key: 'zone-label', className: 'bib-set-subcontrol-label' }, field.id === 'mainTime' ? t('ui.mainTimeZone') : t('ui.worldTimeZone')));
+    subcontrols.push(React.createElement('select', {
+      key: 'zone',
+      className: 'bib-set-time-zone',
+      value: field.id === 'mainTime' ? props.timeZonesOf().main : props.timeZonesOf().world,
+      onChange: function (event) { props.onTimeZoneChange(field.id === 'mainTime' ? 'main' : 'world', event.target.value); },
+    }, TIME_ZONE_OPTIONS.map(function (z) { return React.createElement('option', { key: z, value: z }, z); })));
+    if (field.id === 'mainTime') {
+      subcontrols.push(React.createElement('span', { key: 'parts', className: 'bib-set-time-parts' },
+        ['year','month','day','hour','minute','second'].map(function (key) {
+          const labelKey = { year: 'ui.year', month: 'ui.month', day: 'ui.day', hour: 'ui.hour', minute: 'ui.minute', second: 'ui.second' }[key];
+          return React.createElement('span', { key: key, className: 'bib-set-time-part' },
+            React.createElement('span', { className: 'bib-set-time-part-label' }, t(labelKey)),
+            bibSetSwitch({ label: t(labelKey), checked: !!props.timeFormatOf()[key], onToggle: function (next) { props.onTimeFormatChange(key, next); } }));
+        })));
+    }
+    subcontrols.push(React.createElement('span', { key: 'preview', className: 'bib-set-time-preview' },
+      t('ui.timePreview') + formatClock(Date.now(), field.id === 'mainTime' ? props.timeZonesOf().main : props.timeZonesOf().world, props.timeFormatOf())));
+  }
+  if (field.id === 'customText') {
+    subcontrols.push(React.createElement('input', {
+      key: 'custom-text',
+      type: 'text',
+      className: 'bib-set-custom-text-input',
+      placeholder: t('ui.customTextPlaceholder'),
+      maxLength: 64,
+      value: props.customTextDraft !== null ? props.customTextDraft : props.customTextOf(),
+      onChange: function (event) { props.onCustomTextChange(event.target.value); },
+      onBlur: props.onCustomTextCommit,
+      onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
+      'aria-label': t('ui.customTextTitle'),
+    }));
+    subcontrols.push(React.createElement('span', { key: 'custom-text-count', className: 'bib-set-custom-text-count' }, props.customTextOf().length + '/64'));
+  }
+
+  return React.createElement('div', { key: field.id, className: 'bib-set-row bib-set-row--field' },
+    rowMain,
+    subcontrols.length > 0 ? React.createElement('div', { className: 'bib-set-subcontrols' }, subcontrols) : null);
+}
+
+function bibSetFieldGroups(props) {
+  if (!props.expanded) return [];
+  const groups = [];
+  for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
+    const group = FIELD_GROUP_ORDER[g];
+    const groupFields = FIELD_REGISTRY.filter(function (field) {
+      return field.group === group && props.matchesSearch(field, props.query);
+    });
+    if (groupFields.length === 0) continue;
+    groups.push(React.createElement('div', { key: 'g-' + group },
+      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
+      groupFields.map(function (field) { return bibSetFieldRow(field, props); })));
+  }
+  return groups;
+}
+
+function bibSetLanguageCard(props) {
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-lang-title',
+      title: t('ui.languageSettings'),
+      description: t('ui.languageSettingsDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-body' },
+      React.createElement('div', { className: 'bib-set-row bib-set-row--language' },
+        React.createElement('div', { className: 'bib-set-controls bib-set-controls--language' },
+          React.createElement('div', { className: 'bib-set-lang-segment', role: 'radiogroup', 'aria-label': t('ui.languageSettings') },
+            React.createElement('button', {
+              type: 'button',
+              className: 'bib-set-lang-opt',
+              role: 'radio',
+              'aria-checked': props.localeActive !== 'en',
+              'data-active': props.localeActive !== 'en' ? 'true' : 'false',
+              onClick: function () { props.onSelect('zh'); },
+            }, '中文'),
+            React.createElement('button', {
+              type: 'button',
+              className: 'bib-set-lang-opt',
+              role: 'radio',
+              'aria-checked': props.localeActive === 'en',
+              'data-active': props.localeActive === 'en' ? 'true' : 'false',
+              onClick: function () { props.onSelect('en'); },
+            }, 'English'))))));
 }
 
 function InfoBarSettingsSection() {
@@ -890,110 +1064,27 @@ function InfoBarSettingsSection() {
   const fieldsTotal = FIELD_REGISTRY.length;
   const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const fieldsExpanded = !fieldsCollapsed || searchActive;
-  const groupsChildren = [];
-  if (fieldsExpanded) for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
-    const group = FIELD_GROUP_ORDER[g];
-    let groupFields = FIELD_REGISTRY.filter(function (f) { return f.group === group; });
-    groupFields = groupFields.filter(function (f) { return matchesSearch(f, searchQuery); });
-    if (groupFields.length === 0) continue;
-    const rows = [];
-    for (let i = 0; i < groupFields.length; i++) {
-      const field = groupFields[i];
-      const isAnchor = field.anchor === true;
-      const descParts = [];
-      // D6：锚点与其他字段同等可隐藏——「身份锚点」仅作为说明保留，不再恒开/禁用
-      if (isAnchor) descParts.push(t('ui.identifiesTheProviderAndModel'));
-      const modeText = bibSetModeText(field);
-      if (modeText) descParts.push(modeText + t('ui.sentenceEnd'));
-      if (field.note) descParts.push(t(field.note));
-      if (field.suggestKeep) descParts.push(t('ui.keepEnabledToSeeThese'));
-      const value = colorOf(field.id);
-      const isPreset = value !== null && PRESET_COLOR_SET.has(value);
-      const isHex = value !== null && !isPreset;
-      const draft = hexDraftOf(field.id);
-      const hexValue = draft !== null ? draft : committedHexText(field.id);
-      const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
-      const wellValue = isHex ? value : (isPreset ? (BIB_SET_PRESET_WELL_HEX[value] || '#333333') : '#333333');
-      rows.push(React.createElement('div', { key: field.id, className: 'bib-set-row bib-set-row--field' },
-        React.createElement('div', { className: 'bib-set-row-main' },
-          React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
-            React.createElement('div', { className: 'bib-set-rowTitle' },
-              t(field.label),
-              field.suggestKeep ? React.createElement('span', { className: 'bib-set-keep' }, t('ui.recommended')) : null),
-            React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
-          bibSetSwitch({
-            label: t('ui.show', { label: t(field.label) }),
-            checked: fieldOn(field.id),
-            title: fieldOn(field.id) ? t('ui.clickToHide') : t('ui.clickToShow'),
-            onToggle: function (next) { setFieldFlag(field.id, next); },
-          }),
-          React.createElement('div', { className: 'bib-set-controls bib-set-controls--field' },
-            React.createElement(bibSetPalette, {
-              label: t('ui.presetColor', { label: t(field.label) }),
-              value: value,
-              onSelect: function (next) { setColor(field.id, next); },
-            }),
-            React.createElement('label', { className: 'bib-set-well' },
-              React.createElement('input', {
-                type: 'color',
-                'aria-label': t('ui.customColor', { label: t(field.label) }),
-                title: t('ui.customColorOpenColorPicker'),
-                value: wellValue,
-                onChange: function (event) {
-                  const picked = event && event.target ? event.target.value : null;
-                  if (picked && BIB_SET_HEX_PATTERN.test(picked)) setColor(field.id, picked.toUpperCase());
-                },
-              })),
-            React.createElement('input', {
-              type: 'text',
-              className: 'bib-set-hex',
-              'aria-label': t('ui.hexColor', { label: t(field.label) }),
-              'aria-invalid': hexInvalid ? 'true' : 'false',
-              'data-invalid': hexInvalid ? 'true' : 'false',
-              placeholder: '#RRGGBB',
-              spellCheck: false,
-              maxLength: 7,
-              value: hexValue,
-              onChange: function (event) { onHexChange(field.id, event && event.target ? event.target.value : ''); },
-              onBlur: function () { commitHex(field.id); },
-              onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); commitHex(field.id); } },
-            }))),
-            (field.id === 'mainTime' || field.id === 'worldTime') ? React.createElement('div', { className: 'bib-set-subcontrols' },
-              React.createElement('span', { className: 'bib-set-subcontrol-label' }, field.id === 'mainTime' ? t('ui.mainTimeZone') : t('ui.worldTimeZone')),
-              React.createElement('select', {
-                className: 'bib-set-time-zone',
-                value: field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world,
-                onChange: function (e) { setTimeZone(field.id === 'mainTime' ? 'main' : 'world', e.target.value); },
-              }, TIME_ZONE_OPTIONS.map(function (z) { return React.createElement('option', { key: z, value: z }, z); })),
-              field.id === 'mainTime' ? React.createElement('span', { className: 'bib-set-time-parts' },
-                ['year','month','day','hour','minute','second'].map(function (k) {
-                  const labelKey = { year: 'ui.year', month: 'ui.month', day: 'ui.day', hour: 'ui.hour', minute: 'ui.minute', second: 'ui.second' }[k];
-                  return React.createElement('span', { key: k, className: 'bib-set-time-part' },
-                    React.createElement('span', { className: 'bib-set-time-part-label' }, t(labelKey)),
-                    bibSetSwitch({ label: t(labelKey), checked: !!timeFormatOf()[k], onToggle: function (next) { setTimeFormatPart(k, next); } }));
-                })) : null,
-              React.createElement('span', { className: 'bib-set-time-preview' }, t('ui.timePreview') + formatClock(Date.now(), field.id === 'mainTime' ? timeZonesOf().main : timeZonesOf().world, timeFormatOf())))
-            : null,
-            field.id === 'customText' ? React.createElement('div', { className: 'bib-set-subcontrols' },
-              React.createElement('input', {
-                type: 'text',
-                className: 'bib-set-custom-text-input',
-                placeholder: t('ui.customTextPlaceholder'),
-                maxLength: 64,
-                value: customTextDraft !== null ? customTextDraft : committedCustomText(),
-                onChange: function (e) { onCustomTextChange(e.target.value); },
-                onBlur: function () { commitCustomText(); },
-                onKeyDown: function (e) { if (e.key === 'Enter') { e.preventDefault(); commitCustomText(); } },
-                'aria-label': t('ui.customTextTitle')
-              }),
-              React.createElement('span', { className: 'bib-set-custom-text-count' }, customTextOf().length + '/64')
-            ) : null
-          ));
-    }
-    groupsChildren.push(React.createElement('div', { key: 'g-' + group },
-      React.createElement('div', { className: 'bib-set-group-title' }, FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group),
-      rows));
-  }
+  const groupsChildren = bibSetFieldGroups({
+    expanded: fieldsExpanded,
+    query: searchQuery,
+    matchesSearch: matchesSearch,
+    fieldOn: fieldOn,
+    colorOf: colorOf,
+    hexDraftOf: hexDraftOf,
+    committedHexText: committedHexText,
+    onFieldToggle: setFieldFlag,
+    onColorChange: setColor,
+    onHexChange: onHexChange,
+    onHexCommit: commitHex,
+    timeFormatOf: timeFormatOf,
+    timeZonesOf: timeZonesOf,
+    onTimeFormatChange: setTimeFormatPart,
+    onTimeZoneChange: setTimeZone,
+    customTextDraft: customTextDraft,
+    customTextOf: customTextOf,
+    onCustomTextChange: onCustomTextChange,
+    onCustomTextCommit: commitCustomText,
+  });
 
   const feedback = [];
   if (opError) feedback.push(React.createElement('p', { key: 'err', className: 'bib-set-alert', role: 'alert' }, opError.text()));
@@ -1037,38 +1128,21 @@ function InfoBarSettingsSection() {
         onClick: function () { setFieldsCollapsed(true); }
       }, t('ui.collapseAll') || '折叠全部'))),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
-      React.createElement('div', { className: 'bib-set-card-header', onClick: toggleFields, role: 'button', tabIndex: 0, 'aria-expanded': fieldsExpanded, 'aria-controls': fieldsExpanded ? 'bib-set-fields-body' : undefined, onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFields(); } } },
-        React.createElement('div', { className: 'bib-set-card-header-main' },
-          React.createElement('h2', { id: 'bib-set-fields-title', className: 'bib-set-card-title' }, t('ui.visibleFields')),
-          bibSetChevron({ expanded: fieldsExpanded })),
-        React.createElement('div', { className: 'bib-set-card-desc' },
-          fieldsCollapsed && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'))),
+      bibSetCardHeader({
+        titleId: 'bib-set-fields-title',
+        title: t('ui.visibleFields'),
+        description: fieldsCollapsed && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'),
+        expanded: fieldsExpanded,
+        contentId: 'bib-set-fields-body',
+        onToggle: toggleFields,
+      }),
       fieldsBody),
-    React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
-      React.createElement('div', { className: 'bib-set-card-header' },
-        React.createElement('h2', { id: 'bib-set-lang-title', className: 'bib-set-card-title' }, t('ui.languageSettings')),
-        React.createElement('div', { className: 'bib-set-card-desc' },
-          t('ui.languageSettingsDesc'))),
-      React.createElement('div', { className: 'bib-set-body' },
-        React.createElement('div', { className: 'bib-set-row bib-set-row--language' },
-          React.createElement('div', { className: 'bib-set-controls bib-set-controls--language' },
-            React.createElement('div', { className: 'bib-set-lang-segment', role: 'radiogroup', 'aria-label': t('ui.languageSettings') },
-              React.createElement('button', {
-                type: 'button',
-                className: 'bib-set-lang-opt',
-                role: 'radio',
-                'aria-checked': localeActive !== 'en',
-                'data-active': localeActive !== 'en' ? 'true' : 'false',
-                onClick: function () { if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale('zh'); },
-              }, '中文'),
-              React.createElement('button', {
-                type: 'button',
-                className: 'bib-set-lang-opt',
-                role: 'radio',
-                'aria-checked': localeActive === 'en',
-                'data-active': localeActive === 'en' ? 'true' : 'false',
-                onClick: function () { if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale('en'); },
-              }, 'English')))))),
+    bibSetLanguageCard({
+      localeActive: localeActive,
+      onSelect: function (locale) {
+        if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale(locale);
+      },
+    }),
     React.createElement('div', { className: 'bib-set-footer' },
       feedback,
       React.createElement('button', {
