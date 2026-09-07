@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.8](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.7...v1.10.8) (2026-09-08)
+
+### Bug Fixes
+
+* **client:** rebuild the settings disclosure surface with explicit native up/down arrows and one shared panel surface
+
 ## [1.10.7](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.6...v1.10.7) (2026-09-07)
 
 ### Bug Fixes
