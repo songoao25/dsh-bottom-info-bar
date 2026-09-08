@@ -171,7 +171,7 @@ check('折叠头部使用原生 button 语义，避免 div role=button 与自定
     && !header.includes("role: 'button'")
     && !header.includes('tabIndex: 0');
 })(), true);
-check('折叠只收缩纵向轨道：保留内容树避免卡片宽度重算', (function () {
+check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
     && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed')")
@@ -186,9 +186,9 @@ check('折叠只收缩纵向轨道：保留内容树避免卡片宽度重算', (
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
-    && clientSrc.includes('.bib-set-collapse { display: grid; grid-template-rows: 1fr;')
-    && clientSrc.includes('.bib-set-collapse--collapsed { grid-template-rows: 0fr;')
-    && clientSrc.includes('.bib-set-body { width: 100%; min-width: 0; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }')
+    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; min-width: 0;')
+    && clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
+    && clientSrc.includes('.bib-set-body { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
 check('设置页卡片宽度固定，折叠动画不会触发横向跳动', clientSrc.includes('.bib-settings { width: 100%; max-width: 720px; min-width: 0;')
@@ -199,6 +199,11 @@ check('设置页卡片宽度固定，折叠动画不会触发横向跳动', clie
   && clientSrc.includes('.bib-set-search-shell { position: relative; flex: 1 1 auto; width: 0; min-width: 0; }')
   && clientSrc.includes('.bib-set-count { flex: 0 0 84px; width: 84px;')
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
+check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box;')
+  && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
+  && clientSrc.includes('.bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }')
+  && clientSrc.includes('.bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }')
+  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding-left: 8px; }'), true);
 check('设置页只保留卡片标题折叠入口，删除展开全部/折叠全部按钮文案', !clientSrc.includes("t('ui.expandAll')")
   && !clientSrc.includes("t('ui.collapseAll')")
   && !localesSrc.includes('"ui.expandAll"')
