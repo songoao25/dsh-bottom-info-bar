@@ -504,20 +504,22 @@ function bibSetInstallStyles() {
       .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 22px; }
       .bib-set-card-title { min-width: 0; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
       .bib-set-card-desc { width: 100%; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-      /* 内容树始终保留，折叠只改变纵向 grid 轨道；这样不会因卸载字段行而重新计算卡片宽度。 */
-      .bib-set-collapse { display: grid; grid-template-rows: 1fr; width: 100%; min-width: 0; border-top: 1px solid var(--dsw-alias-border-l2); transition: grid-template-rows 180ms var(--ds-ease-in-out, ease), border-color 180ms var(--ds-ease-in-out, ease); }
-      .bib-set-collapse--collapsed { grid-template-rows: 0fr; border-top-color: transparent; }
-      .bib-set-collapse-inner { width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
-      .bib-set-body { width: 100%; min-width: 0; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
+      /* 字段清单很长，auto-height grid 动画在宿主 WebView 会把 1fr 解析为零高。
+         直接切换可见性：卡片宽度始终由外层固定轨道决定，展开过程不会产生横向抖动或半展开状态。 */
+      .bib-set-collapse { display: block; width: 100%; min-width: 0; border-top: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-collapse--collapsed { display: none; }
+      .bib-set-collapse-inner { width: 100%; min-width: 0; }
+      .bib-set-body { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 14px 0; border-bottom: 1px solid var(--dsw-alias-border-l2); }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 8px; }
       .bib-set-row--language { justify-content: flex-end; }
-      .bib-set-row-main { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; }
+      /* 字段行固定为「标签 + 开关」首行、「颜色」次行；不让色板挤压开关或依赖偶然换行。 */
+      .bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; align-items: start; width: 100%; min-width: 0; }
       .bib-set-row:last-child { border-bottom: none; }
-      .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
-      .bib-set-rowText--field { flex: 1 1 200px; }
+      .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .bib-set-rowText--field { min-width: 0; }
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
@@ -535,10 +537,11 @@ function bibSetInstallStyles() {
       .bib-set-switch-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--dsw-alias-bg-layer-1, #fff); box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform 160ms var(--ds-ease-in-out, ease); }
       .bib-set-switch-track[data-on="true"] .bib-set-switch-thumb { transform: translateX(16px); }
       /* 色板圆点：role:radio + roving tabindex（方向键/Home/End 可达），选中态外圈描边 */
-      .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; flex: 0 0 auto; }
-      .bib-set-controls--field { flex: 0 0 auto; }
+      .bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }
+      .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+      .bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }
       .bib-set-controls--language { margin-left: auto; }
-      .bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; padding-left: 8px; }
+      .bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding-left: 8px; }
       .bib-set-subcontrol-label { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-time-parts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
       .bib-set-time-part { display: inline-flex; align-items: center; gap: 4px; }
