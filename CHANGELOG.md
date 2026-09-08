@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.9...v1.10.10) (2026-09-08)
+
+### Bug Fixes
+
+* **client:** keep field switches and color controls within the settings card, and replace the unreliable zero-height disclosure transition
+
 ## [1.10.9](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.8...v1.10.9) (2026-09-08)
 
 ### Bug Fixes
