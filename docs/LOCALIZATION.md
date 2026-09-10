@@ -2,13 +2,8 @@
 
 The original Chinese copy and English translations live together in
 `plugin/src/locales.js`. The plugin follows DSH's Settings → General language
-preference and also provides a shortcut to that same DSH-wide preference in the
-"**Language**" card in Info Bar settings. The shortcut calls
-`ctx.locale.setLocale()`, so it changes the whole DSH interface immediately and
-uses DSH's existing persistence path; it does not maintain plugin-only locale
-state. The switcher uses a segmented control (radiogroup) with native language
-names (中文 / English) that remain in their native script regardless of the
-active locale.
+preference. It does not add a second plugin-only language switch, so users have
+one clear place to change the language and the whole DSH interface stays in sync.
 
 ## Framework integration
 
@@ -26,7 +21,7 @@ Quota-window labels use existing machine-readable window IDs.
 
 The APIs were checked against DSH's
 [`dsh-v0.1.2-alpha.4` locale implementation](https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.1.2-alpha.4/packages/client/locale)
-and current upstream, including actual register/bind/subscribe/setLocale checks.
+and current upstream, including the actual register/bind/subscribe integration.
 
 ## Host presentation and exceptions
 

@@ -4,7 +4,7 @@ const { t } = require('./locale-fixture.cjs');
 // ② 无 llm 服务 → 模型名回退原始 id、服务商名回退静态映射
 // ③ 目录外未知模型 → 回退原始 model id
 // ④ llm/adapters-updated / settings/document-updated → 重建目录名缓存（模型改名后立即反映）
-// ⑤ 边界：空模型 → 未知模型；未知服务商 → 大写首字母回退
+// ⑤ 边界：空模型 → 未知/待识别，不猜默认；未知服务商 → 大写首字母回退
 // ⑥ client 静态检查：服务商与模型始终拆分；模型名去除重复的服务商前缀（"DeepSeek · V4 Flash"）
 // 用法：node tests/test-display-name.js（由 run-all.mjs 统一驱动，先 build 再测）
 const fs = require('fs');
@@ -19,6 +19,7 @@ process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = path.join(tmpRoot, 'no-auth.json');
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = path.join(tmpRoot, 'no-opencode.json');
 
 const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {
@@ -128,6 +129,9 @@ async function invoke(route, routePath, method, body, headers) {
   return { status, payload };
 }
 const settle = () => new Promise((r) => setTimeout(r, 40));
+function selectionBody(env) {
+  return JSON.stringify({ selection: { provider: env.selection.provider, model: env.selection.model } });
+}
 
 (async function main() {
   let plugin = null;
@@ -153,7 +157,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     const env = makeStubCtx({ catalog: catalog });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('DSH 目录名优先：providerDisplay = DeepSeek（listProviders.name）', r.payload && r.payload.providerDisplay, 'DeepSeek');
     check('DSH 目录名优先：modelDisplay = DeepSeek-V41-Flash（listModels.name，与切换器一致）', r.payload && r.payload.modelDisplay, 'DeepSeek-V41-Flash');
     check('目录未声明能力时保持未知，不把新模型误标为文本模型', r.payload && r.payload.acceptsImageInput, null);
@@ -177,7 +181,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     const env = makeStubCtx({ catalog: catalog, model: 'deepseek-flash-next' });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('未硬编码的新模型：完整目录 name 自动显示', r.payload && r.payload.modelDisplay, 'DeepSeek-Flash-Next');
     check('未硬编码的新模型：DSH inputModalities 自动显示视觉能力', r.payload && r.payload.acceptsImageInput, true);
     check('未硬编码的新模型：能力查询只依赖 DSH resolver', env.calls.resolveModelInfo >= 1, true);
@@ -205,7 +209,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     };
     const realDateNow = Date.now;
     Date.now = () => realDateNow() + 31 * 1000;
-    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     Date.now = realDateNow;
     check('目录外新模型：退避窗口到期后自动重新拉取目录名', r.payload && r.payload.modelDisplay, 'DeepSeek-Flash-New');
     check('目录外新模型：无能力 metadata 时保持未知', r.payload && r.payload.acceptsImageInput, null);
@@ -225,10 +229,10 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     const env = makeStubCtx({ catalog: catalog, model: 'vision-by-metadata' });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const imageModel = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const imageModel = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('明确 inputModalities 包含 image → 返回视觉能力', imageModel.payload && imageModel.payload.acceptsImageInput, true);
     env.selection.model = 'named-vision-only';
-    const textOnlyModel = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const textOnlyModel = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('模型名含 Vision 但 metadata 无 image → 不返回视觉能力', textOnlyModel.payload && textOnlyModel.payload.acceptsImageInput, false);
     check('视觉能力通过 resolveModelInfo 查询', env.calls.resolveModelInfo >= 2, true);
     disposer();
@@ -239,7 +243,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     const env = makeStubCtx({ noLlm: true });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('无 llm：modelDisplay 回退原始 model id', r.payload && r.payload.modelDisplay, 'deepseek-flash');
     check('无 llm：providerDisplay 回退静态映射（deepseek-official → DeepSeek）', r.payload && r.payload.providerDisplay, 'DeepSeek');
     check('无 llm：目录接口零调用', env.calls.listModels === 0 && env.calls.listProviders === 0, true);
@@ -255,7 +259,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     const env = makeStubCtx({ catalog: catalog, model: 'my-custom-model' });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('目录外未知模型 → 回退原始 model id', r.payload && r.payload.modelDisplay, 'my-custom-model');
     disposer();
   }
@@ -270,7 +274,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const before = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const before = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('adapters-updated 前：modelDisplay = DeepSeek-V41-Flash', before.payload && before.payload.modelDisplay, 'DeepSeek-V41-Flash');
     // 模拟模型改名：目录变更（如切换器改显示名）→ 触发 llm/adapters-updated
     env.catalogRef.current = {
@@ -281,7 +285,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     check('adapters-updated 监听已注册', typeof updateFn, 'function');
     if (typeof updateFn === 'function') updateFn();
     await settle();
-    const after = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const after = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('adapters-updated 后：modelDisplay 立即反映新目录名', after.payload && after.payload.modelDisplay, 'DeepSeek-V41-Flash-Pro');
     env.catalogRef.current = {
       async listModels(provider) { return [{ id: 'deepseek-flash', name: 'DeepSeek-V41-Flash-Settings' }]; },
@@ -291,7 +295,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
     check('settings/document-updated 监听已注册', typeof settingsUpdateFn, 'function');
     if (typeof settingsUpdateFn === 'function') settingsUpdateFn();
     await settle();
-    const afterSettings = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const afterSettings = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('settings/document-updated 后：modelDisplay 立即反映新目录名', afterSettings.payload && afterSettings.payload.modelDisplay, 'DeepSeek-V41-Flash-Settings');
     disposer();
   }
@@ -300,18 +304,20 @@ const settle = () => new Promise((r) => setTimeout(r, 40));
   {
     const env = makeStubCtx({
       catalog: { async listModels() { return []; }, async listProviders() { return []; } },
-      model: '', // 空模型 → modelSelection 兜底 DEFAULT_MODEL
+      model: '', // 空模型 → 未解析，不猜默认模型
     });
     const disposer = plugin.apply(env.ctx);
     await settle();
-    const r1 = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
-    check('空模型 → modelSelection 兜底默认模型（deepseek-flash）', r1.payload && r1.payload.modelDisplay, 'deepseek-flash');
+    const r1 = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
+    check('空模型 → 不猜默认模型，返回待识别状态', r1.payload && r1.payload.model === '' && r1.payload.fallback === true && r1.payload.modelDisplay, '未知模型');
     env.selection.model = 'x';
     env.selection.provider = 'zzz';
-    const r2 = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'GET');
+    const r2 = await invoke(env.getRoute(), '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody(env));
     check('未知服务商（无缓存无映射）→ 大写首字母回退', r2.payload && r2.payload.providerDisplay, 'Zzz');
     disposer();
   }
+
+  ok('模型选择不保留默认模型或跨会话缓存', !hostSrc.includes('const DEFAULT_MODEL') && !clientSrc.includes('sessionModelCache'));
 
   // ================= ⑤b 纯函数边界（模块级，直接提取） =================
   const modelDisplayFromCache = extractFn('modelDisplayFromCache');

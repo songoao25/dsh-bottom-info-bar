@@ -18,7 +18,7 @@
 
 ## 现状盘点（2026-08-24）
 
-- 已支持：余额制（DeepSeek 真实余额、OpenAI 记账回退估算）+ 订阅制（ChatGPT 会员 wham 接口、OpenCode Go usage 接口）
+- 已支持：余额制（DeepSeek 真实余额、OpenAI 参考价估算）+ 订阅制（ChatGPT 本地 JWT 套餐/到期信息、OpenCode Go usage 接口）
 - 双模式机制已成型：`detectBillingMode` 按 provider 自动判定；`SUBSCRIPTION_PROVIDERS` 集合可增删；窗口映射（5小时/周/月）+ 剩余百分比 + 重置倒计时 + 60s 快照刷新 + 失败退避 —— **新服务商接入 = 新增适配器 + 注册 provider，架构复用成本低**
 
 ## 路线图（Now / Next / Later，依据 2026-08-27 全品牌调研总报告 docs/research/README.md）

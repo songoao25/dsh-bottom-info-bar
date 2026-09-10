@@ -67,6 +67,10 @@ const billMatch = constantsSrc.match(/export const BILLING_PROVIDERS = (\[[\s\S]
 const SUBSCRIPTION_PROVIDERS = eval('(' + subMatch[1] + ')');
 const BILLING_PROVIDERS = eval('(' + billMatch[1] + ')');
 
+const parseFiniteNonNegativeAmount = extractFn('parseFiniteNonNegativeAmount');
+const parsePercent = extractFn('parsePercent');
+const normalizeResetAt = extractFn('normalizeResetAt');
+const parseZaiBalance = extractFn('parseZaiBalance');
 const decodeJwtPayload = extractFn('decodeJwtPayload');
 const chatgptClaimSource = extractFn('chatgptClaimSource');
 const parseCodexJwt = extractFn('parseCodexJwt');
@@ -161,6 +165,7 @@ check('小米 usage：resetsAt = 本地下月 1 日零点', xmUsageParsed.window
 // 无 monthUsage 时从 items 提取
 const xmUsage2 = { data: { items: [{ name: 'month_total_token', used: 500, limit: 1000, percent: null }] } };
 check('小米 usage：无 percent 由 used/limit 推算 50%', parseXiaomiTokenPlanUsage(xmUsage2).windows[0].usedPercent, 50);
+check('小米 usage：used 超过 limit 时钳制为 100%', parseXiaomiTokenPlanUsage({ data: { monthUsage: { used: 120, limit: 100 } } }).windows[0].usedPercent, 100);
 // tokenPlan balance 形态（token_balance/token_limit）
 const xmBalance = { data: { token_balance: 800000, token_limit: 1000000, plan_name: 'Pro' } };
 const xmBalanceParsed = parseXiaomiTokenPlanBalance(xmBalance);
@@ -175,6 +180,10 @@ check('小米按量：币种 CNY', xmPaygParsed.currency, 'CNY');
 // 非法 → null
 check('小米 usage：结构异常 → null', parseXiaomiTokenPlanUsage({}), null);
 check('小米按量：无 balance → null', parseXiaomiPaygBalance({ data: {} }), null);
+
+// 智谱余额同时返回两个字段时，优先使用合法的 availableBalance；坏值不能把可用的 balance 一起拖成空。
+check('智谱余额：availableBalance 损坏时回退 balance', parseZaiBalance({ success: true, code: 200, data: { availableBalance: '12oops', balance: '8.5' } }).balance, 8.5);
+check('智谱余额：两个金额都损坏 → null', parseZaiBalance({ success: true, code: 200, data: { availableBalance: '12oops', balance: '8oops' } }), null);
 
 // ================= ③ FR-10：Together 账单 =================
 const tgBody = {
@@ -200,6 +209,8 @@ check('Fireworks summary：lineItems totalCost 求和 = 13', parseFireworksSumma
 check('Fireworks summary：无 lineItems 回退 usageBuckets', parseFireworksSummary({ usageBuckets: [{ cost: 2.5 }, { cost: 3.5 }] }), 6);
 check('Fireworks summary：空 → null', parseFireworksSummary({}), null);
 check('Fireworks usage：buckets 求和', parseFireworksUsage({ usageBuckets: [{ totalTokens: 100 }, { totalTokens: 200 }] }), 300);
+check('Fireworks usage：totalTokens 存在时不与 input/output 重复相加', parseFireworksUsage({ usageBuckets: [{ totalTokens: 100, inputTokens: 60, outputTokens: 40 }] }), 100);
+check('Fireworks usage：无 totalTokens 时才合计 input/output', parseFireworksUsage({ usageBuckets: [{ inputTokens: 60, outputTokens: 40 }] }), 100);
 check('Fireworks usage：空 → null', parseFireworksUsage({}), null);
 
 // ================= ⑤ FR-12：AWS SigV4 固定向量 =================
@@ -245,6 +256,7 @@ check('CE：空对象 → null', parseBedrockCost({}), null);
 // Budgets 响应解析
 const budgetsJson = { Budgets: [{ BudgetLimit: { Amount: '100.00', Unit: 'USD' }, CalculatedSpend: { ActualSpend: { Amount: '45.00', Unit: 'USD' }, ForecastedSpend: { Amount: '60' } } }] };
 check('Budget：预算使用 45%', parseBedrockBudget(budgetsJson), 45);
+check('Budget：超出预算时钳制为 100%', parseBedrockBudget({ Budgets: [{ BudgetLimit: { Amount: '100' }, CalculatedSpend: { ActualSpend: { Amount: '120' } } }] }), 100);
 check('Budget：无预算 → null', parseBedrockBudget({ Budgets: [] }), null);
 check('Budget：金额非法 → null', parseBedrockBudget({ Budgets: [{ BudgetLimit: { Amount: '0' } }] }), null);
 
@@ -265,6 +277,7 @@ const cfFree = { success: true, result: [{ product: 'workers-ai', usage: 1234, u
 const cfFreeParsed = parseCloudflareBilling(cfFree);
 check('Cloudflare：接口给 limit → 免费剩余 850', cfFreeParsed.freeRemaining, 850);
 check('Cloudflare：免费重置 = 下一个 UTC 零点', cfFreeParsed.resetsAt, nextUtcMidnightMs());
+check('Cloudflare：used 损坏时回退 usage 计算免费剩余', parseCloudflareBilling({ success: true, result: [{ usage: 150, used: '150oops', limit: 1000 }] }).freeRemaining, 850);
 check('Cloudflare：无 cost 时 spend=null（只显示用量）', cfFreeParsed.spend, null);
 check('Cloudflare：success=false → null', parseCloudflareBilling({ success: false, result: [] }), null);
 check('Cloudflare：空 result → null', parseCloudflareBilling({ success: true, result: [] }), null);
@@ -276,6 +289,7 @@ check('normalize：currentPeriodSpend=12.34', norm.currentPeriodSpend, 12.34);
 check('normalize：budgetPercent=45', norm.budgetPercent, 45);
 check('normalize：currency=USD', norm.currency, 'USD');
 check('normalize：note=测试', norm.note, '测试');
+check('normalize：ISO 重置时间转为毫秒', normalizeAccountStatus('billing', { resetsAt: '2026-09-11T00:00:00Z' }).resetsAt, Date.parse('2026-09-11T00:00:00Z'));
 check('normalize：非法数值被忽略', normalizeAccountStatus('billing', { kind: 'billing', spend: NaN }).currentPeriodSpend, undefined);
 check('normalize：非法 kind → null', normalizeAccountStatus('balance', { total: 1 }), null);
 // 三态互斥判定

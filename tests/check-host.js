@@ -22,8 +22,12 @@ while ((m = paramRe.exec(src))) {
 
 // 2) 收集调用：name( —— lookbehind 排除方法调用（.name(）与紧邻标识符
 const calls = new Map();
+// Comments are prose, not executable code. Strip them before collecting calls
+// so words such as "operation (" in a safety note cannot become fake missing
+// identifier failures in this lightweight audit.
+const executable = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\r\n]*/g, '');
 const callRe = /(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g;
-while ((m = callRe.exec(src))) {
+while ((m = callRe.exec(executable))) {
   calls.set(m[1], (calls.get(m[1]) || 0) + 1);
 }
 
@@ -39,7 +43,7 @@ const builtins = new Set([
   'apply', // 插件入口（对象形式 apply(ctx)）
   'next',  // waterfall 事件回调参数（llm/stream 的 next()）
   // Node 标准库导入与全局（静态形态）
-  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname',
+  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',
@@ -61,7 +65,7 @@ if (routesMatch) {
   let m2;
   while ((m2 = re.exec(routesMatch[1]))) handlers.push(m2[1]);
 }
-const expected = ['getBalanceSnapshot', 'getPricing', 'getEstimate', 'getUsageSummary', 'getProviders', 'setActiveProvider', 'getSpendTrend', 'getConfig', 'setDisplayMode', 'setInfoDensity', 'getBillingMode', 'getSubscriptionSnapshot'];
+const expected = ['getBalanceSnapshot', 'getPricing', 'getEstimate', 'getUsageSummary', 'exportUsageRecords', 'clearUsageRecords', 'getSpendTrend', 'getConfig', 'setDisplayMode', 'setInfoDensity', 'getBillingMode', 'getSubscriptionSnapshot'];
 const missingHandlers = expected.filter((h) => !handlers.includes(h));
 
 let ok = true;
@@ -73,7 +77,7 @@ if (missingHandlers.length === 0) console.log('PASS  ' + handlers.length + ' 个
 else { ok = false; console.log('FAIL  缺失 handler：' + missingHandlers.join(', ')); }
 
 // 关键函数必须存在（防漏贴类缺陷）
-const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'computeEstimate', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'codexWindowKey', 'parseCodexUsage', 'parseOpenCodeGoUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage'];
+const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'computeEstimate', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage'];
 const missCritical = critical.filter((f) => !defined.has(f));
 if (missCritical.length === 0) console.log('PASS  关键函数齐备：' + critical.join(', '));
 else { ok = false; console.log('FAIL  关键函数缺失：' + missCritical.join(', ')); }

@@ -99,7 +99,7 @@
 
 #### 3.1 API Key 仅用于内存请求头
 - **host.js:534–548**：余额适配器通过 `ctx.credentials.resolve(prov.credential)` 读取凭据，直接拼入 HTTP 头 `{ Authorization: 'Bearer ' + cred.value }`，**不落盘、不打日志**。
-- **host.js:580**：Codex wham 接口同样通过 Bearer 头传递，**不拼接进 URL 或错误信息**。
+- **host.js:580**：Codex 只读本地登录令牌并解析 JWT，**不发起网络请求，也不把令牌拼进日志或错误信息**。
 - **host.js:645**：OpenCode Go 接口同理。
 - **host.js:661–734**：智谱接口明确注释"裸 API Key，绝无 Bearer 前缀"，认证方式与官方文档一致。
 
@@ -158,7 +158,7 @@
 ### 检查结果：**通过** ✅
 
 **证据**：
-- **host.js:1682**：`MUTATING` 集合明确列出需要同源防护的方法：`setActiveProvider`、`setDisplayMode`、`setInfoDensity`、**`getSubscriptionSnapshot`**（v1.6 新增，已纳入保护）。
+- **host.js:1682**：`MUTATING` 集合明确列出需要同源防护的方法：`setDisplayMode`、`setInfoDensity`、`getBalanceSnapshot`、**`getSubscriptionSnapshot`**、`getBillingStatus` 与账单设置操作。
 - **host.js:1684–1697**：`sameOrigin(req)` 实现三重校验：
   1. `sec-fetch-site` 头拒绝 `cross-site`
   2. 无 `origin` 头时要求 `same-origin` / `same-site` / `none`
@@ -213,7 +213,7 @@
 
 **遗留（不阻塞发布）**：
 - docs/ 中调研报告/PRD/设计文档为 git untracked，发布前需提交（属发布阶段收尾）
-- parseCodexUsage（旧 wham 解析）为 dead code，建议下版移除
+- 旧 wham 窗口解析器已移除；Codex 订阅只保留当前实际使用的本地 JWT 读取路径
 - 小米 cn/ams、Together/Fireworks/Cloudflare 真实凭据端到端验证待用户有账号后补充
 - 未知服务商共桶聚合精度观察（低危，记入 ROADMAP 可选拆桶）
 

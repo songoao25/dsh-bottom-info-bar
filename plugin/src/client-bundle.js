@@ -84,16 +84,23 @@ function rpc(method, args, externalSignal) {
 // load() 的逐接口容错状态合并（模块级纯函数，供单测提取）：
 // 成功端点 → 写新值 + 清除错误；失败端点 → 保留旧值（无旧数据则为 null）+ 记录错误信息。
 // results 与端点顺序一一对应：balance / pricing / usage / billingMode / sub / billing。
-function mergeLoadResults(prev, results) {
+function mergeLoadResults(prev, results, selectionKey) {
   const keys = ['balance', 'pricing', 'usage', 'billingMode', 'sub', 'billing'];
-  const next = { loading: false, errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null } };
+  const hasSelectionKey = typeof selectionKey === 'string';
+  const previousSelectionKey = prev && typeof prev.selectionKey === 'string' ? prev.selectionKey : '';
+  const nextSelectionKey = hasSelectionKey ? selectionKey : previousSelectionKey;
+  const sameSelection = !hasSelectionKey || previousSelectionKey === nextSelectionKey;
+  const next = { loading: false, selectionKey: nextSelectionKey, errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null } };
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     const r = results[i];
     if (r && r.status === 'fulfilled') {
       next[key] = r.value;
     } else {
-      next[key] = prev[key];
+      // A failed request may keep the last good value only for the same
+      // session/model. Never let a previous session balance, quota, bill,
+      // or spend cross the selection boundary while the new request fails.
+      next[key] = sameSelection ? prev[key] : null;
       const reason = r && r.reason;
       next.errors[key] = reason && reason.message ? String(reason.message) : String(reason || t('ui.rpcFailed'));
     }
@@ -423,8 +430,8 @@ function installStyles() {
       .bi-vision { display: inline-flex; align-items: center; box-sizing: border-box; min-width: 0; max-width: 100%; height: 16px; margin: 0; padding: 0 6px; border: 1px solid #0044cc; border-radius: 999px; color: #fff; background: #0057ff; font-size: 12px; font-weight: 600; line-height: 14px; white-space: nowrap; }
       .bi-vision-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .bi-vision-kind { flex: 0 0 auto; margin-left: 4px; }
-      /* 会话目录未给出能力时，不先把模型错误画成文本模型；保留宽度，等待本地能力结果。 */
-      .bi-model-capability-pending { visibility: hidden; pointer-events: none; }
+      /* 会话目录未给出能力时，保留模型名称；只等待能力标识，不猜测为文本模型。 */
+      .bi-model-capability-pending { pointer-events: none; }
       /* 读屏说明不参与视觉排版。 */
       .bi-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       /* v1.9.0 PR2 预设色板：浅色默认 → 深色覆盖 → 增强对比三套成对（与现有语义色同一套规则）；设置页共用 .bib-set-root 取同一色板 */
@@ -441,6 +448,7 @@ function installStyles() {
 // ---------- 设置页 ----------
 // 与信息栏共用同一 bundle 作用域；页面只负责呈现设置状态和提交用户操作。
 const BIB_SET_EVENT = 'dsh-bib-config-changed';
+const BIB_LEDGER_EVENT = 'dsh-bib-ledger-changed';
 const BIB_SET_PRESET_LABELS = { red: "color.red", green: "color.green", blue: "color.blue", purple: "color.purple", orange: "color.orange", neutral: "color.neutral" };
 // 原生取色器（input[type=color]）在未自定义时显示的代表色（浅色主题值；实际信息栏渲染仍按主题变量）
 const BIB_SET_PRESET_WELL_HEX = { red: '#D92D20', green: '#087F5B', blue: '#0044CC', purple: '#6941C6', orange: '#B54708', neutral: '#333333' };
@@ -467,6 +475,11 @@ function bibSetDispatchChanged() {
   try { document.dispatchEvent(new CustomEvent(BIB_SET_EVENT)); } catch (err) { /* 事件总线不可用时静默：30s 周期校准兜底 */ }
 }
 
+function bibSetDispatchLedgerChanged() {
+  // 清理账单后让正在显示的信息栏立即重拉会话花费，不必等 30 秒轮询。
+  try { document.dispatchEvent(new CustomEvent(BIB_LEDGER_EVENT)); } catch (err) { /* 下一轮刷新会校准 */ }
+}
+
 function bibSetOperationMessage(err) {
   return String((err && err.message) || err || t('ui.pleaseTryAgainLater'));
 }
@@ -487,14 +500,15 @@ function bibSetInstallStyles() {
       .bib-settings { width: 100%; max-width: 720px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
       .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
-      .bib-set-toolbar { width: 100%; min-width: 0; margin: -2px 0 0; }
-      .bib-set-search-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
-      /* 输入框使用剩余轨道，宽度不会再被结果数量或折叠内容的最小宽度牵动。 */
-      .bib-set-search-shell { position: relative; flex: 1 1 auto; width: 0; min-width: 0; }
+      /* 搜索行始终是字段卡片的一部分，固定为「剩余宽度 + 计数」两条轨道；
+         展开/折叠和结果文案不会改变搜索框的宽度或页面的外层高度。 */
+      .bib-set-toolbar { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 16px 12px; border-top: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 34px; }
+      .bib-set-search-shell { position: relative; width: 100%; min-width: 0; }
       .bib-set-search { box-sizing: border-box; display: block; width: 100%; min-height: 34px; padding: 7px 30px 7px 11px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 18px; }
       .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-count { flex: 0 0 84px; width: 84px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+      .bib-set-count { display: block; width: 104px; box-sizing: border-box; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
       .bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px; }
       .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 0; padding: 14px 16px; border: 0; background: var(--bib-set-surface); color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -509,6 +523,8 @@ function bibSetInstallStyles() {
       .bib-set-collapse { display: block; width: 100%; min-width: 0; border-top: 1px solid var(--dsw-alias-border-l2); }
       .bib-set-collapse--collapsed { display: none; }
       .bib-set-collapse-inner { width: 100%; min-width: 0; }
+      /* 字段列表在卡片内部滚动，外层设置页高度稳定；滚动焦点也不会带着整张面板走。 */
+      .bib-set-field-list { width: 100%; max-height: min(54vh, 520px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
       .bib-set-body { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
@@ -575,17 +591,16 @@ function bibSetInstallStyles() {
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-alert { margin: 0; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
-      /* 语言切换分段控件：两按钮并排，选中态用品牌色填充，与开关/色板同套令牌 — 反色必須保證對比度，嚴禁白字被吞 */
-      .bib-set-lang-segment { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.4)); background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.06)); }
-      .bib-set-lang-opt { appearance: none; font: inherit; cursor: pointer; padding: 5px 16px; font-size: 13px; line-height: 1.5; border: none; background: transparent; color: var(--dsw-alias-label-primary); transition: background-color 160ms var(--ds-ease-in-out, ease), color 160ms var(--ds-ease-in-out, ease); }
-      .bib-set-lang-opt:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); }
-      .bib-set-lang-opt:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
-      .bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff; font-weight: 600; }
-      .bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff; filter: brightness(1.08); }
-      @media (forced-colors: active) { .bib-set-lang-opt[data-active="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-row--language { justify-content: flex-start; } .bib-set-controls { justify-content: flex-start; width: 100%; } .bib-set-controls--language { margin-left: 0; } .bib-set-footer { justify-content: flex-start; } }
-      @media (max-width: 420px) { .bib-set-search-row { align-items: stretch; flex-wrap: wrap; } .bib-set-search-shell { flex-basis: 100%; } .bib-set-count { margin-left: 2px; } }
-      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-lang-opt { transition: none; } }
+      .bib-set-data-actions { width: 100%; min-width: 0; box-sizing: border-box; padding: 0 16px 8px; }
+      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 14px 0; border-top: 1px solid var(--dsw-alias-border-l2); }
+      .bib-set-data-copy { min-width: 0; }
+      .bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 500; line-height: 22px; }
+      .bib-set-data-desc { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+      .bib-set-data-button-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
+      .bib-set-btn--destructive { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
+      .bib-set-btn--destructive:hover { background: rgba(217,45,32,0.08); border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
+      @media (max-width: 600px) { .bib-settings { gap: 10px; } .bib-set-card-header { padding: 12px; } .bib-set-toolbar { padding-left: 12px; padding-right: 12px; } .bib-set-body { padding: 0 12px 6px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-footer { justify-content: flex-start; } .bib-set-data-actions { padding-left: 12px; padding-right: 12px; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
+      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb { transition: none; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -810,34 +825,89 @@ function bibSetFieldGroups(props) {
   return groups;
 }
 
-function bibSetLanguageCard(props) {
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-lang-title' },
+const USAGE_EXPORT_COLUMNS = [
+  ['timestamp', function (record) { return usageExportTimestamp(record.ts); }],
+  ['provider', function (record) { return record.provider; }],
+  ['model', function (record) { return record.model; }],
+  ['sessionId', function (record) { return record.sessionId; }],
+  ['purpose', function (record) { return record.purpose; }],
+  ['inputTokens', function (record) { return record.input; }],
+  ['cacheReadTokens', function (record) { return record.cacheRead; }],
+  ['cacheWriteTokens', function (record) { return record.cacheWrite; }],
+  ['outputTokens', function (record) { return record.output; }],
+  ['currency', function (record) { return record.currency; }],
+  ['cost', function (record) { return record.cost; }],
+  ['pricingStatus', function (record) { return record.pricingStatus; }],
+  ['pricingVersion', function (record) { return record.pricingVersion; }],
+  ['status', function (record) { return record.status; }],
+];
+
+function usageExportTimestamp(value) {
+  const date = new Date(Number(value));
+  return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+}
+
+function usageExportCsv(payload) {
+  function cell(value) {
+    if (value === null || value === undefined) return '';
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+  const rows = [USAGE_EXPORT_COLUMNS.map(function (column) { return cell(column[0]); }).join(',')];
+  const records = payload && Array.isArray(payload.records) ? payload.records : [];
+  for (let i = 0; i < records.length; i++) {
+    rows.push(USAGE_EXPORT_COLUMNS.map(function (column) { return cell(column[1](records[i])); }).join(','));
+  }
+  return rows.join('\r\n') + '\r\n';
+}
+
+function downloadUsageExport(format, payload) {
+  if (typeof window === 'undefined' || !window.URL || typeof window.URL.createObjectURL !== 'function'
+      || typeof window.URL.revokeObjectURL !== 'function' || typeof Blob === 'undefined'
+      || typeof document === 'undefined' || !document.body) {
+    throw new Error(t('ui.exportNotSupported'));
+  }
+  const isCsv = format === 'csv';
+  const content = isCsv ? usageExportCsv(payload) : JSON.stringify(payload, null, 2) + '\n';
+  const mime = isCsv ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
+  const extension = isCsv ? 'csv' : 'json';
+  const blob = new Blob([content], { type: mime });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'dsh-bottom-info-bar-billing-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  try { link.click(); } finally {
+    if (link.parentNode) link.parentNode.removeChild(link);
+    window.setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
+  }
+}
+
+function bibSetDataCard(props) {
+  const disabled = props.busy === true;
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-data-title' },
     bibSetCardHeader({
       static: true,
-      titleId: 'bib-set-lang-title',
-      title: t('ui.languageSettings'),
-      description: t('ui.languageSettingsDesc'),
+      titleId: 'bib-set-data-title',
+      title: t('ui.dataAndBilling'),
+      description: t('ui.dataAndBillingDesc'),
     }),
-    React.createElement('div', { className: 'bib-set-body' },
-      React.createElement('div', { className: 'bib-set-row bib-set-row--language' },
-        React.createElement('div', { className: 'bib-set-controls bib-set-controls--language' },
-          React.createElement('div', { className: 'bib-set-lang-segment', role: 'radiogroup', 'aria-label': t('ui.languageSettings') },
-            React.createElement('button', {
-              type: 'button',
-              className: 'bib-set-lang-opt',
-              role: 'radio',
-              'aria-checked': props.localeActive !== 'en',
-              'data-active': props.localeActive !== 'en' ? 'true' : 'false',
-              onClick: function () { props.onSelect('zh'); },
-            }, '中文'),
-            React.createElement('button', {
-              type: 'button',
-              className: 'bib-set-lang-opt',
-              role: 'radio',
-              'aria-checked': props.localeActive === 'en',
-              'data-active': props.localeActive === 'en' ? 'true' : 'false',
-              onClick: function () { props.onSelect('en'); },
-            }, 'English'))))));
+    React.createElement('div', { className: 'bib-set-data-actions' },
+      React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.exportBillingRecords')),
+          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.exportBillingRecordsDesc'))),
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          React.createElement('button', { type: 'button', className: 'bib-set-btn', disabled: disabled, onClick: function () { props.onExport('csv'); } }, t('ui.exportBillingCsv')),
+          React.createElement('button', { type: 'button', className: 'bib-set-btn', disabled: disabled, onClick: function () { props.onExport('json'); } }, t('ui.exportBillingJson')))),
+      React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.clearBillingRecords')),
+          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.clearBillingRecordsDesc'))),
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          React.createElement('button', { type: 'button', className: 'bib-set-btn bib-set-btn--destructive', disabled: disabled, onClick: props.onClear }, t('ui.clearBillingRecords'))))));
 }
 
 function InfoBarSettingsSection() {
@@ -847,19 +917,19 @@ function InfoBarSettingsSection() {
   const [opError, setOpError] = React.useState(null);
   const [notice, setNotice] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
+  const [dataBusy, setDataBusy] = React.useState(false);
   const [hexDrafts, setHexDrafts] = React.useState({});
   const [customTextDraft, setCustomTextDraft] = React.useState(null);
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
 
-  // 语言切换：订阅 DSH locale 变化，驱动重渲染。
-  const getLocale = function () {
-    try { return (localeService && typeof localeService.getSnapshot === 'function') ? localeService.getSnapshot().active : 'zh'; } catch { return 'zh'; }
-  };
-  const [localeActive, setLocaleActive] = React.useState(getLocale);
+  // 设置页跟随 DSH 的全局语言；这里不提供重复的插件语言开关。
+  const [, setLocaleRevision] = React.useState(0);
   React.useEffect(function () {
     if (!localeService || typeof localeService.subscribe !== 'function') return undefined;
-    return localeService.subscribe(function () { setLocaleActive(getLocale()); });
+    return localeService.subscribe(function () {
+      setLocaleRevision(function (value) { return value + 1; });
+    });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);
@@ -1066,13 +1136,57 @@ function InfoBarSettingsSection() {
     });
   }
 
+  function runExport(format) {
+    if (saving || dataBusy) return;
+    setOpError(null);
+    setNotice(null);
+    setDataBusy(true);
+    rpc('exportUsageRecords').then(function (payload) {
+      if (payload && payload.archiveReadError) {
+        throw new Error(t('ui.exportIncomplete', { value: hostText(payload.archiveReadError) }));
+      }
+      const records = payload && Array.isArray(payload.records) ? payload.records : [];
+      if (records.length === 0) {
+        setNotice({ text: function () { return t('ui.noBillingRecordsToExport'); } });
+        return;
+      }
+      downloadUsageExport(format, payload);
+      setNotice({ text: function () { return t('ui.exportedBillingRecords', { count: records.length, format: format.toUpperCase() }); } });
+    }).catch(function (err) {
+      setOpError({ text: function () { return t('ui.exportFailed', { value: hostText(bibSetOperationMessage(err)) }); } });
+    }).finally(function () { setDataBusy(false); });
+  }
+
+  function runClearRecords() {
+    if (saving || dataBusy) return;
+    let confirmed = false;
+    try {
+      confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm(t('ui.clearBillingRecordsConfirm')) : false;
+    } catch (err) { confirmed = false; }
+    if (!confirmed) {
+      setNotice({ text: function () { return t('ui.clearCanceled'); } });
+      return;
+    }
+    setOpError(null);
+    setNotice(null);
+    setDataBusy(true);
+    rpc('clearUsageRecords').then(function (result) {
+      if (!result || result.cleared !== true) throw new Error((result && result.warning) || t('ui.clearFailedWithoutDetails'));
+      setNotice({ text: function () { return t('ui.clearedBillingRecords', { count: result.recordCount || 0 }); } });
+      bibSetDispatchLedgerChanged();
+    }).catch(function (err) {
+      setOpError({ text: function () { return t('ui.clearFailed', { value: hostText(bibSetOperationMessage(err)) }); } });
+    }).finally(function () { setDataBusy(false); });
+  }
+
   // ---- 渲染 ----
-  // 搜索时自动展开，箭头和 aria-expanded 始终反映实际可见状态。
+  // 搜索只负责筛选；输入时打开列表，但用户随后仍可明确折叠，箭头和
+  // aria-expanded 始终反映真实 DOM 状态，不再用隐式 searchActive 覆盖用户操作。
   const searchActive = searchQuery.trim().length > 0;
   const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsTotal = FIELD_REGISTRY.length;
   const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
-  const fieldsExpanded = !fieldsCollapsed || searchActive;
+  const fieldsExpanded = !fieldsCollapsed;
   const groupsChildren = bibSetFieldGroups({
     expanded: fieldsExpanded,
     query: searchQuery,
@@ -1099,60 +1213,63 @@ function InfoBarSettingsSection() {
   if (opError) feedback.push(React.createElement('p', { key: 'err', className: 'bib-set-alert', role: 'alert' }, opError.text()));
   else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice.text()));
   else if (saving) feedback.push(React.createElement('p', { key: 'saving', className: 'bib-set-notice', 'aria-live': 'polite' }, t('ui.saving')));
+  else if (dataBusy) feedback.push(React.createElement('p', { key: 'processing', className: 'bib-set-notice', 'aria-live': 'polite' }, t('ui.processing')));
 
   const fieldSummary = searchActive
     ? t('ui.searchResultCount', { count: fieldsMatchCount })
-    : fieldsEnabledCount + ' / ' + fieldsTotal;
+    : t('ui.enabledFieldsCount', { count: fieldsEnabledCount });
   const fieldsBody = React.createElement('div', {
     className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed'),
+    id: 'bib-set-fields-body',
+    role: 'region',
+    'aria-labelledby': 'bib-set-fields-title',
     'aria-hidden': fieldsExpanded ? undefined : 'true',
     inert: fieldsExpanded ? undefined : true,
   }, React.createElement('div', { className: 'bib-set-collapse-inner' },
-    React.createElement('div', { className: 'bib-set-body', id: 'bib-set-fields-body' },
-      searchActive && fieldsMatchCount === 0
-        ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
-        : groupsChildren)));
+    React.createElement('div', { className: 'bib-set-field-list' },
+      React.createElement('div', { className: 'bib-set-body' },
+        searchActive && fieldsMatchCount === 0
+          ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
+          : groupsChildren))));
   return React.createElement('div', { className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
-    React.createElement('div', { className: 'bib-set-toolbar' },
-      React.createElement('div', { className: 'bib-set-search-row' },
-        React.createElement('div', { className: 'bib-set-search-shell' },
-          React.createElement('input', {
-            type: 'search',
-            className: 'bib-set-search',
-            placeholder: t('ui.searchPlaceholder') || '搜索标签…',
-            value: searchQuery,
-            onChange: function (e) { setSearchQuery(e.target.value); },
-            'aria-label': t('ui.searchPlaceholder') || 'Search fields'
-          })),
-        React.createElement('span', { className: 'bib-set-count' }, fieldSummary)),
-      ),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
       bibSetCardHeader({
         titleId: 'bib-set-fields-title',
         title: t('ui.visibleFields'),
-        description: fieldsCollapsed && !searchActive ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'),
+        description: fieldsCollapsed ? t('ui.collapsedDesc') : t('ui.hiddenFieldsTakeNoSpace'),
         expanded: fieldsExpanded,
         contentId: 'bib-set-fields-body',
         onToggle: toggleFields,
       }),
+      React.createElement('div', { className: 'bib-set-toolbar' },
+        React.createElement('div', { className: 'bib-set-search-row' },
+          React.createElement('div', { className: 'bib-set-search-shell' },
+            React.createElement('input', {
+              type: 'search',
+              className: 'bib-set-search',
+              placeholder: t('ui.searchPlaceholder') || '搜索内容…',
+              value: searchQuery,
+              onChange: function (e) {
+                const value = e && e.target ? e.target.value : '';
+                setSearchQuery(value);
+                if (value.trim().length > 0) setFieldsCollapsed(false);
+              },
+              'aria-label': t('ui.searchFieldsLabel') || 'Search visible content'
+            })),
+          React.createElement('span', { className: 'bib-set-count', role: 'status', 'aria-live': 'polite', 'aria-label': fieldSummary }, fieldSummary))),
       fieldsBody),
-    bibSetLanguageCard({
-      localeActive: localeActive,
-      onSelect: function (locale) {
-        if (localeService && typeof localeService.setLocale === 'function') localeService.setLocale(locale);
-      },
-    }),
+    bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     React.createElement('div', { className: 'bib-set-footer' },
       feedback,
       React.createElement('button', {
-        type: 'button', className: 'bib-set-btn', disabled: saving,
+        type: 'button', className: 'bib-set-btn', disabled: saving || dataBusy,
         onClick: function () { runReset('fields'); },
       }, t('ui.resetLabels')),
       React.createElement('button', {
-        type: 'button', className: 'bib-set-btn', disabled: saving,
+        type: 'button', className: 'bib-set-btn', disabled: saving || dataBusy,
         onClick: function () { runReset('colors'); },
       }, t('ui.resetColors'))));
   } catch (err) {
@@ -1195,7 +1312,6 @@ module.exports = {
     const densityBusyListeners = new Set();
     // Survives composer remounts, so returning to an already visited session
     // does not require even one paint of an intermediate state.
-    const sessionModelCache = new Map();
     function applyMode() {
       if (occupantDispose) { occupantDispose(); occupantDispose = null; }
       occupantDispose = slots.register(
@@ -1279,7 +1395,7 @@ module.exports = {
       const usageProj = props.useProjection ? props.useProjection('tokenUsage') : undefined;
 
       const [state, setState] = React.useState({
-        loading: true, balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null,
+        loading: true, selectionKey: '', balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null,
         errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
@@ -1288,7 +1404,6 @@ module.exports = {
       // This state is owned by DSH's per-session model selector, not by the
       // process-wide default for newly-created Agents.
       const [sessionModel, setSessionModel] = React.useState(null);
-      const [modelSource, setModelSource] = React.useState('pending');
       const [displayDensity, setDisplayDensity] = React.useState(props.density);
       const [isDensitySaving, setIsDensitySaving] = React.useState(toggling);
 
@@ -1340,21 +1455,24 @@ module.exports = {
         let stop = null;
         let active = true;
         setSessionModel(null);
-        setModelSource('pending');
-        if (!sessionId) { setModelSource('unavailable'); return function () {}; }
+        if (!sessionId) return function () {};
         try {
-          const directories = ctx.get ? ctx.get('modelDirectories') : null;
+          let directories = null;
+          try { directories = ctx.get ? ctx.get('modelDirectories') : null; } catch (err) { /* property form below */ }
+          if (!directories && ctx.modelDirectories) directories = ctx.modelDirectories;
           if (!directories || typeof directories.directoryFor !== 'function') {
-            setModelSource('unavailable');
             return function () {};
           }
-          setModelSource('available');
           const directory = directories.directoryFor(sessionId);
           const publish = function () {
             if (!active || !directory.store || typeof directory.store.getSnapshot !== 'function') return;
             const snapshot = directory.store.getSnapshot();
             const selected = snapshot && snapshot.current;
-            if (!selected || typeof selected.provider !== 'string' || typeof selected.model !== 'string') return;
+            if (!selected || typeof selected.provider !== 'string' || typeof selected.model !== 'string'
+                || selected.provider.trim().length === 0 || selected.model.trim().length === 0) {
+              setSessionModel(null);
+              return;
+            }
             const group = Array.isArray(snapshot.groups) ? snapshot.groups.find(function (g) { return g && g.id === selected.provider; }) : null;
             const model = group && Array.isArray(group.models) ? group.models.find(function (m) { return m && m.id === selected.model; }) : null;
             const inputModalities = model && Array.isArray(model.inputModalities) ? model.inputModalities : null;
@@ -1364,19 +1482,21 @@ module.exports = {
               model: selected.model,
               providerDisplay: group && typeof group.name === 'string' ? group.name : selected.provider,
               modelDisplay: model && typeof model.name === 'string' ? model.name : selected.model,
-              // true/false 来自 DSH 的明确目录 metadata；null 表示仍待 host 查询，不能误画成文本模型。
+              // 某些较新的 DSH 目录只提供身份与名称；能力字段缺失时交给 host
+              // 的 resolveModelInfo 查询，不能把缺失当成“不支持图像”。
               acceptsImageInput: inputModalities === null ? null : inputModalities.indexOf('image') !== -1,
             };
-            sessionModelCache.set(sessionId, value);
-            if (sessionModelCache.size > 128) {
-              const firstKey = sessionModelCache.keys().next().value;
-              sessionModelCache.delete(firstKey);
-            }
             setSessionModel(value);
           };
           publish();
+          // The model picker normally loads this directory for itself.  The
+          // info bar must also be able to identify a fresh session on its own;
+          // otherwise the first render could stay pending until the picker is opened.
+          if (typeof directory.load === 'function') {
+            Promise.resolve(directory.load()).then(publish, function () { /* keep pending; the next DSH update retries */ });
+          }
           if (directory.store && typeof directory.store.subscribe === 'function') stop = directory.store.subscribe(publish);
-        } catch (err) { setModelSource('unavailable'); /* old DSH: retain the RPC fallback */ }
+        } catch (err) { /* no current directory: keep the display in the unknown state */ }
         return function () { active = false; if (typeof stop === 'function') stop(); };
       }, [sessionId]);
 
@@ -1389,22 +1509,29 @@ module.exports = {
       }, []);
 
       const loadVersionRef = React.useRef(0);
-      const cachedSessionModel = sessionId ? sessionModelCache.get(sessionId) : null;
-      const activeSessionModel = sessionModel && sessionModel.sessionId === sessionId ? sessionModel : (cachedSessionModel || null);
+      const lastSelectionKeyRef = React.useRef('');
+      const activeSessionModel = sessionModel && sessionModel.sessionId === sessionId ? sessionModel : null;
       const load = React.useCallback(function (selection) {
         // v1.9.0 PR2：周期顺带校准字段配置（宿主内存缓存，即回；设置页变更另有 CustomEvent 即时通道）
         refreshFieldConfig();
         const requestVersion = ++loadVersionRef.current;
         const activeSelection = selection || activeSessionModel;
         const selectionArgs = activeSelection ? { selection: { provider: activeSelection.provider, model: activeSelection.model } } : {};
-        // 首启窗口内（打开/刷新网页头几秒）→ 快照类请求强制重查；之后的 30s 周期轮询走常规缓存节奏
-        const force = Date.now() - BOOT_AT < FORCE_REFRESH_WINDOW_MS;
+        const balanceArgs = activeSelection
+          ? { selection: { provider: activeSelection.provider, model: activeSelection.model } }
+          : {};
+        // 首启和切换模型后的第一次请求强制重查，之后的 30s 轮询走缓存节奏。
+        // 这样切换回一个很久没用的服务商时不会等宿主下一轮 60s 定时器。
+        const selectionKey = activeSelection ? activeSelection.provider + '\u0000' + activeSelection.model : '';
+        const selectionChanged = selectionKey !== lastSelectionKeyRef.current;
+        lastSelectionKeyRef.current = selectionKey;
+        const force = selectionChanged || Date.now() - BOOT_AT < FORCE_REFRESH_WINDOW_MS;
         if (force) { selectionArgs.force = true; }
         const signal = abortRef.current ? abortRef.current.signal : null;
         // 逐接口容错：allSettled 等全部 settle（最坏 20s 超时兜底），任一失败只降级该端点，
         // 不拖垮其他成功数据；合并逻辑在 mergeLoadResults（失败端点保留旧值 + 记录错误）
         Promise.allSettled([
-          rpc('getBalanceSnapshot', activeSelection ? { provider: activeSelection.provider, force: force } : (force ? { force: true } : null), signal),
+          rpc('getBalanceSnapshot', Object.assign(balanceArgs, force ? { force: true } : {}), signal),
           rpc('getPricing', selectionArgs, signal),
           rpc('getUsageSummary', Object.assign({ sessionId: sessionId }, selectionArgs), signal),
           rpc('getBillingMode', selectionArgs, signal),
@@ -1413,7 +1540,7 @@ module.exports = {
         ]).then(function (results) {
           // Do not allow a late A response to overwrite newly active B.
           if ((signal && signal.aborted) || requestVersion !== loadVersionRef.current) return;
-          setState(function (s) { return mergeLoadResults(s, results); });
+          setState(function (s) { return mergeLoadResults(s, results, selectionKey); });
         });
       }, [resolveSessionId, activeSessionModel, sessionId]);
 
@@ -1423,6 +1550,13 @@ module.exports = {
         return function () { window.clearInterval(id); };
       }, [load]);
 
+      React.useEffect(function () {
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+        const onLedgerChanged = function () { load(activeSessionModel || undefined); };
+        document.addEventListener(BIB_LEDGER_EVENT, onLedgerChanged);
+        return function () { document.removeEventListener(BIB_LEDGER_EVENT, onLedgerChanged); };
+      }, [load, activeSessionModel]);
+
       // 版本检查由 host 在进程启动时完成；这里仅读取一次缓存，不轮询 NPM。
        React.useEffect(function () {
          let active = true;
@@ -1431,12 +1565,6 @@ module.exports = {
          }).catch(function () { /* 版本检查失败静默，不影响信息栏 */ });
          return function () { active = false; };
        }, []);
-
-      // Model text comes from sessionModel synchronously.  The following load
-      // only refreshes secondary data in the background.
-      React.useEffect(function () {
-        if (activeSessionModel) load(activeSessionModel);
-      }, [load, activeSessionModel]);
 
       // 会话统计变化（回复中 turns/steps/tokens 增长，回复完成时停止）→ 防抖后即时刷新花费，
       // 不等下一个 30s 轮询：用户回复一结束即可看到真实金额
@@ -1485,7 +1613,23 @@ module.exports = {
       // While background RPCs catch up, render the newly activated session's
       // model and suppress details from the prior session rather than showing
       // a convincing but wrong provider/model combination.
-      const waitForSessionModel = !!sessionId && modelSource !== 'unavailable' && !activeSessionModel;
+      const waitForSessionModel = !!sessionId && !activeSessionModel;
+      const activeSelectionKey = activeSessionModel ? activeSessionModel.provider + '\u0000' + activeSessionModel.model : '';
+      // A new session/model is published before its six RPC responses return.
+      // Mask every selection-scoped payload during that gap so the old account
+      // can never appear beside the new provider/model, even for one render.
+      const stateMatchesActiveSelection = !activeSessionModel || state.selectionKey === activeSelectionKey;
+      const renderedState = stateMatchesActiveSelection ? state : {
+        loading: true,
+        selectionKey: activeSelectionKey,
+        balance: null,
+        pricing: null,
+        usage: null,
+        billingMode: null,
+        sub: null,
+        billing: null,
+        errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
+      };
       const visiblePricing = activeSessionModel && (!state.pricing
         || state.pricing.provider !== activeSessionModel.provider || state.pricing.model !== activeSessionModel.model)
         ? { provider: activeSessionModel.provider, model: activeSessionModel.model, providerDisplay: activeSessionModel.providerDisplay, modelDisplay: activeSessionModel.modelDisplay, mode: 'unknown', acceptsImageInput: activeSessionModel.acceptsImageInput }
@@ -1557,7 +1701,7 @@ module.exports = {
       // 订阅窗口紧凑行标签（5小时 → '5h'，周 → '周'，月 → '月'）；hover 明细仍用完整标签
       function quotaWindowLabel(window) {
         const keys = { five_hour: 'host.hour', seven_day: 'ui.weekly', monthly: 'ui.monthly' };
-        return keys[window.key] ? t(keys[window.key]) : window.label;
+        return Object.hasOwn(keys, window.key) ? t(keys[window.key]) : window.label;
       }
       function compactWindowLabel(key) {
         if (key === 'five_hour') return '5h';
@@ -1581,7 +1725,10 @@ module.exports = {
       // 仅在 DSH 模型目录明确声明 inputModalities 包含 image 时，将“完整模型名 视觉”合并为一个椭圆。
       function modelLabelWithCapability(pr, modelLabel) {
         if (pr && pr.acceptsImageInput === null) {
-          return React.createElement('span', { className: 'bi-model-capability-pending', 'aria-hidden': 'true' }, modelLabel);
+          return React.createElement('span', {
+            className: 'bi-model-capability-pending bi-model-name',
+            title: t('ui.modelCapabilityPending')
+          }, modelLabel);
         }
         if (!pr || pr.acceptsImageInput !== true) return React.createElement('span', { className: 'bi-model-name' }, modelLabel);
         return React.createElement('span', { className: 'bi-vision', title: t('ui.supportsImageInput') },
@@ -1652,7 +1799,8 @@ module.exports = {
       function subscriptionPlanShort(planType) {
         if (typeof planType !== 'string' || planType.length === 0) return null;
         const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
-        return map[planType.toLowerCase()] || null;
+        const key = planType.toLowerCase();
+        return Object.hasOwn(map, key) ? map[key] : null;
       }
 
       // 本地时区 YYYY-MM-DD（订阅到期日）
@@ -1668,7 +1816,7 @@ module.exports = {
       function subscriptionProviderGroup() {
         const pr = visiblePricing;
         const serviceName = subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider);
-        const subSnapshot = state.sub;
+        const subSnapshot = renderedState.sub;
         const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;
         const rawModelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
           : (pr && pr.model ? pr.model : t('ui.unknownModel'));
@@ -1721,8 +1869,9 @@ module.exports = {
       // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       // v1.9.0 PR2：每个渲染片段按设置过滤（fieldVisible）；隐藏不占位，组间分隔符由组装层自动收合
       function pushBalanceGroups(groups, trailingErrorGroups) {
-        const bal = state.balance;
-        const errors = state.errors || {};
+        const bal = renderedState.balance;
+        const errors = renderedState.errors || {};
+        if (bal && bal.selectionPending) return;
         const alertActive = !!(bal && bal.alert && bal.alert.active);
         pushCustomText(groups);
         if (fieldVisible('anchorGroup')) {
@@ -1806,8 +1955,8 @@ module.exports = {
       // 只显示钱；hover 浮窗显示 含子代理说明 + 今天 / 近一月 / 全部；金额数字加粗。
       // usdSymbol：账户币种为美元时，hover 汇总行用 $ 前缀（本会话单值仍按其真实计价币种）
       function pushSessionCost(groups, trailingErrorGroups, usdSymbol) {
-        const usg = state.usage;
-        const errs = state.errors || {};
+        const usg = renderedState.usage;
+        const errs = renderedState.errors || {};
         if (usg) {
           // 隐藏不占位（错误提示属于独立字段 usageError，两支互斥不受影响）
           if (fieldVisible('sessionCost')) {
@@ -1849,15 +1998,15 @@ module.exports = {
          return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
        }
 
-       function pushSubscriptionGroups(groups, trailingErrorGroups) {
+      function pushSubscriptionGroups(groups, trailingErrorGroups) {
         pushCustomText(groups);
         if (fieldVisible('subServiceGroup')) {
           const subAnchor = subscriptionProviderGroup();
           groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));
         }
         pushTimeGroups(groups);
-        const sub = state.sub;
-        const errors = state.errors || {};
+        const sub = renderedState.sub;
+        const errors = renderedState.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
         if (sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
           groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: t('ui.subscriptionExpiresLocalTime', { value: formatDate(sub.expiryAt) }) },
@@ -1913,9 +2062,9 @@ module.exports = {
           const windowPriority = { five_hour: 1, seven_day: 2, monthly: 3 };
           const windowsWithReset = windows.filter(function (w) { return w.resetsAt; });
           const displayWindow = windowsWithReset.length > 0
-            ? windowsWithReset.slice().sort(function (a, b) {
-                const pa = windowPriority[a.key] || 99;
-                const pb = windowPriority[b.key] || 99;
+              ? windowsWithReset.slice().sort(function (a, b) {
+                const pa = Object.hasOwn(windowPriority, a.key) ? windowPriority[a.key] : 99;
+                const pb = Object.hasOwn(windowPriority, b.key) ? windowPriority[b.key] : 99;
                 return pa - pb;
               })[0]
             : null;
@@ -1980,8 +2129,8 @@ module.exports = {
           groups.push(React.cloneElement(billAnchor, { 'data-field': 'billingServiceGroup', style: fieldStyle('billingServiceGroup') }));
         }
         pushTimeGroups(groups);
-        const bill = state.billing;
-        const errors = state.errors || {};
+        const bill = renderedState.billing;
+        const errors = renderedState.errors || {};
         if (!bill) {
           if (errors.billing && fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billerr',
@@ -2055,10 +2204,11 @@ module.exports = {
       // 模式互斥：订阅制渲染订阅版 row2，账单制渲染账单版 row2，余额制渲染 v1.0.0 现状——三态绝不叠加（FR-14）
       const isSub = !!(visibleBillingMode && visibleBillingMode.mode === 'subscription');
       const isBilling = !!(visibleBillingMode && visibleBillingMode.mode === 'billing');
+      const selectionPending = waitForSessionModel || !visibleBillingMode || visibleBillingMode.mode === 'unknown';
       // Never paint a loading placeholder.  Before the active session's model
       // is available, leave this compact row empty rather than briefly showing
       // either a generic loading label or data from the previous session.
-      if (waitForSessionModel) {
+      if (selectionPending) {
         // Intentionally empty: session model publish fills the row immediately.
       } else if (isBilling) {
         pushBillingGroups(groups, trailingErrorGroups);
@@ -2069,7 +2219,7 @@ module.exports = {
       }
 
       // 全局降级提示：任一端点失败 → 旧数据照常渲染 + 角落提示（title 列出失败项），仅失败项降级
-      const errors = state.errors || {};
+      const errors = renderedState.errors || {};
       const failedLabels = [];
       if (errors.balance) failedLabels.push(t('ui.balance.pushBalanceGroups'));
       if (errors.pricing) failedLabels.push(t('ui.pricing'));
@@ -2082,7 +2232,7 @@ module.exports = {
           React.createElement('span', { className: 'bi-stale', key: 'degraded',
             title: failedLabels.join(t('ui.listSeparator')) + t('ui.temporarilyUnavailableKeepingTheLast') }, t('ui.refreshFailed'))));
       }
-      const persistence = state.usage && state.usage.persistence;
+      const persistence = renderedState.usage && renderedState.usage.persistence;
       if (persistence && persistence.state && persistence.state !== 'ok' && fieldVisible('persistWarning')) {
         const snapshotOnly = persistence.state === 'snapshot-stale';
         trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {

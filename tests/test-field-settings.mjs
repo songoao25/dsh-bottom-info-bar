@@ -229,7 +229,7 @@ function copySettings(fromDir, toDir) {
 {
   // 对照组：正常启动（从未折叠、无冷归档）→ 无告警、persistence=ok
   const s = await mount(newSection('d4-baseline'))
-  const baseline = (await invokeRoute(s.stub.captured.route, 'getUsageSummary')).body
+  const baseline = (await invokeRoute(s.stub.captured.route, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-chat' } })).body
   check('D4 对照：未折叠时 persistence=ok 且无告警', baseline.persistence.state === 'ok', baseline.persistence)
 
   // 制造“折叠已发生”的痕迹：冷归档目录留有明细（appendFoldArchive 只在折叠时创建）
@@ -249,7 +249,7 @@ function copySettings(fromDir, toDir) {
   } finally {
     console.warn = originalWarn
   }
-  const restarted = (await invokeRoute(restartRoute, 'getUsageSummary')).body
+  const restarted = (await invokeRoute(restartRoute, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-chat' } })).body
   check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('账单汇总文件缺失') !== -1), warns)
   check('D4：客户端可见告警（persistence=snapshot-stale「账单待整理」+ 指向冷归档文案）',
     restarted.persistence.state === 'snapshot-stale' && /usage-archive/.test(restarted.persistence.message || ''), restarted.persistence)

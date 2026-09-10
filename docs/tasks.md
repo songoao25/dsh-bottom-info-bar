@@ -4,7 +4,7 @@
 
 | # | 任务 | 验收标准 | 依赖 |
 |---|---|---|---|
-| T1 | 账户映射表：新增 `accountForProvider(pid)`（deepseek/deepseek-official→deepseek；openai→openai；moonshotai/moonshotai-cn/kimi-coding→moonshotai；openrouter→openrouter；stepfun→stepfun；codex/chatgpt/openai-codex→订阅源codex；opencode-go/opencode→订阅源opencode-go；zai/zai-coding-cn→订阅源zai；未知→null）；`balanceProviderKey` 改用该表，未知返回 null 不再回退 config.activeProvider | 单测：未知 provider 返回 null；deepseek-official→deepseek；moonshotai-cn→moonshotai；不再有"未知→activeProvider"路径 | - |
+| T1 | 账户映射表：新增 `accountForProvider(pid)`（deepseek/deepseek-official→deepseek；openai→openai；moonshotai/moonshotai-cn/kimi-coding→moonshotai；openrouter→openrouter；stepfun→stepfun；codex/chatgpt/openai-codex→订阅源codex；opencode-go/opencode→订阅源opencode-go；zai/zai-coding-cn→订阅源zai；未知→null）；`balanceProviderKey` 改用该表，未知不再猜测服务商 | 单测：未知 provider 返回 null；deepseek-official→deepseek；moonshotai-cn→moonshotai；不再把未知服务商归到其他账户 | - |
 | T2 | 花费账户隔离：`recordAccount(r)`；sessionTotals 增加账户维度；本对话/今日/本月/近30天/全部/summary 全部按 当前活跃账户 + 币种过滤；`providerSpend` 改为按 recordAccount 过滤（修复 deepseek-official 记录不计入 deepseek 的问题） | 单测：同会话 OpenCode+DeepSeek 记录，活动账户=deepseek 时只出 deepseek 金额；无记录账户显示 0；既有 spend-accounting 断言更新为账户口径 | T1 |
 | T3 | moonshotai 余额适配器：PROVIDERS 条目 {credential:'MOONSHOT_API_KEY', balanceAPI:'https://api.moonshot.cn/v1/users/me/balance', parseBalance: balance_infos→{currency,total,granted,toppedUp}}；凭据回退 KIMI_API_KEY | 单测：官方响应样例解析正确；401/超时/无凭据→对应降级 error，不崩溃；60s 刷新走通用机制 | T1 |
 | T4 | openrouter 余额适配器：PROVIDERS 条目 {credential:'OPENROUTER_API_KEY', balanceAPI:'https://openrouter.ai/api/v1/credits', parseBalance: data.credits→USD total} | 单测：{data:{credits:15.42}}→total 15.42 USD；失败降级 | T1 |

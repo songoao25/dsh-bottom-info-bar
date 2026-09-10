@@ -38,7 +38,10 @@ check('client 只在有更新时显示新版本提醒文字', client.includes("t
 check('更新标签提示语包含动态最新版本号', client.includes("title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest })"))
 check('更新标签使用鲜红色提醒语义且无下划线', client.includes('.bi-update{ color: var(--bi-state-alert); font-weight: 600; }')
   && client.includes('--bi-state-alert: #d92d20') && !client.includes('text-decoration: underline'))
-check('更新标签不是链接或按钮', !client.includes('window.open') && !client.includes("<a") && !client.includes("'a'"))
+check('更新标签不是链接或按钮', !client.includes('window.open')
+  && client.includes("fieldSpan('updateNotice', 'update', React.createElement('span'")
+  && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('a'")
+  && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('button'"))
 check('不包含自动更新命令执行逻辑', !client.includes('child_process') && !host.includes('exec(') && !host.includes('spawn('))
 
 console.log(`结果：${pass} PASS / ${fail} FAIL`)

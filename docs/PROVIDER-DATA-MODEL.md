@@ -82,7 +82,7 @@ interface ProviderAccountStatus {
 |---|---|---|
 | deepseek | pay_as_you_go | official_api（balance_infos） |
 | openai | pay_as_you_go | local_calculation（估算） |
-| openai-codex / chatgpt | subscription | oauth_endpoint（wham，D 级） |
+| openai-codex / chatgpt | subscription | local token fields（plan / expiry） |
 | opencode-go | coding_plan | official_api（usage，社区逆向） |
 | zai / zai-coding-cn | coding_plan | oauth/api_key endpoint（quota/limit，B/C 级） |
 | moonshotai | pay_as_you_go | official_api（balance，A 级） |

@@ -25,12 +25,15 @@ check('只接受声明式数字（拒绝 remote 分时价/未知币种）', host
 check('容量上限防滥用（≤512 条）', host.includes('>= 512'), true)
 
 // 3) 聚合商"直读真实账单"路径：官方报出的钱优先于本地换算
-check('记录层支持服务商报告的真实金额（u.cost）', /billed == null && typeof u\.cost === 'number'/.test(host), true)
+check('记录层支持服务商报告的真实金额（严格清洗 u.cost）', host.includes('const reportedCost = parseFiniteNonNegativeAmount(u.cost)')
+  && host.includes('billed == null && reportedCost != null'), true)
 check('聚合商币种登记表存在（OpenRouter=USD）', host.includes("PROVIDER_REPORTED_CURRENCY = { openrouter: 'USD' }"), true)
 check('账单来源版本标记 provider-reported', host.includes("'provider-reported-'"), true)
 
 // 4) 服务商作用域键（同名模型跨币种计费域）
-check('host 支持作用域键回退链（provider:model → model）', /const scoped = PRICING\[provider \+ ':' \+ model\]/.test(host), true)
+check('host 支持作用域键回退链（provider:model → model）', host.includes("const scopedKey = provider + ':' + model")
+  && host.includes('Object.hasOwn(PRICING, scopedKey)')
+  && host.includes('Object.hasOwn(PRICING, model)'), true)
 check('目录允许作用域键（sanitizer 含冒号白名单）', host.includes('[A-Za-z0-9._:-]'), true)
 check('Kimi 国内域以 moonshotai-cn: 作用域收录（防串币种）', host.includes("'moonshotai-cn:kimi-k3'"), true)
 

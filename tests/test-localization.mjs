@@ -68,7 +68,7 @@ assert.equal(missing.status, 1, missing.output)
 assert.match(missing.output, /FAIL[^\n]*missingCall/)
 console.log('PASS  English host prose passes; a quote in a regex cannot hide missingCall()')
 
-let states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'en', '', false]
+let states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 let stateIndex = 0
 const React = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -119,7 +119,7 @@ function text(tree) {
 }
 const rendered = nodes(render())
 const descriptions = rendered.filter((node) => node.props.className === 'bib-set-rowDesc').map(text)
-assert.ok(descriptions.includes('Shown in: Balance. Actual account balance. A low balance appears in red with a Low label.'))
+assert.ok(descriptions.includes('Shown in: Balance. Shows the account balance; a low balance appears in red.'))
 for (const description of descriptions) {
   assert.doesNotMatch(description, /\.[A-Z]| {2}/, description)
 }
@@ -131,11 +131,9 @@ await new Promise((resolve) => setImmediate(resolve))
 const alerts = nodes(render()).filter((node) => node.props.role === 'alert').map(text)
 assert.ok(alerts.includes('"Balance": Could not save: Offline'), JSON.stringify(alerts))
 assert.equal(states[0].fields.balance, true, 'A failed save must restore field visibility')
-// Language switcher shows native language names (中文 / English) in both locales — standard UI convention.
-// Strip the language option text before checking for stray Chinese characters.
-const langNames = ['中文', 'English']
-const textWithoutLangOpts = text(render()).replace(new RegExp(langNames.join('|'), 'g'), '')
-assert.doesNotMatch(textWithoutLangOpts, /\p{Script=Han}|[「」]/u)
+// The settings page follows DSH's shared locale service and does not duplicate
+// a plugin-only language switcher.
+assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
 console.log('PASS  Failed field saves use English punctuation and preserve rollback behavior')
 
 // The same registered components and bound translator follow the LocaleFace.
@@ -143,40 +141,24 @@ const bound = locale.bind('dsh-bottom-info-bar')
 assert.equal(navLabel(), 'Info Bar')
 locale.setLocale('zh')
 assert.equal(bound, locale.bind('dsh-bottom-info-bar'))
-assert.equal(navLabel(), '信息底栏')
+assert.equal(navLabel(), '信息栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
-states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, {}, null, 'zh', '', false]
-assert.match(text(render()), /信息底栏设置/)
-assert.match(text(render()), /原生字段/)
-assert.match(text(render()), /服务商账户的真实余额/)
+states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
+assert.match(text(render()), /信息栏/)
+assert.match(text(render()), /原生统计行字段/)
+assert.match(text(render()), /账户余额/)
 locale.setLocale('en')
-assert.match(text(render()), /Info Bar settings/)
+assert.match(text(render()), /Info Bar/)
 
-// The in-plugin control delegates to DSH's shared locale service. Reset the
-// state array so localeActive is initialized from the current LocaleFace, as it
-// would be on a fresh React mount.
-states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, {}]
+states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 locale.setLocale('zh')
-let languageOptions = nodes(render()).filter(node => node.props.role === 'radio')
-let chineseOption = languageOptions.find(node => text(node) === '中文')
-let englishOption = languageOptions.find(node => text(node) === 'English')
-assert.ok(chineseOption && englishOption, 'Both native language options must render')
-assert.equal(chineseOption.props['aria-checked'], true)
-assert.equal(englishOption.props['aria-checked'], false)
-englishOption.props.onClick()
-assert.equal(locale.getSnapshot().active, 'en', 'English option must call the shared DSH locale service')
-states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, {}]
-languageOptions = nodes(render()).filter(node => node.props.role === 'radio')
-chineseOption = languageOptions.find(node => text(node) === '中文')
-englishOption = languageOptions.find(node => text(node) === 'English')
-assert.equal(chineseOption.props['aria-checked'], false)
-assert.equal(englishOption.props['aria-checked'], true)
-assert.match(text(render()), /Switch the DeepSeek Harness display language/)
-chineseOption.props.onClick()
-assert.equal(locale.getSnapshot().active, 'zh', 'Chinese option must call the shared DSH locale service')
+assert.match(text(render()), /信息栏/)
 locale.setLocale('en')
-console.log('PASS  Language control changes the shared DSH locale and reflects the active option')
+assert.match(text(render()), /Info Bar/)
+assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
+locale.setLocale('en')
+console.log('PASS  Settings page follows DSH global locale without a duplicate language control')
 
 function expand(tree) {
   if (Array.isArray(tree)) return tree.map(expand)

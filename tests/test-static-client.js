@@ -19,7 +19,7 @@ function check(label, actual, expected) {
 // 1) 本会话始终显示：无 tokens > 0 门槛（v1.8 起为 pushSessionCost 公共小部件，余额制与订阅·充值余额两处复用）
 check('本会话块不再依赖 tokens > 0 门槛', !clientSrc.includes('usg.currentSession.tokens > 0'), true);
 check('本会话块在 usg 存在时始终渲染（pushSessionCost 公共小部件）', clientSrc.includes('function pushSessionCost(groups, trailingErrorGroups, usdSymbol)')
-  && clientSrc.includes('const usg = state.usage;')
+  && clientSrc.includes('const usg = renderedState.usage;')
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
 check('无记账时显示 ¥0.000 回退', clientSrc.includes('symbol + (0).toFixed(3)'), true);
 check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) })"), true);
