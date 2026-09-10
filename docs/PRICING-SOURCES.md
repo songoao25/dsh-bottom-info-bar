@@ -1,6 +1,6 @@
 # 定价来源与复核规则
 
-最后复核：2026-08-28（v1.8，智谱 GLM 全系列 + 小米/StepFun/Kimi 国内站按量价 + 远程价目目录）
+最后复核：2026-09-11（DeepSeek V4.1 Flash + DSH 0.1.5-rc.2 目录适配 + 余额刷新）
 
 信息栏中的价格用于展示与本地花费估算，不替代服务商账单。每次调整 `plugin/src/host.js` 的 `PRICING` 前，必须先人工复核相应服务商的正式价格页面，并在提交中同步更新本文件的复核日期和映射说明。
 
@@ -16,8 +16,10 @@
 
 ## 当前映射
 
-- DeepSeek V4 Flash、V4 Pro 与 V4 Flash Vision Exp 均使用两档价格：空闲价为高峰价的一半。自 2026-08-23 00:00 起，周六、周日全天按空闲价计费；周一至周五仍在北京时间 09:00–12:00、14:00–18:00 按高峰价计费，其余时段为空闲价。计费时段以服务端接收请求的北京时间为准；本地信息栏只作展示与估算。
-- 官方价格页现已单列 `deepseek-v4-flash-vision-exp`，其当前各档价格与 `deepseek-v4-flash` 相同；代码中仍保留独立条目，以便服务商后续单独调价时直接更新，绝不按名称臆测。
+- **DeepSeek V4.1 Flash（2026-09-10 官网更新）**：官方模型名为 `deepseek-flash`，官方版本/发布名为 `DeepSeek-V4.1-Flash`；DSH `0.1.5-rc.2` 的模型切换器目录返回名为 `DeepSeek-V41-Flash`，插件原样跟随 DSH 目录，不自行美化。上下文 1M、最大输出 384K，支持非思考与思考模式、JSON Output、Tool Calls、Responses API、Anthropic API、对话前缀续写（Beta）、FIM（仅非思考）与视觉输入。中文价格页（元/百万 tokens）：高峰缓存命中/未命中/输出 = 0.04/2/8，空闲 = 0.02/1/4；空闲价为高峰价一半。高峰为周一至周五北京时间 09:00–12:00、14:00–18:00，其余时间为空闲；计费时段以服务端接收请求时间为准，本地信息栏仅作展示与估算。
+- 官方说明 `deepseek-v4-flash` 与 `deepseek-v4-flash-vision-exp` 仍暂时接受，但对应模型已下线，请求由 `DeepSeek-V4.1-Flash` 提供服务并按 Flash 价格计费；代码保留别名以正确记录历史/兼容调用，不再将它们展示为在售模型。
+- 官方价格页当前仍列出 `deepseek-v4-pro` 的独立价格（高峰 0.30/9/27，空闲 0.15/4.5/13.5）；北京时间 2026-09-14 12:00 起至 V4.1 Pro 发布前，官方将其请求路由至 V4.1 Flash 并按 Flash 价格计费，插件已按请求时间自动切换到 Flash 价格，历史已冻结金额不重写。
+- 官方依据：[更新日志](https://api-docs.deepseek.com/updates/)、[模型 & 价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)、[图像理解](https://api-docs.deepseek.com/zh-cn/guides/vision)、[限速与隔离](https://api-docs.deepseek.com/zh-cn/quick_start/rate_limit)。
 - **v1.8 智谱 GLM 系列入库（8 款全）**：glm-5.3 / glm-5.3-flash / glm-5.2 / glm-5.1 / glm-5-turbo / glm-5v-turbo / glm-4.7 / glm-4.5-air，全部为 CNY flat 价（输入/缓存命中/输出，元每百万 tokens），官方单列缓存命中价与"缓存存储限时免费"口径。采集方式、全部分段档位数字与第三方交叉验证记录见 `docs/research/bigmodel-pricing-202608.md`。注意：
   - 分段价模型（5.1 / 5-turbo / 5v-turbo 按 32K 输入分档；4.7 / 4.5-air 另叠输出细分）主条目取**基础档**，长上下文档暂未参与计算——影响与后续方案见 `docs/BILLING-FRAMEWORK-AUDIT.md` P2。
   - `glm-5.3-flash` 官方存在"5折限时两周"双价：内置表取刊例价（0.8/0.23/2.8，保守不低估）；远程目录 `catalog/pricing.json` 在促销窗口内配实扣价（0.4/0.115/1.4），活动结束后翻回——价格更新走远程目录，无需发版。

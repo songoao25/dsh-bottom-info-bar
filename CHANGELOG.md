@@ -2,6 +2,14 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.10...v1.10.11) (2026-09-11)
+
+### Bug Fixes
+
+* **host:** adapt DeepSeek V4.1 Flash (`deepseek-flash`) and show its image capability from the DSH model metadata
+* **host:** refresh DSH model/provider catalogs with retry, invalidation, and stale-result protection so newly published models are recognized without hard-coded plugin changes
+* **host:** force fresh balance reads on page open/provider changes, deduplicate periodic requests, and bypass intermediary caches while preserving the last good snapshot on failure
+
 ## [1.10.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.9...v1.10.10) (2026-09-08)
 
 ### Bug Fixes

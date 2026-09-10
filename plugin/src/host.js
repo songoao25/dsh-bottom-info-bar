@@ -174,7 +174,7 @@ function billingSourceFor(providerId) {
 }
 
 // ---------- M5：DSH 目录名 → 展示名（模型名/服务商名与模型切换器完全一致） ----------
-// 模型切换器显示 DSH LLM 目录的 model.name（如 id=deepseek-v4-flash 的 name="DeepSeek-V4-Flash"）。
+// 模型切换器显示 DSH LLM 目录的 model.name（DSH 0.1.5-rc.2 中如 id=deepseek-flash 的 name="DeepSeek-V41-Flash"）。
 // 以下两个纯函数只做"缓存优先 → 回退"解析；缓存由 apply 内异步填充（llm.listModels / llm.listProviders）。
 // modelDisplay：优先缓存里的 DSH 目录 name；缓存缺失/未知模型回退原始 model id（不做自建美化）
 function modelDisplayFromCache(model, provider, cache, translate) {
@@ -1093,16 +1093,23 @@ export default {
 
     // ---------- 定价表（元/美元 · 百万 tokens；来源与人工复核规则见 docs/PRICING-SOURCES.md） ----------
     const PRICING = {
+      // DeepSeek 官方模型 & 价格页：deepseek-flash = DeepSeek-V4.1-Flash。
+      // CNY/百万 tokens；工作日北京时间 09:00–12:00、14:00–18:00 为高峰，其余为空闲。
+      'deepseek-flash': {
+        currency: 'CNY', mode: 'peak-valley',
+        peak:   { inputCacheHit: 0.04, inputCacheMiss: 2.0, output: 8.0 },
+        offpeak:{ inputCacheHit: 0.02, inputCacheMiss: 1.0, output: 4.0 },
+      },
       'deepseek-v4-flash': {
         currency: 'CNY', mode: 'peak-valley',
-        peak:   { inputCacheHit: 0.10, inputCacheMiss: 3.0, output: 9.0 },
-        offpeak:{ inputCacheHit: 0.05, inputCacheMiss: 1.5, output: 4.5 },
+        peak:   { inputCacheHit: 0.04, inputCacheMiss: 2.0, output: 8.0 },
+        offpeak:{ inputCacheHit: 0.02, inputCacheMiss: 1.0, output: 4.0 },
       },
-      // 官方价格页已单列视觉实验模型，当前各档价格与 V4 Flash 相同；保留独立条目以便后续独立调价。
+      // 官方说明：此旧模型名仍暂时接受，但已下线，请求由 V4.1 Flash 提供服务并按 Flash 价格计费。
       'deepseek-v4-flash-vision-exp': {
         currency: 'CNY', mode: 'peak-valley',
-        peak:   { inputCacheHit: 0.10, inputCacheMiss: 3.0, output: 9.0 },
-        offpeak:{ inputCacheHit: 0.05, inputCacheMiss: 1.5, output: 4.5 },
+        peak:   { inputCacheHit: 0.04, inputCacheMiss: 2.0, output: 8.0 },
+        offpeak:{ inputCacheHit: 0.02, inputCacheMiss: 1.0, output: 4.0 },
       },
       'deepseek-v4-pro': {
         currency: 'CNY', mode: 'peak-valley',
@@ -1159,7 +1166,7 @@ export default {
       if (model && /^(gpt|o1|o3|claude|gemini|grok)/.test(model)) return 'USD';
       return 'CNY';
     }
-    const DEFAULT_MODEL = 'deepseek-v4-flash';
+    const DEFAULT_MODEL = 'deepseek-flash';
 
     // ---------- 远程价目目录（v1.8）：内置表兜底 + 启动/定时增量更新 ----------
     // 设计目标（用户铁律）：接入新模型/新价格不再依赖插件发版。
@@ -1404,10 +1411,25 @@ export default {
     }
 
     const balanceSeq = {}; // 每 provider 刷新序号：仅最新一次请求可写入快照，防慢请求覆盖新数据
+    const balanceInFlight = {}; // 普通周期刷新并发去重；force 刷新可主动 supersede 旧请求
 
-    function refreshProviderBalance(pid) {
+    function freshBalanceURL(endpoint) {
+      try {
+        const url = new URL(endpoint);
+        // API 余额是易变数据，给可能存在的中间缓存一个明确的请求代次；不携带任何凭据。
+        url.searchParams.set('_dsh_refresh', String(Date.now()));
+        return url.toString();
+      } catch (err) {
+        return endpoint;
+      }
+    }
+
+    function refreshProviderBalance(pid, force) {
       const prov = PROVIDERS[pid];
       if (!prov) return Promise.resolve();
+      // 定时器可能与首屏请求重叠：普通刷新复用在途请求，避免无意义的重复 API 调用。
+      // force 只用于用户打开/刷新页面或主动切换 provider，必须允许它重新取最新值。
+      if (!force && balanceInFlight[pid]) return balanceInFlight[pid];
       const seq = (balanceSeq[pid] || 0) + 1;
       balanceSeq[pid] = seq;
       if (!prov.balanceAPI) {
@@ -1418,7 +1440,7 @@ export default {
         return Promise.resolve();
       }
       // 返回本次刷新 Promise：强制刷新路径（客户端打开页面）需等待最新结果落快照后再返回
-      return (async function () {
+      const task = (async function () {
         let cred = null;
         try {
           cred = await ctx.credentials.resolve(prov.credential);
@@ -1434,8 +1456,12 @@ export default {
         }
         try {
           // API Key 经 HTTP 头传递，不进子进程命令行（避免 ps 可见 / shell 注入）
-          const res = await fetch(prov.balanceAPI, {
-            headers: { Authorization: 'Bearer ' + cred.value },
+          const res = await fetch(freshBalanceURL(prov.balanceAPI), {
+            headers: {
+              Authorization: 'Bearer ' + cred.value,
+              'Cache-Control': 'no-cache, no-store',
+              Pragma: 'no-cache',
+            },
             signal: AbortSignal.timeout(15000),
           });
           if (!res.ok) {
@@ -1453,10 +1479,17 @@ export default {
           if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'exception', message: String((err && err.message) || err) } };
         }
       })();
+      balanceInFlight[pid] = task;
+      task.then(function () {
+        if (balanceInFlight[pid] === task) balanceInFlight[pid] = null;
+      }, function () {
+        if (balanceInFlight[pid] === task) balanceInFlight[pid] = null;
+      });
+      return task;
     }
 
     function refreshAllBalances() {
-      for (const pid in PROVIDERS) refreshProviderBalance(pid);
+      for (const pid in PROVIDERS) refreshProviderBalance(pid, false);
     }
 
     // ---------- 订阅额度快照（复用余额模式：周期刷新 / 失败保留旧快照 / seq 防旧覆盖） ----------
@@ -2120,10 +2153,11 @@ export default {
 
     // ---------- 当前模型识别 ----------
     function modelSelection() {
-      const svc = ctx.get('agentDefaultModel');
       let fallback = false;
       let provider = '';
       let model = DEFAULT_MODEL;
+      let svc = null;
+      try { svc = ctx.get('agentDefaultModel'); } catch (err) { fallback = true; }
       if (svc && typeof svc.currentSelection === 'function') {
         try {
           const s = svc.currentSelection();
@@ -2189,73 +2223,166 @@ export default {
     // ---------- DSH 模型/服务商目录名与能力缓存（M5：与模型切换器完全一致） ----------
     // llm.listModels(provider) → DSH LLM 目录 { id, name, inputModalities? }；
     // llm.resolveModelInfo(provider, model) → 当前模型的完整目录信息。
-    // 缓存异步填充：启动即刷 + llm/adapters-updated 事件刷新 + getPricing 首次缺缓存时按需等待；
-    // llm 服务缺失/查询失败保留旧缓存（stale 可接受），展示层回退原始 id / 静态映射，绝不崩溃。
+    // DSH 的模型目录会随适配器/客户端更新而变化，不能把“启动时尝试过一次”当成永久状态：
+    // 成功后定期刷新，失败/目录外模型短暂退避后重试，并在 adapters/settings 事件中失效。
+    // 能力只接受 DSH 明确给出的 inputModalities；null 表示未知，客户端会保持占位而不是误标。
+    const MODEL_CATALOG_REFRESH_MS = 5 * 60 * 1000;
+    const MODEL_DIRECTORY_RETRY_MS = 30 * 1000;
     let modelNameCache = {};    // { provider: { modelId: name } }
     let providerNameCache = {}; // { provider: name }
-    let modelCatalogRefreshed = {}; // { provider: true } 已尝试刷新（防 getPricing 反复打目录）
-    let modelImageInputCache = {}; // { provider: { modelId: boolean } }；仅 DSH 明确声明 image 才为 true
-    let modelCapabilityRefreshed = {}; // { provider + '\u0000' + model: true } 已尝试读取完整模型能力
+    let modelCatalogRefreshed = {}; // { provider: true } 最近一次目录请求已完成
+    let modelCatalogRetryAt = {}; // { provider: ms } 失败后的下一次重试时刻
+    let modelCatalogMissingRetryAt = {}; // { provider: ms } 目录外模型的下一次探测时刻
+    let modelCatalogIds = {}; // { provider: { modelId: true } } 最近一次完整目录的 id 集合
+    let modelCatalogPending = {}; // { provider: Promise } 同一 provider 的目录请求并发去重
+    let modelImageInputCache = {}; // { provider: { modelId: boolean } }；仅明确声明 image 才写入
+    let modelCapabilityRefreshed = {}; // { provider + '\u0000' + model: true } 能力已明确或目录已明确
+    let modelCapabilityRetryAt = {}; // { provider + '\u0000' + model: ms } 能力缺失/失败后的重试时刻
+    let modelCapabilityPending = {}; // { provider + '\u0000' + model: Promise } 能力请求并发去重
+    let modelCatalogGeneration = 0; // 适配器更新后丢弃旧请求结果，防止旧目录回写
 
-    function modelAcceptsImageInput(info) {
-      return !!(info && Array.isArray(info.inputModalities) && info.inputModalities.indexOf('image') !== -1);
+    function llmService() {
+      try {
+        return ctx.get && typeof ctx.get === 'function' ? ctx.get('llm') : null;
+      } catch (err) {
+        return null;
+      }
     }
 
-    async function refreshModelCatalog(provider) {
-      const llm = ctx.get ? ctx.get('llm') : null;
+    function modelImageInputCapability(info) {
+      if (!info || !Array.isArray(info.inputModalities)) return null;
+      return info.inputModalities.indexOf('image') !== -1;
+    }
+
+    function modelCatalogNeedsRefresh(provider, model, nowMs, force) {
+      if (!provider) return false;
+      if (force || !modelCatalogRefreshed[provider]) return true;
+      if (nowMs >= (modelCatalogRetryAt[provider] || 0)) return true;
+      const ids = modelCatalogIds[provider];
+      if (ids && model && !Object.hasOwn(ids, model)) {
+        return nowMs >= (modelCatalogMissingRetryAt[provider] || 0);
+      }
+      return false;
+    }
+
+    async function refreshModelCatalog(provider, force, model) {
+      const llm = llmService();
       if (!llm || typeof llm.listModels !== 'function' || !provider) return;
-      try {
-        const models = await llm.listModels(provider);
-        const map = {};
-        const imageInputMap = {};
-        if (Array.isArray(models)) {
-          for (let i = 0; i < models.length; i++) {
-            const m = models[i];
-            if (m && typeof m.id === 'string' && m.id.length > 0) {
-              if (typeof m.name === 'string' && m.name.length > 0) map[m.id] = m.name;
-              imageInputMap[m.id] = modelAcceptsImageInput(m);
+      const now = Date.now();
+      if (!force && !modelCatalogNeedsRefresh(provider, model || '', now, false)) return;
+      if (modelCatalogPending[provider]) return modelCatalogPending[provider];
+      const generation = modelCatalogGeneration;
+      const task = (async function () {
+        let catalogSucceeded = false;
+        try {
+          const models = await llm.listModels(provider);
+          const map = {};
+          const imageInputMap = {};
+          const ids = {};
+          if (Array.isArray(models)) {
+            for (let i = 0; i < models.length; i++) {
+              const m = models[i];
+              if (m && typeof m.id === 'string' && m.id.length > 0) {
+                ids[m.id] = true;
+                if (typeof m.name === 'string' && m.name.length > 0) map[m.id] = m.name;
+                const capability = modelImageInputCapability(m);
+                if (capability !== null) imageInputMap[m.id] = capability;
+              }
             }
           }
-        }
-        modelNameCache[provider] = map;
-        modelImageInputCache[provider] = imageInputMap;
-      } catch (err) { /* 目录查询失败保留旧缓存，绝不崩溃 */ }
-      try {
-        const provs = typeof llm.listProviders === 'function' ? await llm.listProviders() : null;
-        if (Array.isArray(provs)) {
-          for (let i = 0; i < provs.length; i++) {
-            const p = provs[i];
-            if (p && typeof p.id === 'string' && p.id.length > 0 && typeof p.name === 'string' && p.name.length > 0) providerNameCache[p.id] = p.name;
+          catalogSucceeded = true;
+          if (generation === modelCatalogGeneration) {
+            modelNameCache[provider] = map;
+            modelImageInputCache[provider] = imageInputMap;
+            modelCatalogIds[provider] = ids;
+            modelCatalogRefreshed[provider] = true;
+            modelCatalogRetryAt[provider] = Date.now() + MODEL_CATALOG_REFRESH_MS;
+            modelCatalogMissingRetryAt[provider] = Date.now() + MODEL_DIRECTORY_RETRY_MS;
+          }
+        } catch (err) {
+          // 目录查询失败保留旧缓存，但不要永久锁死；下一次按退避时间再试。
+          if (generation === modelCatalogGeneration) {
+            modelCatalogRefreshed[provider] = true;
+            modelCatalogRetryAt[provider] = Date.now() + MODEL_DIRECTORY_RETRY_MS;
+            modelCatalogMissingRetryAt[provider] = Date.now() + MODEL_DIRECTORY_RETRY_MS;
           }
         }
-      } catch (err) { /* 同上 */ }
-      modelCatalogRefreshed[provider] = true;
+        try {
+          const provs = typeof llm.listProviders === 'function' ? await llm.listProviders() : null;
+          if (generation === modelCatalogGeneration && Array.isArray(provs)) {
+            for (let i = 0; i < provs.length; i++) {
+              const p = provs[i];
+              if (p && typeof p.id === 'string' && p.id.length > 0 && typeof p.name === 'string' && p.name.length > 0) providerNameCache[p.id] = p.name;
+            }
+          }
+        } catch (err) { /* 服务商目录失败不影响模型目录与信息栏其余内容 */ }
+        // 仅用于让调试器/静态审计能明确看到“空数组也是成功响应”，不改变回退策略。
+        return catalogSucceeded;
+      })();
+      modelCatalogPending[provider] = task;
+      task.then(function () {
+        if (modelCatalogPending[provider] === task) modelCatalogPending[provider] = null;
+      }, function () {
+        if (modelCatalogPending[provider] === task) modelCatalogPending[provider] = null;
+      });
+      return task;
     }
 
     // listModels 只提供目录概要时，按当前选中模型读取完整能力；失败或未知时不显示标识，
-    // 避免通过模型名称猜测造成错误标注。每个 provider/model 组合只读取一次，适配器更新后再读。
-    async function refreshModelCapability(provider, model) {
+    // 避免通过模型名称猜测造成错误标注。未拿到能力时保留“未知”并退避重试，适配新模型无需发版。
+    async function refreshModelCapability(provider, model, force) {
       const cacheKey = provider + '\u0000' + model;
-      if (!provider || !model || modelCapabilityRefreshed[cacheKey]) return;
-      const llm = ctx.get ? ctx.get('llm') : null;
-      if (!llm || typeof llm.resolveModelInfo !== 'function') {
-        modelCapabilityRefreshed[cacheKey] = true;
-        return;
-      }
-      try {
-        const info = await llm.resolveModelInfo(provider, model);
+      if (!provider || !model) return;
+      if (!force && modelCapabilityRefreshed[cacheKey]) return;
+      if (!force && Date.now() < (modelCapabilityRetryAt[cacheKey] || 0)) return;
+      const llm = llmService();
+      if (!llm || typeof llm.resolveModelInfo !== 'function') return;
+      if (modelCapabilityPending[cacheKey]) return modelCapabilityPending[cacheKey];
+      const generation = modelCatalogGeneration;
+      const task = (async function () {
+        let info = null;
+        try {
+          info = await llm.resolveModelInfo(provider, model);
+        } catch (err) {
+          if (generation === modelCatalogGeneration) modelCapabilityRetryAt[cacheKey] = Date.now() + MODEL_DIRECTORY_RETRY_MS;
+          return;
+        }
+        if (generation !== modelCatalogGeneration) return;
+        if (info && typeof info.name === 'string' && info.name.length > 0) {
+          const providerNames = modelNameCache[provider] || {};
+          providerNames[model] = info.name;
+          modelNameCache[provider] = providerNames;
+        }
+        const capability = modelImageInputCapability(info);
         const providerMap = modelImageInputCache[provider] || {};
-        providerMap[model] = modelAcceptsImageInput(info);
-        modelImageInputCache[provider] = providerMap;
-      } catch (err) { /* 能力查询失败视为未知，不影响信息栏其余内容 */ }
-      modelCapabilityRefreshed[cacheKey] = true;
+        if (capability !== null) {
+          providerMap[model] = capability;
+          modelImageInputCache[provider] = providerMap;
+          modelCapabilityRefreshed[cacheKey] = true;
+          modelCapabilityRetryAt[cacheKey] = 0;
+        } else if (Object.hasOwn(providerMap, model)) {
+          // listModels 已经明确给出能力，resolveModelInfo 的概要响应不能把它覆盖成 false。
+          modelCapabilityRefreshed[cacheKey] = true;
+          modelCapabilityRetryAt[cacheKey] = 0;
+        } else {
+          // 新模型可能刚出现，或新版 DSH 尚未提供完整字段；定时重试而不是永久缓存 unknown。
+          modelCapabilityRetryAt[cacheKey] = Date.now() + MODEL_DIRECTORY_RETRY_MS;
+        }
+      })();
+      modelCapabilityPending[cacheKey] = task;
+      task.then(function () {
+        if (modelCapabilityPending[cacheKey] === task) modelCapabilityPending[cacheKey] = null;
+      }, function () {
+        if (modelCapabilityPending[cacheKey] === task) modelCapabilityPending[cacheKey] = null;
+      });
+      return task;
     }
 
-    // 刷新当前激活 provider 的目录名缓存（启动 / llm/adapters-updated / 切模型后按需调用）
-    function refreshActiveModelCatalog() {
+    // 刷新当前激活 provider 的目录名缓存（启动 / 适配器或设置变化 / 切模型后按需调用）
+    function refreshActiveModelCatalog(force) {
       const sel = modelSelection();
-      return refreshModelCatalog(sel.provider).then(function () {
-        return refreshModelCapability(sel.provider, sel.model);
+      return refreshModelCatalog(sel.provider, force === true).then(function () {
+        return refreshModelCapability(sel.provider, sel.model, force === true);
       });
     }
 
@@ -2263,15 +2390,21 @@ export default {
     // 价目键解析：优先"服务商:模型"作用域键（解决同名模型跨计费域价格/币种不同的问题，
     // 如 Kimi 同一型号在 api.moonshot.cn=¥ 与 api.moonshot.ai=$ 两套价）；
     // 无作用域键时回退裸模型键。远程目录可下发任意一种形态。
-    function pricingEntryFor(provider, model) {
+    // DeepSeek 官方计划：北京时间 2026-09-14 12:00 起，V4 Pro 请求路由到 V4.1 Flash 并按 Flash 价格计费。
+    // 将生效时刻传入价格解析，保证新请求切换、历史请求回算与已冻结金额彼此一致。
+    const DEEPSEEK_V4_PRO_FLASH_EFFECTIVE_AT = Date.parse('2026-09-14T12:00:00+08:00');
+    function pricingEntryFor(provider, model, atMs) {
       const scoped = PRICING[provider + ':' + model];
-      if (scoped && typeof scoped === 'object') return scoped;
-      return PRICING[model] || null;
+      const entry = scoped && typeof scoped === 'object' ? scoped : (PRICING[model] || null);
+      if (model === 'deepseek-v4-pro' && Number.isFinite(atMs) && atMs >= DEEPSEEK_V4_PRO_FLASH_EFFECTIVE_AT) {
+        return PRICING['deepseek-flash'];
+      }
+      return entry;
     }
 
     function computePricing(nowMs, selection) {
       const sel = selection || modelSelection();
-      const entry = pricingEntryFor(sel.provider, sel.model);
+      const entry = pricingEntryFor(sel.provider, sel.model, nowMs);
       const period = entry && entry.mode === 'peak-valley' ? currentPeriod(nowMs) : 'flat';
       let prices = null;
       if (entry) {
@@ -2283,7 +2416,8 @@ export default {
         provider: sel.provider,
         providerDisplay: providerDisplayFromCache(sel.provider, providerNameCache, PROVIDER_DISPLAY, t),
         modelDisplay: modelDisplayFromCache(sel.model, sel.provider, modelNameCache, t),
-        acceptsImageInput: !!(modelImageInputCache[sel.provider] && modelImageInputCache[sel.provider][sel.model]),
+        acceptsImageInput: modelImageInputCache[sel.provider] && Object.hasOwn(modelImageInputCache[sel.provider], sel.model)
+          ? modelImageInputCache[sel.provider][sel.model] : null,
         fallback: sel.fallback || !entry,
         mode: entry ? entry.mode : 'unknown',
         period: period,
@@ -3038,11 +3172,28 @@ export default {
       }
     });
 
-    // M5：适配器/目录变更（模型增删、provider 改名）→ 重建目录名缓存，信息栏模型名与切换器保持一致
-    ctx.on('llm/adapters-updated', function () {
+    // M5：适配器/目录变更（模型增删、provider 改名）→ 丢弃旧能力并重建缓存，信息栏与切换器保持一致。
+    // generation guard 会让事件前已经发出的异步请求失效，避免旧目录在新版 DSH 到达后回写。
+    function invalidateModelCatalog() {
+      modelCatalogGeneration += 1;
       modelCatalogRefreshed = {};
+      modelCatalogRetryAt = {};
+      modelCatalogMissingRetryAt = {};
+      modelCatalogIds = {};
+      modelCatalogPending = {};
+      modelImageInputCache = {};
       modelCapabilityRefreshed = {};
-      refreshActiveModelCatalog();
+      modelCapabilityRetryAt = {};
+      modelCapabilityPending = {};
+    }
+    ctx.on('llm/adapters-updated', function () {
+      invalidateModelCatalog();
+      refreshActiveModelCatalog(true);
+    });
+    // 新版 DSH 会在设置/客户端文档变化后重建模型目录；监听该事件覆盖“新模型已发布但适配器未重载”的路径。
+    ctx.on('settings/document-updated', function () {
+      invalidateModelCatalog();
+      refreshActiveModelCatalog(true);
     });
 
     // ---------- 花费计算 ----------
@@ -3050,7 +3201,7 @@ export default {
       // v2 ledger records carry the charge as observed.  Use it for normal
       // reporting; only the "all-offpeak" forecast intentionally recalculates.
       if (!forceOffpeak && Number.isFinite(record.cost) && record.cost >= 0) return record.cost;
-      const entry = pricingEntryFor(record.provider, record.model);
+      const entry = pricingEntryFor(record.provider, record.model, record.ts);
       if (!entry) return null;
       let p;
       if (entry.mode === 'peak-valley') {
@@ -3308,7 +3459,7 @@ export default {
       let scenarios = [];
       if (balance != null && pricing.prices) {
         const p = pricing.prices;
-        const pvEntry = pricing.mode === 'peak-valley' ? pricingEntryFor(pricing.provider, pricing.model) : null;
+        const pvEntry = pricing.mode === 'peak-valley' ? pricingEntryFor(pricing.provider, pricing.model, nowMs) : null;
         const peakPrices = pvEntry ? pvEntry.peak : p;
         const offpeakPrices = pvEntry ? pvEntry.offpeak : p;
         scenarios = SCENARIOS.map(function (sc) {
@@ -3463,17 +3614,18 @@ export default {
         const force = !!(args && typeof args === 'object' && args.force === true);
         if (force) {
           const key = balanceProviderKey(pid || undefined);
-          if (key) await refreshProviderBalance(key);
+          if (key) await refreshProviderBalance(key, true);
         }
         return activeBalanceSummary(pid || undefined, Date.now());
       },
       getPricing: async function (args) {
-        // M5：首次遇到未刷新过的 provider → 等待一次目录名拉取（llm 缺失则直接回退），
-        // 保证模型名/服务商名与模型切换器一致；已刷新过则零等待直接读缓存
+        // M5：目录成功后定期刷新；新出现的目录外模型也会按退避重试，
+        // 保证模型名/能力与模型切换器一致，未来新模型无需修改插件代码。
         const sel = selectionFromArgs(args);
-        const llm = ctx.get ? ctx.get('llm') : null;
-        if (llm && !modelCatalogRefreshed[sel.provider]) await refreshModelCatalog(sel.provider);
-        if (llm) await refreshModelCapability(sel.provider, sel.model);
+        const force = !!(args && typeof args === 'object' && args.force === true);
+        const llm = llmService();
+        if (llm && modelCatalogNeedsRefresh(sel.provider, sel.model, Date.now(), force)) await refreshModelCatalog(sel.provider, force, sel.model);
+        if (llm) await refreshModelCapability(sel.provider, sel.model, force);
         return computePricing(Date.now(), sel);
       },
       getEstimate: function () {
@@ -3490,7 +3642,7 @@ export default {
         const pid = args && typeof args === 'object' ? args.provider : null;
         if (pid && Object.hasOwn(PROVIDERS, pid)) {
           config.activeProvider = pid;
-          refreshProviderBalance(pid);
+          refreshProviderBalance(pid, true);
         }
         return { activeProvider: config.activeProvider };
       },

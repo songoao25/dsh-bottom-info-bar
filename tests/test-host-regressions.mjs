@@ -105,7 +105,8 @@ async function feedUsage(listener, usage, opts) {
 
 // fetch 桩：URL 感知——只对 DeepSeek 余额 API 计数并返回 88.5 CNY；其他 URL 返回最小可用响应
 let fetchCalls = 0
-globalThis.fetch = async (url) => {
+let lastDeepSeekRequest = null
+globalThis.fetch = async (url, options) => {
   let parsedUrl = null
   try { parsedUrl = new URL(String(url)) } catch { /* 余额测试的 URL 桩继续走下方分支 */ }
   if (parsedUrl && parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'registry.npmjs.org'
@@ -115,6 +116,7 @@ globalThis.fetch = async (url) => {
   // v1.6：只对 DeepSeek API 计数；其他服务商返回空对象避免抛异常
   if (parsedUrl && parsedUrl.hostname === 'api.deepseek.com') {
     fetchCalls += 1
+    lastDeepSeekRequest = { url: String(url), options: options || {} }
     return {
       ok: true,
       status: 200,
@@ -144,6 +146,8 @@ globalThis.fetch = async (url) => {
     const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET')
     check('新快照（seq=2）成功写入：total=88.5 / CNY / 无 error', b.status === 200 && b.payload.data && b.payload.data.total === 88.5 && b.payload.data.currency === 'CNY' && b.payload.error === null, JSON.stringify(b.payload))
     check('余额 API 恰好调用 1 次（仅 seq=2 成功路径）', fetchCalls === 1, String(fetchCalls))
+    check('余额请求带代次参数，避免中间缓存返回旧余额', lastDeepSeekRequest && /[?&]_dsh_refresh=\d+/.test(lastDeepSeekRequest.url), String(lastDeepSeekRequest && lastDeepSeekRequest.url))
+    check('余额请求禁用缓存', lastDeepSeekRequest && lastDeepSeekRequest.options.headers && lastDeepSeekRequest.options.headers['Cache-Control'] === 'no-cache, no-store' && lastDeepSeekRequest.options.headers.Pragma === 'no-cache')
   }
   // 旧请求（seq=1）此刻才失败：seq guard 必须阻止其覆盖新快照
   deepseekCreds[0].reject(new Error('cred store down'))

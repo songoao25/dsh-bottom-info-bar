@@ -57,8 +57,14 @@ function costOf(record) {
   return (missInput * p.inputCacheMiss + record.cacheRead * p.inputCacheHit + record.output * p.output) / 1e6;
 }
 
-// 视觉实验型号归入 V4 Flash 峰谷价格：展示与记账都不能再回退为“未收录”。
-check('视觉实验型号收录为 V4 Flash 峰谷价', PRICING['deepseek-v4-flash-vision-exp'], PRICING['deepseek-v4-flash']);
+// V4.1 Flash 稳定目录模型与旧视觉别名均按官网 Flash 峰谷价格记账。
+check('V4.1 Flash 稳定目录模型收录为官方峰谷价', PRICING['deepseek-flash'], {
+  currency: 'CNY', mode: 'peak-valley',
+  peak: { inputCacheHit: 0.04, inputCacheMiss: 2, output: 8 },
+  offpeak: { inputCacheHit: 0.02, inputCacheMiss: 1, output: 4 },
+});
+check('旧视觉别名沿用 V4.1 Flash 峰谷价', PRICING['deepseek-v4-flash-vision-exp'], PRICING['deepseek-flash']);
+check('V4.1 Flash 峰值时段按官方价格计费', costOf({ model: 'deepseek-flash', input: 1000, cacheRead: 0, cacheWrite: 0, output: 1000, ts: Date.parse('2026-08-17T10:00:00+08:00') }), 0.01);
 
 // ---- 构造 3 个主会话 + 1 个子代理的模拟 usage 记录（同账户，子代理独立 sessionId、同时间窗） ----
 const NOW = Date.parse('2026-08-15T04:00:00+08:00'); // 北京时间 8/15 04:00（空闲时段）
