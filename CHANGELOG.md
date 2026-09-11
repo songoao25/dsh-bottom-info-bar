@@ -2,6 +2,67 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.19...v2.0.0) (2026-09-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* 移除「信息概览」页面，回归原生简洁理念（v1.3.0） ([#9](https://github.com/songoao25/dsh-bottom-info-bar/issues/9))
+
+### Features
+
+* add language switcher to Info Bar settings page ([#36](https://github.com/songoao25/dsh-bottom-info-bar/issues/36)) ([7d5c483](https://github.com/songoao25/dsh-bottom-info-bar/commit/7d5c483ec2fbcd89ada240f1abb0e30e432ef015))
+* Bottom Info Bar v1.0.0 ([06d46e2](https://github.com/songoao25/dsh-bottom-info-bar/commit/06d46e245f9f37afd597a770266f4db36ee3eb7a))
+* ChatGPT 订阅官方 OAuth 绑定 host 流程 ([7aae294](https://github.com/songoao25/dsh-bottom-info-bar/commit/7aae294c891ad541c0ba297af3e623c26f310591))
+* Codex 订阅桥接 v1.2.0 ([3152191](https://github.com/songoao25/dsh-bottom-info-bar/commit/31521914cfd5cda4c7e588cd842ac14e65f30ea9))
+* v1.2.0 Codex 绑定改为严格官方模式（绑定标记唯一事实，废弃 CLI 令牌来源） ([34e7f41](https://github.com/songoao25/dsh-bottom-info-bar/commit/34e7f41a87e493a51df74600b1c2f905a6723db4))
+* v1.2.0 模型名与服务商名与模型切换器完全一致（M5） ([4c2106a](https://github.com/songoao25/dsh-bottom-info-bar/commit/4c2106a3ccbda36a73ce421cf255652ba8321899))
+* v1.2.0 试用反馈调整（ChatGPT 显示名/剩余百分比/秒级同步/模型文档） ([05544b4](https://github.com/songoao25/dsh-bottom-info-bar/commit/05544b4fdcbc3b5b2e74b8ef827d688eb99f247c))
+* v1.7.0 — 多服务商适配 + 分账修复 + 本会话聚合 ([#24](https://github.com/songoao25/dsh-bottom-info-bar/issues/24)) ([ab234b7](https://github.com/songoao25/dsh-bottom-info-bar/commit/ab234b776fde79e59dbfe28de826f78f31ff44c7))
+* 双模式信息栏 v1.1.0（余额制/订阅制自动切换 + Codex/OpenCode Go 额度显示；订阅制 row2 三类信息） ([ecffc92](https://github.com/songoao25/dsh-bottom-info-bar/commit/ecffc9269da7bacb8429ec89fdd23cb925e66a04))
+* 启动时显示新版本红色提醒 ([#14](https://github.com/songoao25/dsh-bottom-info-bar/issues/14)) ([9700035](https://github.com/songoao25/dsh-bottom-info-bar/commit/970003527c548dc77ea687fe5a20bb5cd2f0028f))
+* 新增「信息概览」页面 v1.2.0 ([#5](https://github.com/songoao25/dsh-bottom-info-bar/issues/5)) ([75f4555](https://github.com/songoao25/dsh-bottom-info-bar/commit/75f455518e680732ff0f618a01699f334bea7610))
+* 移除「信息概览」页面，回归原生简洁理念（v1.3.0） ([#9](https://github.com/songoao25/dsh-bottom-info-bar/issues/9)) ([b9ab2d2](https://github.com/songoao25/dsh-bottom-info-bar/commit/b9ab2d2450d99b48eb45f82972e382272069fb8a))
+* 订阅额度显示优化（简洁模式优先5小时窗口 + 20%阈值颜色预警 + 错误提示悬浮说明） ([e14c2c5](https://github.com/songoao25/dsh-bottom-info-bar/commit/e14c2c58dc5c327965b6ff57917656ff9705fc9e))
+
+
+### Bug Fixes
+
+* adapt DeepSeek V4.1 Flash to DSH rc.2 ([#61](https://github.com/songoao25/dsh-bottom-info-bar/issues/61)) ([36bf503](https://github.com/songoao25/dsh-bottom-info-bar/commit/36bf5037930d735813a5a79c7421b1c688d1386d))
+* apply DeepSeek weekend off-peak pricing ([#21](https://github.com/songoao25/dsh-bottom-info-bar/issues/21)) ([04fd86c](https://github.com/songoao25/dsh-bottom-info-bar/commit/04fd86ce5a6fcb52b52a392004932bbeb4d95cb3))
+* **audit:** independent audit full remediation v1.10.3 ([#43](https://github.com/songoao25/dsh-bottom-info-bar/issues/43)) ([e1fb51b](https://github.com/songoao25/dsh-bottom-info-bar/commit/e1fb51b3cece999a404877270398010f79113f4d))
+* **ci:** keep release metadata monotonic ([#64](https://github.com/songoao25/dsh-bottom-info-bar/issues/64)) ([e5efddb](https://github.com/songoao25/dsh-bottom-info-bar/commit/e5efddb5e72d9c0d3bc8fd695dc8f3f51582e06f))
+* **client:** audit settings disclosure layout ([#52](https://github.com/songoao25/dsh-bottom-info-bar/issues/52)) ([620ca74](https://github.com/songoao25/dsh-bottom-info-bar/commit/620ca74564e814b239c75ae51aeb74bd097b2f78))
+* **client:** clarify language selector scope ([094d971](https://github.com/songoao25/dsh-bottom-info-bar/commit/094d971ec229594396aa5ebbe0a6051265bd6bfa))
+* **client:** match native settings chevron direction ([#50](https://github.com/songoao25/dsh-bottom-info-bar/issues/50)) ([21fab5a](https://github.com/songoao25/dsh-bottom-info-bar/commit/21fab5a77fb96a9df1e00ae77ed2ef68f0760dd8))
+* **client:** prevent settings field controls from clipping ([#58](https://github.com/songoao25/dsh-bottom-info-bar/issues/58)) ([4263281](https://github.com/songoao25/dsh-bottom-info-bar/commit/4263281d4ecc0548ee2cb749c63bfc66413bb7a3))
+* **client:** rebuild settings disclosure surface ([#54](https://github.com/songoao25/dsh-bottom-info-bar/issues/54)) ([0607033](https://github.com/songoao25/dsh-bottom-info-bar/commit/06070337de1f13a31269d7c2516242b843bccd96))
+* **client:** refine settings page disclosure and layout ([#48](https://github.com/songoao25/dsh-bottom-info-bar/issues/48)) ([fcefa51](https://github.com/songoao25/dsh-bottom-info-bar/commit/fcefa518894d8300a27dfc4bacc08945aafa5a2f))
+* **client:** stabilize settings collapse layout ([#56](https://github.com/songoao25/dsh-bottom-info-bar/issues/56)) ([3384341](https://github.com/songoao25/dsh-bottom-info-bar/commit/3384341d2bf3ccddb1013238da22fac6c6f490d8))
+* **client:** 修復語言切換分段控件反色吞字，落實對比度鐵律 ([#38](https://github.com/songoao25/dsh-bottom-info-bar/issues/38)) ([753fa89](https://github.com/songoao25/dsh-bottom-info-bar/commit/753fa8904512f6bb893e25f70bc1590f801463ba))
+* **host:** attribute session spend by lineage ([#46](https://github.com/songoao25/dsh-bottom-info-bar/issues/46)) ([0c51060](https://github.com/songoao25/dsh-bottom-info-bar/commit/0c5106094bfe822cdf63a08ec0e6410ff53642ca))
+* **host:** keep spend queries working without the optional session service ([#68](https://github.com/songoao25/dsh-bottom-info-bar/issues/68)) ([661dbad](https://github.com/songoao25/dsh-bottom-info-bar/commit/661dbad7739bd03965a03991566496b6216a8042))
+* merge automatic detection and settings layout fixes ([#62](https://github.com/songoao25/dsh-bottom-info-bar/issues/62)) ([1eff783](https://github.com/songoao25/dsh-bottom-info-bar/commit/1eff783e710812bf30ffb6c0320c26aea9456f44))
+* **settings-page:** React [#310](https://github.com/songoao25/dsh-bottom-info-bar/issues/310) 崩溃——含 hook 控件改标准 createElement 创建 + 防复发断言（v1.9.2） ([#31](https://github.com/songoao25/dsh-bottom-info-bar/issues/31)) ([68c7669](https://github.com/songoao25/dsh-bottom-info-bar/commit/68c7669b85fe5f208c54f1065eb5e0302fc2d0ec))
+* v1.2.0 对话稳定性与订阅刷新退避（WebSocket error / 提示闪烁） ([04ef23d](https://github.com/songoao25/dsh-bottom-info-bar/commit/04ef23db5f732c2ce47aad06e352194343496df5))
+* **zai:** 智谱 API 200 体内业务错误检测与凭据/host 按 provider 路由 ([#25](https://github.com/songoao25/dsh-bottom-info-bar/issues/25)) ([cc027e7](https://github.com/songoao25/dsh-bottom-info-bar/commit/cc027e78273a118bef3c5b24d74a30d986429f04))
+* 优化订阅失败提示与版本提醒悬停文案 v1.4.2 ([#16](https://github.com/songoao25/dsh-bottom-info-bar/issues/16)) ([19880c8](https://github.com/songoao25/dsh-bottom-info-bar/commit/19880c85de632166d1257a9da8883448f51c0b0c))
+* 修复「信息概览」深色主题选中态按钮白底白字（用品牌反色文字） ([#6](https://github.com/songoao25/dsh-bottom-info-bar/issues/6)) ([6da3034](https://github.com/songoao25/dsh-bottom-info-bar/commit/6da3034d92f1d1c1ab8cac28cb52b2cf0458e09f))
+* 修复审计发现的稳定性与记账边界问题（v1.3.1） ([#10](https://github.com/songoao25/dsh-bottom-info-bar/issues/10)) ([9833c35](https://github.com/songoao25/dsh-bottom-info-bar/commit/9833c358657c89ba4429eaa510618a1e6f269b8f))
+* 修复新会话花费回退/跨币种聚合/落盘重试/413 状态码，API Key 改经 fetch 传递，增强安全与健壮性 ([7e81a17](https://github.com/songoao25/dsh-bottom-info-bar/commit/7e81a17650cd3c75323deb56f8a5667197a73953))
+* 兼容 pi-ai 的 OpenAI Codex provider（openai-codex）订阅制识别 ([662cacb](https://github.com/songoao25/dsh-bottom-info-bar/commit/662cacbc3540b3973df3d6938e04bda7795908c7))
+* 原生统计行单行显示（首 token 平均/tok/s 移入 hover 浮窗） ([95121ce](https://github.com/songoao25/dsh-bottom-info-bar/commit/95121ce60c60ef849fa94838aa29db2b84978b0b))
+* 按 Apple HIG 重做信息概览主题适配（选中态改用系统交互语义色） ([#7](https://github.com/songoao25/dsh-bottom-info-bar/issues/7)) ([63c2b94](https://github.com/songoao25/dsh-bottom-info-bar/commit/63c2b94f0464aa83f2c1c8060f023e1be979e333))
+* 本对话花费始终显示、原生统计行去除 steps 门槛 ([2ec9e04](https://github.com/songoao25/dsh-bottom-info-bar/commit/2ec9e04ed3518228a52102f4b6b5fefe8f904afb))
+* 本对话金额归属真实化——新对话不再显示上一会话花费，回复完成即时刷新 ([5a16292](https://github.com/songoao25/dsh-bottom-info-bar/commit/5a162928b3c29aada5cc956c9b134cf3cd63d46b))
+* 清理订阅预警死常量并同步过时测试断言，修复 test-dual-mode 存量失败 ([e9da9a0](https://github.com/songoao25/dsh-bottom-info-bar/commit/e9da9a0033061029a2af0a0521e5749d0dea9aab))
+* 移除花费趋势切换按钮旁的「合计」金额文字（保持工具栏简洁） ([#8](https://github.com/songoao25/dsh-bottom-info-bar/issues/8)) ([649d894](https://github.com/songoao25/dsh-bottom-info-bar/commit/649d8948912202c29c335c0c91da2feb990e56f6))
+* 简洁模式窗口优先级改为按时间长度（5小时&gt;周&gt;月），而非已用百分比 ([90da9a3](https://github.com/songoao25/dsh-bottom-info-bar/commit/90da9a3771056e6e753976517dc5bd24bf34f392))
+* 订阅源映射补 openai-codex → codex（P1，防订阅制显示空窗） ([1754545](https://github.com/songoao25/dsh-bottom-info-bar/commit/1754545dee26a8c3bb479c602143852499166375))
+* 订阅额度与倒计时必须来自同一窗口（简洁模式优先5小时+最紧窗口逻辑修正） ([0059dd2](https://github.com/songoao25/dsh-bottom-info-bar/commit/0059dd27fe63a5ba4703774874b32d45e845f09d))
+* 订阅额度接口加同源校验（防跨站触发订阅查询）；冒烟测试适配同源头 ([3fb677f](https://github.com/songoao25/dsh-bottom-info-bar/commit/3fb677f3afdadcc2c2e06d80fc2669da4ddb353a))
+* 记账落盘改原子写（tmp+rename 防损坏），run-all 自动先 build 防测陈旧产物 ([66fd096](https://github.com/songoao25/dsh-bottom-info-bar/commit/66fd0961b23bf75a90f5062c4c66a5cc980de9ae))
+
 ## [1.10.19](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.18...v1.10.19) (2026-09-11)
 
 ### Bug Fixes
