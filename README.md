@@ -11,7 +11,7 @@ A drop-in replacement for the stats row under the DeepSeek Harness composer.
 
 It keeps everything that row already showed — turns and steps, LLM time, tool calls, cache hit rate, input/output tokens — and adds what you actually want to see while you work: **your real balance** (or subscription quota, or this month's bill), the **provider and exact model**, **peak/off-peak pricing** with a countdown to the next switch, and **what this conversation has cost so far**.
 
-Install once, restart once, then it activates on every launch. The billing mode is detected automatically, and **estimated data is never displayed**.
+Install once, restart once, then it activates on every launch. The billing mode is detected automatically, and every figure is either read from a provider API or **explicitly labelled as an estimate**.
 
 ![Bottom Info Bar preview: ChatGPT subscription, DeepSeek balance, and OpenCode Go subscription — each in full and compact view](assets/bottom-info-bar-preview.jpeg)
 
@@ -20,11 +20,17 @@ Install once, restart once, then it activates on every launch. The billing mode 
 ## At a glance
 
 - **Three billing modes, auto-detected** — balance, subscription quota, or cloud bill. They replace each other and never overlap.
-- **Real data only** — every balance, quota, plan and bill comes from the provider's official API. Nothing is estimated locally.
+- **Real data, honestly labelled** — balances, quotas, plans and bills come from official provider APIs. The one figure that cannot (OpenAI has no public balance API) is derived from your spending rate and marked `(estimated)` in the bar.
 - **Exactly what DSH shows** — the provider and model match DSH's model switcher, and newly published models are picked up automatically.
 - **Peak / off-peak pricing** — both prices plus a countdown to the next switch (weekends count as off-peak all day).
 - **Honest spend tracking** — this conversation (including subagents), today, last 30 days, and all time — persisted to disk, nothing lost on restart.
 - **Native by design** — it replaces the native row instead of duplicating it; click to switch full/compact, and choose which fields and colors appear.
+
+## Requirements
+
+- **[DeepSeek Harness](https://github.com/deepseek-ai)** with the **web** interface (`dsh web`). This plugin is web-only — the bar is a web UI component.
+- **[pnpm](https://pnpm.io/)** — used by `dsh plugin` to manage profile packages.
+- An API key for whichever provider you use, set in DSH under **Settings → Models**.
 
 ## Quick start
 
@@ -34,7 +40,7 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 Then **restart `dsh web`** — plugins are composed when the host process starts, so a page refresh is not enough.
 
-Set your provider's API key under **Settings → Models** in DSH. Nothing else to configure.
+That is the whole setup: configure your provider's API key, restart, done.
 
 <details>
 <summary>Other ways to install (and which one to pick)</summary>
@@ -62,6 +68,16 @@ Like the local-checkout option, this produces a `link:` install.
 
 Detailed instructions and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 </details>
+
+## What it does not do
+
+The boundaries are part of the design, and they are worth stating plainly:
+
+- **It never passes a guess off as a fact.** Every figure comes from a provider API — or, in the one case where no API exists (OpenAI has no public balance endpoint), is computed from your spending rate and labelled `(estimated)` in the bar. When a number is simply unavailable, the bar says so instead of filling the gap.
+- **It never updates itself.** The version reminder only tells you a newer version exists and prepares the command; nothing on your machine changes until you run it.
+- **It never binds your ChatGPT account.** That belongs to the companion plugin [dsh-chatgpt-subscription](https://github.com/songoao25). This bar only reads the local token.
+- **It never stores conversations.** The ledger records tokens, model, provider and cost — no prompts, no messages, no API keys.
+- **It does not work outside the web interface.** There is no terminal or headless equivalent of the bar.
 
 ## Billing modes
 
@@ -122,7 +138,7 @@ The bar detects the provider from DSH's current model list — **no configuratio
 | Provider | Display name | Credential | Source |
 |---|---|---|---|
 | deepseek / deepseek-official | DeepSeek | `DEEPSEEK_API_KEY` | Official API |
-| openai | OpenAI | `OPENAI_API_KEY` | Reference estimate (no public API) |
+| openai | OpenAI | `OPENAI_API_KEY` | Computed from your spending rate — no public balance API, so the bar marks it `(estimated)` |
 | moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY` (fallback `KIMI_API_KEY`) | Official API |
 | openrouter | OpenRouter | `OPENROUTER_API_KEY` | Official API |
 | stepfun | StepFun | `STEPFUN_API_KEY` | Official API |
@@ -148,6 +164,16 @@ The bar detects the provider from DSH's current model list — **no configuratio
 
 **Anything else** shows a **Not supported** hint instead of borrowing another provider's numbers.
 
+### About the model name `DeepSeek-V41-Flash`
+
+If you have seen `V41-Flash` and read it as a typo, here is the whole story:
+
+- **It is DeepSeek V4.1 Flash.** That is the model actually serving your requests, priced at V4.1 Flash's official peak/off-peak rates.
+- **`DeepSeek-V41-Flash` is how DSH's own model catalogue spells it** — model id `deepseek-flash`, display name written without the dot. The bar mirrors DSH's model switcher, so the odd spelling is DSH's, not this plugin's.
+- **It has no effect on anything you do.** Same model, same pricing, same quota. The bar shows whatever DSH shows, so if DSH ever renames it, the bar follows automatically with no update needed.
+
+`DeepSeek-V4-Flash` is a **different, older** model id — not the same model.
+
 ## Interface language
 
 The plugin follows **Settings → General → Language** in DSH. Switching languages updates the bar without a reload, and there is no separate plugin language selector. Host-side messages use DSH's saved preference; a remote browser's unsaved choice cannot change host-only text, and external provider messages keep their original wording. See [localization notes](docs/LOCALIZATION.md).
@@ -170,9 +196,7 @@ Everything the plugin records lives in its own directory, isolated from other pl
 - **Retention** — there is no silent entry cap; keep the directory in your normal backups if you need history beyond this machine.
 - **Manage** — **Settings → Info Bar → Billing data** can export CSV/JSON or clear the plugin's records after confirmation. Settings, sign-in information and pricing data are untouched, and **uninstalling does not delete your data**.
 
-> Pricing notes: money is aggregated only in the active provider's currency (CNY for DeepSeek, USD for the OpenAI reference prices) — currencies are never mixed. DeepSeek peak hours are weekdays 09:00–12:00 and 14:00–18:00 Beijing time; weekends are off-peak all day.
->
-> On model names: DSH's catalogue calls the newest Flash model `DeepSeek-V41-Flash` (model id `deepseek-flash`), while DeepSeek's own release name is **V4.1 Flash** — the missing dot is DSH's spelling, not a typo, and the bar deliberately shows exactly what DSH shows. `DeepSeek-V4-Flash` is a *different*, older model id.
+> Money is aggregated only in the active provider's currency (CNY for DeepSeek, USD for the OpenAI reference prices) — currencies are never mixed. DeepSeek peak hours are weekdays 09:00–12:00 and 14:00–18:00 Beijing time; weekends are off-peak all day.
 
 ## Uninstall
 
@@ -197,6 +221,7 @@ ChatGPT binding and token maintenance belong to the separate plugin `dsh-chatgpt
 | ChatGPT shows **Not connected** | Install the companion plugin `dsh-chatgpt-subscription` and sign in |
 | ChatGPT plan or expiry is blank | Sign in again or rebind. If the token genuinely lacks those fields the bar leaves them empty rather than guessing. |
 | How do I update? | Click the red **Update available** label to copy the command, then restart `dsh web`. See [Updating](#updating). |
+| The model is shown as `V41-Flash` | Not a typo — that is DSH's spelling of **V4.1 Flash**. See [About the model name](#about-the-model-name-deepseek-v41-flash). |
 | Compact mode shows a different quota window than full mode | Intentional: compact prefers the shortest window (5-hour > weekly > monthly). Quota and countdown still come from the same window. |
 | Why is the model's reasoning not shown? | DSH does not render internal reasoning — a DSH interface limitation, not this plugin |
 | I want the original stats row back | Uninstall and restart |
@@ -206,7 +231,10 @@ ChatGPT binding and token maintenance belong to the separate plugin `dsh-chatgpt
 - **Source** — `plugin/src/host.js` (host) and `plugin/src/client-bundle.js` (client)
 - **Build** — `cd plugin && npm run build` (generates `lib/`)
 - **Test** — `node tests/run-all.mjs` (builds first, then runs every suite)
-- **Contributing** — [CONTRIBUTING.md](CONTRIBUTING.md); day-to-day workflow and release process: [docs/WORKFLOW.md](docs/WORKFLOW.md)
+- **Release history** — [CHANGELOG.md](CHANGELOG.md)
+- **Contributing** — [CONTRIBUTING.md](CONTRIBUTING.md); day-to-day workflow and the release process: [docs/WORKFLOW.md](docs/WORKFLOW.md)
+
+Every rule this project learned the hard way is enforced by CI rather than by convention — the test suite, the source guards and the release-chain contract all run on every pull request. See [AGENTS.md](AGENTS.md) for the constraints an agent must respect.
 
 ## License
 
