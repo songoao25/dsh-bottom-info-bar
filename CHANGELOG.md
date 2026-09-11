@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.17](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.16...v1.10.17) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** keep one DSH settings scroll layer so expansion and collapse cannot stack overlay scrollbars
+
 ## [1.10.16](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.15...v1.10.16) (2026-09-11)
 
 ### Bug Fixes

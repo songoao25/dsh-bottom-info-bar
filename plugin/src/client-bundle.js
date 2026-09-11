@@ -497,10 +497,9 @@ function bibSetInstallStyles() {
       .bib-settings, .bib-settings * { box-sizing: border-box; }
       /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
       .bib-set-page-title { width: 100%; margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-      /* 设置页占满宿主 options 的固定高度，由插件自己滚动；宿主不再因展开内容而切换滚动条，
-         搜索框、卡片和字段列表始终使用同一个横向 clientWidth。scroll 不代表强制显示，macOS
-         的系统滚动指示器仍按用户设置自动隐藏。 */
-      .bib-settings { display: flex; flex: 1 1 0%; align-self: stretch; width: 100%; inline-size: 100%; height: 100%; block-size: 100%; max-width: 720px; max-inline-size: 100%; max-height: 100%; max-block-size: 100%; min-width: 0; min-inline-size: 0; min-height: 0; min-block-size: 0; overflow-x: clip; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; contain: inline-size; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
+      /* 只保留 DSH 设置面板这一层纵向滚动：根节点比宿主视口多 2px，确保收起时也会
+         进入同一个滚动状态；插件自身和字段清单不再创建第二、第三条滚动轨道。 */
+      .bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible; contain: inline-size; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
       .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       /* 搜索行始终是字段卡片的一部分，固定为「剩余宽度 + 计数」两条轨道；
@@ -523,10 +522,10 @@ function bibSetInstallStyles() {
       .bib-set-card-desc { width: 100%; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
       /* 字段清单保持挂载，使用受控 max-height/opacity 过渡；不使用 display:none 或 auto-height grid，避免宿主 WebView 重新计算固有宽度和出现零高动画。 */
       .bib-set-collapse { display: block; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: 0; overflow: hidden; border-top: 1px solid transparent; opacity: 0; transform: translateY(-4px); visibility: hidden; contain: layout paint; transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 150ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 150ms ease, visibility 0s linear 220ms; }
-      .bib-set-collapse--expanded { max-height: 720px; border-top-color: var(--dsw-alias-border-l2); opacity: 1; transform: translateY(0); visibility: visible; transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 150ms ease 30ms, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 150ms ease, visibility 0s linear 0s; }
-      .bib-set-collapse-inner { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden; }
-      /* 字段列表保留独立滚动槽位，展开/收起时自身宽度也不变。 */
-      .bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: min(54vh, 520px); overflow-y: scroll; overflow-x: clip; overscroll-behavior: contain; scrollbar-gutter: stable; }
+      .bib-set-collapse--expanded { max-height: 100000px; border-top-color: var(--dsw-alias-border-l2); opacity: 1; transform: translateY(0); visibility: visible; transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 150ms ease 30ms, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 150ms ease, visibility 0s linear 0s; }
+      .bib-set-collapse-inner { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: visible; }
+      /* 字段清单跟随唯一的宿主滚动层，避免覆盖式滚动条彼此重叠。 */
+      .bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible; }
       .bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       .bib-set-group-title { margin: 12px 0 2px; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }

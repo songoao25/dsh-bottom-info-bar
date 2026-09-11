@@ -190,14 +190,14 @@ check('设置页布局不再依赖内联样式，卡片内容层与边界连续'
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
     && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: 0;')
-    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 720px;')
+    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
     && clientSrc.includes('transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1)')
     && clientSrc.includes('contain: layout paint')
     && !clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
     && clientSrc.includes('.bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
-check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 1 1 0%; align-self: stretch; width: 100%; inline-size: 100%; height: 100%; block-size: 100%; max-width: 720px; max-inline-size: 100%; max-height: 100%; max-block-size: 100%; min-width: 0; min-inline-size: 0; min-height: 0; min-block-size: 0; overflow-x: clip; overflow-y: scroll;')
+check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
   && clientSrc.includes('contain: inline-size')
   && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
   && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0;')
@@ -205,14 +205,17 @@ check('设置页卡片宽度固定，列表展开不会触发横向跳动', clie
   && clientSrc.includes('.bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px;')
   && clientSrc.includes('.bib-set-search-shell { position: relative; width: 100%; min-width: 0; }')
   && clientSrc.includes('.bib-set-count { display: block; width: 104px;')
-  && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: min(54vh, 520px); overflow-y: scroll;')
+  && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
-check('设置页自身占满宿主视口并固定滚动槽位，展开列表不再触发整页变窄', (function () {
+check('设置页只保留宿主单一滚动层，滚动条不会重叠', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !clientSrc.includes('function bibSetStabilizeHostScroll(root)')
-    && clientSrc.includes('.bib-settings { display: flex; flex: 1 1 0%; align-self: stretch; width: 100%; inline-size: 100%; height: 100%; block-size: 100%;')
-    && clientSrc.includes('max-height: 100%; max-block-size: 100%; min-width: 0; min-inline-size: 0; min-height: 0; min-block-size: 0; overflow-x: clip; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable;')
-    && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: min(54vh, 520px); overflow-y: scroll;')
+    && clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%;')
+    && clientSrc.includes('min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
+    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
+    && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
+    && !clientSrc.includes('overflow-y: scroll;')
+    && !clientSrc.includes('overflow-y: auto;')
     && !body.includes('settingsRootRef')
     && !body.includes('useLayoutEffect');
 })(), true);
