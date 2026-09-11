@@ -95,6 +95,36 @@
   3. 一旦发现被回滚且**无未提交改动**，`git reset --hard origin/main` 即可完全复原（本次即如此修复）。
 - 与既有教训同源：「checkout 停在旧分支 = 用不上主线新版的第一大原因」（2026-09-04 已记录）。本次是该坑的**加强版** —— 停的甚至就是 `main` 本身，光看分支名根本发现不了。
 
+### 独立审计结论（2026-09-11 末，用户要求「彻底修复，防止永远出现问题」）
+
+**源码级定论（下载 release-please@17.11.2 逐行核对，此前只有推断）：**
+- `last-release-sha` **只用于终止提交遍历**（`manifest.js:287` 无条件 `break`），CHANGELOG 的切分用的是「找到的发布 SHA」（`manifest.js:319` 传 `releaseShasByPath[path]`，不是配置值）。→ **该钉子永久安全，绝不会造成版本条目重复。**
+- **2.0.0 的精确机制**：`needsBootstrap = releasesFound < expectedReleases`（`manifest.js:253`）。当时「找不到 1.10.19 的 GitHub Release」且标签也还没推 → `releasesFound=0 < 1` → `needsBootstrap=true` → 因 `bootstrapSha` 未设，`commit.sha === bootstrapSha` 永不命中、`!needsBootstrap` 分支也进不去 → **遍历无限回溯**至 `commitSearchDepth`(500) 上限 → 翻出远古 BREAKING CHANGE → 判为 major。→ 钉死 `last-release-sha` 正好补上这个洞（它不受 `needsBootstrap` 影响）。
+
+**发布闸门已实测（不再是推断）：** 建了一个名为 `release-please--gate-verification` 的测试分支 + **空提交**（万一误合也零副作用）→ `auto-merge-own` 工作流结果为 **`skipped`**、`autoMergeRequest` 为空；对照组普通分支为 `success`。**闸门确实拦得住**，测试 PR #75 已关闭、分支已删。另确认**不会死锁**：main 的必需检查是 "CI"，而 `ci.yml` 对**所有 PR** 都跑（发布 PR #69 当时 CI 为 success），所以被拦下的发布 PR 始终可合。
+
+**npm 发布包反向验证：** 下载 `dsh-bottom-info-bar@1.10.19` 逐个核对：`ctx.inject(['sessionController'])` 在、裸访问仅剩注释、调用点双保险在、500 日志在、版本号 1.10.19。**用户拿到的是真修复。**
+
+**审计中发现并已修的问题：**
+- `docs/RELEASE.md` 仍在教「手工改版本号 + 手工打 tag」——正是闯祸流程，且读起来像操作手册，Agent 可能照做。已加历史存档标注并指向新机制（PR #74）。
+- 本地 `main` 陈旧导致工作区被回滚（见上一节）。
+- 本机 DSH 宿主进程（20:53 启动）早于修复构建（00:02），**仍跑旧代码**；需重启 `dsh web`（见「待用户执行」）。
+
+**新增自动化守卫（PR #76）：`tests/test-source-guards.mjs`** —— 把「只能靠自觉」的约定升级为 CI 硬约束，违反即合不进去：
+1. **禁止裸读宿主服务属性**：扫描全部 `plugin/src/*.js`，`ctx.X` 若既不在本文件 `inject` 声明里、又不在同一行/前 3 行的 `try` 保护内，即失败。**这条挡的是整类 bug**（本仓库已踩三次：v1.10.1 `ctx.settings`、2026-09-04 同类、Issue #67 `ctx.sessionController`）。
+2. **记忆唯一性**：出现 `.workbuddy/`、`.cursor/memory/` 等工具专属目录即失败。
+3. **`MEMORY.md` 必须存在，且 `AGENTS.md` 必须指向它并写明禁令**。
+4. **普通 PR 不得手工改版本元数据**（`package.json` version / `.release-please-manifest.json` / `CHANGELOG.md`），只有 `release-please--*` 分支可改；**逃生舱**：提交信息含 `[release-metadata-override]`（因为 main 开了 `enforce_admins`，没有逃生舱会被永久卡死）。
+- 守卫全部做过**反向验证**（注入违规必须 FAIL，恢复后必须 PASS），不是"写完就算"。
+- `ci.yml` 的 checkout 加了 `fetch-depth: 0`：守卫 4 需要与基线的完整 diff，浅克隆会让它取不到基线。
+
+**发布闸门加固为三层**（`auto-merge-own.yml`）：分支名 `release-please--*`（最稳，PR 创建时即有）→ 标签 `autorelease`（release-please 是「先开 PR 后加标签」，故不能只靠它）→ 标题 `chore(main): release `。三层都是 `&&` 否定，偏向「多拦」；漏放代价是发布 PR 被静默合并，多拦代价只是某个普通 PR 需手动合——**方向必须偏安全**。
+
+**无法修 / 需要用户执行的（如实记录，不假装已解决）：**
+- `ee9c4bf chore(main): release 2.0.0 (#69)` 仍在 main 历史里。main 分支保护 `allow_force_pushes: false` + `enforce_admins: true`，**改写历史在规则层面就不可能**。评估为无害：类型是 chore（release-please 不读它算版本），且本节已完整记录因果。
+- 报告者环境是 Windows + cordis 4.0.1，本仓库的复现与验证都在 macOS + cordis 4.0.2 完成——跨平台差异未覆盖。
+- 本机需重启 `dsh web` 才能跑上修复后的代码（Agent 不能自己重启：会中断正在进行的会话）。
+
 ---
 
 ## 2026-09-04

@@ -34,6 +34,14 @@
 
 **严禁手工修改** `plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 顶部版本号。手工 bump 会让 Release Please 找不到「上次发布」的基准，从而把全部历史当成未发布内容、算出错误的大版本 —— 2026-09-11 的 v2.0.0 误发事故就是这么来的（详见 `MEMORY.md`）。
 
+## 自动化守卫（CI 会拦住，不存在「绕过」）
+
+`tests/test-source-guards.mjs` 把几条血的教训从「文档约定」升级为「CI 硬约束」。违反即 CI 红、合不进去：
+
+1. **禁止裸读宿主服务属性**（`ctx.某个服务名`）。cordis 4 的 Context 是 Proxy，读取未在 `inject` 里声明的服务属性会抛 `cannot get property "X" without inject` —— **即使该服务确实存在也一样抛**。本仓库因此踩坑三次（v1.10.1 `ctx.settings`、2026-09-04 同类、Issue #67 `ctx.sessionController` 导致 500）。合法写法只有三种：① 加进本文件 `inject: [...]`；② 改用 `ctx.get('name')`；③ 老宿主兜底时写成同一行的 `try { ... } catch { ... }`。
+2. **项目记忆只允许 `MEMORY.md` 一个**。一旦出现 `.workbuddy/`、`.cursor/memory/` 之类工具专属目录即失败——记忆属于项目，不属于工具。
+3. **普通 PR 不得手工修改版本元数据**（`plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md`）；只有 `release-please--*` 的发布 PR 有权修改。确需抢修时，在提交信息里写 `[release-metadata-override]` 并在 PR 描述里说明原因（因为 main 开了 `enforce_admins`，没有逃生舱会被永久卡死）。
+
 ## 关键约定
 
 - 修改 `plugin/` 后需重启 `dsh web`（插件在宿主启动时组合，刷新页面不够）
