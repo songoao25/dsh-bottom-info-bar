@@ -4,8 +4,11 @@
   "include-component-in-tag": false,
   "packages": {
     "plugin": {
+      "component": "dsh-bottom-info-bar",
       "package-name": "dsh-bottom-info-bar",
-      "changelog-path": "/CHANGELOG.md"
+      "changelog-path": "/CHANGELOG.md",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true
     }
   }
 }
