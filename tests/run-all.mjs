@@ -21,6 +21,7 @@ if (build.status !== 0) {
 console.log('build OK → lib/')
 
 const cases = [
+  ['test-release-version（package/manifest/changelog 一致性）', ['tests/test-release-version.mjs'], join(root), process.execPath],
   ['smoke-static-host', ['tests/smoke-static-host.mjs'], join(root), process.execPath],
   ['test-alpha4-client-contract（alpha.4 client manifest/slots/React）', ['tests/test-alpha4-client-contract.mjs'], join(root), process.execPath],
   ['test-static-client（plugin/src/client-bundle.js）', ['tests/test-static-client.js'], join(root), process.execPath],
