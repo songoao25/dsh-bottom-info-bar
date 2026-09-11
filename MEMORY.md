@@ -85,6 +85,16 @@
 - 清理中确认可安全丢弃的旧内容：`.workbuddy/memory/2026-09-04.md`（已迁入本文件）、v1.4.0 时代的旧版 `docs/*`（已被 main 现有 29 份新文档取代）、`promo/*`（早前 `chore: remove private development materials` 已刻意移除）、`plugin/src/client-settings.js`（设置页已重写）。
 - **防止复发**：已开启仓库设置 `delete_branch_on_merge=true`，今后 PR 合并不再堆积分支。同时顺手修正 `AGENTS.md` 中已过时的 `docs/` 说明（原写的 DUAL-MODE-DESIGN / OPENCODE-GO-SUPPORT-EVAL 早已不在 main）。
 
+### ⚠ 危险动作复盘：本地 main 陈旧，`git checkout main` 差点回滚工作区（2026-09-11 亲历）
+
+- 现象：分支清理完成后执行 `git checkout main`，**工作区瞬间退回 10 个版本之前的旧状态** —— `MEMORY.md` 消失、`.workbuddy/` 复活、`AGENTS.md` 的两处新增全没了。原因是**本地 `main` 分支停在 `6a87088 release 1.10.10`**，而远端早已到 `e61f6ad`。
+- 危害：这次侥幸没丢东西（当时工作区干净，无未提交改动）。**若当时有未提交的工作，就会被直接抹掉。** 对 Agent 尤其危险：Agent 收尾时习惯"切回 main"，这一步就可能静默毁掉整轮工作区。
+- 正确做法（写进操作规程）：
+  1. **任何 `git checkout main` 之前先 `git fetch origin`，并核对本地 main 是否等于 origin/main**（`git log --oneline -1 main`）。
+  2. 更稳的写法：`git checkout -B main origin/main` 强制对齐远端，或直接 `git switch -c <新分支> origin/main` 从远端开分支，**不要依赖本地 main**。
+  3. 一旦发现被回滚且**无未提交改动**，`git reset --hard origin/main` 即可完全复原（本次即如此修复）。
+- 与既有教训同源：「checkout 停在旧分支 = 用不上主线新版的第一大原因」（2026-09-04 已记录）。本次是该坑的**加强版** —— 停的甚至就是 `main` 本身，光看分支名根本发现不了。
+
 ---
 
 ## 2026-09-04
