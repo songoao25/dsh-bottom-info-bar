@@ -61,6 +61,30 @@
 - 最终状态（已核实）：npm `latest` = 1.10.19；GitHub「Latest」= v1.10.19（与 npm 一致）；main 的 package/manifest/CHANGELOG 均为 1.10.19；无遗留 tag / 开放 PR。**打上 `last-release-sha` 后 release-please 再跑（main 15:43:20）产出为空 —— 确认基线钉死生效，不会再自动冒出 2.0.0。**
 - 教训：本仓库的「手工 bump + PR + 打 tag」SOP 与「release-please 自动发布」是两套并存的机制，**会互相打架**。手工 bump 到 X 之后，release-please 仍会基于坏基线再算一次并自动合并发布。以后发布前应先确认 release-please 的基线配置，或干脆在发布窗口临时禁用 `release-please.yml` / `auto-merge-own.yml`。
 
+### 2.0.0 事故的完整追因（2026-09-11 补，用户追问「为什么偏偏今天」）
+
+- **真正的导火索：用户今天 05:58 手动加上了 `RELEASE_PLEASE_TOKEN` 密钥。** 此前 release-please 只能拿 `GITHUB_TOKEN`（GitHub 刻意限制：用它做的事**不会触发后续 workflow**），所以机器人即使算出发布 PR，也不会自动合并、不会自动打 tag —— 整条链子**一直没通电**。换成 owner 本人的 PAT 后，机器人开的 PR 作者显示为 `songoao25`，恰好命中 `auto-merge-own.yml` 的「owner 自己的 PR 自动合并」→ 开 PR 23 秒后就被合掉 → 自动打 tag → 全链一次性跑通。**不是代码变了，是这把钥匙把自动链子接通了。**
+- **release-please 日志给出的铁证（run 34617031262）**：`⚠ Expected 1 releases, only found 0` → `❯ looking for tagName: v1.10.19` → `✔ Collecting commits since all latest releases` → `❯ Set(0) {}`（**基准集合为空 = 无下界，回溯全部历史**）→ 翻到 v1.3.0 的 BREAKING CHANGE「移除『信息概览』页面」→ `✔ updating from 1.10.19 to 2.0.0`。修好后再跑（run 34618033624）显示 `Set(1) { '661dbad…' }` → `✔ Using configured lastReleaseSha` → `✔ No user facing commits found`，确认钉子生效。
+- **时间差是结构性的、赢不了的**：机器人从「PR 合并」到「动手」只要 ~3 秒，而人工打 tag 至少要几分钟。所以只要还手工改版本号，这个竞态必然复现 —— 这正是必须改成「机器人独占版本号」的原因。
+- **残留物（用户指出「catalog changelog 里没删掉」，用户记得没错）**：只删 tag + 回退文件**不够**，release-please 的**工作分支** `release-please--branches--main--components--dsh-bottom-info-bar` 仍留在远端，其 `plugin/package.json` 还是 `2.0.0`、CHANGELOG 里还躺着那段「信息概览」BREAKING CHANGE。**已删除该分支**，并逐个体检 50 个分支确认**无任何分支再残留 2.0.0**。
+- **唯一剩下的痕迹**：`ee9c4bf chore(main): release 2.0.0 (#69)` 这条提交仍在 main 历史里。清除它需要改写已发布历史 + 强推受保护的 main，属工业界禁忌且会打乱所有克隆；评估为**无害**（类型是 chore，release-please 已不会读它；`MEMORY.md` 已完整记录来龙去脉，后续 Agent 读到只会明白因果，不会重蹈）。故**决定不改写历史**。
+
+### 发布机制定型：Release Please 独占版本号 + 发布闸门（2026-09-11 用户拍板）
+
+- 背景两问的通俗答案：**Release Please 是专职「发版」的自动化工具**（盯 main → 按提交信息算版本号 → 写 CHANGELOG → 开发布 PR → 打 tag）；**重复操作在于「谁定版本号」有两个人在做**（人的手工 bump vs 机器人自动算）。方案定为「**机器人独占 + 一道人工闸门**」，兼顾自动化与工业标准。
+- 落地改动（本 PR）：
+  1. `.github/workflows/auto-merge-own.yml` 的 `if` 增加两条排除：`!startsWith(head.ref, 'release-please--')` 与 `!contains(join(labels.*.name, ','), 'autorelease')`。**必须用分支名判断**——实测日志显示 release-please 是「先开 PR、后加标签」，只靠标签在 `opened` 事件上会漏判。保留标签判断用于后续 `synchronize` 事件兜底。
+  2. `AGENTS.md` 新增「发布机制（Agent 必读）」章节，并把末尾「版本发布铁律」改为指向该机制：**严禁手工改 `plugin/package.json` 的 version / `.release-please-manifest.json` / CHANGELOG 顶部**；Agent 只负责写规范提交、并在发布 PR 出现时提醒用户确认合并。
+- 新流程：写 `fix:`/`feat:` 提交 → PR（自己的 PR 仍全自动合并）→ 机器人开「发布 PR」→ **闸门拦住，等人/AI 确认** → 合并后自动打 tag → `publish-npm.yml` 自动发 npm。
+
+### 分支清理：只保留 main（2026-09-11 用户指令）
+
+- 用户判断：正常流程下分支合并完就该删，理论上只该剩主线。判断正确，但**必须先确认内容都已合并**，否则删掉会丢工作。
+- 关键方法坑：本仓库用 **squash 合并**，`git branch --merged` **完全失效**（分支提交不在 main 历史里，即使内容已合并也显示「未合并」）。**必须改问 GitHub 的 PR 记录**（`gh pr list --state all`）才知道真相。
+- 执行结果：远端 50 个分支 → 逐个体检：48 个有已合并 PR、`pr-41`/`pr-42` 对应 PR #41/#42 已合并、`codex/refactor-settings-billing-actions` 内容已被 main 完全覆盖 → **删除 49 个，只剩 `main`**；本地分支与陈旧 remote-tracking 引用同步清空（`git update-ref -d` 强制清理，`git remote prune` 未生效）。
+- 清理中确认可安全丢弃的旧内容：`.workbuddy/memory/2026-09-04.md`（已迁入本文件）、v1.4.0 时代的旧版 `docs/*`（已被 main 现有 29 份新文档取代）、`promo/*`（早前 `chore: remove private development materials` 已刻意移除）、`plugin/src/client-settings.js`（设置页已重写）。
+- **防止复发**：已开启仓库设置 `delete_branch_on_merge=true`，今后 PR 合并不再堆积分支。同时顺手修正 `AGENTS.md` 中已过时的 `docs/` 说明（原写的 DUAL-MODE-DESIGN / OPENCODE-GO-SUPPORT-EVAL 早已不在 main）。
+
 ---
 
 ## 2026-09-04

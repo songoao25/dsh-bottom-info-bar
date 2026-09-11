@@ -21,8 +21,18 @@
   - `plugin/scripts/` — 构建脚本
 - `install.sh` / `uninstall.sh` — 一键安装/卸载（默认装到 web profile，可用 --profile 覆盖）
 - `tests/` — 静态/烟雾测试与多个单测（dual-mode、display-name、density-toggle、spend-accounting、static-client）
-- `docs/` — INSTALL、DUAL-MODE-DESIGN、OPENCODE-GO-SUPPORT-EVAL
+- `docs/` — 设计、审计、QA、运维与调研文档（INSTALL、TECH-DESIGN、PRD、RELEASE、PRICING-SOURCES 等）
 - `.github/` — CI、CodeQL、Dependabot、Issue/PR 模板
+
+## 发布机制（2026-09-11 定型，Agent 必读）
+
+本仓库的版本号 **全部由 Release Please 自动管理**，Agent 与人都不要插手：
+
+1. PR 合并进 main 后，`.github/workflows/release-please.yml` 会自动算出下一个版本号、写好 `CHANGELOG.md`，并开一个「发布 PR」。
+2. 发布 PR 带 `autorelease: pending` 标签、分支名为 `release-please--*`，被 `auto-merge-own.yml` **排除**，不会自动合并 —— **这是唯一的发布闸门**。
+3. 合并该发布 PR 后：自动打 tag → `publish-npm.yml` 自动发布到 npm。
+
+**严禁手工修改** `plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 顶部版本号。手工 bump 会让 Release Please 找不到「上次发布」的基准，从而把全部历史当成未发布内容、算出错误的大版本 —— 2026-09-11 的 v2.0.0 误发事故就是这么来的（详见 `MEMORY.md`）。
 
 ## 关键约定
 
@@ -41,4 +51,4 @@
 - 跑测试：见 `tests/run-all.mjs`
 - CI 检查项：`.github/workflows/ci.yml`
 
-- 版本发布铁律（2026-09-04 用户明确要求）：每一次小 bug 修复、小更新都必须走一个版本发布（bump patch + CHANGELOG + tag + npm），严禁“修了不发”；已实现的版本更新提醒功能依赖此纪律，否则浪费
+- 版本发布铁律（2026-09-04 用户明确要求，2026-09-11 更新机制）：每一次小 bug 修复、小更新都必须走一个版本发布，严禁“修了不发”；已实现的版本更新提醒功能依赖此纪律，否则浪费。**具体执行方式见上方「发布机制」——版本号 / CHANGELOG / tag 全部由 Release Please 自动完成，Agent 只需保证提交信息规范（fix/feat），并在发布 PR 出现时提醒用户确认合并。**
