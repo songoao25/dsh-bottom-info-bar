@@ -151,7 +151,7 @@ check('折叠箭头方向与实际展开状态同步（搜索只负责打开列�
   && clientSrc.includes('expanded: fieldsExpanded')
   && clientSrc.includes("'aria-controls': props.contentId")
   && clientSrc.includes("const fieldsBody = React.createElement('div', {")
-  && clientSrc.includes("className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed')")
+  && clientSrc.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
   && clientSrc.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
   && clientSrc.includes("inert: fieldsExpanded ? undefined : true")
   && clientSrc.includes("const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');")
@@ -176,9 +176,10 @@ check('折叠头部使用原生 button 语义，避免 div role=button 与自定
 check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
-    && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed')")
+    && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && body.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
     && body.includes('inert: fieldsExpanded ? undefined : true')
+    && !clientSrc.includes('if (!props.expanded) return []')
     && !body.includes('disabledOnly')
     && !body.includes('disabledCount')
     && !body.includes('collapsed.fields')
@@ -188,25 +189,29 @@ check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画'
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
-    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; min-width: 0;')
-    && clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
-    && clientSrc.includes('.bib-set-body { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }')
+    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: 0;')
+    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 720px;')
+    && clientSrc.includes('transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1)')
+    && clientSrc.includes('contain: layout paint')
+    && !clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
+    && clientSrc.includes('.bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
-check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { width: 100%; max-width: 720px; min-width: 0;')
-  && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); width: 100%; min-width: 0;')
+check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 1 1 0%; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
+  && clientSrc.includes('contain: inline-size')
+  && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
   && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0;')
   && clientSrc.includes('.bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px;')
   && clientSrc.includes('.bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px;')
   && clientSrc.includes('.bib-set-search-shell { position: relative; width: 100%; min-width: 0; }')
   && clientSrc.includes('.bib-set-count { display: block; width: 104px;')
-  && clientSrc.includes('.bib-set-field-list { width: 100%; max-height: min(54vh, 520px); overflow-y: auto;')
+  && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: min(54vh, 520px); overflow-y: auto;')
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
 check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box;')
   && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
   && clientSrc.includes('.bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }')
   && clientSrc.includes('.bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }')
-  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding-left: 8px; }'), true);
+  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding-left: 8px; overflow-x: clip; }'), true);
 check('设置页只保留卡片标题折叠入口，删除展开全部/折叠全部按钮文案', !clientSrc.includes("t('ui.expandAll')")
   && !clientSrc.includes("t('ui.collapseAll')")
   && !localesSrc.includes('"ui.expandAll"')
