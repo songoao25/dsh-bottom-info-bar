@@ -7,176 +7,206 @@
 [![Last commit](https://img.shields.io/github/last-commit/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar)
 [![CI](https://img.shields.io/github/actions/workflow/status/songoao25/dsh-bottom-info-bar/ci.yml)](https://github.com/songoao25/dsh-bottom-info-bar/actions)
 
-**DeepSeek Harness 的信息栏插件**：在一行里显示服务商和模型、余额或订阅额度、当前价格时段与实际花费。它会自动跟随当前会话，不需要另外维护模型列表；安装一次，每次启动自动生效。
+DeepSeek Harness 输入框下方那行统计栏的**直接替代品**。
 
-## 展示预览
+原生统计栏有的（轮次与步数、LLM 耗时、工具调用、缓存命中率、输入输出 token）它**全部保留**，另外补上干活时真正想随时看到的东西：**真实余额**（或订阅额度、或本月真实账单）、**服务商与具体模型**、**高峰/空闲价格**与切换倒计时，以及**本对话已经花了多少**。
 
-![底部信息栏预览：ChatGPT 订阅账户、DeepSeek API 接入和 OpenCode Go 订阅账户](/assets/bottom-info-bar-preview.jpeg)
+装一次、重启一次，之后每次启动自动生效。计费模式自动识别，**从不显示估算数据**。
 
-长图从上至下依次展示 **ChatGPT 订阅账户**、**DeepSeek API 接入** 和 **OpenCode Go 订阅账户**；每种账户均依次展示**完整模式**和**简洁模式**。
+![信息栏预览：ChatGPT 订阅、DeepSeek 余额、OpenCode Go 订阅，各含完整与简洁两种视图](assets/bottom-info-bar-preview.jpeg)
 
-## 特性
+<sub>截图为中文界面；DSH 语言设为 English 时文案会自动切换。图中自上而下三组：**ChatGPT 订阅**、**DeepSeek 余额**、**OpenCode Go 订阅**——每组都是先**完整**视图、后**简洁**视图。</sub>
 
-- **三态信息栏**：自动检测当前服务商是**订阅制**（额度窗口，如 Codex / OpenCode Go / 智谱 / 小米 Token Plan）、**账单制**（本月真实账单，如 Together / Fireworks / AWS Bedrock / Cloudflare）还是**余额制**，三种模式互斥替换、绝不叠加；余额制保持原样。
-- **ChatGPT 订阅卡（纯本地）**：当前服务商为 **ChatGPT / Codex** 时，本地解码 `~/.codex/auth.json` 的登录令牌，直接显示**真实套餐档位 + 到期日期**，例如 `ChatGPT · Plus | 到期 2026-09-16`——纯本地解析、零网络请求，展示 OpenAI 官方登录态中的真实订阅信息，不做任何本地估算。未登录时显示「未绑定」引导。**绑定 / 令牌续期 / ChatGPT 模型路由不在本插件内**——请安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）绑定 ChatGPT 账号；本插件只读令牌显示信息。
-- **订阅额度显示（OpenCode Go / 智谱 / 小米 MiMo Token Plan）**：当前服务商为订阅制时，信息栏显示**订阅服务 + 模型**（如 `OpenCode Go · V4 Flash`，小米显示 `小米 MiMo`），**5小时 / 周 / 月** 窗口**剩余额度**（剩余 = 100 − 已用，数值加粗），以及**距重置倒计时**（如 `距重置 1d 21h`）。**额度与倒计时严格来自同一窗口**。额度来源：
-  - **OpenCode Go**：经 `OPENCODE_GO_API_KEY`（设置 → 模型）或 opencode CLI 登录（`~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）读取 `opencode.ai/zen/go/v1/usage` 额度；未配置时显示「未配置 OpenCode Go」引导，不报错
-  - **智谱**：经 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 套餐额度；未配置时显示引导，不报错
-  - **小米 MiMo Token Plan**：经 `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY`（按地区，回退 `XIAOMI_API_KEY`）读取月度 Credits 额度；未配置时显示引导，不报错
-- **账单型显示（本月真实账单）**：当前服务商为 **Together / Fireworks / AWS Bedrock / Cloudflare** 时，从官方计费 API 读取**本月真实已用金额**，显示如 `Together | 本月 $12.34`、`AWS Bedrock | 本月 $45.60 · 预算 46%`；Cloudflare 在接口提供免费额度时额外显示每日免费额度剩余与零点重置倒计时（接口给不出免费额度时只显示真实用量，绝不编造）。账单数据全部来自服务商官方返回，**不做任何本地估算显示**；无凭据时显示「未配置」引导
-- **一体替换**：默认替换原生统计栏，原生信息（轮·步 / LLM 耗时 / 工具调用 / 缓存命中 / 输入输出 tokens）照常显示、格式与原生一致；**首 token 平均 / tok/s** 两个速度指标移入 hover 浮窗，单行一眼看完
-- **服务商 + 具体模型**：直接读取 DSH 当前模型列表中的名称（例如官方 V4.1 Flash 显示为 `DeepSeek-V41-Flash`），新模型会自动跟随，不需要再改插件代码。模型还没读到时会明确显示“正在读取”，不会拿其他模型或默认模型代替
-- **余额更新**：读取 DeepSeek `/user/balance` 真实 API；信息栏打开、刷新或切换服务商时立即查询，之后每 60 秒自动更新。它不是服务商推送的毫秒级实时流，服务商自身的账单延迟仍以对方为准；暂时失败时保留上次数据并提示，不中断使用
-- **峰谷价 + 倒计时**：高峰价（琥珀色加粗）/ 空闲价（绿色加粗）+ 距下次切换倒计时；无峰谷价的服务商自动隐藏
-- **真实花费**：逐请求记账（`llm/stream` usage × 单价），按 **本会话（含子代理）/ 今天 / 近一月 / 全部** 精确聚合——子代理与主会话同属一个服务商账户，其记录按"会话起点 + 同账户"一并计入本会话花费；**记账数据落盘持久化（重启不丢失）**
-- **数字加粗**：余额、倒计时、花费与统计数字统一加粗，一目了然
-- **完整 / 简洁**：单击整条信息栏在两态间切换（防抖 + 严格两态）
-- **余额预警**：余额低于 ¥20 时显示 ⚠
-- **只显示真实数据**：信息栏只显示各服务商官方真实返回的余额 / 额度 / 套餐 / 账单；任何本地估算花费一律不显示
-- **「信息栏」设置页**：按内容分组，可分别显示或隐藏每一项并调整颜色；列表支持搜索，展开后在卡片内滚动，页面不会跟着变形。设置会自动保存，并提供「恢复默认显示」「恢复默认颜色」；还可以导出账单为 CSV / JSON，或在确认后清除本插件保存的账单记录
-- **长期使用不卡顿（v1.9）**：账单明细自动归档为汇总、统计增量计算——信息栏刷新不再随使用时长变慢；账本文件权限启动时自动收紧
+## 一眼看懂
 
-## 支持的服务商（v1.7）
+- **三种计费模式自动切换** —— 余额制、订阅额度制、云账单制，互斥不重叠，无需手动选择。
+- **只用真实数据** —— 余额、额度、套餐、账单全部来自各家官方 API，本地不做任何估算。
+- **与 DSH 显示完全一致** —— 服务商与模型名取自 DSH 模型切换器，新模型自动跟随，不用改插件。
+- **高峰 / 空闲价** —— 两个价格并列，并给出切换倒计时（周末全天空闲价）。
+- **诚实的花费记账** —— 本对话（含子代理）、今天、近 30 天、累计，落盘保存，重启不丢。
+- **原生观感** —— 顶替原生统计栏而不是并列重复；点击切换完整/简洁，字段与配色可在设置里自选。
 
-插件会自动跟随 DSH 当前会话的模型识别服务商——**零配置，配好密钥即可显示**。如果模型信息暂时不可用，插件会等待并显示待识别状态，不会猜测或借用其他模型的数据。
-
-### 余额制服务商
-| 服务商 | 显示名称 | 凭据键名 | 余额 API |
-|---|---|---|---|
-| deepseek / deepseek-official | DeepSeek | DEEPSEEK_API_KEY | 官方 API |
-| openai | OpenAI | OPENAI_API_KEY | 估算（无公开 API） |
-| moonshotai / moonshotai-cn / kimi-coding | Kimi | MOONSHOT_API_KEY（回退 KIMI_API_KEY） | 官方 API |
-| openrouter | OpenRouter | OPENROUTER_API_KEY | 官方 API |
-| stepfun | 阶跃星辰 | STEPFUN_API_KEY | 官方 API |
-| xiaomi | 小米 MiMo | XIAOMI_API_KEY | 官方 API |
-
-### 订阅制服务商（额度窗口）
-| 服务商 | 显示名称 | 令牌来源 |
-|---|---|---|
-| codex / chatgpt / openai-codex | ChatGPT / Codex | `~/.codex/auth.json`（本插件只读，纯本地解码显示套餐 + 到期） |
-| opencode-go / opencode | OpenCode Go | OPENCODE_GO_API_KEY 或 opencode auth.json |
-| zai / zai-coding-cn | 智谱 | ZAI_CODING_CN_API_KEY（回退 ZAI_API_KEY） |
-| xiaomi-token-plan-cn / -sgp / -ams | 小米 MiMo | XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY（回退 XIAOMI_API_KEY） |
-
-### 账单制服务商（本月真实账单）
-| 服务商 | 显示名称 | 凭据键名 | 账单 API |
-|---|---|---|---|
-| together | Together | TOGETHER_API_KEY | 官方 Usage API（本月已用金额） |
-| fireworks | Fireworks | FIREWORKS_API_KEY | 官方 Billing 接口（本周期已用金额） |
-| amazon-bedrock | AWS Bedrock | AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY | AWS Cost Explorer + Budgets（本月花费 + 预算%） |
-| cloudflare-ai-gateway / cloudflare-workers-ai | Cloudflare | CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID（Token 需 Billing 读权限） | Billable Usage API（Alpha，本月真实用量） |
-
-**未适配服务商**：如果当前服务商不在上表中，信息栏会显示"未适配"引导，绝不显示其他服务商的余额或额度。
-
-## 环境要求
-
-- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai)（`dsh` CLI）并通过 Web 界面使用（`dsh web`）
-- 已安装 [pnpm](https://pnpm.io/)（`dsh plugin` 依赖）
-
-## 安装
-
-### 方式一：一键脚本（推荐）
-
-```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
-cd dsh-bottom-info-bar
-./install.sh                # 默认安装到 web profile；可用 --profile <name> 指定
-```
-
-### 方式二：NPM 安装（以后更新最方便）
+## 快速开始
 
 ```bash
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-以后更新：
+然后 **重启 `dsh web`** —— 插件在宿主进程启动时组合，**刷新页面不够**。
 
-```bash
-dsh plugin --profile web update dsh-bottom-info-bar --latest
-```
+在 DSH 的 **设置 → 模型** 里配好服务商的 API Key 即可，其余无需配置。
 
-### 方式三：从本地代码安装
+<details>
+<summary>其它安装方式（以及该怎么选）</summary>
+
+**推荐用上面的 npm 命令。** 它是唯一能让内置的版本更新提醒给你一条可用更新命令的安装方式——见 [更新版本](#更新版本)。
+
+**从本地代码安装**（用于开发，或想跑未发布的代码）：
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
 dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
 ```
 
-> **安装或更新后需重启 `dsh web`**：插件在宿主进程启动时组合加载，仅刷新页面不足以生效。
+这会产生 `link:` 安装：它跟随你的本地代码而不是 npm，所以更新方式是 `git pull` 而不是装包——见 [更新版本](#更新版本)。
 
-详细安装、故障排查与升级说明见 [docs/INSTALL.md](docs/INSTALL.md)。
+**一键脚本** —— clone 与安装一步完成：
 
-## 使用
+```bash
+git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+cd dsh-bottom-info-bar
+./install.sh                # 默认装到 web profile；用 --profile <name> 改
+```
 
-- **hover 查看详情**：余额金额、输入/缓存/输出单价、下次价格切换时刻、本会话花费（含子代理；今天 / 近一月 / 全部）
-- **单击信息栏**：切换 完整 / 简洁 两态
-- **版本提醒**：每次 DSH 完全启动时检查一次 NPM；有新版本时显示红色 `↑ vX.Y.Z`。它只负责提醒，不会自动更新代码；可把提醒告诉有本机终端权限的 Agent 协助更新。
+与「从本地代码安装」一样，这同样是 `link:` 安装。
 
-## 配置
+详细步骤与故障排查见 [docs/INSTALL.md](docs/INSTALL.md)。
+</details>
 
-- **API Key**：在 **设置 → 模型** 中配置 DeepSeek API Key（环境变量名 `DEEPSEEK_API_KEY`）。未配置时信息栏给出引导文案，其余功能不受影响。
-- **模式**：只按当前会话的服务商自动选择余额、订阅额度或账单显示；不需要手动指定模式。
-- **数据口径**：高峰时段为北京时间 9:00–12:00、14:00–18:00；价格表内置 DeepSeek V4 系列与 OpenAI 参考价，未收录模型不参与花费统计。
-- **订阅额度数据源**：
-  - **ChatGPT（Codex）**：安装配套插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）并绑定 ChatGPT 账号一次——该插件负责维护 `~/.codex/auth.json`（0600）中的令牌并注册 ChatGPT 模型。本信息栏**只读**令牌中的真实套餐与到期信息，**不续期、不写回、不注入凭据**；无令牌显示「未绑定 — 安装 dsh-chatgpt-subscription 授权」引导。token 绝不打印 / 进日志 / 入库
-  - **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`，或先用 opencode CLI 登录订阅（写入 `~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）。未配置时显示"未配置 OpenCode Go"引导，不报错。
+## 三种计费模式
 
-#### ChatGPT 订阅：已知限制
+信息栏跟随 DSH 的当前会话，按服务商自动决定显示内容，**无需手动切换模式**。
 
-- 本插件只读取配套插件写入的本地令牌字段；令牌没有套餐或到期信息时，信息栏会留空，不会自行猜测
-- 可用模型以订阅计划为准，模型接入由配套插件 **dsh-chatgpt-subscription** 提供
+### 余额制（DeepSeek / Kimi / OpenRouter / StepFun / 小米 MiMo / OpenAI 参考价）
 
-### 数据存储（插件专属目录）
+显示服务商官方接口返回的**真实余额**。信息栏打开、刷新、或切换服务商时会立即重新查询，之后每 60 秒轮询一次。查询失败时保留上一次的快照，**这一行永远不会变空白**。
 
-本插件的金额数据独立保存在自己的数据目录，与其他插件 / DSH 配置互不干扰：
+余额低于 ¥20 时，金额与「低」标记转为红色。
+
+### 订阅额度制（ChatGPT / Codex、OpenCode Go、智谱、小米 MiMo Token Plan）
+
+显示**各窗口剩余额度**（5 小时 / 周 / 月，剩余 = 100 − 已用）与**距下次重置的倒计时**。额度与倒计时**永远取自同一个窗口**，不会互相矛盾。
+
+- **ChatGPT / Codex** —— 在**本机离线解析** `~/.codex/auth.json`，显示真实套餐与到期时间（例如 `ChatGPT · Plus | Expires 2026-09-16`）。**零网络请求**：数值直接来自 OpenAI 自己的登录令牌，不做估算。未登录 → 显示**刷新失败**并提示重新授权。令牌的**绑定与续期**由配套插件 [dsh-chatgpt-subscription](https://github.com/songoao25) 负责——本插件**只读**令牌，绝不写回。
+- **OpenCode Go** —— 通过 `OPENCODE_GO_API_KEY`（设置 → 模型）或 opencode CLI 的登录（`~/.local/share/opencode/auth.json`）读取 `opencode.ai/zen/go/v1/usage` 的额度。未配置 → 显示「未配置」提示而非报错。
+- **智谱** —— 通过 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 额度：套餐档位 + 5 小时窗口。
+- **小米 MiMo Token Plan** —— 通过 `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` 按区域读取月度 Credits 额度（回退 `XIAOMI_API_KEY`）：套餐名 + 月度窗口。
+
+简洁模式下优先显示**时长最短的窗口**（5 小时 > 周 > 月），因为它刷新最快；5 小时窗口不可用时依次回退到周、月。
+
+### 账单制（Together / Fireworks / AWS Bedrock / Cloudflare）
+
+显示官方账单接口返回的**本月真实花费**，例如 `Together | 本月 $12.34`、`AWS Bedrock | 本月 $45.60 · 预算 46%`。Cloudflare 还会显示每日免费额度剩余与 UTC 零点重置倒计时——**但仅在接口确实返回免费额度时才显示**；否则只显示真实用量，**绝不编造额度**。未配置密钥 → 显示「未配置」提示。
+
+## 花费记账
+
+每一次 `llm/stream` 请求都会被记录（用量 × 单价），并按四个口径聚合：**本对话**（含子代理）、**今天**、**近 30 天**、**累计**。
+
+子代理与主会话走同一个服务商账户，因此其花费会并入当前会话。**单价在响应完成的那一刻锁定**，之后的价目表更新绝不会改写历史金额。价目表中没有的模型保留 token 用量但不计入金额，也**不会被编造出一个价格**。
+
+重启不丢：新账目会先把流水**同步落盘确认**，再计入界面；若这次写入失败，信息栏会明确显示**账单未保存**，而不是悄悄少算一笔。账本明细会自动归档成汇总、统计增量计算，因此用上几个月界面刷新也不会变慢。
+
+## 更新版本
+
+插件在一次完整的 DSH 启动后检查一次 npm 上是否有新版本。有新版时，信息栏会出现红色的**新版本提醒**标签。
+
+**点击这个标签**，更新命令就会复制到剪贴板——粘到终端执行，然后重启 `dsh web` 即可。复制成功后标签会短暂显示「更新命令已复制」。
+
+把鼠标停在标签上会说明两条路径：让有终端权限的 Agent 帮你更新，或者点击标签自己复制命令。
+
+复制的命令与你的安装方式匹配：
+
+| 你的安装方式 | 拿到的命令 |
+|---|---|
+| npm（`dsh plugin add dsh-bottom-info-bar`） | `dsh plugin --profile <profile> add dsh-bottom-info-bar@latest` |
+| `link:`（本地代码 / 一键脚本） | `git -C <你的代码目录> pull --ff-only` |
+
+**它绝不会自动执行更新。** 插件只负责告诉你「有新版本」，在你亲手运行命令之前，机器上不会有任何改动。
+
+## 支持的服务商
+
+信息栏从 DSH 当前模型列表识别服务商——**零配置**。在 DSH 的「设置 → 模型」里配好密钥即可。DSH 尚未提供模型时，信息栏会**等待**，而不是猜一个。
+
+### 余额制
+
+| 服务商 | 显示名 | 凭据 | 数据来源 |
+|---|---|---|---|
+| deepseek / deepseek-official | DeepSeek | `DEEPSEEK_API_KEY` | 官方接口 |
+| openai | OpenAI | `OPENAI_API_KEY` | 参考价估算（官方无公开接口） |
+| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY`（回退 `KIMI_API_KEY`） | 官方接口 |
+| openrouter | OpenRouter | `OPENROUTER_API_KEY` | 官方接口 |
+| stepfun | StepFun | `STEPFUN_API_KEY` | 官方接口 |
+| xiaomi | 小米 MiMo | `XIAOMI_API_KEY` | 官方接口 |
+
+### 订阅额度制（额度窗口）
+
+| 服务商 | 显示名 | 令牌来源 |
+|---|---|---|
+| codex / chatgpt / openai-codex | ChatGPT / Codex | `~/.codex/auth.json`（只读，本机解析） |
+| opencode-go / opencode | OpenCode Go | `OPENCODE_GO_API_KEY` 或 opencode 登录文件 |
+| zai / zai-coding-cn | 智谱 | `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`） |
+| xiaomi-token-plan-cn / -sgp / -ams | 小米 MiMo | `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY`（回退 `XIAOMI_API_KEY`） |
+
+### 账单制（本月真实账单）
+
+| 服务商 | 显示名 | 凭据 | 数据来源 |
+|---|---|---|---|
+| together | Together | `TOGETHER_API_KEY` | 官方用量接口（本月花费） |
+| fireworks | Fireworks | `FIREWORKS_API_KEY` | 官方账单接口（周期花费） |
+| amazon-bedrock | AWS Bedrock | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Cost Explorer + Budgets（花费 + 预算占比） |
+| cloudflare-ai-gateway / cloudflare-workers-ai | Cloudflare | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID`（令牌需 Billing 读权限） | 计费用量接口（真实用量） |
+
+**不在列表中的服务商**会显示**不支持**提示，而不是拿别的服务商的数据顶上。
+
+## 界面语言
+
+插件跟随 DSH 的 **设置 → 通用 → 语言**。切换语言无需刷新页面即可生效，插件**没有**独立的语言开关。宿主侧文案使用 DSH 已保存的语言偏好；远程浏览器里未保存的语言选择无法改变宿主文案；来自外部服务商/系统的消息保持原文。详见[本地化说明](docs/LOCALIZATION.md)。
+
+## 数据存储
+
+插件记录的一切都放在它自己的目录里，与其它插件和 DSH 配置完全隔离：
 
 ```
 ~/.dsh/dsh-bottom-info-bar/
-├── usage-records.json           # 当前账单明细
-├── usage-records.journal.jsonl  # 恢复用日志
-├── usage-records.json.bak       # 最近一次完整快照
-├── usage-summaries.json         # 加速统计的汇总
-└── usage-archive/               # 已归档的历史明细
+├── usage-records.json           # 完整账本，人类可读
+├── usage-records.journal.jsonl  # 恢复用流水，请勿手改
+└── usage-records.json.bak       # 上一份完整快照，用于恢复
 ```
 
-- **位置**：`~/.dsh/dsh-bottom-info-bar/`（目录权限 0700、文件权限 0600，仅当前用户可读）
-- **覆盖**：设置环境变量 `DSH_BOTTOM_INFO_BAR_DATA_DIR` 可将整个数据目录改到别处（如移动硬盘 / 云同步目录）
-- **内容**：每条记录为一次 `llm/stream` 请求的用量（`ts / model / provider / sessionId / input / cacheRead / cacheWrite / output`），**不含任何对话内容与 API Key**
-- **保留**：不会悄悄删掉账单明细；历史记录会自动归档，长期备份时请一并保存整个目录
-- **花费口径**：按当前服务商币种聚合（DeepSeek 为 CNY，OpenAI 参考价为 USD），跨币种记录不混加；未收录模型不参与花费统计。最新 DSH 目录中的 `deepseek-flash`（当前 DSH 显示为 `DeepSeek-V41-Flash`，官方发布名为 V4.1 Flash）可以正常识别，并按 DeepSeek 官网公布的高峰/空闲价格计费。
-- **管理记录**：在「设置 → 信息栏 → 账单数据」中导出 CSV / JSON，或确认后清除全部账单记录；设置、登录信息和定价数据不会受影响
+- **权限** —— 目录 `0700`、文件 `0600`，启动时自动收敛：只有你自己的账户可读。
+- **换位置** —— 设置环境变量 `DSH_BOTTOM_INFO_BAR_DATA_DIR` 可整体迁移（外置硬盘、同步盘等）。
+- **查看与迁移** —— 用任意编辑器打开 `usage-records.json`。换电脑时，在 DSH 关闭状态下整目录拷贝即可。
+- **内容** —— 每条模型响应一条记录（`id / ts / model / provider / sessionId / input / cacheRead / cacheWrite / output / currency / cost / status`），`status` 为 `completed` 或 `interrupted`。**绝不保存对话内容、提示词或 API Key。**
+- **保留** —— 没有静默的条数上限；若需要跨机器长期留存，请把该目录纳入你的常规备份。
+- **管理** —— **设置 → 信息栏 → 账单数据**可导出 CSV/JSON，或在确认后清除插件记录。设置、登录信息与价目数据不受影响；**卸载插件也不会删除你的数据**。
+
+> **计费口径**：金额只按当前服务商币种聚合（DeepSeek 为 CNY、OpenAI 参考价为 USD），跨币种绝不混加。DeepSeek 高峰时段为北京时间工作日 09:00–12:00 与 14:00–18:00；周末全天空闲价。
+>
+> **关于模型名**：DSH 目录把最新的 Flash 模型写作 `DeepSeek-V41-Flash`（模型 id 为 `deepseek-flash`），而 DeepSeek 官方发布名是 **V4.1 Flash**——少那个点是 DSH 的写法，**不是错字**；信息栏刻意与 DSH 显示保持一致。`DeepSeek-V4-Flash` 则是**另一个**更早的模型 id。
 
 ## 卸载
 
 ```bash
 cd dsh-bottom-info-bar
-./uninstall.sh                        # 仅卸载插件
-# 或：dsh plugin --profile web remove dsh-bottom-info-bar
+./uninstall.sh
+# 或手动：dsh plugin --profile web remove dsh-bottom-info-bar
 ```
 
-ChatGPT 订阅（绑定与令牌维护）由独立插件 `dsh-chatgpt-subscription` 负责，卸载本信息栏插件不会触碰它。
+重启后原生统计栏自动恢复，无残留。记账数据仍保留在 `~/.dsh/dsh-bottom-info-bar/`——想彻底清零，请在「设置 → 信息栏 → 账单数据」中导出后确认清除。
 
-重启后原生统计栏自动恢复，插件无残留。账单记录默认保留在 `~/.dsh/dsh-bottom-info-bar/`；如需重置统计，请在「设置 → 信息栏 → 账单数据」中导出或清除，不必手动删除文件。
+ChatGPT 的绑定与令牌维护属于独立插件 `dsh-chatgpt-subscription`，卸载本信息栏不会影响它。
 
 ## 常见问题
 
-| 现象 | 处理 |
+| 现象 | 怎么办 |
 |---|---|
-| 安装后刷新页面没看到信息栏 | 需**重启** `dsh web`（宿主进程加载插件） |
-| 余额显示「未配置 DEEPSEEK_API_KEY」 | 在 设置 → 模型 配置 DeepSeek Key |
-| 余额显示「⚠ 刷新失败，显示上次快照」 | 网络/Key 临时故障，60s 后自动重试。**将鼠标悬停在警告上**可查看详细解释和重试时间 |
-| 显示「未配置 OpenCode Go」 | 在 设置 → 模型 配置 `OPENCODE_GO_API_KEY`，或用 opencode CLI 登录 OpenCode Go |
-| 如何绑定 ChatGPT 订阅？ | 安装配套插件 **dsh-chatgpt-subscription**，在官方页面用 ChatGPT 账号授权——它维护的令牌即本信息栏额度显示所读取的令牌 |
-| ChatGPT 套餐或到期信息为空 | 请重新登录或在配套插件中重新绑定；令牌缺少相关字段时，信息栏只保留服务商和模型，不会猜测套餐或额度 |
-| 简洁模式为什么显示不同的窗口？ | 简洁模式优先显示时间最短的窗口（5小时 > 周 > 月），因为刷新最快。若 5 小时窗口不可用，则降级到周或月窗口。**额度与倒计时严格来自同一窗口**，确保信息匹配 |
-| 为什么看不到模型的思考过程？ | DSH 界面层不渲染模型的内部思考过程，属 DSH 自身界面限制，非插件问题 |
-| 想改回原生统计栏 | 卸载本插件并重启 |
+| 刷新页面后信息栏没出现 | **重启 `dsh web`** —— 宿主在启动时组合插件 |
+| 余额显示 **未配置 DEEPSEEK_API_KEY** | 到「设置 → 模型」填入密钥 |
+| 余额显示**刷新失败**但仍能看到数字 | 网络或密钥的临时问题；60 秒后自动重试，并保留上次数值。**把鼠标停在警告上**可看详情 |
+| OpenCode Go 显示**刷新失败**且提示缺少凭据 | 到「设置 → 模型」填 `OPENCODE_GO_API_KEY`，或用 opencode CLI 登录 |
+| ChatGPT 显示**未连接** | 安装配套插件 `dsh-chatgpt-subscription` 并登录 |
+| ChatGPT 的套餐或到期时间为空 | 重新登录或重新绑定。若令牌里确实没有这些字段，信息栏会留空而不是猜 |
+| 怎么更新插件？ | 点红色的**新版本提醒**标签复制命令，然后重启 `dsh web`。详见[更新版本](#更新版本) |
+| 简洁模式显示的额度窗口和完整模式不同 | 这是有意的：简洁模式优先最短窗口（5 小时 > 周 > 月）。额度与倒计时仍取自同一窗口 |
+| 为什么看不到模型的思考过程？ | DSH 不在界面上渲染内部推理——这是 DSH 界面层的限制，与本插件无关 |
+| 我想换回原来的统计栏 | 卸载插件并重启 |
 
 ## 开发
 
-- **源码**：`plugin/src/host.js`（host）+ `plugin/src/client-bundle.js`（client）
-- **构建**：`cd plugin && npm run build`（生成 `lib/`）
-- **测试**：`node tests/run-all.mjs`
+- **源码** —— `plugin/src/host.js`（宿主侧）与 `plugin/src/client-bundle.js`（客户端）
+- **构建** —— `cd plugin && npm run build`（生成 `lib/`）
+- **测试** —— `node tests/run-all.mjs`（先构建，再跑全部测试套件）
+- **参与贡献** —— [CONTRIBUTING.md](CONTRIBUTING.md)；日常流程与发布机制见 [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
 ## 许可证
 
