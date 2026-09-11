@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.19](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.18...v1.10.19) (2026-09-11)
+
+### Bug Fixes
+
+* **host:** keep the spend panel working on hosts that do not provide the optional session service, instead of failing every session-scoped spend request and showing "spend unavailable"
+* **host:** record unexpected request failures in the host log so an "internal error" response can be traced
+
 ## [1.10.18](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.17...v1.10.18) (2026-09-11)
 
 ### Bug Fixes
