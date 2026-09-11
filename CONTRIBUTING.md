@@ -23,6 +23,24 @@
 3. 提交信息用英文或中文均可，但需清晰描述改动；
 4. 通过 Pull Request 提交，描述清楚改动内容和验证方式。
 
+### 提交前请自测
+
+```bash
+node tests/run-all.mjs     # 会自动先 build 再跑全部测试
+```
+
+CI 还会强制执行几条硬规矩（违反即红），请提前了解：
+
+- **不要手工修改版本号**：`plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 由 [Release Please](https://github.com/googleapis/release-please) 自动维护，手工改会破坏它的发布基准。
+- **不要裸读宿主服务属性**（如 `ctx.someService`）。cordis 4 的 Context 是 Proxy，读取未声明 `inject` 的服务属性会抛错——请用 `ctx.get('name')` 或声明注入。这是本项目踩过三次的坑。
+- 细节见仓库根目录 `AGENTS.md`。
+
+### 合并与发布（外部贡献者请注意）
+
+- **你自己的 PR 不会自动合并**，需要维护者 review 后手动合并；仓库主人的 PR 才会自动合并（trust-by-author）。
+- 合并进 main 后，Release Please 会自动算出新版本号并开一个「发布 PR」，该 PR 需维护者确认后才会打标签并发布到 npm。所以你的改动会在**下一个版本**里与用户见面。
+- 详细流程见 `docs/WORKFLOW.md`。
+
 ## 开发环境
 
 - 本项目是 DeepSeek Harness 的静态 bundle 插件；
