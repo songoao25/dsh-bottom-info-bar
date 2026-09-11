@@ -1499,7 +1499,11 @@ module.exports = {
         try {
           let directories = null;
           try { directories = ctx.get ? ctx.get('modelDirectories') : null; } catch (err) { /* property form below */ }
-          if (!directories && ctx.modelDirectories) directories = ctx.modelDirectories;
+          // cordis 4 的 Context 是 Proxy：读取未 provide 的属性会抛 "cannot get property
+          // ... without inject"，所以属性兜底必须自带 try/catch，不能裸取（Issue #67 同类）。
+          if (!directories) {
+            try { directories = ctx.modelDirectories || null; } catch (err) { /* 该可选服务未提供：保持未知态 */ }
+          }
           if (!directories || typeof directories.directoryFor !== 'function') {
             return function () {};
           }

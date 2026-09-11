@@ -1130,20 +1130,48 @@ export default {
     let sessionLineageCache = { items: null, expiresAt: 0, pending: null }
     let sessionLineageWarningShown = false
 
+    // 会话谱系控制器是可选服务，这里用 ctx.inject 声明式获取——它是 cordis 面向可选依赖的
+    // 正规入口：服务缺席时回调不触发、不抛错，服务稍后就绪时还会自动补触发。
+    // 严禁裸写 ctx.sessionController：cordis 4 的 Context 是 Proxy，读取未 provide 的属性会抛
+    // "cannot get property ... without inject"，该异常曾让整个 getUsageSummary 恒返 500（Issue #67）。
+    // DSH 自身的 dsh-subagent 也明确告诫过同一坑位，要求一律改用 ctx.get 严格全局读取。
+    let sessionLineageController = null
+    ctx.inject(['sessionController'], function (lineageCtx) {
+      const service = lineageCtx.sessionController
+      sessionLineageController = service && typeof service.list === 'function' ? service : null
+      return function () { sessionLineageController = null }
+    })
+
     function sessionControllerForLineage() {
+      if (sessionLineageController) return sessionLineageController
+      // 兜底：inject 回调尚未触发时（服务在本插件 apply 之后才就绪）主动探测一次。
+      // ctx.get 对未注册服务返回 undefined，不抛错。
       try {
-        if (ctx.get) {
+        if (ctx.get && typeof ctx.get === 'function') {
           const service = ctx.get('sessionController')
           if (service && typeof service.list === 'function') return service
         }
-      } catch (err) { /* 老版本宿主没有该可选服务，退回精确主会话 */ }
-      const direct = ctx.sessionController
-      if (direct && typeof direct.list === 'function') return direct
+      } catch (err) { /* 老版本宿主没有 ctx.get：退回“只算选中会话” */ }
+      // 拿不到就安全降级，任何情况下都不再触碰 ctx.<服务名> 属性。
       return null
     }
 
+    // 谱系归并只是本会话花费的增强项：任何失败都只降级为“只算选中会话”，绝不冒泡打挂
+    // 整个 getUsageSummary（否则余额照常显示、花费整块不可用）。每次启动只提示一次。
+    function warnSessionLineageUnavailable(err) {
+      if (sessionLineageWarningShown) return
+      sessionLineageWarningShown = true
+      console.warn('[dsh-bottom-info-bar] session lineage unavailable; current-session totals use the selected session only: ' + String((err && err.message) || err))
+    }
+
     async function readSessionLineageItems() {
-      const controller = sessionControllerForLineage()
+      let controller = null
+      try {
+        controller = sessionControllerForLineage()
+      } catch (err) {
+        warnSessionLineageUnavailable(err)
+        return null
+      }
       if (!controller) return null
       const now = Date.now()
       if (sessionLineageCache.expiresAt > now) return sessionLineageCache.items
@@ -1160,10 +1188,7 @@ export default {
           return items
         } catch (err) {
           sessionLineageCache = { items: null, expiresAt: Date.now() + SESSION_LINEAGE_CACHE_MS, pending: null }
-          if (!sessionLineageWarningShown) {
-            sessionLineageWarningShown = true
-            console.warn('[dsh-bottom-info-bar] session lineage unavailable; current-session totals use the selected session only: ' + String((err && err.message) || err))
-          }
+          warnSessionLineageUnavailable(err)
           return null
         }
       })()
@@ -3479,7 +3504,13 @@ export default {
       if (!sessionId) return null; // 无可用会话 ID：不猜测归属，客户端显示 ¥0.000，而非回退最近会话
       const norm = normalizeSessionIdValue(sessionId);
       if (!norm) return null;
-      const lineageItems = await readSessionLineageItems();
+      // 双保险：谱系增强属于可选能力，任何意外都不得让整个花费查询失败（Issue #67）。
+      let lineageItems = null;
+      try {
+        lineageItems = await readSessionLineageItems();
+      } catch (err) {
+        warnSessionLineageUnavailable(err);
+      }
       const ownedSessionIds = lineageItems ? sessionLineageIds(lineageItems, norm) : new Set([norm]);
       const acc = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, costs: {} };
       let matched = false;
@@ -4122,6 +4153,7 @@ export default {
           kind: 'prefix',
           path: ROUTE_PREFIX,
           handler: async function (req, res) {
+            let method = '';
             try {
               const url = new URL(req.url || '/', 'http://localhost');
               const path = url.pathname;
@@ -4129,7 +4161,7 @@ export default {
                 respond(res, 404, { error: 'not found' });
                 return;
               }
-              const method = decodeURIComponent(path.slice(ROUTE_PREFIX.length + 1));
+              method = decodeURIComponent(path.slice(ROUTE_PREFIX.length + 1));
               const fn = Object.hasOwn(ROUTES, method) ? ROUTES[method] : null;
               if (typeof fn !== 'function') {
                 respond(res, 404, { error: 'unknown method: ' + method });
@@ -4150,6 +4182,12 @@ export default {
               respond(res, 200, result);
             } catch (err) {
               const status = (err && err.status) || 500;
+              // 500 属未预期错误，必须留痕：否则线上只剩 "internal error"，无从排查
+              // （Issue #67 正是因此难以定位）。只记录方法名、错误信息与堆栈——本接口会接触
+              // 凭据，严禁把请求体或凭据内容写进日志。
+              if (status === 500) {
+                console.warn('[dsh-bottom-info-bar] RPC ' + (method || 'unknown') + ' failed: ' + String((err && err.stack) || err));
+              }
               respond(res, status, { error: status === 500 ? 'internal error' : String((err && err.message) || err) });
             }
           },
