@@ -48,7 +48,7 @@
 |---|---|---|---|
 | 订阅服务组 | ChatGPT/Codex/OpenCode Go/智谱/小米 MiMo `·` 模型名或套餐档位（Plus/Pro/Team/Enterprise） | `getBillingMode`+`getPricing`+`sub.planType`（JWT 本地解码） | planType 存在时模型位换成档位名（client 586-606 行） |
 | 到期 | 「到期 YYYY-MM-DD」 | `sub.planType`+`expiryAt` | 两者同时存在（client 719-722 行） |
-| 额度窗口 | 「5h N%」「周 N%」「月 N%」+≤20% 红字+「低」 | `sub.windows`（宿主 parseCodexUsage/parseOpenCodeGoUsage/parseZaiQuota/parseXiaomiTokenPlanUsage） | **完整模式显示全部窗口；简洁模式只显示优先窗口（5h>周>月）**（client 760-791 行 `const visible = full ? windows : ...`）——density 已在此影响字段数量！ |
+| 额度窗口 | 「5h N%」「周 N%」「月 N%」+≤20% 红字+「低」 | `sub.windows`（宿主 parseOpenCodeGoUsage/parseZaiQuota/parseXiaomiTokenPlanUsage；Codex 当前从本地 JWT 读取套餐与到期日） | **完整模式显示全部窗口；简洁模式只显示优先窗口（5h>周>月）**（client 760-791 行 `const visible = full ? windows : ...`）——density 已在此影响字段数量！ |
 | 距重置 | 「距重置 Xd Xh / HH:MM」 | 所选窗口 resetsAt | 有 resetsAt |
 | 充值余额形态 | 「余额 ¥X.XX」 | `sub.balance`（智谱按量账户回退接口） | windows 空且 balance 为数值；与额度窗互斥；**此形态额外追加本会话花费**（client 744-757 行） |
 
@@ -61,11 +61,11 @@
 | 预算 | 「预算 N%」 | data.budgetPercent | 仅 AWS Bedrock 提供预算查询 |
 | 免费额度+距重置 | 「免费 N · 距重置 HH:MM」 | data.freeRemaining+resetsAt | **二者同时存在才显示，绝不编造**（client 847-850 行） |
 
-**三态互斥判定**（client 880-893 行）：`isBilling`→账单组；`isSub`→订阅组；否则余额组，绝不叠加。判定源头：宿主 `detectBillingMode`（host 168-177 行），billingMode='auto' 按 provider 集合自动检测，'balance'/'subscription' 可手动强制。另有 `waitForSessionModel` 期间整行**故意留空**（client 885-886 行）。
+**三态互斥判定**（client 880-893 行）：`isBilling`→账单组；`isSub`→订阅组；否则余额组，绝不叠加。判定源头：宿主 `detectBillingMode`（host 168-177 行），只按当前会话服务商自动判断；模型尚未读到时整行**故意留空**（client 885-886 行）。
 
 ## ② 数据流（宿主→客户端）
 
-- **通道**：不是事件推送，是**客户端轮询拉取**。宿主 `apply` 里向 DSH webServer 注册 prefix 路由 `/_dsh/dsh-bottom-info-bar/<method>`（host 2587-2749 行），POST/PUT 读 JSON body（上限 64KB），统一 JSON 响应 + `Cache-Control: no-store`。写操作及会触发宿主网络请求的方法（`setActiveProvider/setDisplayMode/setInfoDensity/getSubscriptionSnapshot/getBillingStatus`）在 MUTATING 表中要求**同源校验**（sec-fetch-site/origin，host 2664-2677 行）。
+- **通道**：不是事件推送，是**客户端轮询拉取**。宿主 `apply` 里向 DSH webServer 注册 prefix 路由 `/_dsh/dsh-bottom-info-bar/<method>`（host 2587-2749 行），POST/PUT 读 JSON body（上限 64KB），统一 JSON 响应 + `Cache-Control: no-store`。写操作及会触发宿主网络请求的方法（`setDisplayMode/setInfoDensity/getBalanceSnapshot/getSubscriptionSnapshot/getBillingStatus`）在 MUTATING 表中要求**同源校验**（sec-fetch-site/origin，host 2664-2677 行）。
 - **客户端 rpc()**（client 35-73 行）：fetch POST + 20s 超时 + AbortSignal（组件卸载即取消）。
 - **load()**（client 346-374 行）：`Promise.allSettled` 并发拉 6 个端点——`getBalanceSnapshot / getPricing / getUsageSummary / getBillingMode / getSubscriptionSnapshot / getBillingStatus`，`mergeLoadResults` 逐端点容错（成功写新值、失败保留旧值+记错误，client 78-93 行）。触发时机：①挂载 ②30s 定时轮询 ③首启 6 秒窗口内带 force=true 绕过宿主缓存（client 29-30/351-352 行）④会话模型变化 ⑤原生统计变化后 800ms 防抖。`getUpdateInfo`、`getConfig` 仅启动时拉一次。
 - **各端点 JSON 形状**（字段级）：
@@ -75,7 +75,7 @@
   - `getBillingMode` → `{ mode:'balance'|'subscription'|'billing', provider, reason, model }`
   - `getSubscriptionSnapshot` → `{ mode, provider, reason, source, plan, planType, expiryAt, windows:[{key,label,usedPercent,resetsAt}], balance, fetchedAt, error }`
   - `getBillingStatus` → `{ mode, provider, reason, type, data:{currency,currentPeriodSpend?,budgetPercent?,usage?,usageUnit?,freeRemaining?,resetsAt?,note}|null, fetchedAt, error, now }`
-  - `getUpdateInfo` → `{ available, current, latest }`；`getConfig` → `{ displayMode, infoDensity, activeProvider, alertThreshold, billingMode }`；`setInfoDensity` ← `{density}` → `{infoDensity}`
+  - `getUpdateInfo` → `{ available, current, latest }`；`getConfig` → `{ displayMode, infoDensity, alertThreshold }`；`setInfoDensity` ← `{density}` → `{infoDensity}`
 
 ## ③ 现有设置机制：density toggle 剖析（新功能的最佳参照，也是必须超越的基线）
 

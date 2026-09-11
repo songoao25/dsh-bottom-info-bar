@@ -83,8 +83,8 @@ check('注册表无 defaultHidden 语义（默认值全部=显示，由宿主测
 check('每个注册字段都在信息栏渲染层被引用（id ↔ 渲染片段一一对应）', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
-check('D6 分组：仅「原生字段/插件字段」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
-  && t(FIELD_GROUP_LABELS.native) === '原生字段' && t(FIELD_GROUP_LABELS.plugin) === '插件字段', true);
+check('D6 分组：仅「原生信息/信息栏内容」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
+  && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '信息栏内容', true);
 check('D6 分组：原生组恰 5 个 DeepSeek 原生标签', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
 check('D6 分组：其余 26 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 26
@@ -144,13 +144,14 @@ check('折叠箭头复用 DSH 原生上下箭头且不暴露字符箭头', clien
   && !clientSrc.includes('IconChevronUpOutline14')
   && !clientSrc.includes('IconChevronLeftOutline14')
   && !clientSrc.includes("collapsed.fields ? '▶' : '▼'"), true);
-check('折叠箭头方向与实际展开状态同步（含搜索强制展开）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
-  && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed || searchActive;')
+check('折叠箭头方向与实际展开状态同步（搜索只负责打开列表）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
+  && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed;')
+  && clientSrc.includes('if (value.trim().length > 0) setFieldsCollapsed(false);')
   && clientSrc.includes("'aria-expanded': props.expanded")
   && clientSrc.includes('expanded: fieldsExpanded')
   && clientSrc.includes("'aria-controls': props.contentId")
   && clientSrc.includes("const fieldsBody = React.createElement('div', {")
-  && clientSrc.includes("className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed')")
+  && clientSrc.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
   && clientSrc.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
   && clientSrc.includes("inert: fieldsExpanded ? undefined : true")
   && clientSrc.includes("const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');")
@@ -160,7 +161,8 @@ check('折叠箭头方向与实际展开状态同步（含搜索强制展开）'
 check('设置页基础结构拆分为可复用卡片/行组件', clientSrc.includes('function bibSetCardHeader(props)')
   && clientSrc.includes('function bibSetFieldRow(field, props)')
   && clientSrc.includes('function bibSetFieldGroups(props)')
-  && clientSrc.includes('function bibSetLanguageCard(props)')
+  && !clientSrc.includes('function bibSetLanguageCard(props)')
+  && !clientSrc.includes('bib-set-lang-segment')
   && clientSrc.includes('React.createElement(bibSetPalette, {')
   && clientSrc.includes('bibSetCardHeader({'), true);
 check('折叠头部使用原生 button 语义，避免 div role=button 与自定义键盘逻辑', (function () {
@@ -174,9 +176,10 @@ check('折叠头部使用原生 button 语义，避免 div role=button 与自定
 check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
-    && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? '' : ' bib-set-collapse--collapsed')")
+    && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && body.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
     && body.includes('inert: fieldsExpanded ? undefined : true')
+    && !clientSrc.includes('if (!props.expanded) return []')
     && !body.includes('disabledOnly')
     && !body.includes('disabledCount')
     && !body.includes('collapsed.fields')
@@ -186,24 +189,52 @@ check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画'
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
-    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; min-width: 0;')
-    && clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
-    && clientSrc.includes('.bib-set-body { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0 16px 6px; background: var(--bib-set-surface); }')
+    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: 0;')
+    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
+    && clientSrc.includes('transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1)')
+    && clientSrc.includes('contain: layout paint')
+    && !clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
+    && clientSrc.includes('.bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
-check('设置页卡片宽度固定，折叠动画不会触发横向跳动', clientSrc.includes('.bib-settings { width: 100%; max-width: 720px; min-width: 0;')
-  && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); width: 100%; min-width: 0;')
+check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
+  && clientSrc.includes('contain: inline-size')
+  && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
   && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0;')
   && clientSrc.includes('.bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px;')
-  && clientSrc.includes('.bib-set-search-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;')
-  && clientSrc.includes('.bib-set-search-shell { position: relative; flex: 1 1 auto; width: 0; min-width: 0; }')
-  && clientSrc.includes('.bib-set-count { flex: 0 0 84px; width: 84px;')
+  && clientSrc.includes('.bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px;')
+  && clientSrc.includes('.bib-set-search-shell { position: relative; width: 100%; min-width: 0; }')
+  && clientSrc.includes('.bib-set-count { display: block; width: 104px;')
+  && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
+check('设置页只保留宿主单一滚动层，滚动条不会重叠', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return !clientSrc.includes('function bibSetStabilizeHostScroll(root)')
+    && clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%;')
+    && clientSrc.includes('min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
+    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
+    && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
+    && !clientSrc.includes('overflow-y: scroll;')
+    && !clientSrc.includes('overflow-y: auto;')
+    && body.includes('const settingsRootRef = React.useRef(null);')
+    && body.includes('const useLayoutEffect = React.useLayoutEffect || React.useEffect;')
+    && body.includes('return bibSetHideHostScrollbars(settingsRootRef.current);');
+})(), true);
+check('设置页隐藏滚动条轨道但保留滚动能力，且只标记滚动祖先', (function () {
+  return clientSrc.includes('function bibSetHideHostScrollbars(root)')
+    && clientSrc.includes("const attr = 'data-dsh-bib-hide-scrollbars';")
+    && clientSrc.includes("entry.setAttribute(attr, 'true')")
+    && clientSrc.includes('scrollbar-width: none')
+    && clientSrc.includes('[data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar')
+    && clientSrc.includes('display: none !important; width: 0 !important; height: 0 !important;')
+    && !clientSrc.includes("style.setProperty('overflow-y'")
+    && !clientSrc.includes("style.setProperty('scrollbar-gutter'");
+})(), true);
 check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box;')
   && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
   && clientSrc.includes('.bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }')
   && clientSrc.includes('.bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }')
-  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding-left: 8px; }'), true);
+  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding-left: 8px; overflow-x: clip; }'), true);
 check('设置页只保留卡片标题折叠入口，删除展开全部/折叠全部按钮文案', !clientSrc.includes("t('ui.expandAll')")
   && !clientSrc.includes("t('ui.collapseAll')")
   && !localesSrc.includes('"ui.expandAll"')
@@ -211,10 +242,22 @@ check('设置页只保留卡片标题折叠入口，删除展开全部/折叠全
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
 check('搜索无结果有明确空状态，避免空白内容块', clientSrc.includes("t('ui.noSearchResults')")
   && clientSrc.includes('.bib-set-empty {'), true);
-check('设置页搜索工具栏使用系统清除操作与本地化匹配数量', clientSrc.includes("className: 'bib-set-toolbar'")
+check('设置页搜索工具栏使用系统清除操作与本地化结果数量', clientSrc.includes("className: 'bib-set-toolbar'")
   && clientSrc.includes("type: 'search'")
   && clientSrc.includes("className: 'bib-set-search'")
-  && clientSrc.includes("t('ui.searchResultCount', { count: fieldsMatchCount })"), true);
+  && clientSrc.includes("t('ui.searchResultCount', { count: fieldsMatchCount })")
+  && clientSrc.includes("t('ui.enabledFieldsCount', { count: fieldsEnabledCount })")
+  && clientSrc.includes("t('ui.searchFieldsLabel')"), true);
+check('账单数据支持导出与确认后清除', clientSrc.includes('function bibSetDataCard(props)')
+  && clientSrc.includes("rpc('exportUsageRecords')")
+  && clientSrc.includes("rpc('clearUsageRecords')")
+  && clientSrc.includes("window.confirm(t('ui.clearBillingRecordsConfirm'))")
+  && clientSrc.includes("t('ui.exportIncomplete', { value: hostText(payload.archiveReadError) })")
+  && clientSrc.includes("const BIB_LEDGER_EVENT = 'dsh-bib-ledger-changed';")
+  && clientSrc.includes('bibSetDispatchLedgerChanged()')
+  && clientSrc.includes('load(activeSessionModel || undefined)')
+  && localesSrc.includes('"ui.dataAndBilling"')
+  && localesSrc.includes('"ui.clearBillingRecordsConfirm"'), true);
 check('D6 解锁：锚点开关与其他字段同等可用（无禁用态、无恒开文案）', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('disabled: isAnchor') && !body.includes('始终显示');
@@ -443,10 +486,11 @@ function withFakeDocument(run) {
     const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
     return lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
   })(), true);
-  // ---------- 语言切换反色保障（2026-09-04 吞字事故防复发，严禁白字被吞） ----------
-  check('语言切换选中态反色保障：brand 固定 #4d6bfe 且 active 白字', clientSrc.includes('--bib-set-brand: #4d6bfe;') && clientSrc.includes('.bib-set-lang-opt[data-active="true"] { background: var(--bib-set-brand); color: #fff;'), true);
-  check('语言切换未选中态用 label-primary 保證深色可見', clientSrc.includes('.bib-set-lang-opt {') && clientSrc.includes('color: var(--dsw-alias-label-primary)'), true);
-  check('语言切换选中态 hover 仍保持品牌色白字（防透明吞字）', clientSrc.includes('.bib-set-lang-opt[data-active="true"]:hover { background: var(--bib-set-brand); color: #fff;'), true);
+  // ---------- 语言职责边界 ----------
+  check('设置页跟随 DSH 全局语言且不重复提供插件语言开关', clientSrc.includes('const [, setLocaleRevision] = React.useState(0);')
+    && clientSrc.includes('setLocaleRevision(function (value) { return value + 1; });')
+    && !clientSrc.includes('function bibSetLanguageCard(props)')
+    && !clientSrc.includes("t('ui.languageSettings')"), true);
 }
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

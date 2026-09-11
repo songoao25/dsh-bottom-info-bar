@@ -61,7 +61,7 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 信息栏会自动检测当前模型所属模式：**订阅制**（Codex / OpenCode Go）显示三窗口额度，**余额制**（DeepSeek 等）显示余额。订阅额度数据源：
 
-- **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的 access_token 查询额度（`chatgpt.com/backend-api/wham/usage`），token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅额度；令牌缺失或失效时信息栏显示「未绑定 / 重新绑定」引导。
+- **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-subscription**](https://github.com/songoao25)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
 - **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`（或先用 opencode CLI 登录其订阅，写入 `~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）。未配置时信息栏显示"未配置 OpenCode Go"引导，不报错。
 
 ## 更新版本
@@ -101,7 +101,7 @@ cd dsh-bottom-info-bar
 dsh plugin --profile web remove dsh-bottom-info-bar
 ```
 
-重启后原生统计栏自动恢复（插件 unload 时槽位自动退位，这是 DSH 插槽特性）。插件代码无残留；记账数据文件 `~/.dsh/dsh-bottom-info-bar/usage-records.json` 属持久化数据，卸载不会删除，如需清空统计请手动删除。
+重启后原生统计栏自动恢复（插件 unload 时槽位自动退位，这是 DSH 插槽特性）。插件代码无残留；记账数据会保留，不会被卸载操作删除。如需清空统计，请在「设置 → 信息栏 → 账单数据」中先导出，再确认清除。
 
 ## 故障排查
 

@@ -50,7 +50,7 @@ check('rpc 支持外部 AbortSignal 参数', clientSrc.includes('function rpc(me
 // ---- ② load 逐接口容错（静态） ----
 check('load 使用 Promise.allSettled', clientSrc.includes('Promise.allSettled(['), true);
 check('load 不再用 Promise.all 聚合（任一失败不再拖垮全部）', !clientSrc.includes('Promise.all(['), true);
-check('load 结果经 mergeLoadResults 合并（保留旧数据）', clientSrc.includes('mergeLoadResults(s, results)'), true);
+check('load 结果经 mergeLoadResults 合并（按会话模型隔离）', clientSrc.includes('mergeLoadResults(s, results, selectionKey)'), true);
 check('5 个端点仍在 load 中完整调用', ['getBalanceSnapshot', 'getPricing', 'getUsageSummary', 'getBillingMode', 'getSubscriptionSnapshot'].every(function (m) { return clientSrc.includes("rpc('" + m + "'"); }), true);
 
 // ---- ③ mergeLoadResults 纯函数（运行时，从正式源码提取） ----
@@ -115,6 +115,21 @@ const bareFail = mergeLoadResults(OLD, [
   { status: 'fulfilled', value: OLD.sub },
 ]);
 check('无 reason 的失败兜底为 RPC 失败', bareFail.errors.balance, 'RPC 失败');
+
+// Selection changes must invalidate the old account snapshot. Otherwise a
+// failed first request for the new model could briefly show the previous
+// provider's balance/spend beside the new model name.
+const switchedFail = mergeLoadResults(OLD, [
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+  { status: 'rejected', reason: ERR('新模型暂不可用') },
+], 'provider-new\u0000model-new');
+check('切换模型后失败响应不回退旧余额', switchedFail.balance, null);
+check('切换模型后失败响应不回退旧花费', switchedFail.usage, null);
+check('切换模型后失败响应保留新选择键', switchedFail.selectionKey, 'provider-new\u0000model-new');
 
 // ---- ④ 渲染降级（静态） ----
 check('整栏 fatal 分支已移除（不再整栏"加载失败"）', !clientSrc.includes('state.fatal'), true);

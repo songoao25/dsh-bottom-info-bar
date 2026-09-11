@@ -1,8 +1,7 @@
 const { t } = require('./locale-fixture.cjs');
 // 双模式（余额制 / 订阅制）逻辑审计：
-// ① 模式检测（provider 映射 + 手动覆盖）② Codex wham 响应解析（含窗口缺失边界）
-// ③ OpenCode Go 响应解析（含 status 非 ok）④ 快照失败回退（失败保留旧快照 + error 标记）
-// ⑤ 窗口时长映射边界 ⑥ client 订阅制渲染分支的静态检查
+// ① 模式检测（只按当前 provider 自动判断）② OpenCode Go 响应解析（含 status 非 ok）
+// ③ 快照失败回退（失败保留旧快照 + error 标记）④ client 订阅制渲染分支的静态检查
 // 用法：node tests/test-dual-mode.js
 const fs = require('fs');
 
@@ -44,10 +43,9 @@ function extractConst(name) {
   return eval('(' + m[1] + ')');
 }
 
-// 依赖常量（WINDOW_SECONDS/WINDOW_LABELS/CODEX_PLAN_NAMES 仍从 hostSrc 提取；SUBSCRIPTION_PROVIDERS 已从 constants.js 读取）
-const WINDOW_SECONDS = extractConst('WINDOW_SECONDS');
+// 依赖常量（WINDOW_LABELS 从 hostSrc 提取；SUBSCRIPTION_PROVIDERS 已从 constants.js 读取）
 const WINDOW_LABELS = extractConst('WINDOW_LABELS');
-const CODEX_PLAN_NAMES = extractConst('CODEX_PLAN_NAMES');
+const parsePercent = extractFn('parsePercent');
 // v1.7：BILLING_PROVIDERS 同样从 constants.js 读取（云账单型 provider 集合）
 const constantsSrcFull = constantsSrc;
 const billingMatch = constantsSrcFull.match(/export const BILLING_PROVIDERS = (\[[\s\S]*?\]);?/);
@@ -59,11 +57,8 @@ const detectBillingMode = extractFn('detectBillingMode');
 const subscriptionSourceFor = extractFn('subscriptionSourceFor');
 const accountForProvider = extractFn('accountForProvider'); // v1.7：新增账户映射审计
 const billingSourceFor = extractFn('billingSourceFor'); // v1.7：账单源映射审计
-const codexWindowKey = extractFn('codexWindowKey');
-const planDisplayName = extractFn('planDisplayName'); // parseCodexUsage 的依赖
 const openCodeGoWindowKey = extractFn('openCodeGoWindowKey'); // parseOpenCodeGoUsage 的依赖
 const normalizeResetAt = extractFn('normalizeResetAt'); // parseOpenCodeGoUsage 的依赖
-const parseCodexUsage = extractFn('parseCodexUsage');
 const parseOpenCodeGoUsage = extractFn('parseOpenCodeGoUsage');
 const mergeSubscriptionResult = extractFn('mergeSubscriptionResult');
 
@@ -115,69 +110,16 @@ check('账户映射：cloudflare-ai-gateway → cloudflare', accountForProvider(
 check('账户映射：未知 → null', accountForProvider('some-unknown'), null);
 check('未知 provider → balance（兜底）', detectBillingMode('some-new-provider', 'auto').mode, 'balance');
 check('空 provider → balance（兜底）', detectBillingMode('', 'auto').mode, 'balance');
-check('手动覆盖 balance：codex + billingMode=balance → balance', detectBillingMode('codex', 'balance').mode, 'balance');
-check('手动覆盖 subscription：deepseek + billingMode=subscription → subscription', detectBillingMode('deepseek', 'subscription').mode, 'subscription');
-check('手动覆盖理由 = manual-override', detectBillingMode('codex', 'balance').reason, 'manual-override');
+check('自动识别忽略旧的手动覆盖参数：codex 仍为 subscription', detectBillingMode('codex', 'balance').mode, 'subscription');
+check('自动识别忽略旧的手动覆盖参数：deepseek 仍为 balance', detectBillingMode('deepseek', 'subscription').mode, 'balance');
+check('自动识别理由只含 provider', detectBillingMode('codex', 'balance').reason, 'provider:codex');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
 check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams']));
 check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']));
 
-// ---- 2) 窗口时长映射边界 ----
-check('18000 → five_hour', codexWindowKey(18000), 'five_hour');
-check('604800 → seven_day', codexWindowKey(604800), 'seven_day');
-check('2592000 → monthly', codexWindowKey(2592000), 'monthly');
-check('18001（≈5h）→ five_hour', codexWindowKey(18001), 'five_hour');
-check('604799（≈7d）→ seven_day', codexWindowKey(604799), 'seven_day');
-check('2592001（≈30d）→ monthly', codexWindowKey(2592001), 'monthly');
-check('17100（18000×0.95，容差下限）→ five_hour', codexWindowKey(17100), 'five_hour');
-check('18900（18000×1.05，容差上限）→ five_hour', codexWindowKey(18900), 'five_hour');
-check('2721600（2592000×1.05，容差上限）→ monthly', codexWindowKey(2721600), 'monthly');
-check('20000（超出 5% 容差）→ null', codexWindowKey(20000), null);
-check('3600（1h，不在映射）→ null', codexWindowKey(3600), null);
-check('非数字 → null', codexWindowKey(undefined), null);
-check('null → null', codexWindowKey(null), null);
-check('窗口时长表配置正确', JSON.stringify(WINDOW_SECONDS), JSON.stringify({ five_hour: 18000, seven_day: 604800, monthly: 2592000 }));
 check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5 小时', seven_day: '周', monthly: '月' }));
 
-// ---- 3) Codex 响应解析（真实响应形态：rate_limit 在顶层，无 usage 包装层） ----
-// 完整双窗口（5 小时 + 7 天）
-const codexFull = {
-  plan_type: 'plus',
-  rate_limit: {
-    primary_window: { used_percent: 9, limit_window_seconds: 18000, reset_at: 1784000000 },
-    secondary_window: { used_percent: 62, limit_window_seconds: 604800, reset_at: 1785000000 },
-  },
-};
-const parsedFull = parseCodexUsage(codexFull);
-check('Codex 完整双窗口：窗口数 = 2', parsedFull.windows.length, 2);
-check('Codex 完整双窗口：5 小时窗口', parsedFull.windows[0], { key: 'five_hour', label: '5 小时', usedPercent: 9, resetsAt: 1784000000000 });
-check('Codex 完整双窗口：周窗口', parsedFull.windows[1], { key: 'seven_day', label: '周', usedPercent: 62, resetsAt: 1785000000000 });
-check('Codex plan_type=plus → ChatGPT Plus', parsedFull.plan, 'ChatGPT Plus');
-check('Codex plan_type=pro → ChatGPT Pro', parseCodexUsage({ plan_type: 'pro', rate_limit: {} }).plan, 'ChatGPT Pro');
-
-// 只含周窗口（5 小时缺失——2026-08-17 本机真实响应形态：primary_window 即 7 天窗口）
-const codexWeeklyOnly = {
-  plan_type: 'plus',
-  rate_limit: { primary_window: { used_percent: 43, limit_window_seconds: 604800, reset_at: 1787200342 } },
-};
-const parsedWeekly = parseCodexUsage(codexWeeklyOnly);
-check('Codex 仅周窗口（5h 缺失）：窗口数 = 1', parsedWeekly.windows.length, 1);
-check('Codex 仅周窗口：key = seven_day', parsedWeekly.windows[0].key, 'seven_day');
-check('Codex 仅周窗口：usedPercent = 43', parsedWeekly.windows[0].usedPercent, 43);
-check('Codex 仅周窗口：reset_at 秒 → 毫秒', parsedWeekly.windows[0].resetsAt, 1787200342000);
-
-// 未知窗口时长 / 缺百分比 → 跳过
-const codexUnknown = { rate_limit: { primary_window: { used_percent: 5, limit_window_seconds: 123456, reset_at: 100 } } };
-check('未知窗口时长（123456s）→ 跳过', parseCodexUsage(codexUnknown).windows.length, 0);
-const codexNoPercent = { rate_limit: { primary_window: { limit_window_seconds: 604800 } } };
-check('缺 used_percent → 跳过', parseCodexUsage(codexNoPercent).windows.length, 0);
-
-// 结构异常 → null（防御性解析）
-check('Codex 无 rate_limit → null', parseCodexUsage({ foo: 1 }), null);
-check('Codex null → null', parseCodexUsage(null), null);
-check('Codex 空对象 → null', parseCodexUsage({}), null);
-
-// ---- 4) OpenCode Go 响应解析 ----
+// ---- 2) OpenCode Go 响应解析 ----
 const ogFull = { usage: {
   rolling: { status: 'ok', percent: 9, resetsAt: '2026-08-14T07:20:04.810Z' },
   weekly: { status: 'ok', percent: 12, resetsAt: '2026-08-17T00:00:00.810Z' },
@@ -206,6 +148,7 @@ check('毫秒级数值 resetsAt 原样保留', ogParsedPartial.windows[0].resets
 // 数值型 resetsAt：秒级 ×1000
 const ogSec = { usage: { weekly: { status: 'ok', percent: 50, resetsAt: 1785000000 } } };
 check('秒级数值 resetsAt → ×1000', parseOpenCodeGoUsage(ogSec).windows[0].resetsAt, 1785000000000);
+check('负数 resetsAt → null（不接受已过期的伪重置时间）', normalizeResetAt(-1), null);
 
 // 结构异常 → null
 check('OpenCode Go 空对象 → null', parseOpenCodeGoUsage({}), null);
@@ -302,8 +245,8 @@ check('client mergeLoadResults 含 billing 键', clientSrc.includes("keys = ['ba
 // ---- 7) host RPC 完整性静态检查 ----
 check('host 含 getBillingMode RPC', hostSrc.includes('getBillingMode: function'), true);
 check('host 含 getSubscriptionSnapshot RPC', hostSrc.includes('getSubscriptionSnapshot: function'), true);
-check('host getConfig 含 billingMode', hostSrc.includes('billingMode: config.billingMode'), true);
-check('host 双模式纯函数可提取（模块级）', typeof codexWindowKey === 'function' && typeof parseCodexUsage === 'function' && typeof parseOpenCodeGoUsage === 'function' && typeof detectBillingMode === 'function' && typeof mergeSubscriptionResult === 'function', true);
+check('host 不再保留 billingMode 手动配置', !hostSrc.includes('billingMode: config.billingMode') && !hostSrc.includes("billingMode: 'auto'"), true);
+check('host 双模式纯函数可提取（模块级）', typeof parseOpenCodeGoUsage === 'function' && typeof detectBillingMode === 'function' && typeof mergeSubscriptionResult === 'function', true);
 
 // ---- 8) 会话级实时模型同步 ----
 // host 端 getBillingMode 纯本地：会话选择由客户端已订阅的模型目录提供，不需要轮询。
@@ -312,7 +255,8 @@ check('host getBillingMode 纯本地（路由体无 fetch 调用）', !bmRoute.i
 check('host getBillingMode 返回 model 字段（同 provider 换模型也可检测）', hostSrc.includes('model: sel.model'), true);
 check('client 订阅会话级 modelDirectories（不读全局默认模型）', clientSrc.includes("ctx.get('modelDirectories')") && clientSrc.includes('directories.directoryFor(sessionId)'), true);
 check('client 订阅模型目录 store，切换立即发布', clientSrc.includes('directory.store.subscribe(publish)'), true);
-check('client 模型切换触发后台 load', clientSrc.includes('if (activeSessionModel) load(activeSessionModel);'), true);
+check('client 模型切换会强制刷新当前服务商数据', clientSrc.includes('const selectionChanged = selectionKey !== lastSelectionKeyRef.current;')
+  && clientSrc.includes('const force = selectionChanged || Date.now() - BOOT_AT < FORCE_REFRESH_WINDOW_MS;'), true);
 check('client 不含 2 秒高频 getBillingMode 轮询', !/setInterval\(function \(\) \{\s*rpc\('getBillingMode'\)[\s\S]*?\}, 2000\)/.test(clientSrc), true);
 check('client 用版本号阻止旧会话响应覆盖新会话', clientSrc.includes('requestVersion !== loadVersionRef.current'), true);
 

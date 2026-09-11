@@ -88,7 +88,7 @@
 
 ### D7 OpenAI/ChatGPT 订阅卡（FR-8，纯本地）
 - 复用现有 codex 源登录态 ~/.codex/auth.json；新增本地通道：读 tokens.id_token 的 JWT payload（base64url → JSON，node crypto/Buffer 现成），取真实 claims：chatgpt_plan_type（plus/pro/team/enterprise → 显示名）、subscription_active_until（到期，本地时区格式化）。
-- 显示：`ChatGPT · Plus | 到期 2026-09-16`；无登录态→"未绑定"引导；JWT 解码/字段缺失→静默降级（不调用 wham，wham 保持默认关闭的 D 级增强）。
+- 显示：`ChatGPT · Plus | 到期 2026-09-16`；无登录态→"未绑定"引导；JWT 解码/字段缺失→静默降级，不访问远程订阅接口。
 - 不做：任何本地估算花费显示（用户原则）。
 
 ### D8 小米 MiMo（FR-9）

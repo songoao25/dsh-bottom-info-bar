@@ -2,6 +2,58 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.18](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.17...v1.10.18) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** hide settings scroll tracks while preserving wheel, trackpad, and keyboard scrolling
+
+## [1.10.17](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.16...v1.10.17) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** keep one DSH settings scroll layer so expansion and collapse cannot stack overlay scrollbars
+
+## [1.10.16](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.15...v1.10.16) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** keep the DSH settings scroll track deterministic across field-list expansion and collapse, including WebViews with incomplete scrollbar-gutter geometry support
+
+## [1.10.15](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.14...v1.10.15) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** reserve the DSH settings panel's scrollbar gutter so expanding the field list no longer changes the page width
+
+## [1.10.14](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.13...v1.10.14) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** keep the settings disclosure on a fixed width track and animate the mounted list with a lightweight Apple-inspired height, opacity, and chevron transition
+
+## [1.10.13](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.12...v1.10.13) (2026-09-11)
+
+### Bug Fixes
+
+* **host:** only refresh balance accounts that the active client has actually used, avoiding background requests for unrelated providers
+* **host:** clamp provider-reported quota values, fall back from malformed balance fields, and avoid double-counting Fireworks token totals
+* **host:** reject invalid reset timestamps and protect plan/level lookups from untrusted keys
+* **client:** keep quota labels and plan badges safe when a provider returns an unknown value
+
+## [1.10.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.11...v1.10.12) (2026-09-11)
+
+### Bug Fixes
+
+* **host:** when DSH has not supplied the active session model, show a waiting state instead of guessing the first or a default model; keep balance, pricing, mode, and spend data scoped to the confirmed selection
+* **host:** reject malformed balance amounts instead of turning them into a false zero, and keep the last known-good snapshot while retrying
+* **client:** follow DSH's live session model directory without retaining stale cross-session model cache
+* **client:** keep the settings page width and height stable while searching or expanding the content list, with an internal scroll area and accessible native controls
+* **client:** add clear, localized billing-data actions for CSV/JSON export and confirmed ledger cleanup
+* **client:** hide account data from the previous selection while a new session model is loading or cannot be read
+* **client:** follow DSH's global language setting instead of exposing a duplicate plugin language switch
+* **chore:** remove the unused legacy Codex window parser
+
 ## [1.10.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.10...v1.10.11) (2026-09-11)
 
 ### Bug Fixes

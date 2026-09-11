@@ -243,6 +243,18 @@ async function invokeSummary(route, sessionId, provider, model) {
   return payload
 }
 
+async function invokeBalance(route, provider = 'deepseek', model = 'deepseek-chat') {
+  const listeners = {}
+  const req = { url: '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', method: 'POST', headers: { 'sec-fetch-site': 'same-origin' }, on(n, cb) { (listeners[n] ||= []).push(cb); return req }, destroy() {} }
+  let payload = null
+  const pending = route.handler(req, { writeHead() {}, end(text) { payload = JSON.parse(text) } })
+  const body = JSON.stringify({ force: true, selection: { provider, model } })
+  for (const cb of listeners.data || []) cb(Buffer.from(body))
+  for (const cb of listeners.end || []) cb()
+  await pending
+  return payload
+}
+
 async function feedUsage(listener, sessionId, usage) {
   async function* fakeStream() {
     yield { type: 'usage', usage }
@@ -381,6 +393,7 @@ const recentLineage = [
 const first = makeStub(recentLineage)
 const dispose1 = m1.plugin.apply(first.ctx)
 await new Promise((resolve) => setTimeout(resolve, 50))
+await invokeBalance(first.captured.route)
 const summary1 = await invokeSummary(first.captured.route, 'recent-check')
 const summary1Sub = await invokeSummary(first.captured.route, 'recent-check-sub')
 check('① 大账本折叠后 getUsageSummary 返回 200', !!summary1 && typeof summary1.totalSpend === 'number', summary1 && summary1.persistence)
@@ -434,6 +447,7 @@ dispose1() // 冲刷：快照重写为窗内明细 + journal 滚动压缩 + summ
 const second = makeStub(recentLineage)
 const dispose2 = m1.plugin.apply(second.ctx)
 await new Promise((resolve) => setTimeout(resolve, 50))
+await invokeBalance(second.captured.route)
 const summary2 = await invokeSummary(second.captured.route, 'recent-check')
 check('① 重启后 totalSpend 不变', sameMoney(summary2.totalSpend, summary1.totalSpend), { got: summary2.totalSpend, want: summary1.totalSpend })
 check('① 重启后 todaySpend/last30dSpend 不变', sameMoney(summary2.todaySpend, summary1.todaySpend) && sameMoney(summary2.last30dSpend, summary1.last30dSpend), { got: summary2 })

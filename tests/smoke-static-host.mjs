@@ -87,6 +87,12 @@ async function invoke(route, path, method, body, headers) {
   await pending
   return { status, payload }
 }
+function selectionBody(provider, model) {
+  return JSON.stringify({ selection: { provider: provider, model: model } })
+}
+function usageBody(sessionId, provider = 'deepseek-official', model = 'deepseek-v4-flash') {
+  return JSON.stringify({ sessionId: sessionId, selection: { provider: provider, model: model } })
+}
 async function feedUsage(listener) {
   async function* fakeStream() {
     yield { type: 'usage', usage: { inputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 2000 } }
@@ -107,11 +113,19 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   first.captured.route && first.captured.route.kind === 'prefix' && first.captured.route.path === '/_dsh/dsh-bottom-info-bar')
 
 {
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET')
-  check('getBalanceSnapshot → 200 + no-key（未配置 Key）', r.status === 200 && r.payload && r.payload.error && r.payload.error.kind === 'no-key')
+  const missing = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', undefined, { 'sec-fetch-site': 'same-origin' })
+  check('getBalanceSnapshot 缺少会话选择 → pending，不借用默认余额', missing.status === 200 && missing.payload && missing.payload.selectionPending === true && missing.payload.data === null && missing.payload.provider === null)
+  const missingPricing = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', undefined)
+  check('getPricing 缺少会话选择 → 未知模型，不借用默认模型', missingPricing.status === 200 && missingPricing.payload && missingPricing.payload.fallback === true && missingPricing.payload.model === '' && missingPricing.payload.modelDisplay === '未知模型')
 }
 {
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'GET')
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+  check('getBalanceSnapshot → 200 + no-key（未配置 Key）', r.status === 200 && r.payload && r.payload.error && r.payload.error.kind === 'no-key')
+  const crossSite = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET', null, { 'sec-fetch-site': 'cross-site' })
+  check('跨站 getBalanceSnapshot → 403（不允许驱动余额请求）', crossSite.status === 403)
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'))
   check('getPricing → 200 + DeepSeek + 模型名回退原始 id（无 llm 桩）+ peak-valley',
     r.status === 200 && r.payload.providerDisplay === 'DeepSeek' && r.payload.modelDisplay === 'deepseek-v4-flash' && r.payload.mode === 'peak-valley')
 }
@@ -125,20 +139,20 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
     bm.status === 200 && bm.payload.provider === 'chatgpt' && bm.payload.model === 'gpt-5' && bm.payload.mode === 'subscription')
 }
 {
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-test' }))
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-test', selection: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }))
   check('getUsageSummary → 200 + sessions 计数', r.status === 200 && typeof r.payload.sessions === 'number' && typeof r.payload.totalSpend === 'number')
 }
 {
   const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getConfig', 'GET')
   check('getConfig → 200 + 默认 full', r.status === 200 && r.payload.infoDensity === 'full')
-  check('getConfig → 含 billingMode=auto', r.status === 200 && r.payload.billingMode === 'auto')
+  check('getConfig → 不含手动 provider/mode 配置', r.status === 200 && !Object.hasOwn(r.payload, 'activeProvider') && !Object.hasOwn(r.payload, 'billingMode'))
 }
 {
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'GET')
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'))
   check('getBillingMode → 200 + balance（deepseek-official）', r.status === 200 && r.payload.mode === 'balance' && r.payload.provider === 'deepseek-official' && r.payload.reason === 'provider:deepseek-official')
 }
 {
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'GET', null, { 'sec-fetch-site': 'same-origin' })
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
   check('getSubscriptionSnapshot → 200 + balance 模式（不发订阅请求）', r.status === 200 && r.payload.mode === 'balance' && r.payload.source === null && r.payload.windows.length === 0)
 }
 {
@@ -164,11 +178,11 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   const subDisposer = plugin.apply(subCtx.ctx)
   await new Promise((resolve) => setTimeout(resolve, 30))
   {
-    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'GET')
+    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('codex', 'gpt-5.3-codex'))
     check('getBillingMode → subscription（provider=codex）', r.status === 200 && r.payload.mode === 'subscription' && r.payload.reason === 'provider:codex')
   }
   {
-    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'GET', null, { 'sec-fetch-site': 'same-origin' })
+    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('codex', 'gpt-5.3-codex'), { 'sec-fetch-site': 'same-origin' })
     check('getSubscriptionSnapshot（codex 无凭证）→ no-key 错误 + 空窗口', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'codex' && r.payload.error && r.payload.error.kind === 'no-key' && Array.isArray(r.payload.windows) && r.payload.windows.length === 0 && r.payload.plan === null)
   }
   subDisposer()
@@ -177,7 +191,7 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   const ogDisposer = plugin.apply(ogCtx.ctx)
   await new Promise((resolve) => setTimeout(resolve, 30))
   {
-    const r = await invoke(ogCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'GET', null, { 'sec-fetch-site': 'same-origin' })
+    const r = await invoke(ogCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('opencode-go', 'miimo-1.5-rc'), { 'sec-fetch-site': 'same-origin' })
     check('getSubscriptionSnapshot（opencode-go 未配置）→ no-key 引导', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'opencode-go' && r.payload.error && r.payload.error.kind === 'no-key')
   }
   ogDisposer()
@@ -187,20 +201,20 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
 {
   const seen = await feedUsage(first.captured.llmListener)
   check('llm/stream 透传完整（usage + finish）', seen.length === 2 && seen[0] === 'usage' && seen[1] === 'finish')
-  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-usage' }))
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-usage', selection: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }))
   const cs = r.payload && r.payload.currentSession
   check('记账后本会话 tokens = 3000', cs && cs.tokens === 3000, JSON.stringify(cs))
   check('记账后本会话有 CNY 花费', cs && cs.costs && typeof cs.costs.CNY === 'number' && cs.costs.CNY > 0)
   check('全部花费 ≈ 本会话花费（totalSpend 3 位四舍五入 vs 原始值）',
     typeof r.payload.totalSpend === 'number' && Math.abs(r.payload.totalSpend - cs.costs.CNY) < 0.001,
     'totalSpend=' + r.payload.totalSpend + ' costs=' + cs.costs.CNY)
-  const r2 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 'nonexistent-session' }))
+  const r2 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('nonexistent-session'))
   check('新会话（sessionId 未命中）→ currentSession 为 null（不回退上一会话）', r2.payload && r2.payload.currentSession === null,
     JSON.stringify(r2.payload && r2.payload.currentSession))
-  const r3 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: '' }))
+  const r3 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody(''))
   check('空 sessionId → currentSession 为 null（绝不回退最近会话显示旧账）', r3.payload && r3.payload.currentSession === null,
     JSON.stringify(r3.payload && r3.payload.currentSession))
-  const r4 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 'session-s-usage' }))
+  const r4 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('session-s-usage'))
   check('session- 前缀归一化：session-s-usage 命中 s-usage 记录', r4.payload && r4.payload.currentSession !== null && r4.payload.currentSession.output === 2000,
     JSON.stringify(r4.payload && r4.payload.currentSession))
 }
@@ -219,7 +233,7 @@ const second = makeStub()
 const disposer2 = plugin.apply(second.ctx)
 await new Promise((resolve) => setTimeout(resolve, 30))
 {
-  const r = await invoke(second.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-usage' }))
+  const r = await invoke(second.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-usage'))
   const cs = r.payload && r.payload.currentSession
   check('重启重载后记录仍在（tokens = 3000）', cs && cs.tokens === 3000, JSON.stringify(cs))
   check('重启重载后全部花费仍 > 0', typeof r.payload.totalSpend === 'number' && r.payload.totalSpend > 0)

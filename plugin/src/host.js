@@ -6,10 +6,10 @@
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
 // 令牌的绑定/续期/写回由独立插件 dsh-chatgpt-subscription 维护，本插件不写回、不续期、不注入凭据。
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 // v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
 import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
 import * as hostLocale from './host-locale.js'
@@ -29,6 +29,10 @@ const USAGE_SUMMARIES_FILE = join(DATA_DIR, 'usage-summaries.json')
 const USAGE_SUMMARIES_BACKUP_FILE = USAGE_SUMMARIES_FILE + '.bak'
 const USAGE_SUMMARIES_TEMP_PREFIX = USAGE_SUMMARIES_FILE + '.tmp.'
 const USAGE_ARCHIVE_DIR = join(DATA_DIR, 'usage-archive')
+// Clear is a multi-file operation (snapshot + journal + summaries + cold archive).
+// The marker prevents a crash halfway through the operation from resurrecting
+// old spend records on the next host start.
+const LEDGER_CLEAR_MARKER_FILE = join(DATA_DIR, 'usage-records.clear-marker')
 // v1.9.0 PR2：设置文件（字段显隐/颜色/信息密度），与记账数据同目录但互不干扰
 const SETTINGS_FILE = join(DATA_DIR, 'settings.json')
 const SETTINGS_FORMAT_VERSION = 1
@@ -99,8 +103,6 @@ async function checkLatestVersion() {
 const SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
 // 云账单 provider 集合：这些 provider 走"账单型"显示（本月真实花费 / 预算%），与余额型/额度型互斥（FR-14 共享常量注入）
 const BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];
-// 订阅窗口时长（秒）：5 小时 / 7 天 / 30 天；映射带 5% 容差（接口值可能微调）
-const WINDOW_SECONDS = { five_hour: 18000, seven_day: 604800, monthly: 2592000 }
 // 窗口标签：模块顶层用硬编码中文兜底（避免加载时触发 translate）；
 // apply 内部会重新计算以响应当前语言偏好（见 windowLabels 定义）。
 const WINDOW_LABELS = { five_hour: '5 小时', seven_day: '周', monthly: '月' }
@@ -108,7 +110,7 @@ const WINDOW_LABELS = { five_hour: '5 小时', seven_day: '周', monthly: '月' 
 // host 仅下发额度/重置数据，不重复判定，故移除原 WINDOW_ALERT_PERCENT=90 的死常量。
 const CODEX_PLAN_NAMES = { plus: 'ChatGPT Plus', pro: 'ChatGPT Pro', team: 'ChatGPT Team', enterprise: 'ChatGPT Enterprise' }
 const SUBSCRIPTION_REFRESH_MS = 60000 // 订阅额度快照刷新周期（与余额一致）
-const SUBSCRIPTION_RETRY_BACKOFF_MS = 60000 // 订阅刷新失败后退避期：期内不重试（减少对未公开 wham 接口的请求 + 避免"刷新失败"提示闪烁）
+const SUBSCRIPTION_RETRY_BACKOFF_MS = 60000 // 订阅刷新失败后的退避期：减少重复请求，也避免“刷新失败”提示闪烁
 // 订阅源 auth 文件路径（可用环境变量覆盖——测试隔离用，避免测试误读真实登录态）；
 // 本插件只读令牌查询额度，令牌的绑定/续期由独立插件 dsh-chatgpt-subscription 维护
 const CODEX_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH || join(homedir(), '.codex', 'auth.json')
@@ -140,18 +142,6 @@ function accountForProvider(pid) {
 // 动机：聚合商路由模型数量庞大、价目无法静态维护——官方报出的钱 > 本地任何换算。
 const PROVIDER_REPORTED_CURRENCY = { openrouter: 'USD' }
 
-// ---------- 双模式纯逻辑（模式检测 / 窗口映射 / 响应解析；单测直接提取） ----------
-
-// 窗口时长（秒）→ 窗口键：18000≈5小时 / 604800≈7天 / 2592000≈30天，5% 容差；未知返回 null
-function codexWindowKey(limitWindowSeconds) {
-  if (typeof limitWindowSeconds !== 'number' || !isFinite(limitWindowSeconds)) return null
-  for (const key in WINDOW_SECONDS) {
-    const target = WINDOW_SECONDS[key]
-    if (Math.abs(limitWindowSeconds - target) / target <= 0.05) return key
-  }
-  return null
-}
-
 // 订阅 provider → 订阅源标识（codex / opencode-go / zai / xiaomi-{cn,sgp,ams}）；非订阅 provider → null
 // v1.7：小米 Token Plan 按地区分源（各地区独立 baseUrl 与凭据，避免跨地区串数据）
 function subscriptionSourceFor(providerId) {
@@ -180,8 +170,8 @@ function billingSourceFor(providerId) {
 function modelDisplayFromCache(model, provider, cache, translate) {
   if (translate === undefined) translate = t
   if (model && provider && cache) {
-    const provMap = cache[provider]
-    if (provMap && typeof provMap[model] === 'string' && provMap[model].length > 0) return provMap[model]
+    const provMap = Object.hasOwn(cache, provider) ? cache[provider] : null
+    if (provMap && Object.hasOwn(provMap, model) && typeof provMap[model] === 'string' && provMap[model].length > 0) return provMap[model]
   }
   return model || translate('ui.unknownModel')
 }
@@ -189,17 +179,15 @@ function modelDisplayFromCache(model, provider, cache, translate) {
 function providerDisplayFromCache(providerId, cache, staticMap, translate) {
   if (translate === undefined) translate = t
   if (!providerId) return translate('host.unknownProvider')
-  if (cache && typeof cache[providerId] === 'string' && cache[providerId].length > 0) return cache[providerId]
-  if (staticMap && staticMap[providerId]) return translate.json ? translate.json('displayName', staticMap[providerId]) : staticMap[providerId]
+  if (cache && Object.hasOwn(cache, providerId) && typeof cache[providerId] === 'string' && cache[providerId].length > 0) return cache[providerId]
+  if (staticMap && Object.hasOwn(staticMap, providerId) && staticMap[providerId]) return translate.json ? translate.json('displayName', staticMap[providerId]) : staticMap[providerId]
   return providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 
-// 余额制/订阅制/账单制判定：billingMode='auto' 按 provider 检测；'balance'/'subscription' 手动强制覆盖
-// v1.7：FR-14 三态互斥——订阅 provider → subscription（额度窗），云账单 provider → billing（本月花费），其余 → balance
-function detectBillingMode(providerId, billingMode) {
-  if (billingMode === 'balance' || billingMode === 'subscription') {
-    return { mode: billingMode, provider: providerId || '', reason: 'manual-override' }
-  }
+// 余额制/订阅制/账单制判定：只根据当前会话的 provider 自动识别。
+// v1.7：FR-14 三态互斥——订阅 provider → subscription（额度窗），云账单 provider → billing（本月花费），其余 → balance。
+// 这里不保留手动覆盖参数，避免用户选择的模型与账单通道脱节。
+function detectBillingMode(providerId) {
   if (BILLING_PROVIDERS.indexOf(providerId) >= 0) {
     return { mode: 'billing', provider: providerId || '', reason: 'provider:' + (providerId || 'unknown') }
   }
@@ -207,46 +195,14 @@ function detectBillingMode(providerId, billingMode) {
   return { mode: sub ? 'subscription' : 'balance', provider: providerId || '', reason: 'provider:' + (providerId || 'unknown') }
 }
 
-// wham 响应的 plan_type → 显示名（未收录的 plan 类型按大写首字母兜底）
+// 本地令牌中的 plan_type → 显示名（未收录的 plan 类型按大写首字母兜底）
 function planDisplayName(planType) {
   if (typeof planType === 'string' && planType.length > 0) {
-    const known = CODEX_PLAN_NAMES[planType]
+    const known = Object.hasOwn(CODEX_PLAN_NAMES, planType) ? CODEX_PLAN_NAMES[planType] : null
     if (known) return known
     return 'ChatGPT ' + planType.charAt(0).toUpperCase() + planType.slice(1)
   }
   return 'ChatGPT Plus/Pro'
-}
-
-// 解析 Codex wham usage 响应：顶层 rate_limit.primary_window / secondary_window → 统一窗口数组
-// @deprecated v1.10.1 起无生产调用（Codex 额度已改走本地 JWT），仅为测试与历史兼容保留；后续主版本可移除。
-function parseCodexUsage(body, windowLabels) {
-  if (!body || typeof body !== 'object') return null
-  const rl = body.rate_limit
-  if (!rl || typeof rl !== 'object') return null
-  const windows = []
-  for (const slot of ['primary_window', 'secondary_window']) {
-    const win = rl[slot]
-    if (!win || typeof win !== 'object') continue
-    const key = codexWindowKey(win.limit_window_seconds)
-    if (!key) continue
-    const used = win.used_percent
-    if (typeof used !== 'number' || !isFinite(used)) continue
-    windows.push({
-      key: key,
-      label: (windowLabels || WINDOW_LABELS)[key],
-      usedPercent: Math.round(used),
-      resetsAt: typeof win.reset_at === 'number' && isFinite(win.reset_at) ? win.reset_at * 1000 : null,
-    })
-  }
-  // 同一窗口键去重（primary 优先）；保持出现顺序
-  const seen = {}
-  const unique = []
-  for (const w of windows) {
-    if (seen[w.key]) continue
-    seen[w.key] = true
-    unique.push(w)
-  }
-  return { plan: planDisplayName(body.plan_type), windows: unique }
 }
 
 // OpenCode Go 窗口键（rolling=5小时滚动窗口 / weekly / monthly）
@@ -259,10 +215,10 @@ function openCodeGoWindowKey(apiKey) {
 
 // 归一化重置时刻：数值（秒或毫秒）→ 毫秒；ISO 字符串 → 毫秒；无法解析 → null
 function normalizeResetAt(value) {
-  if (typeof value === 'number' && isFinite(value)) return value < 1e12 ? value * 1000 : value
+  if (typeof value === 'number' && isFinite(value) && value >= 0) return value < 1e12 ? value * 1000 : value
   if (typeof value === 'string') {
     const t = Date.parse(value)
-    return isNaN(t) ? null : t
+    return isNaN(t) || t < 0 ? null : t
   }
   return null
 }
@@ -278,8 +234,8 @@ function parseOpenCodeGoUsage(body, windowLabels) {
     const win = usage[apiKey]
     if (!win || typeof win !== 'object') continue
     if (win.status !== 'ok') continue
-    const percent = win.percent
-    if (typeof percent !== 'number' || !isFinite(percent)) continue
+    const percent = parsePercent(win.percent)
+    if (percent == null) continue
     const key = openCodeGoWindowKey(apiKey)
     windows.push({
       key: key,
@@ -374,10 +330,10 @@ function xiaomiRegionBaseUrl(region) {
 
 // 百分比 → 0-100 整数（接口可能返回 0.1661=16.61% 或直接 16.61；>1 视为已是百分比）
 function xiaomiPercentToUsed(percent) {
-  const v = typeof percent === 'string' ? parseFloat(percent) : percent
-  if (typeof v !== 'number' || !isFinite(v) || v < 0) return null
+  const v = parseFiniteNonNegativeAmount(percent)
+  if (v == null) return null
   const scaled = v <= 1 ? v * 100 : v
-  return Math.round(scaled)
+  return Math.round(Math.min(100, scaled))
 }
 
 // 解析 /v1/tokenPlan/usage：data.monthUsage（used/limit/percent）或 items[] 中 month_total_token；
@@ -391,8 +347,8 @@ function parseXiaomiTokenPlanUsage(body, windowLabels) {
   const mu = data.monthUsage
   if (mu && typeof mu === 'object') {
     if (typeof mu.percent === 'number' || typeof mu.percent === 'string') percent = mu.percent
-    if (typeof mu.used === 'number' || typeof mu.used === 'string') used = parseFloat(mu.used)
-    if (typeof mu.limit === 'number' || typeof mu.limit === 'string') limit = parseFloat(mu.limit)
+    if (typeof mu.used === 'number' || typeof mu.used === 'string') used = parseFiniteNonNegativeAmount(mu.used)
+    if (typeof mu.limit === 'number' || typeof mu.limit === 'string') limit = parseFiniteNonNegativeAmount(mu.limit)
   }
   if (percent == null && Array.isArray(data.items)) {
     for (let i = 0; i < data.items.length; i++) {
@@ -400,13 +356,13 @@ function parseXiaomiTokenPlanUsage(body, windowLabels) {
       if (!item || typeof item !== 'object') continue
       if (item.name !== 'month_total_token') continue
       if (typeof item.percent === 'number' || typeof item.percent === 'string') percent = item.percent
-      if (typeof item.used === 'number' || typeof item.used === 'string') used = parseFloat(item.used)
-      if (typeof item.limit === 'number' || typeof item.limit === 'string') limit = parseFloat(item.limit)
+      if (typeof item.used === 'number' || typeof item.used === 'string') used = parseFiniteNonNegativeAmount(item.used)
+      if (typeof item.limit === 'number' || typeof item.limit === 'string') limit = parseFiniteNonNegativeAmount(item.limit)
       break
     }
   }
   let usedPercent = xiaomiPercentToUsed(percent)
-  if (usedPercent == null && used != null && limit != null && limit > 0) usedPercent = Math.round((used / limit) * 100)
+  if (usedPercent == null && used != null && limit != null && limit > 0) usedPercent = Math.round(Math.min(100, (used / limit) * 100))
   if (usedPercent == null) return null
   let planName = null
   const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : (data.planName != null ? data.planName : null))
@@ -419,9 +375,9 @@ function parseXiaomiTokenPlanUsage(body, windowLabels) {
 function parseXiaomiTokenPlanBalance(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const data = body.data && typeof body.data === 'object' ? body.data : body
-  const tokenBalance = data.token_balance != null ? parseFloat(data.token_balance) : NaN
-  const tokenLimit = data.token_limit != null ? parseFloat(data.token_limit) : NaN
-  if (!Number.isFinite(tokenLimit) || tokenLimit <= 0 || !Number.isFinite(tokenBalance)) return null
+  const tokenBalance = parseFiniteNonNegativeAmount(data.token_balance)
+  const tokenLimit = parseFiniteNonNegativeAmount(data.token_limit)
+  if (tokenBalance == null || tokenLimit == null || tokenLimit <= 0) return null
   const usedPercent = xiaomiPercentToUsed(Math.max(0, Math.min(1, (tokenLimit - tokenBalance) / tokenLimit)))
   let planName = null
   const maybePlan = data.plan_name != null ? data.plan_name : (body.plan_name != null ? body.plan_name : null)
@@ -434,15 +390,36 @@ function parseXiaomiTokenPlanBalance(body, windowLabels) {
 function parseXiaomiPaygBalance(body) {
   if (!body || typeof body !== 'object') return null
   const data = body.data && typeof body.data === 'object' ? body.data : body
-  const total = data.balance != null ? parseFloat(data.balance) : NaN
-  if (!Number.isFinite(total)) return null
+  const total = parseFiniteNonNegativeAmount(data.balance)
+  if (total == null) return null
+  const granted = parseFiniteNonNegativeAmount(data.granted_balance)
+  const toppedUp = parseFiniteNonNegativeAmount(data.charge_balance)
   return {
     currency: 'CNY',
     total: total,
-    granted: data.granted_balance != null ? parseFloat(data.granted_balance) || 0 : 0,
-    toppedUp: data.charge_balance != null ? parseFloat(data.charge_balance) || 0 : 0,
+    granted: granted == null ? 0 : granted,
+    toppedUp: toppedUp == null ? 0 : toppedUp,
     plan: data.plan != null ? data.plan : null,
   }
+}
+
+// Balance APIs commonly encode amounts as strings.  Number.parseFloat is too
+// permissive here ("12.3garbage" becomes 12.3) and `|| 0` turns a malformed
+// response into a convincing but false zero balance.  A malformed required
+// amount must make the whole snapshot fail so the caller can keep the last
+// known-good value and show a refresh warning.
+function parseFiniteNonNegativeAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null
+  if (typeof value !== 'string' || value.trim().length === 0) return null
+  const parsed = Number(value.trim())
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+function parsePercent(value) {
+  const parsed = typeof value === 'number'
+    ? value
+    : (typeof value === 'string' && value.trim().length > 0 ? Number(value.trim()) : NaN)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(100, parsed) : null
 }
 
 // 月度窗口重置时刻（本地推导）：下月 1 日零点（接口无重置字段，A4 记录为本地推导）
@@ -463,7 +440,8 @@ function parseTogetherUsage(body) {
     const usages = Array.isArray(win.usage) ? win.usage : []
     for (let j = 0; j < usages.length; j++) {
       const u = usages[j]
-      if (u && typeof u === 'object' && typeof u.cost === 'number' && isFinite(u.cost)) spend = (spend || 0) + u.cost
+      const cost = u && typeof u === 'object' ? parseFiniteNonNegativeAmount(u.cost) : null
+      if (cost != null) spend = (spend || 0) + cost
     }
   }
   return spend
@@ -495,13 +473,15 @@ function parseFireworksSummary(body) {
   if (Array.isArray(body.lineItems)) {
     for (let i = 0; i < body.lineItems.length; i++) {
       const item = body.lineItems[i]
-      if (item && typeof item === 'object' && typeof item.totalCost === 'number' && isFinite(item.totalCost)) spend = (spend || 0) + item.totalCost
+      const cost = item && typeof item === 'object' ? parseFiniteNonNegativeAmount(item.totalCost) : null
+      if (cost != null) spend = (spend || 0) + cost
     }
   }
   if (spend == null && Array.isArray(body.usageBuckets)) {
     for (let i = 0; i < body.usageBuckets.length; i++) {
       const b = body.usageBuckets[i]
-      if (b && typeof b === 'object' && typeof b.cost === 'number' && isFinite(b.cost)) spend = (spend || 0) + b.cost
+      const cost = b && typeof b === 'object' ? parseFiniteNonNegativeAmount(b.cost) : null
+      if (cost != null) spend = (spend || 0) + cost
     }
   }
   return spend
@@ -510,22 +490,27 @@ function parseFireworksSummary(body) {
 // 解析 billingUsage（无金额时按 token 用量展示）：数值数组求和，字段名容错
 function parseFireworksUsage(body) {
   if (!body || typeof body !== 'object') return null
-  let total = null
+  function tokenCount(value) {
+    if (!value || typeof value !== 'object') return null
+    const direct = parseFiniteNonNegativeAmount(value.totalTokens)
+    if (direct != null) return direct
+    const tokens = parseFiniteNonNegativeAmount(value.tokens)
+    if (tokens != null) return tokens
+    const input = parseFiniteNonNegativeAmount(value.inputTokens)
+    const output = parseFiniteNonNegativeAmount(value.outputTokens)
+    if (input == null && output == null) return null
+    return (input || 0) + (output || 0)
+  }
+  let total = 0
   let hasToken = false
   const buckets = Array.isArray(body.usageBuckets) ? body.usageBuckets : (Array.isArray(body.buckets) ? body.buckets : [])
   for (let i = 0; i < buckets.length; i++) {
-    const b = buckets[i]
-    if (!b || typeof b !== 'object') continue
-    for (const key of ['totalTokens', 'tokens', 'inputTokens', 'outputTokens']) {
-      const v = b[key]
-      if (typeof v === 'number' && isFinite(v)) { total = (total || 0) + v; hasToken = true }
-    }
+    const value = tokenCount(buckets[i])
+    if (value != null) { total += value; hasToken = true }
   }
-  if (total == null && hasToken === false) {
-    for (const key of ['totalTokens', 'tokens', 'inputTokens', 'outputTokens']) {
-      const v = body[key]
-      if (typeof v === 'number' && isFinite(v)) { total = (total || 0) + v; hasToken = true }
-    }
+  if (!hasToken) {
+    const value = tokenCount(body)
+    if (value != null) { total = value; hasToken = true }
   }
   return hasToken ? total : null
 }
@@ -611,10 +596,10 @@ function parseBedrockCost(json) {
   const results = Array.isArray(json.ResultsByTime) ? json.ResultsByTime : []
   if (results.length === 0) return null
   const total = results[0] && results[0].Total
-  const amount = total && total.UnblendedCost && parseFloat(total.UnblendedCost.Amount)
-  if (Number.isFinite(amount)) return amount
-  const alt = total && total.NetUnblendedCost && parseFloat(total.NetUnblendedCost.Amount)
-  return Number.isFinite(alt) ? alt : null
+  const amount = total && total.UnblendedCost ? parseFiniteNonNegativeAmount(total.UnblendedCost.Amount) : null
+  if (amount != null) return amount
+  const alt = total && total.NetUnblendedCost ? parseFiniteNonNegativeAmount(total.NetUnblendedCost.Amount) : null
+  return alt
 }
 
 // 解析 Budgets GetBudgets：首笔预算 actualSpend / budgetLimit → 预算使用百分比（0-100 整数）
@@ -622,10 +607,11 @@ function parseBedrockBudget(json) {
   if (!json || typeof json !== 'object' || !Array.isArray(json.Budgets) || json.Budgets.length === 0) return null
   const budget = json.Budgets[0]
   if (!budget || typeof budget !== 'object') return null
-  const limit = budget.BudgetLimit && parseFloat(budget.BudgetLimit.Amount)
-  const spend = budget.CalculatedSpend && budget.CalculatedSpend.ActualSpend && parseFloat(budget.CalculatedSpend.ActualSpend.Amount)
-  if (!Number.isFinite(limit) || limit <= 0 || !Number.isFinite(spend)) return null
-  return Math.round((spend / limit) * 100)
+  const limit = budget.BudgetLimit ? parseFiniteNonNegativeAmount(budget.BudgetLimit.Amount) : null
+  const spend = budget.CalculatedSpend && budget.CalculatedSpend.ActualSpend
+    ? parseFiniteNonNegativeAmount(budget.CalculatedSpend.ActualSpend.Amount) : null
+  if (limit == null || limit <= 0 || spend == null) return null
+  return Math.round(Math.min(100, (spend / limit) * 100))
 }
 
 // ---------- FR-13 / D12：Cloudflare Billable Usage 解析（Alpha） ----------
@@ -642,12 +628,16 @@ function parseCloudflareBilling(body) {
   for (let i = 0; i < body.result.length; i++) {
     const item = body.result[i]
     if (!item || typeof item !== 'object') continue
-    if (typeof item.cost === 'number' && isFinite(item.cost)) { spend = (spend || 0) + item.cost; sawAny = true }
-    if (typeof item.usage === 'number' && isFinite(item.usage)) { usage = (usage || 0) + item.usage; sawAny = true }
+    const itemCost = parseFiniteNonNegativeAmount(item.cost)
+    const itemUsage = parseFiniteNonNegativeAmount(item.usage)
+    if (itemCost != null) { spend = (spend || 0) + itemCost; sawAny = true }
+    if (itemUsage != null) { usage = (usage || 0) + itemUsage; sawAny = true }
     if (!usageUnit && typeof item.unit === 'string' && item.unit.length > 0) usageUnit = item.unit
     // 免费额度：仅当同一条目显式给出已用 + 上限时推导（零点重置为 UTC 午夜，本地推导并注明）
-    const usedVal = typeof item.used === 'number' ? item.used : (typeof item.usage === 'number' ? item.usage : null)
-    const limitVal = typeof item.limit === 'number' ? item.limit : (typeof item.allowance === 'number' ? item.allowance : null)
+    const explicitUsed = item.used != null ? parseFiniteNonNegativeAmount(item.used) : null
+    const usedVal = explicitUsed != null ? explicitUsed : itemUsage
+    const explicitLimit = item.limit != null ? parseFiniteNonNegativeAmount(item.limit) : null
+    const limitVal = explicitLimit != null ? explicitLimit : parseFiniteNonNegativeAmount(item.allowance)
     if (usedVal != null && limitVal != null && limitVal > 0) {
       const remain = Math.max(0, limitVal - usedVal)
       if (freeRemaining == null || remain < freeRemaining) {
@@ -669,14 +659,21 @@ function nextUtcMidnightMs(nowMs) {
 // 新适配器（账单型）raw 输出 → 客户端统一契约（ProviderAccountStatus 子集）：
 // { currency, currentPeriodSpend?, budgetPercent?, usage?, usageUnit?, freeRemaining?, resetsAt?, note }
 function normalizeAccountStatus(kind, raw, fallbackCurrency) {
-  const base = { currency: raw && typeof raw.currency === 'string' && raw.currency.length > 0 ? raw.currency : (fallbackCurrency || 'USD') }
+  const rawCurrency = raw && (raw.currency === 'CNY' || raw.currency === 'USD') ? raw.currency : null
+  const safeFallback = fallbackCurrency === 'CNY' || fallbackCurrency === 'USD' ? fallbackCurrency : 'USD'
+  const base = { currency: rawCurrency || safeFallback }
   if (kind === 'billing') {
-    if (raw && Number.isFinite(raw.spend)) base.currentPeriodSpend = raw.spend
-    if (raw && Number.isFinite(raw.budgetPercent)) base.budgetPercent = raw.budgetPercent
-    if (raw && Number.isFinite(raw.usage)) base.usage = raw.usage
+    const spend = raw ? parseFiniteNonNegativeAmount(raw.spend) : null
+    const budgetPercent = raw ? parsePercent(raw.budgetPercent) : null
+    const usage = raw ? parseFiniteNonNegativeAmount(raw.usage) : null
+    const freeRemaining = raw ? parseFiniteNonNegativeAmount(raw.freeRemaining) : null
+    const resetsAt = raw ? normalizeResetAt(raw.resetsAt) : null
+    if (spend != null) base.currentPeriodSpend = spend
+    if (budgetPercent != null) base.budgetPercent = budgetPercent
+    if (usage != null) base.usage = usage
     if (raw && typeof raw.usageUnit === 'string' && raw.usageUnit.length > 0) base.usageUnit = raw.usageUnit
-    if (raw && Number.isFinite(raw.freeRemaining)) base.freeRemaining = raw.freeRemaining
-    if (raw && Number.isFinite(raw.resetsAt)) base.resetsAt = raw.resetsAt
+    if (freeRemaining != null) base.freeRemaining = freeRemaining
+    if (resetsAt != null) base.resetsAt = resetsAt
     if (raw && typeof raw.note === 'string' && raw.note.length > 0) base.note = raw.note
     return base
   }
@@ -710,10 +707,19 @@ function legacyUsageRecordId(record, index, source) {
 function normalizeUsageRecord(record, index, source) {
   const normalized = Object.assign({}, record)
   if (typeof normalized.id !== 'string' || normalized.id.length === 0) normalized.id = legacyUsageRecordId(normalized, index, source)
+  if (typeof normalized.sessionId !== 'string') normalized.sessionId = normalized.sessionId == null ? '' : String(normalized.sessionId)
+  if (typeof normalized.purpose !== 'string') normalized.purpose = normalized.purpose == null ? '' : String(normalized.purpose)
   if (normalized.status !== 'completed' && normalized.status !== 'interrupted') normalized.status = 'completed'
-  if (normalized.pricingStatus !== 'priced' && normalized.pricingStatus !== 'unpriced') {
-    normalized.pricingStatus = Number.isFinite(normalized.cost) && normalized.cost >= 0 ? 'priced' : 'unpriced'
+  const cost = parseFiniteNonNegativeAmount(normalized.cost)
+  if (cost == null) {
+    delete normalized.cost
+    delete normalized.pricingVersion
+    normalized.pricingStatus = 'unpriced'
+  } else {
+    normalized.cost = cost
+    normalized.pricingStatus = 'priced'
   }
+  if (normalized.currency !== 'CNY' && normalized.currency !== 'USD') delete normalized.currency
   return normalized
 }
 
@@ -730,6 +736,46 @@ function usageRecordKey(record, index, source) {
   // Legacy records had no stable id.  Keep their original snapshot position in
   // the key so upgrading never merges two legitimate, identical requests.
   return 'legacy:' + source + ':' + index + ':' + record.ts + ':' + record.provider + ':' + record.model + ':' + record.sessionId
+}
+
+// 账单数据清理只允许触达插件自己创建的精确文件/目录。临时文件也按固定前缀
+// 收集，避免留下半次原子写；settings.json、pricing-cache.json 等非账单数据永不触达。
+function ledgerArtifactPaths(includeClearMarker) {
+  const paths = [
+    DATA_FILE,
+    DATA_BACKUP_FILE,
+    DATA_TEMP_FILE,
+    USAGE_JOURNAL_FILE,
+    USAGE_SUMMARIES_FILE,
+    USAGE_SUMMARIES_BACKUP_FILE,
+    USAGE_ARCHIVE_DIR,
+  ]
+  try {
+    if (existsSync(DATA_DIR)) {
+      const dataTempPrefix = basename(DATA_TEMP_PREFIX)
+      const summariesTempPrefix = basename(USAGE_SUMMARIES_TEMP_PREFIX)
+      const journalCompactPrefix = basename(USAGE_JOURNAL_FILE) + '.compact.'
+      const markerTempPrefix = basename(LEDGER_CLEAR_MARKER_FILE) + '.tmp.'
+      for (const name of readdirSync(DATA_DIR)) {
+        if (name.indexOf(dataTempPrefix) === 0
+            || name.indexOf(summariesTempPrefix) === 0
+            || name.indexOf(journalCompactPrefix) === 0
+            || name.indexOf(markerTempPrefix) === 0) {
+          paths.push(join(DATA_DIR, name))
+        }
+      }
+    }
+  } catch (err) { /* exact known paths remain clearable */ }
+  if (includeClearMarker) paths.push(LEDGER_CLEAR_MARKER_FILE)
+  return Array.from(new Set(paths))
+}
+
+function clearLedgerArtifacts() {
+  const paths = ledgerArtifactPaths(false)
+  for (const filePath of paths) {
+    rmSync(filePath, { recursive: filePath === USAGE_ARCHIVE_DIR, force: true })
+  }
+  rmSync(LEDGER_CLEAR_MARKER_FILE, { force: true })
 }
 
 // 桶/索引的键都来自落盘记录（账户、币种、会话 ID）。JSON.parse 产生的 __proto__ 自有属性无害，
@@ -749,6 +795,11 @@ function emptyDayBucket() {
 }
 
 function loadUsageRecords() {
+  // A clear marker wins over every recovery source. If the host was interrupted
+  // midway through deletion, never resurrect the old ledger from a backup/journal.
+  if (existsSync(LEDGER_CLEAR_MARKER_FILE)) {
+    return { records: [], migratedLegacyRecord: false, journalStats: { lines: 0, bytes: 0 }, clearPending: true }
+  }
   // Recovery order: current snapshot → last known-good snapshot → interrupted
   // temporary snapshot.  A bad file must not turn a user's whole bill into 0.
   const temporarySnapshots = []
@@ -799,6 +850,34 @@ function loadUsageRecords() {
     records: records.sort(function (a, b) { return a.ts - b.ts }),
     migratedLegacyRecord: migratedLegacyRecord,
     journalStats: { lines: journalLines, bytes: journalBytes },
+  }
+}
+
+function readArchivedUsageRecords() {
+  const records = []
+  const seen = new Set()
+  try {
+    if (!existsSync(USAGE_ARCHIVE_DIR)) return { records: records, error: null }
+    const files = readdirSync(USAGE_ARCHIVE_DIR).filter(function (name) { return name.endsWith('.jsonl') }).sort()
+    for (const name of files) {
+      const filePath = join(USAGE_ARCHIVE_DIR, name)
+      const raw = readFileSync(filePath, 'utf8')
+      raw.split('\n').forEach(function (line, index) {
+        if (!line.trim()) return
+        try {
+          const parsed = JSON.parse(line)
+          if (!isValidUsageRecord(parsed)) return
+          const normalized = normalizeUsageRecord(parsed, index, 'archive:' + name)
+          const key = usageRecordKey(normalized, index, 'archive:' + name)
+          if (seen.has(key)) return
+          seen.add(key)
+          records.push(normalized)
+        } catch (err) { /* skip only a corrupt archive line */ }
+      })
+    }
+    return { records: records.sort(function (a, b) { return a.ts - b.ts }), error: null }
+  } catch (err) {
+    return { records: records.sort(function (a, b) { return a.ts - b.ts }), error: String((err && err.message) || err) }
   }
 }
 
@@ -1159,6 +1238,8 @@ export default {
     };
     function modelCurrency(provider, model) {
       // 服务商作用域键优先：同名模型跨计费域时（Kimi 国内外），币种必须跟作用域走
+      if (typeof provider !== 'string' || provider.trim().length === 0
+          || typeof model !== 'string' || model.trim().length === 0) return null;
       const entry = pricingEntryFor(provider, model);
       if (entry && entry.currency) return entry.currency;
       if (provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'google' || provider === 'gemini' || provider === 'mistral' || provider === 'groq' || provider === 'xai') return 'USD';
@@ -1166,8 +1247,6 @@ export default {
       if (model && /^(gpt|o1|o3|claude|gemini|grok)/.test(model)) return 'USD';
       return 'CNY';
     }
-    const DEFAULT_MODEL = 'deepseek-flash';
-
     // ---------- 远程价目目录（v1.8）：内置表兜底 + 启动/定时增量更新 ----------
     // 设计目标（用户铁律）：接入新模型/新价格不再依赖插件发版。
     // 机制：启动时先用磁盘缓存离线合并，再异步拉取远程 catalog/pricing.json 增量合并；
@@ -1183,7 +1262,7 @@ export default {
     // 校验目录条目：只放行可安全参与计算的声明式数据
     function sanitizeRemotePricingEntries(raw) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-      const entries = {};
+      const entries = Object.create(null);
       for (const key of Object.keys(raw)) {
         if (Object.keys(entries).length >= 512) break; // 容量上限，防滥用
         // 字符集 [A-Za-z0-9._:-] 允许 "provider:model" 作用域键，拒绝空段/前后缀冒号
@@ -1193,10 +1272,10 @@ export default {
         // v1 仅接受统一价（flat）；分时价的窗口规则须随框架参数化后再开放远程下发
         if (e.mode !== 'flat' || !e.price || typeof e.price !== 'object') continue;
         if (e.currency !== 'CNY' && e.currency !== 'USD') continue; // 白名单币种
-        const hit = Number(e.price.inputCacheHit);
-        const miss = Number(e.price.inputCacheMiss);
-        const out = Number(e.price.output);
-        if (!Number.isFinite(hit) || !Number.isFinite(miss) || !Number.isFinite(out)) continue;
+        const hit = parseFiniteNonNegativeAmount(e.price.inputCacheHit);
+        const miss = parseFiniteNonNegativeAmount(e.price.inputCacheMiss);
+        const out = parseFiniteNonNegativeAmount(e.price.output);
+        if (hit == null || miss == null || out == null) continue;
         if (miss <= 0 || hit < 0 || out < 0) continue;
         if (hit > miss) continue; // 缓存命中不可能比未命中更贵：脏数据拒收
         entries[key] = { currency: e.currency, mode: 'flat', price: { inputCacheHit: hit, inputCacheMiss: miss, output: out } };
@@ -1271,17 +1350,31 @@ export default {
         estimate: false,
         parseBalance: function (body) {
           const list = body && Array.isArray(body.balance_infos) ? body.balance_infos : [];
-          let cny = null;
+          let rec = null;
           for (let i = 0; i < list.length; i++) {
-            if (list[i].currency === 'CNY') { cny = list[i]; break; }
+            if (list[i] && list[i].currency === 'CNY' && parseFiniteNonNegativeAmount(list[i].total_balance) != null) {
+              rec = list[i]; break;
+            }
           }
-          const rec = cny || list[0];
+          if (!rec) {
+            for (let i = 0; i < list.length; i++) {
+              if (list[i] && list[i].currency === 'USD' && parseFiniteNonNegativeAmount(list[i].total_balance) != null) {
+                rec = list[i]; break;
+              }
+            }
+          }
           if (!rec) return null;
+          const currency = rec.currency === 'USD' || rec.currency === 'CNY' ? rec.currency : null;
+          if (!currency) return null;
+          const total = parseFiniteNonNegativeAmount(rec.total_balance);
+          if (total == null) return null;
+          const granted = parseFiniteNonNegativeAmount(rec.granted_balance);
+          const toppedUp = parseFiniteNonNegativeAmount(rec.topped_up_balance);
           return {
-            currency: rec.currency || 'CNY',
-            total: parseFloat(rec.total_balance) || 0,
-            granted: parseFloat(rec.granted_balance) || 0,
-            toppedUp: parseFloat(rec.topped_up_balance) || 0,
+            currency: currency,
+            total: total,
+            granted: granted == null ? 0 : granted,
+            toppedUp: toppedUp == null ? 0 : toppedUp,
           };
         },
       },
@@ -1298,18 +1391,32 @@ export default {
         estimate: false,
         parseBalance: function (body) {
           const list = body && Array.isArray(body.balance_infos) ? body.balance_infos : [];
-          // 找 CNY 或第一条
-          let cny = null;
+          // 优先选择可用的 CNY 账户；没有时选择可用的 USD 账户，不依赖数组首项。
+          let rec = null;
           for (let i = 0; i < list.length; i++) {
-            if (list[i].currency === 'CNY') { cny = list[i]; break; }
+            if (list[i] && list[i].currency === 'CNY' && parseFiniteNonNegativeAmount(list[i].total_balance) != null) {
+              rec = list[i]; break;
+            }
           }
-          const rec = cny || list[0];
+          if (!rec) {
+            for (let i = 0; i < list.length; i++) {
+              if (list[i] && list[i].currency === 'USD' && parseFiniteNonNegativeAmount(list[i].total_balance) != null) {
+                rec = list[i]; break;
+              }
+            }
+          }
           if (!rec) return null;
+          const currency = rec.currency === 'USD' || rec.currency === 'CNY' ? rec.currency : null;
+          if (!currency) return null;
+          const total = parseFiniteNonNegativeAmount(rec.total_balance);
+          if (total == null) return null;
+          const granted = parseFiniteNonNegativeAmount(rec.granted_balance);
+          const toppedUp = parseFiniteNonNegativeAmount(rec.topped_up_balance);
           return {
-            currency: rec.currency || 'CNY',
-            total: parseFloat(rec.total_balance) || 0,
-            granted: parseFloat(rec.granted_balance) || 0,
-            toppedUp: parseFloat(rec.topped_up_balance) || 0,
+            currency: currency,
+            total: total,
+            granted: granted == null ? 0 : granted,
+            toppedUp: toppedUp == null ? 0 : toppedUp,
           };
         },
       },
@@ -1320,10 +1427,11 @@ export default {
         estimate: false,
         parseBalance: function (body) {
           const data = body && body.data;
-          if (!data || typeof data.credits !== 'number') return null;
+          const total = data ? parseFiniteNonNegativeAmount(data.credits) : null;
+          if (total == null) return null;
           return {
             currency: 'USD',
-            total: data.credits,
+            total: total,
           };
         },
       },
@@ -1336,22 +1444,24 @@ export default {
           // 官方文档：balance 为可用余额（CNY），total_cash_balance/total_voucher_balance/type
           // 注意：官方文档无 token_plan 字段，不要解析
           if (!body || typeof body !== 'object') return null;
-          const balance = body.balance;
-          if (typeof balance !== 'number' || !isFinite(balance)) return null;
+          const balance = parseFiniteNonNegativeAmount(body.balance);
+          if (balance == null) return null;
+          const totalCashBalance = parseFiniteNonNegativeAmount(body.total_cash_balance);
+          const totalVoucherBalance = parseFiniteNonNegativeAmount(body.total_voucher_balance);
           return {
-            currency: body.currency || 'CNY',
+            currency: body.currency === 'USD' ? 'USD' : 'CNY',
             total: balance,
             granted: 0,
             toppedUp: 0,
             type: body.type || null,
-            totalCashBalance: body.total_cash_balance || null,
-            totalVoucherBalance: body.total_voucher_balance || null,
+            totalCashBalance: totalCashBalance == null ? null : totalCashBalance,
+            totalVoucherBalance: totalVoucherBalance == null ? null : totalVoucherBalance,
           };
         },
       },
       // v1.7 FR-9：xiaomi（MiMo 按量）余额适配器——B 级半公开端点，Bearer API Key 零设置
       xiaomi: {
-        id: 'xiaomi', displayName: t('ui.xiaomiMiMo'), credential: 'XIAOMI_API_KEY',
+        id: 'xiaomi', displayName: t('ui.xiaomiMiMo'), credential: 'XIAOMI_API_KEY', currency: 'CNY',
         balanceAPI: 'https://api.xiaomimimo.com/v1/user/balance',
         estimate: false,
         parseBalance: parseXiaomiPaygBalance,
@@ -1390,13 +1500,13 @@ export default {
     let config = {
       displayMode: 'replace',
       infoDensity: fieldSettings.infoDensity, // 'full' 完整 | 'compact' 简洁（v1.9 起落盘持久）
-      activeProvider: 'deepseek',
       alertThreshold: ALERT_THRESHOLD,
-      billingMode: 'auto', // 'auto' 按 provider 检测余额/订阅 | 'balance'/'subscription' 手动强制覆盖
     };
 
     // ---------- 余额快照（60s 定时刷新；失败保留上次快照） ----------
-    let balances = {}; // { [providerId]: { data, fetchedAt, error } }
+    let balances = Object.create(null); // { [providerId]: { data, fetchedAt, error } }
+    const BALANCE_CLIENT_ACTIVITY_MS = 90 * 1000; // 客户端每 30s 拉取；停止使用后不再后台轮询该账户
+    const balanceRequestedAt = Object.create(null); // { [providerId]: last client request ms }
 
     // v1.6：记录归属账户（用于花费分账）；null 表示"无主记录"，不参与任何账户汇总
     function recordAccount(r) {
@@ -1410,8 +1520,16 @@ export default {
       return typeof total === 'number' ? total : 0;
     }
 
-    const balanceSeq = {}; // 每 provider 刷新序号：仅最新一次请求可写入快照，防慢请求覆盖新数据
-    const balanceInFlight = {}; // 普通周期刷新并发去重；force 刷新可主动 supersede 旧请求
+    const balanceSeq = Object.create(null); // 每 provider 刷新序号：仅最新一次请求可写入快照，防慢请求覆盖新数据
+    const balanceInFlight = Object.create(null); // 普通周期刷新并发去重；force 刷新可主动 supersede 旧请求
+
+    function markBalanceRequested(pid, nowMs) {
+      if (!pid || !Object.hasOwn(PROVIDERS, pid)) return false;
+      const now = typeof nowMs === 'number' ? nowMs : Date.now();
+      const previous = balanceRequestedAt[pid];
+      balanceRequestedAt[pid] = now;
+      return typeof previous !== 'number' || now - previous > BALANCE_CLIENT_ACTIVITY_MS;
+    }
 
     function freshBalanceURL(endpoint) {
       try {
@@ -1489,21 +1607,28 @@ export default {
     }
 
     function refreshAllBalances() {
-      for (const pid in PROVIDERS) refreshProviderBalance(pid, false);
+      const now = Date.now();
+      for (const pid of Object.keys(balanceRequestedAt)) {
+        if (now - balanceRequestedAt[pid] > BALANCE_CLIENT_ACTIVITY_MS) {
+          delete balanceRequestedAt[pid];
+          continue;
+        }
+        refreshProviderBalance(pid, false);
+      }
     }
 
     // ---------- 订阅额度快照（复用余额模式：周期刷新 / 失败保留旧快照 / seq 防旧覆盖） ----------
-    let subscriptions = {}; // { [sourceKey]: { data: {provider,plan,windows}, fetchedAt, error } }
-    const subscriptionSeq = {}; // 每 source 刷新序号：仅最新一次请求可写入快照
-    const subscriptionInFlight = {}; // { [sourceKey]: Promise } 并发去重（同一时刻只发一个请求）
-    const subscriptionRequested = {}; // 仅"客户端请求过"的源进入 60s 周期刷新（余额制下不打扰订阅接口）
-    const subscriptionSourceProvider = {}; // { [sourceKey]: providerId }——记住请求该源时的 provider（zai 系按 provider 路由 host/凭据）
-    const subscriptionLastFailAt = {}; // { [sourceKey]: ms } 上次订阅刷新失败时刻（失败退避：期内不重试）
+    let subscriptions = Object.create(null); // { [sourceKey]: { data: {provider,plan,windows}, fetchedAt, error } }
+    const subscriptionSeq = Object.create(null); // 每 source 刷新序号：仅最新一次请求可写入快照
+    const subscriptionInFlight = Object.create(null); // { [sourceKey]: Promise } 并发去重（同一时刻只发一个请求）
+    const subscriptionRequested = Object.create(null); // 仅"客户端请求过"的源进入 60s 周期刷新（余额制下不打扰订阅接口）
+    const subscriptionSourceProvider = Object.create(null); // { [sourceKey]: providerId }——记住请求该源时的 provider（zai 系按 provider 路由 host/凭据）
+    const subscriptionLastFailAt = Object.create(null); // { [sourceKey]: ms } 上次订阅刷新失败时刻（失败退避：期内不重试）
 
     // FR-8 / D7：Codex / ChatGPT 订阅卡（纯本地通道）
     // 只读令牌：令牌由独立插件 dsh-chatgpt-subscription 维护，本插件不续期、不写回、不注入凭据；
     // 读 tokens.id_token 本地解码 JWT claims（chatgpt_plan_type / subscription_active_until）→ 真实套餐名与到期日。
-    // 解码/字段缺失 → 静默降级（不显式报错、不调用 wham——wham 保持默认关闭）；
+    // 解码/字段缺失 → 静默降级（不显式报错、不访问远程订阅接口）；
     // 令牌缺失 → no-key（客户端显示"未绑定"引导）。
     async function fetchCodexUsage() {
       const read = readCodexAuthFile(CODEX_AUTH_FILE);
@@ -1608,23 +1733,22 @@ export default {
         let key = null;
         if (unit === 3) key = 'five_hour'; // 5小时
         if (!key) continue; // 未知 unit 跳过
-        const usedPercent = limit.percentage;
-        if (typeof usedPercent !== 'number' || !isFinite(usedPercent)) continue;
-        const resetsAt = typeof limit.nextResetTime === 'number' && isFinite(limit.nextResetTime)
-          ? limit.nextResetTime
-          : (typeof limit.nextResetTime === 'string' ? Date.parse(limit.nextResetTime) : null);
+        const usedPercent = parsePercent(limit.percentage);
+        if (usedPercent == null) continue;
+        const resetsAt = normalizeResetAt(limit.nextResetTime);
         windows.push({
           key: key,
           label: windowLabels[key],
           usedPercent: Math.round(usedPercent),
-          resetsAt: isNaN(resetsAt) ? null : resetsAt,
+          resetsAt: resetsAt,
         });
       }
       // 套餐名：level 如 lite/standard/pro/max → 显示 '智谱 ' + 首字母大写
       let planName = null;
       if (typeof data.level === 'string' && data.level.length > 0) {
         const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' };
-        const mapped = levelMap[data.level.toLowerCase()];
+        const levelKey = data.level.toLowerCase();
+        const mapped = Object.hasOwn(levelMap, levelKey) ? levelMap[levelKey] : null;
         planName = mapped ? t('host.zhipu', { mapped: mapped }) : (t('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }));
       } else if (typeof body.planName === 'string' && body.planName.length > 0) {
         planName = body.planName;
@@ -1639,10 +1763,10 @@ export default {
       if (body.success === false || body.code !== 200) return null;
       const d = body.data;
       if (!d || typeof d !== 'object') return null;
-      // availableBalance 优先（可用余额），fallback 到 balance
-      const bal = typeof d.availableBalance === 'number' ? d.availableBalance
-        : (typeof d.balance === 'number' ? d.balance : null);
-      if (bal === null || !isFinite(bal)) return null;
+      // availableBalance 优先（可用余额）；字段存在但格式损坏时仍回退到 balance。
+      const available = parseFiniteNonNegativeAmount(d.availableBalance);
+      const bal = available != null ? available : parseFiniteNonNegativeAmount(d.balance);
+      if (bal == null) return null;
       return { balance: bal };
     }
 
@@ -1984,11 +2108,11 @@ export default {
     // ---------- v1.7 FR-10~13：账单快照（云账单型；与订阅/余额快照完全隔离，同一套策略） ----------
     const BILLING_REFRESH_MS = 60000;
     const BILLING_RETRY_BACKOFF_MS = 60000;
-    let billingSnapshots = {}; // { [key]: { data, fetchedAt, error } }
-    const billingSeq = {};
-    const billingInFlight = {};
-    const billingRequested = {};
-    const billingLastFailAt = {};
+    let billingSnapshots = Object.create(null); // { [key]: { data, fetchedAt, error } }
+    const billingSeq = Object.create(null);
+    const billingInFlight = Object.create(null);
+    const billingRequested = Object.create(null);
+    const billingLastFailAt = Object.create(null);
 
     function mergeBillingResult(prev, result) {
       if (!result || result.error) {
@@ -2040,7 +2164,9 @@ export default {
     // RPC：当前订阅额度快照 + 模式判定（非订阅模式直接返回，不发任何订阅请求）
     async function getSubscriptionSnapshotRpc(selection, force) {
       const sel = selection || modelSelection();
-      const bm = detectBillingMode(sel.provider, config.billingMode);
+      const bm = selectionIsResolved(sel)
+        ? detectBillingMode(sel.provider)
+        : { mode: 'unknown', provider: '', reason: sel.reason || 'selection-unavailable' };
       const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], balance: null, fetchedAt: null, error: null };
       if (bm.mode !== 'subscription') return out;
       const sourceKey = subscriptionSourceFor(sel.provider);
@@ -2052,7 +2178,7 @@ export default {
       const nowMs = Date.now();
       const lastFailAt = subscriptionLastFailAt[sourceKey] || 0;
       // 失败退避：快照过期（>60s 无成功）且距上次失败 ≥ 退避期（60s）才重试——
-      // 减少对未公开 wham 接口的请求，也避免"刷新失败"提示随每次轮询反复闪烁（失败期内直接读缓存快照）
+      // 减少重复订阅请求，也避免“刷新失败”提示随每次轮询反复闪烁（失败期内直接读缓存快照）
       const stale = (!snap.fetchedAt || (nowMs - snap.fetchedAt) > SUBSCRIPTION_REFRESH_MS)
         && (nowMs - lastFailAt) >= SUBSCRIPTION_RETRY_BACKOFF_MS;
       // force（客户端打开/刷新网页后的首启窗口）绕过新鲜度与失败退避，当场重查，
@@ -2086,7 +2212,9 @@ export default {
 
     async function getBillingSnapshotRpc(selection, force) {
       const sel = selection || modelSelection();
-      const bm = detectBillingMode(sel.provider, config.billingMode);
+      const bm = selectionIsResolved(sel)
+        ? detectBillingMode(sel.provider)
+        : { mode: 'unknown', provider: '', reason: sel.reason || 'selection-unavailable' };
       const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, type: null, data: null, fetchedAt: null, error: null, now: Date.now() };
       if (bm.mode !== 'billing') return out;
       const key = billingSourceFor(sel.provider);
@@ -2153,42 +2281,54 @@ export default {
 
     // ---------- 当前模型识别 ----------
     function modelSelection() {
-      let fallback = false;
       let provider = '';
-      let model = DEFAULT_MODEL;
+      let model = '';
+      let fallback = true;
+      let reason = 'selection-unavailable';
       let svc = null;
-      try { svc = ctx.get('agentDefaultModel'); } catch (err) { fallback = true; }
+      try { svc = ctx.get('agentDefaultModel'); } catch (err) { reason = 'selection-service-error'; }
       if (svc && typeof svc.currentSelection === 'function') {
         try {
           const s = svc.currentSelection();
-          if (s && typeof s.model === 'string' && s.model.length > 0) {
-            provider = typeof s.provider === 'string' ? s.provider : '';
-            model = s.model;
+          const nextProvider = s && typeof s.provider === 'string' ? s.provider.trim() : '';
+          const nextModel = s && typeof s.model === 'string' ? s.model.trim() : '';
+          if (nextProvider.length > 0 && nextModel.length > 0) {
+            provider = nextProvider;
+            model = nextModel;
+            fallback = false;
+            reason = 'selected';
           } else {
-            fallback = true;
+            reason = 'selection-incomplete';
           }
         } catch (err) {
-          fallback = true;
+          reason = 'selection-read-error';
         }
       } else {
-        fallback = true;
+        reason = 'selection-service-unavailable';
       }
-      return { provider: provider, model: model, fallback: fallback };
+      return { provider: provider, model: model, fallback: fallback, reason: reason };
     }
 
-    // Web client may supply the model selection owned by its currently active
-    // session.  `agentDefaultModel` is deliberately process-wide and only a
-    // default for new Agents, so it must never win over a valid session value.
-    // Treat this HTTP input as display/accounting context only: reject malformed
-    // values and fall back to the host default rather than letting bad input
-    // reach any model or credential operation.
+    function selectionIsResolved(selection) {
+      return !!(selection && selection.fallback !== true
+        && typeof selection.provider === 'string' && selection.provider.trim().length > 0
+        && typeof selection.model === 'string' && selection.model.trim().length > 0);
+    }
+
+    // Web client must supply the model selection owned by its currently active
+    // session.  `agentDefaultModel` is process-wide and only a default for new
+    // Agents; it must never be used by a display/accounting RPC as a substitute
+    // for the active session.  Reject malformed or missing HTTP input as an
+    // unresolved selection rather than letting a default reach any model or
+    // credential operation.
     function selectionFromArgs(args) {
       const raw = args && typeof args === 'object' ? args.selection : null;
-      if (raw && typeof raw.provider === 'string' && raw.provider.length > 0
-          && typeof raw.model === 'string' && raw.model.length > 0) {
-        return { provider: raw.provider, model: raw.model, fallback: false };
+      const provider = raw && typeof raw.provider === 'string' ? raw.provider.trim() : '';
+      const model = raw && typeof raw.model === 'string' ? raw.model.trim() : '';
+      if (provider.length > 0 && model.length > 0) {
+        return { provider: provider, model: model, fallback: false, reason: 'selected' };
       }
-      return modelSelection();
+      return { provider: '', model: '', fallback: true, reason: raw ? 'selection-incomplete' : 'selection-required' };
     }
 
     // ---------- 服务商显示名静态映射（M5 起为 providerDisplayFromCache 的回退层） ----------
@@ -2228,17 +2368,17 @@ export default {
     // 能力只接受 DSH 明确给出的 inputModalities；null 表示未知，客户端会保持占位而不是误标。
     const MODEL_CATALOG_REFRESH_MS = 5 * 60 * 1000;
     const MODEL_DIRECTORY_RETRY_MS = 30 * 1000;
-    let modelNameCache = {};    // { provider: { modelId: name } }
-    let providerNameCache = {}; // { provider: name }
-    let modelCatalogRefreshed = {}; // { provider: true } 最近一次目录请求已完成
-    let modelCatalogRetryAt = {}; // { provider: ms } 失败后的下一次重试时刻
-    let modelCatalogMissingRetryAt = {}; // { provider: ms } 目录外模型的下一次探测时刻
-    let modelCatalogIds = {}; // { provider: { modelId: true } } 最近一次完整目录的 id 集合
-    let modelCatalogPending = {}; // { provider: Promise } 同一 provider 的目录请求并发去重
-    let modelImageInputCache = {}; // { provider: { modelId: boolean } }；仅明确声明 image 才写入
-    let modelCapabilityRefreshed = {}; // { provider + '\u0000' + model: true } 能力已明确或目录已明确
-    let modelCapabilityRetryAt = {}; // { provider + '\u0000' + model: ms } 能力缺失/失败后的重试时刻
-    let modelCapabilityPending = {}; // { provider + '\u0000' + model: Promise } 能力请求并发去重
+    let modelNameCache = Object.create(null);    // { provider: { modelId: name } }
+    let providerNameCache = Object.create(null); // { provider: name }
+    let modelCatalogRefreshed = Object.create(null); // { provider: true } 最近一次目录请求已完成
+    let modelCatalogRetryAt = Object.create(null); // { provider: ms } 失败后的下一次重试时刻
+    let modelCatalogMissingRetryAt = Object.create(null); // { provider: ms } 目录外模型的下一次探测时刻
+    let modelCatalogIds = Object.create(null); // { provider: { modelId: true } } 最近一次完整目录的 id 集合
+    let modelCatalogPending = Object.create(null); // { provider: Promise } 同一 provider 的目录请求并发去重
+    let modelImageInputCache = Object.create(null); // { provider: { modelId: boolean } }；仅明确声明 image 才写入
+    let modelCapabilityRefreshed = Object.create(null); // { provider + '\u0000' + model: true } 能力已明确或目录已明确
+    let modelCapabilityRetryAt = Object.create(null); // { provider + '\u0000' + model: ms } 能力缺失/失败后的重试时刻
+    let modelCapabilityPending = Object.create(null); // { provider + '\u0000' + model: Promise } 能力请求并发去重
     let modelCatalogGeneration = 0; // 适配器更新后丢弃旧请求结果，防止旧目录回写
 
     function llmService() {
@@ -2257,12 +2397,11 @@ export default {
     function modelCatalogNeedsRefresh(provider, model, nowMs, force) {
       if (!provider) return false;
       if (force || !modelCatalogRefreshed[provider]) return true;
-      if (nowMs >= (modelCatalogRetryAt[provider] || 0)) return true;
       const ids = modelCatalogIds[provider];
       if (ids && model && !Object.hasOwn(ids, model)) {
         return nowMs >= (modelCatalogMissingRetryAt[provider] || 0);
       }
-      return false;
+      return nowMs >= (modelCatalogRetryAt[provider] || 0);
     }
 
     async function refreshModelCatalog(provider, force, model) {
@@ -2276,9 +2415,9 @@ export default {
         let catalogSucceeded = false;
         try {
           const models = await llm.listModels(provider);
-          const map = {};
-          const imageInputMap = {};
-          const ids = {};
+          const map = Object.create(null);
+          const imageInputMap = Object.create(null);
+          const ids = Object.create(null);
           if (Array.isArray(models)) {
             for (let i = 0; i < models.length; i++) {
               const m = models[i];
@@ -2349,12 +2488,12 @@ export default {
         }
         if (generation !== modelCatalogGeneration) return;
         if (info && typeof info.name === 'string' && info.name.length > 0) {
-          const providerNames = modelNameCache[provider] || {};
+          const providerNames = Object.hasOwn(modelNameCache, provider) ? modelNameCache[provider] : Object.create(null);
           providerNames[model] = info.name;
           modelNameCache[provider] = providerNames;
         }
         const capability = modelImageInputCapability(info);
-        const providerMap = modelImageInputCache[provider] || {};
+        const providerMap = Object.hasOwn(modelImageInputCache, provider) ? modelImageInputCache[provider] : Object.create(null);
         if (capability !== null) {
           providerMap[model] = capability;
           modelImageInputCache[provider] = providerMap;
@@ -2381,7 +2520,7 @@ export default {
     // 刷新当前激活 provider 的目录名缓存（启动 / 适配器或设置变化 / 切模型后按需调用）
     function refreshActiveModelCatalog(force) {
       const sel = modelSelection();
-      return refreshModelCatalog(sel.provider, force === true).then(function () {
+      return Promise.resolve(refreshModelCatalog(sel.provider, force === true, sel.model)).then(function () {
         return refreshModelCapability(sel.provider, sel.model, force === true);
       });
     }
@@ -2394,10 +2533,13 @@ export default {
     // 将生效时刻传入价格解析，保证新请求切换、历史请求回算与已冻结金额彼此一致。
     const DEEPSEEK_V4_PRO_FLASH_EFFECTIVE_AT = Date.parse('2026-09-14T12:00:00+08:00');
     function pricingEntryFor(provider, model, atMs) {
-      const scoped = PRICING[provider + ':' + model];
-      const entry = scoped && typeof scoped === 'object' ? scoped : (PRICING[model] || null);
+      const scopedKey = provider + ':' + model;
+      const scoped = Object.hasOwn(PRICING, scopedKey) ? PRICING[scopedKey] : null;
+      const entry = scoped && typeof scoped === 'object'
+        ? scoped
+        : (Object.hasOwn(PRICING, model) ? PRICING[model] : null);
       if (model === 'deepseek-v4-pro' && Number.isFinite(atMs) && atMs >= DEEPSEEK_V4_PRO_FLASH_EFFECTIVE_AT) {
-        return PRICING['deepseek-flash'];
+        return Object.hasOwn(PRICING, 'deepseek-flash') ? PRICING['deepseek-flash'] : null;
       }
       return entry;
     }
@@ -2429,7 +2571,7 @@ export default {
 
     // ---------- 当前激活服务商余额（含预警） ----------
     // 模型目录 provider id → 余额账户 key（v1.6 改用 accountForProvider 表）：
-    // 已知映射返回对应账户；未知返回 null（不再回退 config.activeProvider，修复 Bug 2）。
+// 已知映射返回对应账户；未知返回 null，不借用其他服务商的账户。
     // 目的：余额/币种跟随"活跃模型的服务商"，避免 OpenAI 模型激活时仍显示 DeepSeek ¥ 余额与 ¥0 花费。
     function balanceProviderKey(pid) {
       if (!pid) return null;
@@ -2440,14 +2582,23 @@ export default {
       return null;
     }
 
-    function activeBalanceSummary(providerId, nowMs) {
-      // 默认跟随活跃模型的服务商（而非恒 deepseek）；显式 providerId（RPC 传参）优先
-      const pid = balanceProviderKey(providerId || modelSelection().provider || config.activeProvider);
+    function activeBalanceSummary(nowMs, selection) {
+      // 只跟随已确认的活跃模型服务商。展示 RPC 传入 selection 时，缺失选择
+      // 必须保持 pending，绝不借用默认 provider/模型或另一个请求里的 provider。
+      const selected = selection || modelSelection();
+      const activeProvider = selectionIsResolved(selected) ? selected.provider : '';
+      if (!activeProvider) {
+        return { provider: null, displayName: t('ui.modelSelectionPending'), selectionPending: true, unmapped: false, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
+      }
+      const pid = balanceProviderKey(activeProvider);
       // v1.6 T7：未知账户返回 unmapped=true，客户端渲染"未适配"引导
       if (pid === null) {
-        return { provider: null, displayName: t('ui.notSupported'), unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
+        return { provider: activeProvider, displayName: t('ui.notSupported'), selectionPending: false, unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
       }
-      const prov = PROVIDERS[pid] || PROVIDERS.deepseek;
+      const prov = Object.hasOwn(PROVIDERS, pid) ? PROVIDERS[pid] : null;
+      if (!prov) {
+        return { provider: activeProvider, displayName: t('ui.notSupported'), selectionPending: false, unmapped: true, data: null, fetchedAt: null, error: null, alert: null, now: nowMs };
+      }
       const snap = balances[pid] || { data: null, fetchedAt: null, error: null };
       let alert = null;
       if (snap.data && snap.data.total != null) {
@@ -2464,7 +2615,7 @@ export default {
         provider: prov.id,
         displayName: prov.displayName,
         estimate: !!prov.estimate,
-        currency: snap.data ? snap.data.currency : (prov.id === 'deepseek' ? 'CNY' : 'USD'),
+        currency: snap.data ? snap.data.currency : (prov.currency || (prov.id === 'deepseek' ? 'CNY' : 'USD')),
         data: snap.data,
         fetchedAt: snap.fetchedAt,
         error: snap.error,
@@ -2479,6 +2630,19 @@ export default {
     let saveDisposer = null;
     let dirty = loadedUsageRecords.migratedLegacyRecord;
     let ledgerError = null;
+    let activeUsageStreams = 0;
+
+    // A previous clear may have been interrupted. The marker made the in-memory
+    // view empty on startup; finish the exact cleanup now and keep the marker if
+    // the filesystem is still temporarily unavailable.
+    if (loadedUsageRecords.clearPending) {
+      try {
+        clearLedgerArtifacts();
+      } catch (err) {
+        ledgerError = { kind: 'clear-failed', message: t('host.couldNotClearSpendRecords', { value: String((err && err.message) || err) }), at: Date.now() };
+        console.warn('[dsh-bottom-info-bar] ' + ledgerError.message);
+      }
+    }
 
     // ---------- v1.9.0 性能地基：日桶 × 账户 × 币种聚合 + 会话索引（docs/PERF-AUDIT-v1.9.md §③B/C） ----------
     // 结构不变量：
@@ -2507,6 +2671,45 @@ export default {
     function bumpAggregatesVersion() {
       aggregatesVersion += 1;
       perfCounters.aggregatesVersion = aggregatesVersion;
+    }
+
+    function resetUsageLedgerState() {
+      if (saveDisposer) { saveDisposer(); saveDisposer = null; }
+      usageRecords = [];
+      dirty = false;
+      summariesState.foldedUpTo = null;
+      summariesState.dayBuckets = {};
+      summariesState.sessions = {};
+      summariesState.accountTotals = {};
+      foldedSessionsDelta = {};
+      foldedAccountTotals = {};
+      summariesDirty = false;
+      oldestRetainedPricedTs = null;
+      detailSorted = true;
+      journalLineCount = 0;
+      journalByteCount = 0;
+      ledgerError = null;
+      bumpAggregatesVersion();
+    }
+
+    function allUsageRecordsForExport() {
+      const archived = readArchivedUsageRecords();
+      const records = [];
+      const seen = new Set();
+      function add(record, index, source) {
+        if (!isValidUsageRecord(record)) return;
+        const normalized = normalizeUsageRecord(record, index, source);
+        const key = usageRecordKey(normalized, index, source);
+        if (seen.has(key)) return;
+        seen.add(key);
+        records.push(normalized);
+      }
+      usageRecords.forEach(function (record, index) { add(record, index, 'current') });
+      archived.records.forEach(function (record, index) { add(record, index, 'archive-export') });
+      return {
+        records: records.sort(function (a, b) { return a.ts - b.ts }),
+        archiveReadError: archived.error,
+      };
     }
 
     function accountBucketKey(account) {
@@ -3101,9 +3304,12 @@ export default {
       // ① 聚合商在 usage 中直接给出的真实金额（如 OpenRouter 的 usage.cost）——
       //    官方报出的钱优先级最高，聚合商场景从此免维护静态价目表；
       // ② 价目表换算（当前各家官方单价）；③ 都没有 → unpriced 待启动回填。
-      if (billed == null && typeof u.cost === 'number' && Number.isFinite(u.cost) && u.cost >= 0) {
-        rec.cost = u.cost;
-        rec.currency = PROVIDER_REPORTED_CURRENCY[rec.provider] || modelCurrency(rec.provider, rec.model);
+      const reportedCost = parseFiniteNonNegativeAmount(u.cost);
+      if (billed == null && reportedCost != null) {
+        rec.cost = reportedCost;
+        rec.currency = Object.hasOwn(PROVIDER_REPORTED_CURRENCY, rec.provider)
+          ? PROVIDER_REPORTED_CURRENCY[rec.provider]
+          : modelCurrency(rec.provider, rec.model);
         rec.pricingStatus = 'priced';
         rec.pricingVersion = 'provider-reported-' + packageVersion();
       } else if (billed != null) {
@@ -3118,7 +3324,9 @@ export default {
         // 每个模型仅首次出现时提醒一次，防止未收录模型（如订阅目录下的混合路由）高频刷日志
         if (!unpricedWarnedModels.has(rec.model)) {
           unpricedWarnedModels.add(rec.model);
-          console.warn('[dsh-bottom-info-bar] 记账未计价（每模型仅提示一次）：model="' + rec.model + '" 价目表含该模型=' + Boolean(PRICING[rec.model] || PRICING[rec.provider + ':' + rec.model]));
+          console.warn('[dsh-bottom-info-bar] 记账未计价（每模型仅提示一次）：model="' + rec.model + '" 价目表含该模型=' + Boolean(
+            Object.hasOwn(PRICING, rec.model) || Object.hasOwn(PRICING, rec.provider + ':' + rec.model)
+          ));
         }
       }
       const writeError = appendUsageJournal(rec);
@@ -3136,39 +3344,44 @@ export default {
     }
 
     ctx.on('llm/stream', async function* (options, next) {
-      let stream;
       try {
-        stream = await next();
-      } catch (err) {
-        console.warn('[dsh-bottom-info-bar] llm/stream 获取失败，本次不记账', String((err && err.message) || err));
-        throw err; // 保持错误向上传播：不把上游失败消化成空流（仅跳过记账逻辑）
-      }
-      let latestUsage = null;
-      let sawFinish = false;
-      let committed = false;
-      function commitUsage(status) {
-        if (committed || !hasUsageTokens(latestUsage)) return;
-        committed = true;
-        try { recordUsage(options, latestUsage, status); } catch (err) {
-          ledgerError = { kind: 'journal-failed', message: String((err && err.message) || err), at: Date.now() };
-          console.warn('[dsh-bottom-info-bar] 本次账单未保存', ledgerError.message);
+        activeUsageStreams += 1;
+        let stream;
+        try {
+          stream = await next();
+        } catch (err) {
+          console.warn('[dsh-bottom-info-bar] llm/stream 获取失败，本次不记账', String((err && err.message) || err));
+          throw err; // 保持错误向上传播：不把上游失败消化成空流（仅跳过记账逻辑）
         }
-      }
-      try {
-        for await (const chunk of stream) {
-          if (chunk && chunk.type === 'usage' && chunk.usage) {
-            // DSH usage chunks are treated as snapshots.  Keep the last one
-            // and commit it once when this model response finishes.
-            latestUsage = Object.assign({}, chunk.usage);
+        let latestUsage = null;
+        let sawFinish = false;
+        let committed = false;
+        function commitUsage(status) {
+          if (committed || !hasUsageTokens(latestUsage)) return;
+          committed = true;
+          try { recordUsage(options, latestUsage, status); } catch (err) {
+            ledgerError = { kind: 'journal-failed', message: String((err && err.message) || err), at: Date.now() };
+            console.warn('[dsh-bottom-info-bar] 本次账单未保存', ledgerError.message);
           }
-          if (chunk && chunk.type === 'finish') sawFinish = true;
-          yield chunk;
         }
-      } catch (err) {
-        commitUsage('interrupted');
-        throw err;
+        try {
+          for await (const chunk of stream) {
+            if (chunk && chunk.type === 'usage' && chunk.usage) {
+              // DSH usage chunks are treated as snapshots.  Keep the last one
+              // and commit it once when this model response finishes.
+              latestUsage = Object.assign({}, chunk.usage);
+            }
+            if (chunk && chunk.type === 'finish') sawFinish = true;
+            yield chunk;
+          }
+        } catch (err) {
+          commitUsage('interrupted');
+          throw err;
+        } finally {
+          commitUsage(sawFinish ? 'completed' : 'interrupted');
+        }
       } finally {
-        commitUsage(sawFinish ? 'completed' : 'interrupted');
+        activeUsageStreams = Math.max(0, activeUsageStreams - 1);
       }
     });
 
@@ -3176,15 +3389,15 @@ export default {
     // generation guard 会让事件前已经发出的异步请求失效，避免旧目录在新版 DSH 到达后回写。
     function invalidateModelCatalog() {
       modelCatalogGeneration += 1;
-      modelCatalogRefreshed = {};
-      modelCatalogRetryAt = {};
-      modelCatalogMissingRetryAt = {};
-      modelCatalogIds = {};
-      modelCatalogPending = {};
-      modelImageInputCache = {};
-      modelCapabilityRefreshed = {};
-      modelCapabilityRetryAt = {};
-      modelCapabilityPending = {};
+      modelCatalogRefreshed = Object.create(null);
+      modelCatalogRetryAt = Object.create(null);
+      modelCatalogMissingRetryAt = Object.create(null);
+      modelCatalogIds = Object.create(null);
+      modelCatalogPending = Object.create(null);
+      modelImageInputCache = Object.create(null);
+      modelCapabilityRefreshed = Object.create(null);
+      modelCapabilityRetryAt = Object.create(null);
+      modelCapabilityPending = Object.create(null);
     }
     ctx.on('llm/adapters-updated', function () {
       invalidateModelCatalog();
@@ -3298,9 +3511,11 @@ export default {
 
     function activeCurrency(selection) {
       // 币种跟随活跃模型服务商（与余额账户同源）：deepseek → CNY、openai → USD（估算快照）；
-      // 余额快照未就绪时回退活跃模型定价币种，避免启动初期/无快照时显示错币种
+      // 余额快照未就绪时回退已确认模型的定价币种；未确认时返回 null，避免显示错币种
       const sel = selection || modelSelection();
-      const key = balanceProviderKey(sel.provider || config.activeProvider);
+      if (!selectionIsResolved(sel)) return null;
+      const key = balanceProviderKey(sel.provider);
+      if (key === null) return null;
       const snap = balances[key];
       if (snap && snap.data && snap.data.currency) return snap.data.currency;
       return modelCurrency(sel.provider, sel.model);
@@ -3314,11 +3529,15 @@ export default {
 
     function spendSummary(nowMs, selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       // v1.6：计算当前活跃账户
       const activeAccount = accountForProvider(sel.provider);
-      const snap = balances[balanceProviderKey(sel.provider || config.activeProvider)] || { data: null };
+      const balanceKey = balanceProviderKey(sel.provider);
+      if (balanceKey === null) return null;
+      const snap = balances[balanceKey] || { data: null };
       const balance = snap.data ? snap.data.total : null;
       const cur = activeCurrency(sel);
+      if (!cur) return null;
       const cutoff = nowMs - SPEND_DAYS * MS_PER_DAY;
       const cutoffDay = beijingDayKey(cutoff);
       const accountKey = accountBucketKey(activeAccount);
@@ -3371,9 +3590,11 @@ export default {
     // v1.9：直接读当日桶 O(1)（桶在记账时即含全部记录，含 unpriced 的 token，cost 只算 priced）
     function todaySpend(nowMs, selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       const activeAccount = accountForProvider(sel.provider);
       const key = beijingDayKey(nowMs);
-      const cur = activeCurrency(selection);
+      const cur = activeCurrency(sel);
+      if (!cur) return null;
       const accountBuckets = summariesState.dayBuckets[key] && summariesState.dayBuckets[key][accountBucketKey(activeAccount)];
       const bucket = accountBuckets && accountBuckets[safeMapKey(cur)];
       const total = bucket ? bucket.cost : 0;
@@ -3383,10 +3604,12 @@ export default {
     // ---------- 本月/近30天花费（v1.6 账户 + 币种双条件过滤） ----------
     function monthSpend(nowMs, selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       const activeAccount = accountForProvider(sel.provider);
       const d = new Date(nowMs + 8 * 3600 * 1000);
       const key = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
-      const cur = activeCurrency(selection);
+      const cur = activeCurrency(sel);
+      if (!cur) return null;
       const accountKey = accountBucketKey(activeAccount);
       const currencyKey = safeMapKey(cur);
       let total = 0;
@@ -3400,10 +3623,12 @@ export default {
     }
     function last30dSpend(nowMs, selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       const activeAccount = accountForProvider(sel.provider);
       const cutoff = nowMs - 30 * MS_PER_DAY;
       const cutoffDay = beijingDayKey(cutoff);
-      const cur = activeCurrency(selection);
+      const cur = activeCurrency(sel);
+      if (!cur) return null;
       const accountKey = accountBucketKey(activeAccount);
       const currencyKey = safeMapKey(cur);
       let total = 0;
@@ -3433,13 +3658,14 @@ export default {
       return (inputCost + outputCost) / 1e6;
     }
 
-    function computeEstimate(nowMs) {
+    function computeEstimate(nowMs, selected) {
       // v1.9：会话合计取一次，估算与校准两处复用（原来各全扫一遍明细）
       const allSessions = sessionTotals();
-      const pricing = computePricing(nowMs);
-      const bal = activeBalanceSummary(config.activeProvider, nowMs);
+      const selection = selected || modelSelection();
+      const pricing = computePricing(nowMs, selection);
+      const bal = activeBalanceSummary(nowMs, selection);
       const balance = bal.data ? bal.data.total : null;
-      const currency = bal.currency || 'CNY';
+      const currency = bal.currency || null;
 
       let conversion = null;
       if (balance != null && pricing.prices) {
@@ -3497,9 +3723,9 @@ export default {
         scenarios: scenarios,
         calibration: calibrationFrom(allSessions, CALIB_SESSIONS),
         pricing: pricing,
-        fetchedAt: balances[config.activeProvider] ? balances[config.activeProvider].fetchedAt : null,
-        stale: !!balances[config.activeProvider] && balances[config.activeProvider].error !== null && balances[config.activeProvider].data !== null,
-        error: balances[config.activeProvider] ? balances[config.activeProvider].error : null,
+        fetchedAt: bal.provider && balances[bal.provider] ? balances[bal.provider].fetchedAt : null,
+        stale: !!(bal.provider && balances[bal.provider] && balances[bal.provider].error !== null && balances[bal.provider].data !== null),
+        error: bal.provider && balances[bal.provider] ? balances[bal.provider].error : null,
       };
     }
 
@@ -3507,8 +3733,10 @@ export default {
     // v1.9：全部历史读全量日桶（含已折叠天），不再回扫明细
     function totalSpend(selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       const activeAccount = accountForProvider(sel.provider);
-      const cur = activeCurrency(selection);
+      const cur = activeCurrency(sel);
+      if (!cur) return null;
       const accountKey = accountBucketKey(activeAccount);
       const currencyKey = safeMapKey(cur);
       let total = 0;
@@ -3525,6 +3753,7 @@ export default {
     // 会话索引 + DSH 谱系读取，各滚动窗仍只扫描截止日，不再随总记录数增长。
     async function getUsageSummary(nowMs, sessionId, selection) {
       const sel = selection || modelSelection();
+      if (!selectionIsResolved(sel)) return null;
       // v1.6：计算当前活跃账户，用于会话聚合过滤
       const activeAccount = accountForProvider(sel.provider);
       const sessions = sessionTotals(activeAccount);
@@ -3540,26 +3769,6 @@ export default {
         persistence: ledgerError ? { state: ledgerError.kind, message: ledgerError.message, at: ledgerError.at } : { state: 'ok', message: null, at: null },
         now: nowMs,
       };
-    }
-
-    // ---------- 服务商列表 ----------
-    function providerList(nowMs) {
-      const out = [];
-      for (const pid in PROVIDERS) {
-        const prov = PROVIDERS[pid];
-        const snap = balances[pid] || { data: null, fetchedAt: null, error: null };
-        out.push({
-          id: prov.id,
-          displayName: prov.displayName,
-          estimate: !!prov.estimate,
-          active: pid === config.activeProvider,
-          currency: snap.data ? snap.data.currency : (pid === 'deepseek' ? 'CNY' : 'USD'),
-          total: snap.data ? snap.data.total : null,
-          fetchedAt: snap.fetchedAt,
-          error: snap.error,
-        });
-      }
-      return out;
     }
 
     // ---------- 花费趋势 ----------
@@ -3588,16 +3797,16 @@ export default {
         points.push({ label: label, spend: Math.round(spend * 1000) / 1000, offpeak: Math.round(offpeak * 1000) / 1000 });
       }
       const cutoff = nowMs - d * MS_PER_DAY;
-      const byModel = {};
+      const byModel = new Map();
       scanDetailRange(beijingDayStartMs(beijingDayKey(cutoff)), Infinity, function (r) {
         if (r.ts < cutoff) return;
         const c = costOf(r, false);
         if (c == null) return;
         const key = r.model || r.provider;
-        byModel[key] = (byModel[key] || 0) + c;
+        byModel.set(key, (byModel.get(key) || 0) + c);
       });
-      const byModelList = Object.keys(byModel).map(function (m) {
-        return { model: m, spend: Math.round(byModel[m] * 1000) / 1000 };
+      const byModelList = Array.from(byModel.entries()).map(function (entry) {
+        return { model: entry[0], spend: Math.round(entry[1] * 1000) / 1000 };
       }).sort(function (a, b) { return b.spend - a.spend; });
       return { days: d, points: points, byModel: byModelList, now: nowMs };
     }
@@ -3609,14 +3818,20 @@ export default {
         return updateInfoPromise
       },
       getBalanceSnapshot: async function (args) {
-        const pid = args && typeof args === 'object' && args.provider ? String(args.provider) : '';
+        const sel = selectionFromArgs(args);
         // force：客户端刚打开/刷新网页时的强制刷新——当场重查服务商，不等 60s 周期缓存
         const force = !!(args && typeof args === 'object' && args.force === true);
-        if (force) {
-          const key = balanceProviderKey(pid || undefined);
-          if (key) await refreshProviderBalance(key, true);
+        if (selectionIsResolved(sel)) {
+          const key = balanceProviderKey(sel.provider);
+          if (key) {
+            const firstRequest = markBalanceRequested(key);
+            // 首次看到某个账户时也要完成一次初始读取；之后仅由 force 或 60s
+            // 后台周期刷新。这样冷启动不轮询无关账户，同时首个非 force RPC
+            // 不会拿到一个看似“还没请求过”的空快照。
+            if (force || firstRequest) await refreshProviderBalance(key, true);
+          }
         }
-        return activeBalanceSummary(pid || undefined, Date.now());
+        return activeBalanceSummary(Date.now(), sel);
       },
       getPricing: async function (args) {
         // M5：目录成功后定期刷新；新出现的目录外模型也会按退避重试，
@@ -3628,36 +3843,65 @@ export default {
         if (llm) await refreshModelCapability(sel.provider, sel.model, force);
         return computePricing(Date.now(), sel);
       },
-      getEstimate: function () {
-        return computeEstimate(Date.now());
+      getEstimate: function (args) {
+        return computeEstimate(Date.now(), selectionFromArgs(args));
       },
       getUsageSummary: async function (args) {
         const sessionId = args && typeof args === 'object' ? String(args.sessionId || '') : '';
         return getUsageSummary(Date.now(), sessionId, selectionFromArgs(args));
       },
-      getProviders: function () {
-        return { providers: providerList(Date.now()), activeProvider: config.activeProvider };
+      exportUsageRecords: function () {
+        const exported = allUsageRecordsForExport();
+        return {
+          version: 1,
+          exportedAt: Date.now(),
+          recordCount: exported.records.length,
+          includesArchived: true,
+          archiveReadError: exported.archiveReadError,
+          records: exported.records,
+        };
       },
-      setActiveProvider: function (args) {
-        const pid = args && typeof args === 'object' ? args.provider : null;
-        if (pid && Object.hasOwn(PROVIDERS, pid)) {
-          config.activeProvider = pid;
-          refreshProviderBalance(pid, true);
+      clearUsageRecords: function () {
+        if (activeUsageStreams > 0) {
+          const err = new Error(t('host.usageLedgerBusy'));
+          err.status = 409;
+          throw err;
         }
-        return { activeProvider: config.activeProvider };
+        const exported = allUsageRecordsForExport();
+        try {
+          // The marker is durable before any old artifact is removed. A host
+          // crash after this point therefore fails closed on its next start.
+          writeFileAtomic(LEDGER_CLEAR_MARKER_FILE, JSON.stringify({ requestedAt: Date.now() }), t);
+        } catch (err) {
+          throw new Error(t('host.couldNotClearSpendRecords', { value: String((err && err.message) || err) }));
+        }
+        let cleanupError = null;
+        try {
+          clearLedgerArtifacts();
+        } catch (err) {
+          cleanupError = err;
+        }
+        resetUsageLedgerState();
+        if (cleanupError) {
+          ledgerError = { kind: 'clear-failed', message: t('host.couldNotClearSpendRecords', { value: String((cleanupError && cleanupError.message) || cleanupError) }), at: Date.now() };
+          console.warn('[dsh-bottom-info-bar] ' + ledgerError.message);
+          return { cleared: false, recordCount: exported.records.length, warning: ledgerError.message };
+        }
+        return { cleared: true, recordCount: exported.records.length, warning: null };
       },
       getSpendTrend: function (args) {
         const days = args && typeof args === 'object' ? Number(args.days) : 7;
         return spendTrend(Date.now(), days);
       },
       getConfig: function () {
-        return { displayMode: config.displayMode, infoDensity: config.infoDensity, activeProvider: config.activeProvider, alertThreshold: config.alertThreshold, billingMode: config.billingMode };
+        return { displayMode: config.displayMode, infoDensity: config.infoDensity, alertThreshold: config.alertThreshold };
       },
       getBillingMode: function (args) {
         // 纯本地计算：优先使用客户端已订阅的当前会话模型，避免把另一个会话的
         // process-wide default 错显示到这里。
         const sel = selectionFromArgs(args);
-        return Object.assign(detectBillingMode(sel.provider, config.billingMode), { model: sel.model });
+        if (!selectionIsResolved(sel)) return { mode: 'unknown', provider: '', model: '', reason: sel.reason || 'selection-unavailable' };
+        return Object.assign(detectBillingMode(sel.provider), { model: sel.model });
       },
       getSubscriptionSnapshot: function (args) {
         const force = !!(args && typeof args === 'object' && args.force === true);
@@ -3818,8 +4062,9 @@ export default {
         return settingsPayload(persistError);
       },
     };
-    // 写操作与触发宿主网络请求的方法一律要求同源（防跨站驱动宿主写文件/发请求）
-    const MUTATING = { setActiveProvider: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true };
+    // 写操作与会触发宿主网络请求的方法一律要求同源（防跨站驱动宿主写文件/发请求）。
+    // 余额快照即使不带 force 也可能命中刷新路径，因此整个端点统一保护。
+    const MUTATING = { getBalanceSnapshot: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true };
     function invalidArgument(message) {
       const err = new Error(message);
       err.status = 400;
