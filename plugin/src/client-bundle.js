@@ -484,6 +484,38 @@ function bibSetOperationMessage(err) {
   return String((err && err.message) || err || t('ui.pleaseTryAgainLater'));
 }
 
+// 设置页不需要显示滚动条轨道，但仍要保留滚轮、触控板和键盘滚动。
+// 不改宿主的 overflow/尺寸，只给当前设置滚动祖先加一个生命周期内的标记，
+// 因而不会再次触发宽度重排；插件卸载时恢复原属性。
+function bibSetHideHostScrollbars(root) {
+  if (!root || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return function () {};
+  }
+  const hosts = [];
+  let parent = root.parentElement;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    let computed = null;
+    try { computed = window.getComputedStyle(parent); } catch (err) { computed = null; }
+    const overflowY = computed && computed.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') hosts.push(parent);
+    parent = parent.parentElement;
+  }
+  if (hosts.length === 0) return function () {};
+
+  const attr = 'data-dsh-bib-hide-scrollbars';
+  const previous = hosts.map(function (host) {
+    return { host: host, value: host.getAttribute(attr) };
+  });
+  hosts.forEach(function (entry) { entry.setAttribute(attr, 'true'); });
+
+  return function () {
+    previous.forEach(function (entry) {
+      if (entry.value === null) entry.host.removeAttribute(attr);
+      else entry.host.setAttribute(attr, entry.value);
+    });
+  };
+}
+
 // ---------- 设置页样式（融入 DSH 设置面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
 function bibSetInstallStyles() {
   const id = 'dsh-bottom-info-bar-settings';
@@ -500,6 +532,9 @@ function bibSetInstallStyles() {
       /* 只保留 DSH 设置面板这一层纵向滚动：根节点比宿主视口多 2px，确保收起时也会
          进入同一个滚动状态；插件自身和字段清单不再创建第二、第三条滚动轨道。 */
       .bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible; contain: inline-size; flex-direction: column; gap: 14px; color: var(--dsw-alias-label-primary); }
+      /* 仅隐藏视觉轨道，不关闭滚动能力；宿主标记由组件生命周期维护。 */
+      .bib-settings, .bib-set-field-list, [data-dsh-bib-hide-scrollbars="true"] { scrollbar-width: none; -ms-overflow-style: none; }
+      .bib-settings::-webkit-scrollbar, .bib-set-field-list::-webkit-scrollbar, [data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       /* 搜索行始终是字段卡片的一部分，固定为「剩余宽度 + 计数」两条轨道；
@@ -922,6 +957,12 @@ function InfoBarSettingsSection() {
   const [customTextDraft, setCustomTextDraft] = React.useState(null);
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
+  const settingsRootRef = React.useRef(null);
+  // 宿主滚动祖先只加“隐藏轨道”的标记，不改变其尺寸或 overflow，避免再次引入布局抖动。
+  const useLayoutEffect = React.useLayoutEffect || React.useEffect;
+  useLayoutEffect(function () {
+    return bibSetHideHostScrollbars(settingsRootRef.current);
+  }, []);
 
   // 设置页跟随 DSH 的全局语言；这里不提供重复的插件语言开关。
   const [, setLocaleRevision] = React.useState(0);
@@ -973,12 +1014,12 @@ function InfoBarSettingsSection() {
   // 渲染期异常显示在页面内，避免设置页变成白屏。
   try {
     if (status === 'loading') {
-      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+      return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
         React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings')));
     }
     if (status === 'error') {
-      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+      return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
         React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater'))));
     }
@@ -1230,7 +1271,7 @@ function InfoBarSettingsSection() {
         searchActive && fieldsMatchCount === 0
           ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
           : groupsChildren))));
-  return React.createElement('div', { className: 'bib-set-root bib-settings' },
+  return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
@@ -1272,7 +1313,7 @@ function InfoBarSettingsSection() {
         onClick: function () { runReset('colors'); },
       }, t('ui.resetColors'))));
   } catch (err) {
-    return React.createElement('div', { className: 'bib-set-root bib-settings' },
+    return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       bibSetPageTitle(),
       React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) })));
   }

@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.18](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.17...v1.10.18) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** hide settings scroll tracks while preserving wheel, trackpad, and keyboard scrolling
+
 ## [1.10.17](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.16...v1.10.17) (2026-09-11)
 
 ### Bug Fixes

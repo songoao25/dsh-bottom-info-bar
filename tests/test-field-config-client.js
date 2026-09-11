@@ -216,8 +216,19 @@ check('设置页只保留宿主单一滚动层，滚动条不会重叠', (functi
     && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
     && !clientSrc.includes('overflow-y: scroll;')
     && !clientSrc.includes('overflow-y: auto;')
-    && !body.includes('settingsRootRef')
-    && !body.includes('useLayoutEffect');
+    && body.includes('const settingsRootRef = React.useRef(null);')
+    && body.includes('const useLayoutEffect = React.useLayoutEffect || React.useEffect;')
+    && body.includes('return bibSetHideHostScrollbars(settingsRootRef.current);');
+})(), true);
+check('设置页隐藏滚动条轨道但保留滚动能力，且只标记滚动祖先', (function () {
+  return clientSrc.includes('function bibSetHideHostScrollbars(root)')
+    && clientSrc.includes("const attr = 'data-dsh-bib-hide-scrollbars';")
+    && clientSrc.includes("entry.setAttribute(attr, 'true')")
+    && clientSrc.includes('scrollbar-width: none')
+    && clientSrc.includes('[data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar')
+    && clientSrc.includes('display: none !important; width: 0 !important; height: 0 !important;')
+    && !clientSrc.includes("style.setProperty('overflow-y'")
+    && !clientSrc.includes("style.setProperty('scrollbar-gutter'");
 })(), true);
 check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box;')
   && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
