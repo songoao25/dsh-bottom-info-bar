@@ -244,3 +244,25 @@
 
 - 历史遗留：上述复盘原写在 `~/.workbuddy/MEMORY.md` 与仓库内 `.workbuddy/memory/*.md`（**WorkBuddy 工具专属的隐藏目录**）。
 - 自 2026-09-11 起**全部统一到本文件 `MEMORY.md`**，`.workbuddy/` 已删除。凡记录中提到 `.workbuddy/memory/` 或 `~/.workbuddy/MEMORY.md` 的位置，一律以本文件为准。
+
+### 🎉 发布链条首次全链路实跑成功（2026-09-11，v1.11.0）
+
+- **背景**：这是「Release Please 独占版本号 + 人工闸门」定型后，第一次由真实功能提交触发的完整发版。整条链**只用了用户一次确认**，其余全自动。
+- **完整轨迹（每一步都有据可查）**：
+  1. `feat: copy the update command by clicking the update label` → PR **#79** → CI/CodeQL 全绿 → `auto-merge-own` **success** → 自动合并（196a7d3）。
+  2. Release Please 自动算出 **1.11.0**（`feat` 正确涨次版本），开 PR **#80** `chore(main): release 1.11.0`，作者显示为 `songoao25`。
+  3. **闸门生效**：`auto-merge-own` 对该 PR 判定 **`SKIPPED`**（同期的 #79 与 docs 分支均为 `success`）——证明闸门**只拦发布 PR、不误伤日常 PR**。同时该 PR `MERGEABLE`、CI `SUCCESS`，**不会死锁**。
+  4. **用户确认后合并** → 自动打标签 **v1.11.0** → `publish-npm.yml` **success** → npm `latest` = **1.11.0**。
+- **发布包反向核对**（下载 npm 上的 1.11.0 逐个确认，不只看版本号）：`copyUpdateCommand`、`event.stopPropagation()`、`execCommand('copy')` 兜底、`installMode` 分支、新中英文案**全部在内**。
+- **意义**：此前闸门只用「伪造分支名」的测试 PR 验证过（PR #75）；本次是**真实发布 PR** 上的验证，架构从「设计正确」变为「实测正确」。
+
+### 版本更新提醒：点击标签复制更新命令（2026-09-11，用户需求，v1.11.0）
+
+- **需求演进（值得记住的沟通教训）**：Agent 最初把方案设计成「自定义浮窗 + 浮窗内可点击复制」，并解释了原生浮窗无法交互。用户澄清：**点击标签本身就是复制动作，浮窗只负责"说明"**——方案因此大幅简化。**教训：先确认交互意图，再谈技术方案；原生 `title` 能装下纯文字说明，不必上自定义浮层。**
+- **三个决定成败的细节**（都已写入测试锁死）：
+  1. **点击必须 `stopPropagation`**：信息栏根节点自带 `onClick`（切换简洁/完整模式），不拦冒泡会导致「点一下复制顺带把界面切走」。
+  2. **命令必须匹配安装形态**：npm 安装 → `dsh plugin --profile <profile> add dsh-bottom-info-bar@latest`；**`link:` 安装（一键脚本 / 本地代码）→ `git -C <path> pull --ff-only`**。给 `link:` 用户复制 npm 命令会**把符号链接换成 registry 版本、顶掉用户本地代码**——而文档里**三种安装方式有两种是 `link:`**，不是边角情况。profile 名从 `process.argv` 读取（CLI 强制 `--profile`），命令精确到用户该敲的那条。
+  3. **剪贴板必须有兜底**：`navigator.clipboard` 只在安全上下文存在（`127.0.0.1` 是、**局域网 IP 不是**），缺席时退回临时 textarea + `execCommand('copy')`。
+- **尊重既有设计**：标签保持红色告警、**不加下划线**，只加 `cursor: pointer`。原测试有「无下划线（不伪装成链接）」的断言——**选择遵守它而非改掉它**。
+- **顺带修好一个脆弱守卫**：`test-realtime-session-model` 用 `!client.includes("}, 2000);")` 防「2 秒轮询」回归，会误伤本次的 2 秒反馈计时器。改为精确匹配 `setInterval` 周期，并**反向验证仍能抓到原轮询写法**（守卫未被放松）。
+- 新增 `tests/test-update-command.mjs`（14 条断言，含 npm / `link:` / profile 读不到 三种场景），并做反向验证：删 `stopPropagation` 与删 `link:` 分支各触发一条 FAIL。
