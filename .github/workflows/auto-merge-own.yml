@@ -3,6 +3,12 @@ name: Auto-merge own PRs
 # 目標：只有倉庫擁有者 songoao25 的 PR 自動開啟 auto-merge（CI 通過後自動 squash），
 # 其他人（外部貢獻者 / fork）的 PR 保持手動，需人工 Review + 手動合併。
 # 這符合業界「trust-by-author」慣例：可信作者的 PR 自動化，不可信作者保留人工閘門。
+#
+# 例外（2026-09-11 新增）：Release Please 開的「發布 PR」不自動合併。
+# 原因：Release Please 用 owner 的 RELEASE_PLEASE_TOKEN 開 PR，作者看起來就是 owner，
+# 因此發布 PR 會被當成「自己的 PR」放行 —— 等於把唯一該有人把關的環節也自動化了。
+# 2026-09-11 的 v2.0.0 誤發事故正是如此（詳見 MEMORY.md）。
+# 發布 PR 的分支名固定為 release-please--*，且會被加上 autorelease: 標籤，兩者都排除。
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -13,8 +19,12 @@ permissions:
 
 jobs:
   enable-auto-merge:
-    # 只有 owner 的 PR 才進入；draft PR 不自動合
-    if: github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.draft == false
+    # 只有 owner 的 PR 才進入；draft PR 不自動合；發布 PR 留給人工/AI 確認後再合併
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner
+      && github.event.pull_request.draft == false
+      && !startsWith(github.event.pull_request.head.ref, 'release-please--')
+      && !contains(join(github.event.pull_request.labels.*.name, ','), 'autorelease')
     runs-on: ubuntu-latest
     steps:
       - name: Report automation token mode
