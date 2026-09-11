@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.11...v1.10.12) (2026-09-11)
+
+
+### Bug Fixes
+
+* merge automatic detection and settings layout fixes ([#62](https://github.com/songoao25/dsh-bottom-info-bar/issues/62)) ([1eff783](https://github.com/songoao25/dsh-bottom-info-bar/commit/1eff783e710812bf30ffb6c0320c26aea9456f44))
+
 ## [1.10.18](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.17...v1.10.18) (2026-09-11)
 
 ### Bug Fixes
