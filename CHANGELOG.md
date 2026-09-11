@@ -2,6 +2,12 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.16](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.15...v1.10.16) (2026-09-11)
+
+### Bug Fixes
+
+* **client:** keep the DSH settings scroll track deterministic across field-list expansion and collapse, including WebViews with incomplete scrollbar-gutter geometry support
+
 ## [1.10.15](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.14...v1.10.15) (2026-09-11)
 
 ### Bug Fixes
