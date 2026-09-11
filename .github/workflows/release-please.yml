@@ -22,7 +22,7 @@ jobs:
           else
             echo "RELEASE_PLEASE_TOKEN is configured; automatic release follow-up is enabled."
           fi
-      - uses: google-github-actions/release-please-action@v4
+      - uses: googleapis/release-please-action@v4
         with:
           # A PAT lets the generated release commit/tag trigger downstream
           # workflows. The built-in token remains a safe manual-dispatch
