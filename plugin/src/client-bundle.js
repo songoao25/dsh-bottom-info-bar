@@ -38,6 +38,35 @@ const RPC_TIMEOUT_MS = 20000;
 const BOOT_AT = Date.now();
 const FORCE_REFRESH_WINDOW_MS = 6000;
 
+// 复制文本到剪贴板。
+// 优先用异步剪贴板 API——它只在「安全上下文」可用：本 GUI 走 http://127.0.0.1 属安全上下文，
+// 但从局域网 IP（http://192.168.x.x）访问时不是，API 会直接缺席。故必须有兜底路径，
+// 否则用户点了「复制」却没反应、也看不到任何错误。
+function copyTextToClipboard(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function (resolve, reject) {
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      // 固定定位并移出视口：避免复制瞬间页面滚动或闪动
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      area.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(area);
+      if (ok) resolve(); else reject(new Error('copy rejected'));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // rpc(method, args, externalSignal)：
 // - 超时：20s 未响应 → abort 并以"请求超时"失败（fetch 挂起不阻塞界面）
 // - 可中止：传入外部 AbortSignal（组件卸载时 abort）→ 立即取消并拒绝"请求已取消"
@@ -418,8 +447,10 @@ function installStyles() {
       /* 低余额/低额度是数值的状态修饰，而非独立组件：无框“低”字避免制造第二个视觉焦点。 */
       .bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }
       .bi-root b.bi-alert-num, .bi-root b.bi-quota-low { color: var(--bi-state-alert); font-weight: 700; }
-      /* 新版本需要用户处理，与其他提醒使用统一鲜红色文字，不伪装成链接。 */
-      .bi-update{ color: var(--bi-state-alert); font-weight: 600; }
+      /* 新版本需要用户处理：与其它提醒统一用鲜红警示色，不伪装成链接。
+         该标签可点击（点击即复制更新命令），但只用手型光标作提示——不加下划线、不改颜色，
+         保持「告警」而非「链接」的语义（test-update-check 有「无下划线」的专项断言）。 */
+      .bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }
       /* 视觉能力是模型属性，不是告警：电光蓝实色、白字；高度收紧到字形范围内，避免压过同一行文字。 */
       /* 服务商、圆点、视觉胶囊在同一 20px flex 行内居中，避免混用文字基线造成上下漂移。 */
       .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: 20px; vertical-align: top; }
@@ -1440,6 +1471,8 @@ module.exports = {
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
       const [updateInfo, setUpdateInfo] = React.useState(null);
+      // 「更新命令已复制」的短暂反馈：复制成功后标签文字临时切换，2 秒后复原。
+      const [updateCopied, setUpdateCopied] = React.useState(false);
       const [now, setNow] = React.useState(Date.now());
       // This state is owned by DSH's per-session model selector, not by the
       // process-wide default for newly-created Agents.
@@ -2288,9 +2321,23 @@ module.exports = {
       }
 
        if (updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
+         // 该标签只在「有新版本」时出现，因此点击语义单一：复制更新命令。
+         // 必须 stopPropagation —— 信息栏根节点自带 onClick（切换简洁/完整模式），
+         // 不拦下冒泡的话，用户点一下复制会顺带把界面切走。
+         const updateCommand = typeof updateInfo.updateCommand === 'string' ? updateInfo.updateCommand : '';
+         const copyUpdateCommand = function (event) {
+           event.stopPropagation();
+           if (updateCommand.length === 0) return;
+           copyTextToClipboard(updateCommand).then(function () {
+             setUpdateCopied(true);
+             window.setTimeout(function () { setUpdateCopied(false); }, 2000);
+           }).catch(function () { /* 复制失败不谎报成功；命令仍写在 hover 提示里可手抄 */ });
+         };
          groups.push(fieldSpan('updateNotice', 'update', React.createElement('span', {
-           className: 'bi-update', title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest }),
-       }, t('ui.updateAvailable'))));
+           className: 'bi-update',
+           title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest }),
+           onClick: copyUpdateCommand,
+       }, updateCopied ? t('ui.updateCommandCopied') : t('ui.updateAvailable'))));
        }
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----

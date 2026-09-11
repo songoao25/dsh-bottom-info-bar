@@ -78,6 +78,40 @@ function compareVersions(left, right) {
   return 0
 }
 
+// 运行中的 profile 名。DSH CLI 强制要求 --profile <name>，拿不到时退回 web——
+// 本插件的安装脚本默认就装到 web，这是最合理的兜底。
+function runningProfileName() {
+  const argv = Array.isArray(process.argv) ? process.argv : []
+  const index = argv.indexOf('--profile')
+  const value = index >= 0 && typeof argv[index + 1] === 'string' ? argv[index + 1].trim() : ''
+  return value.length > 0 ? value : 'web'
+}
+
+function dshHomeDir() {
+  const configured = typeof process.env.DSH_HOME === 'string' ? process.env.DSH_HOME.trim() : ''
+  return configured.length > 0 ? configured : join(homedir(), '.dsh')
+}
+
+// 「更新命令」取决于本插件是怎么装上的，两者不能混用：
+//   - npm 安装       → dsh plugin add …@latest；
+//   - link:（本地代码 / 一键脚本安装）→ git pull。这类安装若改用 npm 命令，会把符号
+//     链接换成 registry 版本，用户本地那份代码从此不再生效（本仓库 install.sh 即此类）。
+// 读不到 profile 配置时按 npm 处理：那是最常见、也是唯一能从 npm 自动更新的形态。
+function updateCommandForInstall() {
+  const profile = runningProfileName()
+  const npmCommand = 'dsh plugin --profile ' + profile + ' add dsh-bottom-info-bar@latest'
+  try {
+    const profileFile = join(dshHomeDir(), 'profiles', profile, 'package.json')
+    const pkg = JSON.parse(readFileSync(profileFile, 'utf8'))
+    const spec = pkg && pkg.dependencies && pkg.dependencies['dsh-bottom-info-bar']
+    if (typeof spec === 'string' && spec.startsWith('link:')) {
+      const target = spec.slice('link:'.length).trim()
+      if (target.length > 0) return { installMode: 'link', updateCommand: 'git -C ' + target + ' pull --ff-only' }
+    }
+  } catch (err) { /* 读不到就按 npm 处理 */ }
+  return { installMode: 'npm', updateCommand: npmCommand }
+}
+
 async function checkLatestVersion() {
   const current = packageVersion()
   const controller = new AbortController()
@@ -3845,8 +3879,11 @@ export default {
     // ---------- RPC 路由（webServer HTTP，替代动态沙箱 harness.handle） ----------
     const ROUTE_PREFIX = '/_dsh/dsh-bottom-info-bar';
     const ROUTES = {
-      getUpdateInfo: function () {
-        return updateInfoPromise
+      getUpdateInfo: async function () {
+        // 版本信息（启动时查一次缓存）+ 本次安装形态对应的更新命令。
+        // 命令按安装形态区分，避免把 link: 安装的用户引导到 npm 命令而丢掉本地代码。
+        const info = await updateInfoPromise
+        return Object.assign({}, info, updateCommandForInstall())
       },
       getBalanceSnapshot: async function (args) {
         const sel = selectionFromArgs(args);

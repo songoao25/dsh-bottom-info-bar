@@ -29,14 +29,18 @@ check('host 使用固定 NPM registry 地址', !!registryUrl
 check('host 从 package.json 动态读取当前版本', host.includes("new URL('../package.json', import.meta.url)") && host.includes('packageVersion()'))
 check('host 版本检查有 5 秒超时', host.includes('UPDATE_CHECK_TIMEOUT_MS = 5000') && host.includes('controller.abort()'))
 check('host 只启动一次版本检查 Promise', host.includes('const updateInfoPromise = checkLatestVersion()'))
-check('host 暴露 getUpdateInfo RPC', host.includes('getUpdateInfo: function ()') && host.includes('return updateInfoPromise'))
+check('host 暴露 getUpdateInfo RPC（复用启动时那次检查，不重复请求 NPM）',
+  host.includes('getUpdateInfo: async function ()') && host.includes('await updateInfoPromise'))
 check('client 只调用一次 getUpdateInfo', (client.match(/rpc\('getUpdateInfo'/g) || []).length === 1)
 check('client 无论是否有更新都保存当前插件版本', client.includes("typeof info.current === 'string') setUpdateInfo(info)"))
 check('余额制服务商/模型 hover 显示当前插件版本', client.includes("t('ui.pluginVersion', { current: updateInfo.current })"))
 check('余额/订阅/账单制 hover 均显示当前插件版本（≥2 处）', (client.match(/t\('ui\.pluginVersion', \{ current: updateInfo\.current \}\)/g) || []).length >= 2)
 check('client 只在有更新时显示新版本提醒文字', client.includes("t('ui.updateAvailable')") && client.includes('updateInfo.available === true'))
 check('更新标签提示语包含动态最新版本号', client.includes("title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest })"))
-check('更新标签使用鲜红色提醒语义且无下划线', client.includes('.bi-update{ color: var(--bi-state-alert); font-weight: 600; }')
+// 可点击（点击即复制更新命令）只用手型光标提示：不加下划线、不改颜色，
+// 保持「告警」而非「链接」的语义。手型光标是刻意加的，下划线仍严禁。
+check('更新标签保持鲜红告警语义、无下划线，可点击只用手型光标提示',
+  client.includes('.bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }')
   && client.includes('--bi-state-alert: #d92d20') && !client.includes('text-decoration: underline'))
 check('更新标签不是链接或按钮', !client.includes('window.open')
   && client.includes("fieldSpan('updateNotice', 'update', React.createElement('span'")

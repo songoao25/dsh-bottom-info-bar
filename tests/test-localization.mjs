@@ -179,7 +179,11 @@ function infoBar(mode, density = 'full', error = null) {
     billing: { data: { currentPeriodSpend: 12, currency: 'USD', budgetPercent: 20, freeRemaining: 30, resetsAt: Date.now() + 60000 }, error },
   }
   if (error) state.sub.windows = []
-  states = [state, { current: '1.9.2', latest: '1.9.3', available: true }, Date.now(), null, 'unavailable', density, false, 0]
+  // ⚠ 本数组按「组件里 React.useState 的调用顺序」逐个对应（见上方 useState 桩）。
+  // 组件新增/调整 useState 时，必须同步在这里插入对应位置的值——否则后面的状态会整体错位，
+  // 渲染出错误的界面（本文件下方「新版本提醒」等断言就是用来兜住这种错位的，别把它们删掉）。
+  // 当前顺序：state, updateInfo, updateCopied, now, sessionModel, ...
+  states = [state, { current: '1.9.2', latest: '1.9.3', available: true }, false, Date.now(), null, 'unavailable', density, false, 0]
   stateIndex = 0
   return expand(dock({ density, onToggleDensity() {}, useProjection: name => name === 'sessionStats' ? stats : usage }))
 }

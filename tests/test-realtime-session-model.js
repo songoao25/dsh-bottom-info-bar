@@ -13,7 +13,12 @@ check('客户端订阅 DSH 的会话级 modelDirectories 服务', client.include
   && client.includes('directories.directoryFor(sessionId)')
   && client.includes('typeof directory.load === \'function\'')
   && client.includes('directory.store.subscribe(publish)'))
-check('客户端不再以 2 秒 getBillingMode 轮询检测模型切换', !client.includes("}, 2000);")
+// 曾经的实现用 setInterval 每 2 秒轮询 getBillingMode 来猜测模型切换：费电、滞后、且与会话脱钩。
+// 现在改为订阅 DSH 的会话级目录（见上一条断言）。
+// 断言只针对「2 秒轮询」这一形态，不要退化成禁止任何 2000 —— 一次性反馈计时器
+// （例如「更新命令已复制」2 秒后复原标签）与轮询毫无关系，属合法用法。
+check('客户端不再以 2 秒轮询 getBillingMode 检测模型切换',
+  !/setInterval\([\s\S]{0,200}?,\s*2000\s*\)/.test(client)
   && !client.includes('模型/服务商切换秒级同步'))
 check('会话切换时立即清除上一个会话的模型状态', client.includes('setSessionModel(null);'))
 check('模型/服务商显示以会话状态优先，慢速 RPC 不阻塞', client.includes('const visiblePricing = activeSessionModel')
