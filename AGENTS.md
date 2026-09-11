@@ -26,11 +26,40 @@
 
 ## 发布机制（2026-09-11 定型，Agent 必读）
 
-本仓库的版本号 **全部由 Release Please 自动管理**，Agent 与人都不要插手：
+本仓库的版本号 **全部由 Release Please 自动管理**，Agent 与人都不要插手。
 
-1. PR 合并进 main 后，`.github/workflows/release-please.yml` 会自动算出下一个版本号、写好 `CHANGELOG.md`，并开一个「发布 PR」。
-2. 发布 PR 带 `autorelease: pending` 标签、分支名为 `release-please--*`，被 `auto-merge-own.yml` **排除**，不会自动合并 —— **这是唯一的发布闸门**。
-3. 合并该发布 PR 后：自动打 tag → `publish-npm.yml` 自动发布到 npm。
+发版是**一条两段式流水线**（不是两套并行机制 —— 两段做的事完全不重叠）：
+
+```
+写 fix:/feat: 提交 → PR → CI → 自动合并进 main
+                                    │
+        ┌───────────────────────────┘
+        ▼
+  【第 1 段】release-please.yml（合并到 main 时触发）
+      算版本号 → 写 CHANGELOG → 开「发布 PR」
+                                    │
+        ┌───────────────────────────┘
+        ▼
+  【人工闸门】auto-merge-own.yml 把发布 PR 排除在自动合并之外
+      → 由人（或提示 Agent）确认后手动合并 ← 全链唯一的人工环节
+                                    │
+        ┌───────────────────────────┘
+        ▼
+  【第 2 段】release-please 打标签 v1.2.3 → publish-npm.yml（标签触发）
+      校验「标签版本 == plugin/package.json 版本」→ npm publish
+```
+
+**两段之间靠一个隐式契约衔接，改任何一环都会断链，而且可能静默失败：**
+
+| 契约 | 由谁决定 | 改错的后果 |
+|---|---|---|
+| 标签必须带 `v` 前缀 | `release-please-config.json` 的 `include-v-in-tag: true` | 标签变成 `1.2.3`，`publish-npm` 的 `v*.*.*` **永远匹配不上** → GitHub 有发布页但 npm 永远没有新版，**且无任何报错** |
+| 标签不含组件名前缀 | `include-component-in-tag: false` | 标签变成 `dsh-bottom-info-bar-v1.2.3`，同样静默失配 |
+| 包路径 `plugin` | `release-please-config.json` 与 `.release-please-manifest.json` 的键 | 版本号写不回 `package.json` |
+| `package-name` | 必须等于 `plugin/package.json` 的 `name` | Release Please 拒绝发布 |
+| `changelog-path` | 指向仓库根 `CHANGELOG.md` | 更新日志写错文件 |
+
+**以上契约全部由 `tests/test-release-chain.mjs` 自动校验**（14 条断言）。改动发布相关的任何文件后跑一次全量测试即可确认链条完好。
 
 **严禁手工修改** `plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 顶部版本号。手工 bump 会让 Release Please 找不到「上次发布」的基准，从而把全部历史当成未发布内容、算出错误的大版本 —— 2026-09-11 的 v2.0.0 误发事故就是这么来的（详见 `MEMORY.md`）。
 

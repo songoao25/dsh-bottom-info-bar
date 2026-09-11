@@ -120,6 +120,27 @@
 
 **发布闸门加固为三层**（`auto-merge-own.yml`）：分支名 `release-please--*`（最稳，PR 创建时即有）→ 标签 `autorelease`（release-please 是「先开 PR 后加标签」，故不能只靠它）→ 标题 `chore(main): release `。三层都是 `&&` 否定，偏向「多拦」；漏放代价是发布 PR 被静默合并，多拦代价只是某个普通 PR 需手动合——**方向必须偏安全**。
 
+### ⚠ 自我纠正：「两套发布机制」的说法不准确（2026-09-11 用户追问）
+
+- 我先前对用户说「仓库里仍并存两套发布自动化，只改一个链条就会断」，**这个框架有误导性**，让用户以为它们是重复、冲突的两套东西。**事实并非如此。**
+- **准确的关系：发版是一条两段式流水线，两段做的事完全不重叠。**
+  - 第 1 段 `release-please.yml`（合并到 main 时触发）：算版本号 → 写 CHANGELOG → 开「发布 PR」→ 合并后**打标签**。
+  - 第 2 段 `publish-npm.yml`（标签触发）：校验「标签版本 == package.json 版本」→ **发布到 npm**。
+- **真正打架的从来不是这两个文件**，而是「手工改版本号」vs「Release Please 改版本号」—— 两个主体争夺同一个决定权。该冲突已通过「版本号收归 Release Please 独占」解决。把这条讲清楚很重要，否则会误导后续 Agent 去做一次不必要的「合并两套机制」重构。
+- **不应也不需要合并成一份**：① 两段之间正好夹着唯一的人工确认（合并发布 PR），合并等于拆掉闸门；② 合并就得自行重写 Release Please 的版本计算逻辑，代码更多、更易坏；③ 标签是两段之间干净的标准接口。
+- **但用户担心的风险真实存在，只是位置不同**：真正的脆弱点是两段之间的**隐式契约**（尤其是「标签必须带 v 前缀」与「publish-npm 的 `v*.*.*` 触发器」必须一致）。改坏它会**静默失效** —— GitHub 上有标签有发布页，npm 上永远没有新版本，**全程零报错**。这是整条链上最危险的失效模式。
+
+### 发布链条契约测试（2026-09-11）
+
+- 新增 `tests/test-release-chain.mjs`，把上述隐式契约变成 14 条 CI 断言，覆盖：
+  1. **标签格式两侧一致**（`include-v-in-tag: true` ↔ `v*.*.*` ↔ `${GITHUB_REF_NAME#v}` 剥离）—— 最关键，失效时静默；
+  2. 路径与包名对齐（包路径 `plugin` 与 manifest 键一致、`package-name` == package.json 的 name、`changelog-path` 指向根 CHANGELOG、标签不含组件前缀）；
+  3. 两段触发器齐备（release-please 监听 main、publish-npm 保留 `workflow_dispatch` 手动兜底、NPM_TOKEN 接线）；
+  4. **人工闸门仍在**（分支名 + 标签两条判别都在）；
+  5. **`last-release-sha` 钉子仍在**。
+- **反向验证过**：把 `include-v-in-tag` 改成 `false` → 契约 1a FAIL；删掉闸门的分支名判别 → 契约 4a FAIL；恢复后全 PASS。
+- 这一条补上了我先前说「架构固有复杂度」时**其实可以消除的那部分**：复杂度不是靠合并消除，而是靠**把暗契约写成明契约 + 自动校验**来消除。
+
 **无法修 / 需要用户执行的（如实记录，不假装已解决）：**
 - `ee9c4bf chore(main): release 2.0.0 (#69)` 仍在 main 历史里。main 分支保护 `allow_force_pushes: false` + `enforce_admins: true`，**改写历史在规则层面就不可能**。评估为无害：类型是 chore（release-please 不读它算版本），且本节已完整记录因果。
 - 报告者环境是 Windows + cordis 4.0.1，本仓库的复现与验证都在 macOS + cordis 4.0.2 完成——跨平台差异未覆盖。
