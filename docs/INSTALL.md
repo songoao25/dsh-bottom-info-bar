@@ -14,7 +14,9 @@
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-### 方式二：一键脚本
+**推荐它的实际原因**：只有这种安装方式，内置的版本更新提醒才能给你一条可直接使用的更新命令。方式二、方式三都会产生 `link:` 安装，更新走 `git pull`（见下方「更新版本」）。
+
+### 方式二：一键脚本（产生 `link:` 安装）
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
@@ -24,7 +26,7 @@ cd dsh-bottom-info-bar
 ./install.sh --profile <profile名>
 ```
 
-### 方式三：从本地代码安装
+### 方式三：从本地代码安装（产生 `link:` 安装）
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
@@ -66,14 +68,18 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 ## 更新版本
 
+**最省事的方式：点信息栏上的红色「新版本提醒」标签**，更新命令会复制到剪贴板，粘到终端执行即可（见下一节）。命令会按你的安装方式自动给出，不用自己判断。
+
+手动更新时，按当初的安装方式二选一：
+
 如果最初使用 NPM 安装：
 
 ```bash
-dsh plugin --profile web update dsh-bottom-info-bar --latest
+dsh plugin --profile web add dsh-bottom-info-bar@latest
 # 重启 dsh web
 ```
 
-如果最初使用本地代码 / symlink 安装：
+如果最初使用本地代码 / symlink 安装（方式二、方式三）：
 
 ```bash
 cd dsh-bottom-info-bar
@@ -82,11 +88,19 @@ cd plugin && node scripts/build.mjs
 # 重启 dsh web
 ```
 
-本地 symlink 安装不会被 NPM 更新命令替换；想迁移到 NPM，先移除旧安装，再执行 NPM 安装命令。
+本地 symlink 安装**不会**被 NPM 更新命令替换；想迁移到 NPM，先移除旧安装，再执行 NPM 安装命令。
+
+> 无论哪种方式，**更新后都必须重启 `dsh web`** 才会生效。
 
 ## 看到红色版本提醒怎么办
 
-如果底部信息栏出现类似 `↑ v1.3.2` 的红色文字，可以把下面这句话直接发给拥有本机终端操作权限的 Agent：
+信息栏出现红色的「新版本提醒」标签时，**直接点击该标签**即可把更新命令复制到剪贴板；粘到终端执行，然后重启 `dsh web`。
+
+- 标签悬浮提示里同时给出了另一条路径：把更新交给有本机终端权限的 Agent 处理。
+- 复制出来的命令与你的安装方式匹配（npm 装 → `dsh plugin … add …@latest`；`link:` 装 → `git -C <目录> pull --ff-only`），所以**不存在"用错命令把本地代码顶掉"的风险**。
+- **插件不会自动更新自己**：它只负责提示，并准备好命令；机器上的一切改动都由你运行命令后才发生。
+
+如果想让 Agent 代劳，可以把下面这句话发给它：
 
 > 我的 DSH 底部信息栏提示有新版本，请帮我安全更新到新版。请先判断当前是 NPM 安装还是本地 Git 安装；不要删除 `~/.dsh/dsh-bottom-info-bar/usage-records.json`，不要覆盖未提交代码，更新后提醒我重启 `dsh web`。
 
