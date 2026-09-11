@@ -207,6 +207,20 @@ check('设置页卡片宽度固定，列表展开不会触发横向跳动', clie
   && clientSrc.includes('.bib-set-count { display: block; width: 104px;')
   && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: min(54vh, 520px); overflow-y: auto;')
   && !clientSrc.includes('bib-set-toolbar-actions'), true);
+check('设置页为宿主滚动层预留稳定槽位，展开列表不再触发整页变窄', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return clientSrc.includes('function bibSetStabilizeHostScroll(root)')
+    && clientSrc.includes("window.CSS.supports('scrollbar-gutter: stable')")
+    && clientSrc.includes("style.setProperty('scrollbar-gutter', 'stable')")
+    && clientSrc.includes("style.setProperty('overflow-y', 'scroll')")
+    && clientSrc.includes('let scrollParent = root.parentElement')
+    && clientSrc.includes("overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'")
+    && body.includes('const settingsRootRef = React.useRef(null);')
+    && body.includes('const useLayoutEffect = React.useLayoutEffect || React.useEffect;')
+    && body.includes('useLayoutEffect(function () {')
+    && body.includes('return bibSetStabilizeHostScroll(settingsRootRef.current);')
+    && body.includes('ref: settingsRootRef');
+})(), true);
 check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box;')
   && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
   && clientSrc.includes('.bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }')

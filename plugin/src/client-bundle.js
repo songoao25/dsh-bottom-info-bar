@@ -484,6 +484,54 @@ function bibSetOperationMessage(err) {
   return String((err && err.message) || err || t('ui.pleaseTryAgainLater'));
 }
 
+// DSH 的设置页把每个 settings.section 放进一个 `overflow-y: auto` 的面板。
+// 字段清单展开后，滚动条会第一次出现；如果宿主没有预留 gutter，整页可用宽度
+// 会少掉一条滚动条，搜索框和卡片就会横向跳一下。这里不依赖宿主的 hash class，
+// 从插件根节点向上找到最近的滚动祖先，临时启用稳定 gutter；插件卸载时恢复原值。
+function bibSetStabilizeHostScroll(root) {
+  if (!root || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return function () {};
+  }
+  let scrollParent = root.parentElement;
+  while (scrollParent) {
+    let computed = null;
+    try { computed = window.getComputedStyle(scrollParent); } catch (err) { computed = null; }
+    const overflowY = computed && computed.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') break;
+    scrollParent = scrollParent.parentElement;
+  }
+  if (!scrollParent || !scrollParent.style) return function () {};
+
+  const style = scrollParent.style;
+  const previousGutter = style.getPropertyValue('scrollbar-gutter');
+  const previousGutterPriority = style.getPropertyPriority('scrollbar-gutter');
+  const previousOverflowY = style.getPropertyValue('overflow-y');
+  const previousOverflowPriority = style.getPropertyPriority('overflow-y');
+  let supportsStableGutter = false;
+  try {
+    supportsStableGutter = !!(window.CSS && typeof window.CSS.supports === 'function'
+      && window.CSS.supports('scrollbar-gutter: stable'));
+  } catch (err) { supportsStableGutter = false; }
+
+  if (supportsStableGutter) {
+    style.setProperty('scrollbar-gutter', 'stable');
+  } else {
+    // 旧 WebView 没有 scrollbar-gutter 时，让滚动轨道始终存在；这只作用于
+    // DSH 的设置面板，避免退化成“展开才变窄”。
+    style.setProperty('overflow-y', 'scroll');
+  }
+
+  return function () {
+    if (supportsStableGutter) {
+      if (previousGutter) style.setProperty('scrollbar-gutter', previousGutter, previousGutterPriority);
+      else style.removeProperty('scrollbar-gutter');
+    } else {
+      if (previousOverflowY) style.setProperty('overflow-y', previousOverflowY, previousOverflowPriority);
+      else style.removeProperty('overflow-y');
+    }
+  };
+}
+
 // ---------- 设置页样式（融入 DSH 设置面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
 function bibSetInstallStyles() {
   const id = 'dsh-bottom-info-bar-settings';
@@ -921,6 +969,16 @@ function InfoBarSettingsSection() {
   const [customTextDraft, setCustomTextDraft] = React.useState(null);
   const opSeqRef = React.useRef(0); // 版本号守卫：慢响应绝不覆盖更新的操作
   const savingCountRef = React.useRef(0);
+  const settingsRootRef = React.useRef(null);
+  // 宿主真实 React 使用布局 effect，极简静态/服务端渲染环境若只提供 useEffect
+  // 仍可安全渲染设置页。
+  const useLayoutEffect = React.useLayoutEffect || React.useEffect;
+
+  // 外层宿主的滚动条是否出现与字段列表高度有关；稳定 gutter 后，展开/收起
+  // 只改变纵向内容，不改变搜索栏、卡片和整个设置页的可用宽度。
+  useLayoutEffect(function () {
+    return bibSetStabilizeHostScroll(settingsRootRef.current);
+  }, [status]);
 
   // 设置页跟随 DSH 的全局语言；这里不提供重复的插件语言开关。
   const [, setLocaleRevision] = React.useState(0);
@@ -972,12 +1030,12 @@ function InfoBarSettingsSection() {
   // 渲染期异常显示在页面内，避免设置页变成白屏。
   try {
     if (status === 'loading') {
-      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+      return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
         React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings')));
     }
     if (status === 'error') {
-      return React.createElement('div', { className: 'bib-set-root bib-settings' },
+      return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         bibSetPageTitle(),
         React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater'))));
     }
@@ -1229,7 +1287,7 @@ function InfoBarSettingsSection() {
         searchActive && fieldsMatchCount === 0
           ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
           : groupsChildren))));
-  return React.createElement('div', { className: 'bib-set-root bib-settings' },
+  return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
@@ -1271,7 +1329,7 @@ function InfoBarSettingsSection() {
         onClick: function () { runReset('colors'); },
       }, t('ui.resetColors'))));
   } catch (err) {
-    return React.createElement('div', { className: 'bib-set-root bib-settings' },
+    return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       bibSetPageTitle(),
       React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) })));
   }
