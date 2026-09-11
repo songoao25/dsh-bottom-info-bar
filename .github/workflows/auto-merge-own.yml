@@ -19,12 +19,16 @@ permissions:
 
 jobs:
   enable-auto-merge:
-    # 只有 owner 的 PR 才進入；draft PR 不自動合；發布 PR 留給人工/AI 確認後再合併
+    # 只有 owner 的 PR 才進入；draft PR 不自動合；發布 PR 留給人工/AI 確認後再合併。
+    # 三道判別條件是有意的縱深防禦（任一命中即攔下）：分支名最穩、標籤次之、標題最後。
+    # 這三道都偏向「多攔」，代價只是某個普通 PR 沒自動合併（看得見、可手動合），
+    # 而漏放的代價是發布 PR 被靜默合併（v2.0.0 事故）。方向必須偏安全。
     if: >-
       github.event.pull_request.user.login == github.repository_owner
       && github.event.pull_request.draft == false
       && !startsWith(github.event.pull_request.head.ref, 'release-please--')
       && !contains(join(github.event.pull_request.labels.*.name, ','), 'autorelease')
+      && !startsWith(github.event.pull_request.title, 'chore(main): release ')
     runs-on: ubuntu-latest
     steps:
       - name: Report automation token mode
