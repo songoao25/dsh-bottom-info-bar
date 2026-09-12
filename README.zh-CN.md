@@ -1,5 +1,7 @@
 # 信息栏插件
 
+<img src="assets/wechat-group.jpg" width="118" align="right" alt="微信群 DeepThinking —— 扫码加入">
+
 [**English**](README.md) | **中文**
 
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
@@ -12,6 +14,9 @@ DeepSeek Harness 输入框下方那行统计栏的**直接替代品**。
 原生统计栏有的（轮次与步数、LLM 耗时、工具调用、缓存命中率、输入输出 token）它**全部保留**，另外补上干活时真正想随时看到的东西：**真实余额**（或订阅额度、或本月真实账单）、**服务商与具体模型**、**高峰/空闲价格**与切换倒计时，以及**本对话已经花了多少**。
 
 装一次、重启一次，之后每次启动自动生效。计费模式自动识别，每一个数字**要么来自服务商接口，要么被明确标注为估算**。
+
+> 💬 **想更快提建议，或者想聊聊 AI？** 扫码加入微信群 **DeepThinking**。
+> <sub>二维码由微信生成、有效期约 7 天；若已过期，欢迎开个 Issue 说一声，我们会更新。</sub>
 
 ![信息栏预览：ChatGPT 订阅、DeepSeek 余额、OpenCode Go 订阅，各含完整与简洁两种视图](assets/bottom-info-bar-preview.jpeg)
 
