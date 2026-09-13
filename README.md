@@ -100,7 +100,7 @@ Shows **quota remaining per window** (5-hour / weekly / monthly, where remaining
 
 - **ChatGPT / Codex** — decoded **locally** from `~/.codex/auth.json`, showing the real plan tier and expiry date (for example `ChatGPT · Plus | Expires 2026-09-16`). Zero network calls: the values come straight from OpenAI's own login token, never estimated. Not signed in → **Refresh failed** with a reauthorization hint. Binding, token refresh and the `openai-codex` model route belong to the companion plugin [dsh-chatgpt-subscription](https://github.com/songoao25) — this bar only reads the token, and never writes it back.
 - **OpenCode Go** — reads quota from `opencode.ai/zen/go/v1/usage` using `OPENCODE_GO_API_KEY` (Settings → Models) or the opencode CLI login at `~/.local/share/opencode/auth.json`. Missing key → a "not configured" hint, not an error.
-- **Zhipu** — GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`): plan tier plus the 5-hour window.
+- **Zhipu** — GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`): plan tier plus the 5-hour and weekly windows (including the credit-based plans introduced on 2026-07-30).
 - **Xiaomi MiMo Token Plan** — monthly Credits quota via `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` per region (fallback `XIAOMI_API_KEY`): plan name plus the monthly window.
 
 In compact mode the bar prefers the shortest window (5-hour > weekly > monthly), because it refreshes fastest; if the 5-hour window is unavailable it falls back to weekly, then monthly.

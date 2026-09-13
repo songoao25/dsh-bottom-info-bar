@@ -46,8 +46,8 @@
   - 凭据：优先 `ZAI_CODING_CN_API_KEY`，回退 `ZAI_API_KEY`（按当前 provider 决定 host）
   - host：`zai-coding-cn` → `https://open.bigmodel.cn`；`zai` → `https://api.z.ai`（**两者认证方式一致：Authorization 头均裸放 API Key、无 Bearer 前缀**——依社区源码 tokn-provider-zai / ai-usagebar 交叉验证，加 Bearer 会返回 401）
   - 路径：`/api/monitor/usage/quota/limit`（GET，无参数）
-  - 解析：`data.limits[]` 中 `type=TOKENS_LIMIT` 的窗口 → 统一窗口数组 `{key, label, usedPercent, resetsAt}`；`unit` 已知码（3=5小时）映射窗口键；未知 unit/类型跳过（沿用"未知跳过"哲学）；`data.level`/`planName` → 套餐名（lite/standard/pro/max → 智谱 Lite/Standard/Pro/Max）
-- 订阅服务显示名：客户端 `subscriptionServiceName` += `zai`/`zai-coding-cn` → `智谱`（国际 `Z.ai`）。
+  - 解析：`data.limits[]` → 统一窗口数组 `{key, label, usedPercent, resetsAt}`。接受 `TOKENS_LIMIT` 与 `CREDIT_LIMIT` 两种类型（智谱 2026-07-30 起 Coding Plan 改积分制，条目类型变为 `CREDIT_LIMIT`；迁移期两者可能并存，同窗口键去重取首个）；窗口键由 `unit`/`number` 的**时长**判定——`3:5`（3=小时 ×5）→ `five_hour`、`6:1`（6=周 ×1）→ `seven_day`，时长不吻合的（如日窗口、10 小时窗口）一律跳过、绝不误标；`TIME_LIMIT`（MCP 工具调用月度额度，unit/number 与时间无关）→ `monthly`。已用百分比优先由原始计数推算（`上限 - remaining`，回退 `currentValue`；上限取 `usage`，回退老形态的 `total`），计数不可用时才回退接口的 `percentage`——上游 `percentage` 为整数且实测会向下取整（71/2000 报 3），计数推算更准也更抗 schema 漂移。未知类型/畸形条目跳过不报错（沿用"未知跳过"哲学）；`data.level`/`planName` → 套餐名（lite/standard/pro/max → 智谱 Lite/Standard/Pro/Max）
+- 订阅服务显示名：客户端 `subscriptionServiceName` += `zai`/`zai-coding-cn` → 智谱（i18n `ui.zhipu`，`zai-coding-cn` 与 `zai` **目前显示同名**，用户靠套餐名区分）。
 - 预警沿用"剩余 ≤20% 红字"客户端机制。
 
 ### 5. D5：客户端展示（FR-1/2/3/7）
@@ -70,7 +70,7 @@
 ## API 契约（新适配器）
 | 适配器 | 凭据 | 请求 | 响应要点 | 窗口/余额 |
 |---|---|---|---|---|
-| zai 订阅 | ZAI_CODING_CN_API_KEY / ZAI_API_KEY | GET {host}/api/monitor/usage/quota/limit | limits[].percentage/nextResetTime；level；**双 host 均裸 API Key（无 Bearer）** | 窗口制（5h 已知 unit=3） |
+| zai 订阅 | ZAI_CODING_CN_API_KEY / ZAI_API_KEY | GET {host}/api/monitor/usage/quota/limit | limits[].type（TOKENS_LIMIT / CREDIT_LIMIT / TIME_LIMIT）、usage/currentValue/remaining/percentage/nextResetTime；level；**双 host 均裸 API Key（无 Bearer）** | 窗口制（unit:number 时长映射：3:5→5h、6:1→周；TIME_LIMIT→月） |
 | moonshotai | MOONSHOT_API_KEY(/KIMI_API_KEY) | GET api.moonshot.cn/v1/users/me/balance | data.balance_infos[].total_balance | 余额 ¥ |
 | openrouter | OPENROUTER_API_KEY | GET openrouter.ai/api/v1/credits | data.credits | 余额 $ |
 | stepfun | STEPFUN_API_KEY | GET api.stepfun.com/v1/accounts | balance（CNY）/total_cash_balance/total_voucher_balance/type；**无 token_plan** | 余额 |

@@ -2137,14 +2137,16 @@ module.exports = {
           // 简洁模式下选择"时间最短且有重置时刻"的窗口（刷新最快，用户最需关注）：
           // 优先级：5小时 > 周 > 月（按窗口时长排序，而非已用百分比）
           const windowPriority = { five_hour: 1, seven_day: 2, monthly: 3 };
+          const byPriority = function (a, b) {
+            const pa = Object.hasOwn(windowPriority, a.key) ? windowPriority[a.key] : 99;
+            const pb = Object.hasOwn(windowPriority, b.key) ? windowPriority[b.key] : 99;
+            return pa - pb;
+          };
           const windowsWithReset = windows.filter(function (w) { return w.resetsAt; });
-          const displayWindow = windowsWithReset.length > 0
-              ? windowsWithReset.slice().sort(function (a, b) {
-                const pa = Object.hasOwn(windowPriority, a.key) ? windowPriority[a.key] : 99;
-                const pb = Object.hasOwn(windowPriority, b.key) ? windowPriority[b.key] : 99;
-                return pa - pb;
-              })[0]
-            : null;
+          // 有重置时刻的窗口优先（倒计时才有意义）；全都没有时退回按时长取最短窗口——
+          // 否则 resetsAt 缺失会让简洁模式整组额度静默消失（接口不返回 nextResetTime 时）
+          const displayWindow = (windowsWithReset.length > 0 ? windowsWithReset : windows)
+            .slice().sort(byPriority)[0] || null;
 
           // 完整模式显示全部窗口；简洁模式只显示选中的那个窗口
           const visible = full ? windows : (displayWindow ? [displayWindow] : []);

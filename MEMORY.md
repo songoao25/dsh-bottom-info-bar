@@ -39,6 +39,25 @@
 - 报告者「长远改用 `subagents.listDescendants(rootSessionId, signal)`」建议：本次**不换**（`sessionController.list()` 在 web 宿主可用，换掉等于多引一个可选服务依赖、修不了本次故障）。但其判断有真价值：现在每次要拉**全量会话**再本地 BFS 算子树，冷启动偶发 1.5s 超时（本机 64 次启动出现 2 次，自愈、不致命）；`listDescendants` 按根会话只取子树更省。**列为独立后续优化**，不与本次修复混做。
 - 已回帖 #67 致谢并说明实际修法（评论 5636848036 / 5636886040），并在 1.10.19 发布后关闭 issue。
 
+---
+
+## 2026-09-13
+
+### Issue #85 修复：智谱 Coding Plan 积分制（CREDIT_LIMIT）配额完全不显示
+
+- 来源：Vergil-long (@Vergil-long) 提 issue #85，附 AI 生成的排查文档（GitHub attachment），自带两行补丁与实测结果。用户要求：①独立审计他的方案是否完善、漏了什么 ②给最终优化方案并落地 ③回复要用没 AI 味儿的语言真诚感谢，并说明「智谱 coding plan 我们没有实际测试过（未订阅、也没找到用户反馈）」，邀请他扫 README 内测群。
+- 根因（与报告者判断一致）：智谱 **2026-07-30** 起 GLM Coding Plan 改积分制（[官方公告](https://docs.z.ai/devpack/notice/usage-revision)），quota 接口条目类型由 `TOKENS_LIMIT` 变 `CREDIT_LIMIT`；插件只认 `TOKENS_LIMIT` + `unit===3` → `windows:[]` → 底条只剩套餐名。**更早的既有缺陷**：`docs/research/A2-zhipu-zai.md:61-63` 调研阶段就写明 `unit=6=周窗口`，但代码从来只映射 `unit=3`，周窗口在旧 schema 下也一直没显示；且「未知类型静默跳过」被 QA 报告当成通过项固化，等于把 schema 漂移变成静默失效。
+- 交叉验证（不靠单一来源）：官方文档额度表（Lite 2000/10000、Pro/ Max 同构）+ CodexBar #2724/#2751 的 `zai.js` + tokn `quota.rs` + opencodex #2028，四方一致：`(unit,number)` 中 3=小时、6=周，且 **unit 码与 type 正交**（CREDIT_LIMIT 沿用同一语义）。`TIME_LIMIT` 是另一类（MCP 月度、字段语义不同：usage=上限、currentValue=已用）。
+- 最终实现（比报告者补丁多做了 5 件事，均来自独立审计发现的真实缺口）：
+  1. 类型 + **时长双闸门**：只映射 `(3,5)→five_hour`、`(6,1)→seven_day`，其它时长一律跳过（防止把日窗口/10 小时窗口错标成 5 小时）；`TIME_LIMIT→monthly`（原来直接丢弃）。
+  2. **按窗口键去重**：迁移期 `TOKENS_LIMIT`/`CREDIT_LIMIT` 并存时同键只取首个（否则客户端渲染成 `5h·5h·周·周`）。
+  3. **百分比优先由原始计数推算**（`上限-remaining`，回退 `currentValue`；上限 `usage`→`total`），计数不可用才回退 `percentage`——上游整数 `percentage` 在低用量时会取整到 0，底条会显示 100%（CodexBar 同策略）。注意：issue 样本无法证明上游是 floor 还是 round（9.4→9、1.88→1 两种规则都成立），代码注释只写「取整」不写「向下取整」。
+  4. **空窗口闸门**（审计的「高风险」项）：`fetchZaiUsage` 在解析成功但 `windows.length===0` 时按 parse 错误返回，让 `mergeSubscriptionResult` 保留上一份好快照；否则空数组会被当成功覆盖旧数据 → 界面无窗口也无报错 = #85 症状复发。非订阅账号走 `success:false` 分支，不受影响。
+  5. **`normalizeResetAt` 支持纯数字字符串**：`Date.parse('1789284984350')` 是 NaN → 倒计时 null → 客户端**简洁模式整组窗口消失**（`displayWindow` 原本硬依赖 `resetsAt`）。同时给客户端加兜底：无 reset 的窗口也按时长优先级选窗，不再整组静默消失。
+- 顺带修掉的两处文档假信息：`TECH-DESIGN.md` 原写「国际显示 Z.ai」实际两端都显示「智谱」；`A2` 的 `nextResetTime` 段落重复。
+- 测试（此前 zai 解析**零覆盖**，这是能溜进发布版的根因）：新增 `tests/test-zai-quota.js`（63 条：报障原文 payload、老套餐不回归、时长闸门、百分比推算/兜底、TIME_LIMIT、去重、套餐名、重置时刻归一化、异常结构、i18n）；`smoke-static-host.mjs` 新增**首个真实解析链路冒烟**（桩 fetch → `fetchZaiUsage` → 快照：CREDIT_LIMIT 出 2 窗口 + 上游漂移时保留旧快照）。全量 29 套件全绿。
+- 报告者方案评价：方向对、两行即可解决他遇到的形态，但只覆盖已观测形态；漏掉的正是上面 1–5。回复时要点名肯定他的「unit=6 → seven_day」判定（与 A2 调研及四方实现一致）与附带真实 payload 的价值。
+
 ### 处理外部 issue / PR 的规矩（用户明确要求）
 
 - **凡是别人主动提出来的问题或 PR，合并 / 回复时必须用没有 AI 味儿的语言，真诚地感谢对方**：具体指出对方哪一点帮上了忙（如 #67 的「空 / 非空 sessionId 二分」直接指到故障分支），而不是套话式致谢。

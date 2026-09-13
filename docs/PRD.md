@@ -28,7 +28,8 @@ v1.6 目标：修好分账与余额跟随两个地基 bug + 四家国产/常用�
 - 接口：GET {host}/api/monitor/usage/quota/limit；国内 host=open.bigmodel.cn（Authorization 头直接放 API Key，无 Bearer），国际 host=api.z.ai（Bearer 前缀）。
 - 验收标准：
   - Given 用户配置 ZAI_API_KEY（或 ZAI_CODING_CN_API_KEY）；When 当前服务商为 zai（或 zai-coding-cn）；Then 信息栏显示套餐等级（lite/standard/pro/max）与已用/剩余百分比，且无需任何插件设置
-  - Given 接口返回 TOKENS_LIMIT（unit=3 等窗口）与 TIME_LIMIT；Then 正确映射为窗口显示，未知窗口类型跳过不报错
+  - Given 接口返回 TOKENS_LIMIT 或 CREDIT_LIMIT（积分制，2026-07-30 起）；Then 5 小时窗口（unit:number=3:5）与每周窗口（6:1）均正确映射显示；TIME_LIMIT（MCP 月度额度）→ 月窗口；时长未知的窗口与未知类型跳过不报错
+  - Given 上游 percentage 与原始计数（usage/remaining/currentValue）不一致（实测存在向下取整）；Then 以原始计数推算为准，计数缺失时才回退 percentage
   - Given 接口 401/超时/格式异常；Then 显示"刷新失败/降级"，保留上次快照，不崩溃
   - Given 无凭据；Then 显示"未配置密钥"引导
 
