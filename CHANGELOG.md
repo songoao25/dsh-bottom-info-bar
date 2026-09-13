@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.11.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.0...v1.11.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* parse Zhipu credit-based coding plan quota ([#86](https://github.com/songoao25/dsh-bottom-info-bar/issues/86)) ([7809f6a](https://github.com/songoao25/dsh-bottom-info-bar/commit/7809f6a3e7d2fb7260bcbfb5e4f50f8fc7fff956))
+
 ## [1.11.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.10.19...v1.11.0) (2026-09-11)
 
 
