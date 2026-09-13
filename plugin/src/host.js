@@ -247,13 +247,21 @@ function openCodeGoWindowKey(apiKey) {
   return null
 }
 
-// 归一化重置时刻：数值（秒或毫秒）→ 毫秒；ISO 字符串 → 毫秒；无法解析 → null
+// 归一化重置时刻：数值（秒或毫秒）→ 毫秒；纯数字字符串同样按数值处理；ISO 字符串 → 毫秒；无法解析 → null
+// 纯数字字符串必须走数值分支：Date.parse('1789284984350') 是 NaN，会让倒计时变 null，
+// 而客户端简洁模式以 resetsAt 为选窗前提（无重置时刻 → 整组窗口消失），故不能只认 number。
 function normalizeResetAt(value) {
-  if (typeof value === 'number' && isFinite(value) && value >= 0) return value < 1e12 ? value * 1000 : value
   if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.length > 0 && /^\d+$/.test(trimmed)) {
+      const numeric = Number(trimmed)
+      if (isFinite(numeric) && numeric >= 0) return numeric < 1e12 ? numeric * 1000 : numeric
+      return null
+    }
     const t = Date.parse(value)
     return isNaN(t) || t < 0 ? null : t
   }
+  if (typeof value === 'number' && isFinite(value) && value >= 0) return value < 1e12 ? value * 1000 : value
   return null
 }
 
@@ -454,6 +462,95 @@ function parsePercent(value) {
     ? value
     : (typeof value === 'string' && value.trim().length > 0 ? Number(value.trim()) : NaN)
   return Number.isFinite(parsed) && parsed >= 0 ? Math.min(100, parsed) : null
+}
+
+// ---------- FR-3：智谱 Z.ai / GLM 套餐额度解析（parseZaiQuota） ----------
+// 智谱 Coding Plan 2026-07-30 起改为积分制（credits）：同一批窗口的条目类型由
+// TOKENS_LIMIT 变为 CREDIT_LIMIT，但 unit/number 语义不变（官方文档与 CodexBar、
+// tokn、opencodex 三个社区实现一致）：
+//   unit=3 表示「小时」，number=5 → 5 小时滚动窗口（配额消耗 5 小时后动态重置）
+//   unit=6 表示「周」，  number=1 → 每周窗口（订阅激活起每 7 天重置）
+// TIME_LIMIT 是另一类条目（MCP 工具调用月度额度），unit/number 语义与时间无关。
+// 两种类型都必须接受——积分制账号只返回 CREDIT_LIMIT，老账号只返回 TOKENS_LIMIT，
+// 迁移期还可能两种并存。
+const ZAI_LIMIT_TYPES = ['TOKENS_LIMIT', 'CREDIT_LIMIT']
+// (unit, number) → 窗口键：只在时长与已知窗口完全吻合时才映射，避免把未知时长
+// （如未来新增的日窗口、10 小时窗口）错标成 5 小时窗口
+const ZAI_LIMIT_WINDOWS = {
+  '3:5': 'five_hour', // 3=小时 × 5 → 5 小时滚动窗口
+  '6:1': 'seven_day', // 6=周 × 1 → 每周窗口
+}
+
+// 取 limit 里的数值字段（容忍数字型字符串，如 "5"；其余返回 null）
+function zaiLimitNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+// 已用百分比：优先由原始计数推算，计数不可用时才回退接口给出的 percentage。
+// 依据：上游 percentage 是整数（精度有限，低用量时可能取整到 0 → 底条显示 100%），
+// 而 remaining/currentValue 与配额上限（usage，老形态为 total）是自洽的原始计数，
+// 推算值更准也更抗 schema 漂移（CodexBar 同此策略）。
+// 返回 0–100 的浮点数，无法计算时返回 null（调用方跳过该窗口）。
+function zaiUsedPercent(limit) {
+  // 配额上限：积分制用 usage，老 TOKENS_LIMIT 形态用 total
+  const usage = zaiLimitNumber(limit.usage)
+  const total = usage == null ? zaiLimitNumber(limit.total) : usage
+  if (total == null || total <= 0) return parsePercent(limit.percentage)
+  // 已用量：优先「上限 - 剩余」，回退 currentValue
+  const remaining = zaiLimitNumber(limit.remaining)
+  const current = zaiLimitNumber(limit.currentValue)
+  const used = remaining != null ? total - remaining : current
+  if (used == null) return parsePercent(limit.percentage)
+  return Math.max(0, Math.min(100, (used / total) * 100))
+}
+
+// 解析智谱 quota 响应（GET /api/monitor/usage/quota/limit）→ 统一窗口数组
+// data.limits[] 中 TOKENS_LIMIT / CREDIT_LIMIT 的已知窗口 → {key,label,usedPercent,resetsAt}；
+// TIME_LIMIT（MCP 月度额度）→ monthly；未知类型/未知时长一律跳过，不报错（沿用「未知跳过」哲学）。
+// level/planName → 套餐名（lite/standard/pro/max → 智谱 + 首字母大写）
+function parseZaiQuota(body, windowLabels) {
+  if (!body || typeof body !== 'object') return null
+  const data = body.data
+  if (!data || typeof data !== 'object') return null
+  const wl = windowLabels || WINDOW_LABELS
+  const limits = Array.isArray(data.limits) ? data.limits : []
+  const windows = []
+  const seen = {} // 窗口键去重：迁移期 TOKENS_LIMIT 与 CREDIT_LIMIT 可能并存，同键只取首个
+  for (let i = 0; i < limits.length; i++) {
+    const limit = limits[i]
+    if (!limit || typeof limit !== 'object') continue
+    const isMcp = limit.type === 'TIME_LIMIT'
+    if (!isMcp && ZAI_LIMIT_TYPES.indexOf(limit.type) < 0) continue
+    const number = zaiLimitNumber(limit.number)
+    // TIME_LIMIT 的 unit/number 不表达窗口时长（unit=5 是 MCP 月度标记），直接归入月度窗口
+    const key = isMcp ? 'monthly' : ZAI_LIMIT_WINDOWS[String(zaiLimitNumber(limit.unit)) + ':' + String(number)]
+    if (!key || seen[key]) continue
+    const usedPercent = zaiUsedPercent(limit)
+    if (usedPercent == null) continue
+    seen[key] = true
+    windows.push({
+      key: key,
+      label: wl[key],
+      usedPercent: Math.round(usedPercent),
+      resetsAt: normalizeResetAt(limit.nextResetTime),
+    })
+  }
+  // 套餐名：level 如 lite/standard/pro/max → 显示 '智谱 ' + 首字母大写
+  let planName = null
+  if (typeof data.level === 'string' && data.level.length > 0) {
+    const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' }
+    const levelKey = data.level.toLowerCase()
+    const mapped = Object.hasOwn(levelMap, levelKey) ? levelMap[levelKey] : null
+    planName = mapped ? t('host.zhipu', { mapped: mapped }) : (t('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }))
+  } else if (typeof body.planName === 'string' && body.planName.length > 0) {
+    planName = body.planName
+  }
+  return { plan: planName, windows: windows }
 }
 
 // 月度窗口重置时刻（本地推导）：下月 1 日零点（接口无重置字段，A4 记录为本地推导）
@@ -1774,46 +1871,7 @@ export default {
       return 'https://api.z.ai';
     }
 
-    // 解析智谱 quota 响应：data.limits[] 中 type=TOKENS_LIMIT 的窗口
-    // unit 映射：已知 3=5小时对应 five_hour；未知 unit/类型跳过
-    // level/planName → 套餐名（lite/standard/pro/max → 智谱 + 首字母大写）
-    function parseZaiQuota(body) {
-      if (!body || typeof body !== 'object') return null;
-      const data = body.data;
-      if (!data || typeof data !== 'object') return null;
-      const limits = Array.isArray(data.limits) ? data.limits : [];
-      const windows = [];
-      for (let i = 0; i < limits.length; i++) {
-        const limit = limits[i];
-        if (!limit || typeof limit !== 'object') continue;
-        if (limit.type !== 'TOKENS_LIMIT') continue;
-        const unit = limit.unit;
-        // 已知 unit 码映射
-        let key = null;
-        if (unit === 3) key = 'five_hour'; // 5小时
-        if (!key) continue; // 未知 unit 跳过
-        const usedPercent = parsePercent(limit.percentage);
-        if (usedPercent == null) continue;
-        const resetsAt = normalizeResetAt(limit.nextResetTime);
-        windows.push({
-          key: key,
-          label: windowLabels[key],
-          usedPercent: Math.round(usedPercent),
-          resetsAt: resetsAt,
-        });
-      }
-      // 套餐名：level 如 lite/standard/pro/max → 显示 '智谱 ' + 首字母大写
-      let planName = null;
-      if (typeof data.level === 'string' && data.level.length > 0) {
-        const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' };
-        const levelKey = data.level.toLowerCase();
-        const mapped = Object.hasOwn(levelMap, levelKey) ? levelMap[levelKey] : null;
-        planName = mapped ? t('host.zhipu', { mapped: mapped }) : (t('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }));
-      } else if (typeof body.planName === 'string' && body.planName.length > 0) {
-        planName = body.planName;
-      }
-      return { plan: planName, windows: windows };
-    }
+    // 解析智谱 quota 响应见顶层 parseZaiQuota（已兼容 2026-07-30 起的 CREDIT_LIMIT 积分制）
 
     // 解析智谱充值余额响应（/api/biz/account/query-customer-account-report）
     // 被 CodexBar PR#3109、CodexMeter PR#2 等多个项目验证的非公开控制台 API
@@ -1859,8 +1917,14 @@ export default {
           return { error: { kind: 'http', message: t('host.requestFailed', { value: body.code || '', msg: msg }) } };
         }
         if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
-        const parsed = parseZaiQuota(body);
+        const parsed = parseZaiQuota(body, windowLabels);
         if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        // 解析成功但零窗口 = 上游 schema 又漂移了（接口对订阅账号必返回 5 小时 + 周窗口，
+        // 非订阅账号走上面的 success:false 分支）。此时按失败处理，让 mergeSubscriptionResult
+        // 保留上一份好快照——否则空窗口会被当成"成功"覆盖旧数据，界面只剩套餐名、无窗口也无报错，
+        // 正是 Issue #85 的原始症状（智谱接口已两次漂移：缺字段、TOKENS_LIMIT→CREDIT_LIMIT）。
+        if (parsed.windows.length === 0)
+          return { error: { kind: 'parse', message: t('host.zhipuQuotaWindowsUnrecognized') } };
         return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };

@@ -14,7 +14,7 @@
 |---|---|---|
 | FR-1 花费按服务商账户隔离 | ✅ | sessionTotals/todaySpend/monthSpend/last30dSpend/totalSpend/providerSpend 均账户过滤；OpenCode 记录不计入 DeepSeek 视图；未知账户记录持久化但不计入任何账户 |
 | FR-2 余额严格跟随服务商 | ✅ | balanceProviderKey 未知→null（不再回退）；activeBalanceSummary 返回 unmapped；客户端渲染"未适配" |
-| FR-3 智谱订阅额度 | ✅ | 双 host 均裸 API Key（无 Bearer）；TOKENS_LIMIT unit=3→5小时；未知窗口跳过；套餐等级映射 |
+| FR-3 智谱订阅额度 | ✅ | 双 host 均裸 API Key（无 Bearer）；TOKENS_LIMIT/CREDIT_LIMIT 双类型；unit:number 时长映射 3:5→5小时、6:1→周，TIME_LIMIT→月；百分比优先按原始计数推算；未知时长/类型跳过；套餐等级映射 |
 | FR-4 Kimi 余额 | ✅ | 官方接口与凭据名正确，parseBalance 容错 |
 | FR-5 OpenRouter credits | ✅ | /api/v1/credits 解析正确 |
 | FR-6 阶跃余额 | ✅（待实测） | 按官方文档实现；真实响应需用户有 STEPFUN_API_KEY 后验证 |

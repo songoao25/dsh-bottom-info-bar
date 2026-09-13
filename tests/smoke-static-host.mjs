@@ -23,8 +23,9 @@ function check(name, cond, detail) {
 }
 
 // ---------- 桩环境 ----------
-function makeStub(providerId, model) {
+function makeStub(providerId, model, options) {
   const captured = { llmListener: null, route: null, intervalCalls: 0 }
+  const opts = options || {}
   const ctx = {
     get(name) {
       if (name === 'agentDefaultModel') {
@@ -33,7 +34,7 @@ function makeStub(providerId, model) {
       return undefined
     },
     credentials: {
-      resolve: async () => undefined, // 未配置 Key → 走 no-key 分支
+      resolve: async (name) => (opts.credentialName === name ? { value: opts.credentialValue || 'test-key' } : undefined),
     },
     shell: { resolve: () => ({}), run: async () => ({ exitCode: 0, stdout: { text: '' } }) },
     interval() { captured.intervalCalls += 1; return () => {} },
@@ -195,6 +196,62 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
     check('getSubscriptionSnapshot（opencode-go 未配置）→ no-key 引导', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'opencode-go' && r.payload.error && r.payload.error.kind === 'no-key')
   }
   ogDisposer()
+}
+
+// ---------- 智谱积分制端到端（Issue #85：CREDIT_LIMIT + 空窗口不得覆盖旧快照） ----------
+// 这是本仓库首个「真实解析链路」冒烟：桩 fetch 返回真实形态响应 → fetchZaiUsage → 快照窗口
+{
+  const ZAI_CREDIT_RESPONSE = {
+    code: 200,
+    msg: 'Operation successful',
+    data: {
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 188, remaining: 1811, percentage: 9, nextResetTime: 1789284984350 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10000, currentValue: 188, remaining: 9811, percentage: 1, nextResetTime: 1789871510984 },
+      ],
+      level: 'lite',
+    },
+    success: true,
+  }
+  let zaiPayload = ZAI_CREDIT_RESPONSE
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true, json: async () => zaiPayload })
+  try {
+    const zaiCtx = makeStub('zai', 'glm-5.3', { credentialName: 'ZAI_API_KEY' })
+    const zaiDisposer = plugin.apply(zaiCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(zaiCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('zai', 'glm-5.3'), { 'sec-fetch-site': 'same-origin' })
+      check('智谱积分制：CREDIT_LIMIT → 订阅模式 + 智谱 Lite',
+        r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'zai' && r.payload.plan === '智谱 Lite' && r.payload.error === null,
+        JSON.stringify(r.payload))
+      check('智谱积分制：解析出 5 小时 + 周两个窗口',
+        Array.isArray(r.payload.windows) && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour' && r.payload.windows[1].key === 'seven_day',
+        JSON.stringify(r.payload.windows))
+      check('智谱积分制：5 小时已用 9%、周窗口按计数 2%',
+        r.payload.windows[0] && r.payload.windows[0].usedPercent === 9 && r.payload.windows[1] && r.payload.windows[1].usedPercent === 2,
+        JSON.stringify(r.payload.windows))
+      check('智谱积分制：重置时刻为毫秒时间戳（倒计时可用）',
+        r.payload.windows[0].resetsAt === 1789284984350 && r.payload.windows[1].resetsAt === 1789871510984)
+    }
+    {
+      // 上游又一次 schema 漂移：窗口类型全部不认识 → 必须报错并保留上一份好快照，
+      // 绝不能用空窗口覆盖（否则界面只剩套餐名、无窗口也无报错 = Issue #85 原始症状）
+      zaiPayload = { code: 200, success: true, data: { limits: [{ type: 'BRAND_NEW_LIMIT', unit: 42, number: 7, percentage: 5 }], level: 'lite' } }
+      // force:true 绕过 60s 刷新节流，立即重取上游
+      const r = await invoke(zaiCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'zai', model: 'glm-5.3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('智谱漂移降级：未知窗口类型 → 标记刷新失败而非静默空窗口',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'parse',
+        JSON.stringify(r.payload.error))
+      check('智谱漂移降级：旧的两个窗口快照被保留',
+        Array.isArray(r.payload.windows) && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour',
+        JSON.stringify(r.payload.windows))
+      check('智谱漂移降级：计划名仍来自旧快照', r.payload.plan === '智谱 Lite')
+    }
+    zaiDisposer()
+  } finally {
+    globalThis.fetch = realFetch
+  }
 }
 
 // ---------- llm/stream 记账 ----------

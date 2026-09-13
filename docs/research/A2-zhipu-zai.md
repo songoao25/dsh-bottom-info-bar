@@ -56,11 +56,21 @@
 **否**。额度全部在 JSON body（`data.limits[]`），无 `X-RateLimit-*` 头。响应里可能出现 `RATE_LIMIT`/`TIMES_LIMIT`/`SESSION_LIMIT` 类型条目，但社区实现均忽略（CodexBar 只解析 `TOKENS_LIMIT`/`TIME_LIMIT`/`CREDIT_LIMIT`）。来源：[CodexBar zai.js parseLimit](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Resources/Plugins/zai.js)。
 
 ### 1.8 Reset Time
-`nextResetTime`，unix **毫秒**时间戳，每条 limit 独立返回，可转倒计时。规则：
+- `nextResetTime` 为 unix 毫秒时间戳，每条 limit 独立返回，可转倒计时。规则：
 
 - TOKENS_LIMIT (unit=3, number=5)：**5 小时滚动窗口**，消耗后 5 小时动态重置；
 - TOKENS_LIMIT (unit=6, number=1)：每周窗口，订阅激活后每 7 天重置；
 - TIME_LIMIT：MCP 月度窗口（unit/number 有特殊标记，CodexBar 按 30 天处理）。
+
+**2026-08 更新（Issue #85 已证实）**：智谱 Coding Plan 自 **2026-07-30** 起改为积分制
+（[官方 Plan Update Announcement](https://docs.z.ai/devpack/notice/usage-revision)），
+同批窗口的条目类型由 `TOKENS_LIMIT` 变为 `CREDIT_LIMIT`，但 **unit/number 语义不变**，
+仍为「5 小时 + 每周」双窗口（[官方额度表](https://docs.z.ai/devpack/overview)：Lite 2000/10000、
+Pro 12000/60000、Max 28000/140000 credits）。因此 unit 码不是"TOKENS_LIMIT 专属"，
+而是**与类型正交**的时间单位码：`3`=小时、`6`=周（`1`=天；`5` 在 TIME_LIMIT 上下文里是
+MCP 月度标记而非"5 分钟"）。字段语义上 `usage` 是配额上限、`currentValue` 已用、`remaining`
+剩余，二者与 `percentage` 可能不一致——实测上游整数 `percentage` 会**向下取整**
+（71/2000 上报 `3`，实为 3.55%），故展示时应优先由原始计数推算（CodexBar #2724/#2751 同此判断）。
 
 来源：[docs.z.ai/devpack/overview](https://docs.z.ai/devpack/overview)（"5-hour credits: Dynamically refreshed; credit quota resets 5 hours after consumption"）、[tokn quota.rs](https://github.com/agentic-rs/tokn/blob/main/crates/provider-zai/src/quota.rs)、[智谱官方使用须知](https://docs.bigmodel.cn/cn/coding-plan/usage-notes)。
 
@@ -203,8 +213,10 @@ balance（CN，结构参考 CodexBar #3109，数值为虚构）：
 
 ## 6. 明确"待核实"项
 
-- `data.level` 取值（`lite/standard/pro` vs `PRO`…）与官方套餐名（Lite / Pro / Max）的精确映射；
-- 新 credit 制 `CREDIT_LIMIT` 条目是否沿用 TOKENS_LIMIT 的 unit/number 语义（CodexBar 已同构解析，未单独验证）；
+- `data.level` 取值（`lite/standard/pro` vs `PRO`…）与官方套餐名（Lite / Pro / Max）的精确映射（已做大小写不敏感 + 未知值首字母大写兜底）；
+- ~~新 credit 制 `CREDIT_LIMIT` 条目是否沿用 TOKENS_LIMIT 的 unit/number 语义~~ → **已证实沿用**（Issue #85 实机 payload + 官方文档 + CodexBar #2724/#2751、tokn、opencodex 三方实现一致）；
+- ~~个人版 quota 响应是否同时含 CREDIT_LIMIT~~ → **两种都可能**：老套餐纯 TOKENS_LIMIT，积分制纯 CREDIT_LIMIT，迁移期可能并存 → 解析必须两种都收，并对同窗口键去重；
+- **仍未实测**：国内站 `open.bigmodel.cn` 是否同样返回 `CREDIT_LIMIT`（用户报障为国际站 api.z.ai；按官方公告两端同步改革，但缺真实响应佐证，代码按同一套规则处理）；
+- **仍未实测**：`RATE_LIMIT`/`SESSION_LIMIT` 等其它类型条目是否在部分账号出现、是否应展示（当前按"未知跳过"处理）；
 - 普通 GLM API（`/api/paas/v4`）在 z.ai 国际端是否有隐藏 balance 端点（目前仅 CN `www.bigmodel.cn` 已知）；
-- GLM-4.6 / 4.7 精确单价（pricing 页 JS 渲染，静态抓取失败；仅 GLM-4.5-Air 有文档页标注）；
-- 个人版 quota 响应是否同时含 CREDIT_LIMIT（老用户可能纯 TOKENS_LIMIT——CodexBar 两者兼容，适配时应两种都处理）。
+- GLM-4.6 / 4.7 精确单价（pricing 页 JS 渲染，静态抓取失败；仅 GLM-4.5-Air 有文档页标注）。

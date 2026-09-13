@@ -100,7 +100,7 @@ cd dsh-bottom-info-bar
 
 - **ChatGPT / Codex** —— 在**本机离线解析** `~/.codex/auth.json`，显示真实套餐与到期时间（例如 `ChatGPT · Plus | Expires 2026-09-16`）。**零网络请求**：数值直接来自 OpenAI 自己的登录令牌，不做估算。未登录 → 显示**刷新失败**并提示重新授权。令牌的**绑定与续期**由配套插件 [dsh-chatgpt-subscription](https://github.com/songoao25) 负责——本插件**只读**令牌，绝不写回。
 - **OpenCode Go** —— 通过 `OPENCODE_GO_API_KEY`（设置 → 模型）或 opencode CLI 的登录（`~/.local/share/opencode/auth.json`）读取 `opencode.ai/zen/go/v1/usage` 的额度。未配置 → 显示「未配置」提示而非报错。
-- **智谱** —— 通过 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 额度：套餐档位 + 5 小时窗口。
+- **智谱** —— 通过 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 额度：套餐档位 + 5 小时窗口 + 周窗口（含 2026-07-30 起的积分制套餐）。
 - **小米 MiMo Token Plan** —— 通过 `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` 按区域读取月度 Credits 额度（回退 `XIAOMI_API_KEY`）：套餐名 + 月度窗口。
 
 简洁模式下优先显示**时长最短的窗口**（5 小时 > 周 > 月），因为它刷新最快；5 小时窗口不可用时依次回退到周、月。

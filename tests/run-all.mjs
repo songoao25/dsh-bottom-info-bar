@@ -34,6 +34,7 @@ const cases = [
   ['test-spend-accounting（host.js）', ['tests/test-spend-accounting.js'], join(root), process.execPath],
   ['test-weekend-pricing（host.js 周末峰谷规则）', ['tests/test-weekend-pricing.mjs'], join(root), process.execPath],
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.js'], join(root), process.execPath],
+  ['test-zai-quota（Issue #85 智谱 CREDIT_LIMIT 积分制 + 窗口时长闸门/百分比推算/降级）', ['tests/test-zai-quota.js'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.js'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
   ['test-session-lineage（Issue #44 父子会话精确归属）', ['tests/test-session-lineage.mjs'], join(root), process.execPath],
