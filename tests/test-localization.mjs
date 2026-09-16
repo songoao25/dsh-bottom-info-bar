@@ -46,6 +46,26 @@ assert.equal(resilientT('host.everydayQuestions'), dictionaries.zh['host.everyda
 assert.equal(JSON.stringify({ message: '请求失败（HTTP 503）' }, resilientT.json), '{"message":"请求失败（HTTP 503）"}')
 console.log('PASS  translate survives a host ctx that throws on direct .settings access (cordis without inject)')
 
+// Alpha1 exposes a declarative inject method on the context. The translator
+// must use that path and never probe ctx.settings while the service is absent.
+let injectedSettingsCalls = 0
+const injectedCordisCtx = new Proxy({
+  inject(dependencies, callback) {
+    assert.deepEqual(dependencies, ['settings'])
+    injectedSettingsCalls += 1
+    callback({ settings: { get: () => ({ preference: 'en' }) } })
+  },
+}, {
+  get(target, prop, receiver) {
+    if (prop === 'settings') throw new Error('cannot get property "settings" without inject')
+    return Reflect.get(target, prop, receiver)
+  },
+})
+const injectedT = createHostTranslator(injectedCordisCtx)
+assert.equal(injectedT('host.unknownProvider'), 'Unknown provider')
+assert.equal(injectedSettingsCalls, 1)
+console.log('PASS  translate uses declarative settings injection on alpha1 contexts')
+
 const checker = readFileSync(new URL('./check-host.js', import.meta.url), 'utf8')
 const host = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
 function checkSource(source) {
