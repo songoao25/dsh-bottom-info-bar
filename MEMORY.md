@@ -15,6 +15,17 @@
 
 ---
 
+## 2026-09-16
+
+### v1.11.2：适配 DSH 0.1.6-alpha.1 的设置服务加载方式
+
+- 根因：DSH 更新后，`plugin/src/host-locale.js` 在 Cordis 上直接读取未声明注入的 `ctx.settings`；设置服务尚未准备好时，Cordis Proxy 会直接抛错，连带导致整个网页插件树加载失败。
+- 修复：翻译器改为通过 `ctx.inject(['settings'], ...)` 声明式获取设置；对旧式普通宿主保留受保护的兼容回退，彻底移除 Cordis 路径上的裸服务属性访问。
+- 回归防线：新增会对未声明服务访问直接抛错的恶意 Proxy 测试；插件构建与全量测试均通过。
+- 发布证据：修复 PR #90 已合并，release PR #91 已合并；GitHub Release / tag 为 `v1.11.2`，npm `dsh-bottom-info-bar` latest 已核对为 `1.11.2`。本机 DSH `0.1.6-alpha.1` web profile 重启后，未再出现插件树失败、未声明 `settings`、重复路由或该插件启动错误的新日志。
+
+---
+
 ## 2026-09-11
 
 ### 记忆文件规范化（用户明确要求）
