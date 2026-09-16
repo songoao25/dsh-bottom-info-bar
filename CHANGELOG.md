@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.11.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.1...v1.11.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* make locale service access alpha1-safe ([#90](https://github.com/songoao25/dsh-bottom-info-bar/issues/90)) ([ce8878f](https://github.com/songoao25/dsh-bottom-info-bar/commit/ce8878fe5ac7071adcc666374c5bb480aba4b47a))
+
 ## [1.11.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.0...v1.11.1) (2026-09-13)
 
 
