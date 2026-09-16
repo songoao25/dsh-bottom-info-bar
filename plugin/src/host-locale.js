@@ -3,24 +3,30 @@ import { LOCALES } from './locales.js'
 // Host-only presentation: DSH's browser registry is not a host service.
 // Read the supported persisted preference on demand, never copy locale state.
 //
-// v1.10.1 crash fix (DSH boot): a cordis context proxy throws
+// v1.10.1 / alpha1 crash fix (DSH boot): a cordis context proxy throws
 // "cannot get property 'settings' without inject" whenever a plugin touches
-// ctx.settings without declaring it in `inject`. The supported way to read a
-// host service is ctx.get(name), which returns undefined when the service is
-// not (yet) provided instead of throwing. Prefer ctx.get('settings'); fall
-// back to the bare property only for non-cordis hosts that expose it directly.
+// ctx.settings without declaring it in `inject`. Cordis contexts are therefore
+// handled only through declaration-style injection below. Direct-property and
+// ctx.get fallbacks remain limited to plain non-cordis test/legacy hosts.
 function readHostSettings(ctx) {
-  if (!ctx) return undefined
+  if (!ctx || typeof ctx.inject === 'function') return undefined
   if (typeof ctx.get === 'function') {
-    try { return ctx.get('settings') } catch { /* unknown host: treat as no settings */ }
+    try { return ctx.get('settings') } catch { return undefined }
   }
-  try { return ctx.settings } catch { /* cordis without inject: treat as no settings */ }
-  return undefined
+  try { return ctx.settings } catch { return undefined }
 }
 
 export function createHostTranslator(ctx) {
+  let injectedSettings
+  if (ctx && typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['settings'], function (settingsCtx) {
+        injectedSettings = settingsCtx.settings
+      })
+    } catch { /* older hosts without declarative injection: use the safe default locale */ }
+  }
   const translate = function (key, params) {
-    const settings = readHostSettings(ctx)
+    const settings = injectedSettings || readHostSettings(ctx)
     const preference = settings && typeof settings.get === 'function' ? settings.get('locale')?.preference : undefined
     const locale = preference === 'en' ? 'en' : 'zh'
     return formatHostText(locale, key, params)
