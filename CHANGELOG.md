@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.13.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.12.0...v1.13.0) (2026-09-18)
+
+
+### Features
+
+* adapt runtime install and uninstall for the plugin manager ([#96](https://github.com/songoao25/dsh-bottom-info-bar/issues/96)) ([a0fb17f](https://github.com/songoao25/dsh-bottom-info-bar/commit/a0fb17fb5de89d8eb38f0842c0106335a8da0dfc))
+
 ## [1.12.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.2...v1.12.0) (2026-09-18)
 
 
