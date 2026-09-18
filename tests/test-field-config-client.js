@@ -74,7 +74,7 @@ check('每个字段含 id/label/group/modes/colorKind', FIELD_REGISTRY.every((f)
   && typeof f.label === 'string' && f.label.length > 0
   && typeof f.group === 'string' && FIELD_GROUP_ORDER.includes(f.group)
   && Array.isArray(f.modes) && f.modes.length > 0
-  && ['inherit', 'alert', 'period', 'provider', 'muted'].includes(f.colorKind)), true);
+  && ['inherit', 'alert', 'period', 'provider', 'muted', 'meter'].includes(f.colorKind)), true);
 check('modes 只用约定枚举', FIELD_REGISTRY.every((f) => f.modes.every((m) => ['balance', 'subscription', 'billing', 'native', 'common'].includes(m))), true);
 check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.anchor === true).map((f) => f.id).join(',') === 'anchorGroup,subServiceGroup,billingServiceGroup', true);
 check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice']
@@ -85,8 +85,8 @@ check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAME
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
 check('D6 分组：仅「原生信息/信息栏内容」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
   && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '信息栏内容', true);
-check('D6 分组：原生组恰 5 个 DeepSeek 原生标签', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
-  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
+check('D6 分组：原生组恰 6 个 DeepSeek 原生标签（含接管过来的上下文圆环）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
+  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO,contextUsage', true);
 check('D6 分组：其余 26 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 26
   && FIELD_REGISTRY.every((f) => f.group === 'native' || f.group === 'plugin'), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
@@ -491,6 +491,49 @@ function withFakeDocument(run) {
     && clientSrc.includes('setLocaleRevision(function (value) { return value + 1; });')
     && !clientSrc.includes('function bibSetLanguageCard(props)')
     && !clientSrc.includes("t('ui.languageSettings')"), true);
+}
+
+// ---------- ⑪ D7：原生上下文圆环接管（位置 / 显隐 / 配色 / 去重 / 算法） ----------
+// DSH 0.1.6-alpha.2 把原生 ContextMeter 挪到了信息栏所在的 dock 行；用户拍板由本插件接管：
+// 外观与交互与原生一致，但位置进主行右端、显隐与配色并入字段体系，原生那一份隐藏（有且只有一个圆环）。
+{
+  const contextOccupancy = eval('(' + extractFunctionFrom(clientSrc, 'contextOccupancy') + ')');
+  check('D7：占用算法与原生一致（优先 projectedTokens，退回 pressureTokens）',
+    JSON.stringify(contextOccupancy({ projectedTokens: 45, pressureTokens: 10, contextWindow: 100 })) === JSON.stringify({ percent: 45, usedTokens: 45, contextWindow: 100 })
+    && JSON.stringify(contextOccupancy({ pressureTokens: 30, contextWindow: 200 })) === JSON.stringify({ percent: 15, usedTokens: 30, contextWindow: 200 }), true);
+  check('D7：分子或容量缺失 → 整块不渲染（不猜数字）',
+    contextOccupancy(null) === null && contextOccupancy({}) === null
+    && contextOccupancy({ projectedTokens: 10 }) === null && contextOccupancy({ contextWindow: 100 }) === null, true);
+  check('D7：容量为 0 / NaN → 不渲染（原生会算出 Infinity/NaN 并渲染出 100% 或 NaN%）',
+    contextOccupancy({ projectedTokens: 10, contextWindow: 0 }) === null
+    && contextOccupancy({ projectedTokens: 10, contextWindow: Number.NaN }) === null, true);
+  check('D7：超过容量时百分比封顶 100', contextOccupancy({ projectedTokens: 500, contextWindow: 100 }).percent, 100);
+  check('D7：圆环挂在信息栏主行最右端（row2 子节点末位）',
+    clientSrc.includes('...nodes, contextNode)')
+    && clientSrc.includes("React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }"), true);
+  check('D7：显隐与配色并入字段体系（fieldVisible + data-field + fieldStyle）',
+    clientSrc.includes("fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null")
+    && clientSrc.includes("'data-field': 'contextUsage'") && clientSrc.includes("fieldStyle('contextUsage')"), true);
+  check('D7：原生那一份由结构选择器隐藏（不绑 DSH 哈希类名，且不误伤包着信息栏的插槽包装）',
+    clientSrc.includes('[class*="_dock"]:has(.bi-root) > span:not(:has(.bi-root)):has(button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"]) { display: none !important; }'), true);
+  check('D7：圆环几何与原生一致（半径 5.5 / 14px viewBox / 2px 描边）',
+    clientSrc.includes('const CONTEXT_RADIUS = 5.5;')
+    && clientSrc.includes("viewBox: '0 0 14 14'")
+    && clientSrc.includes('stroke-width: 2px'), true);
+  check('D7：悬浮说明复用 primitives 的 Tooltip（与原生同一用法），缺失时才退回浏览器 title',
+    clientSrc.includes("const CONTEXT_TOOLTIP = typeof BIB_SET_PRIMITIVES.Tooltip === 'function' ? BIB_SET_PRIMITIVES.Tooltip : null;")
+    && clientSrc.includes("React.createElement(CONTEXT_TOOLTIP, { label: ariaText, side: 'top', delayMs: 200, disabled: open }, button)")
+    && clientSrc.includes('if (CONTEXT_TOOLTIP === null) buttonProps.title = ariaText;'), true);
+  check('D7：明细面板挂到 body（避免被底栏容器裁切），Esc 与外部点击可关',
+    clientSrc.includes('ReactDOM.createPortal(panel, portalTarget)')
+    && clientSrc.includes("if (event.key === 'Escape') setOpen(false);"), true);
+  check('D7：点击圆环不触发信息栏的完整/简洁切换（stopPropagation）',
+    clientSrc.includes('onClick: function (event) { event.stopPropagation(); setOpen(!open); }'), true);
+  check('D7：全空判定把圆环算作内容（不留下空行）',
+    clientSrc.includes('(row1 === null && nodes.length === 0 && contextNode === null)'), true);
+  check('D7：圆环文案中英成对（aria 与面板三行标签）',
+    localesSrc.includes('"ui.contextAria": "上下文已用 {percent}"') && localesSrc.includes('"ui.contextAria": "{percent} of context used"')
+    && localesSrc.includes('"ui.contextSystem": "系统提示词"') && localesSrc.includes('"ui.contextMessages": "Conversation messages"'), true);
 }
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');

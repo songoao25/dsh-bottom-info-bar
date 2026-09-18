@@ -17,7 +17,8 @@ export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cl
 // - anchor：身份锚点语义标记（服务商/模型标识）。D6 用户拍板：锚点与其他字段同等可隐藏（无恒开/禁用逻辑），
 //   仅用于设置页说明文字与颜色语义（provider 色回退）。
 // - colorKind：颜色回退语义（客户端生成 CSS 用）：inherit 继承正文色 | alert 警示红 | period 峰红/谷绿 |
-//   provider 锚点组（正文 + 服务商名主色）| muted 弱提示灰。未自定义颜色时回退这些原语义色，默认外观零变化。
+//   provider 锚点组（正文 + 服务商名主色）| muted 弱提示灰 | meter 原生圆环类（回退原生同款弱提示色 --bi-separator）。
+//   未自定义颜色时回退这些原语义色，默认外观零变化。
 export const FIELD_REGISTRY = [
   // 插件字段 · 服务锚点（D6：与其他字段同等可隐藏）
   { id: 'anchorGroup', label: "field.anchorGroup.label", group: 'plugin', modes: ['balance'], anchor: true, colorKind: 'provider', note: "field.anchorGroup.note" },
@@ -51,6 +52,10 @@ export const FIELD_REGISTRY = [
   { id: 'toolTime', label: "field.toolTime.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.toolTime.note" },
   { id: 'cacheHit', label: "ui.cacheHit", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.cacheHit.note" },
   { id: 'tokensIO', label: "field.tokensIO.label", group: 'native', modes: ['native'], colorKind: 'inherit', note: "field.tokensIO.note" },
+  // 原生信息 · 上下文占用圆环（DSH 原生 ContextMeter 的接管版）：
+  // 外观、几何与交互面板与原生一致，但显隐/配色并入本插件字段体系；
+  // 始终渲染在本插件信息栏的主行（即「简洁模式」可见的那一行）最右端，原生那一份由样式隐藏。
+  { id: 'contextUsage', label: "field.contextUsage.label", group: 'native', modes: ['common'], colorKind: 'meter', note: "field.contextUsage.note" },
   // 插件字段 · 状态与提醒（建议保留）
   { id: 'unmapped', label: "field.unmapped.label", group: 'plugin', modes: ['balance'], colorKind: 'muted', note: "field.unmapped.note" },
   { id: 'noKeyHint', label: "field.noKeyHint.label", group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.noKeyHint.note" },
