@@ -15,6 +15,18 @@
 
 const React = require('react');
 const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');
+// 上下文明细面板要挂到 body（底栏处在多层 flex/滚动容器里，就地渲染会被裁切；原生 ContextMeter 同样用 portal）。
+// react-dom 是 web 客户端公开的 seed 模块；缺失/形态不符时降级为就地渲染，不影响信息栏本身。
+let ReactDOM = null;
+try {
+  const candidate = require('react-dom');
+  if (candidate && typeof candidate.createPortal === 'function') ReactDOM = candidate;
+} catch (err) { ReactDOM = null; }
+// 原生上下文圆环的悬浮说明用 primitives 的 Tooltip（组件，非浏览器原生 title）；能用就复用，外观与原生一致，
+// 该成员缺失时退回 title——两者不同时使用，避免叠出两个提示框。
+// 必须定义在这里（FIELD_REGISTRY 锚点之前）：D1 结构测试会切片求值锚点之后到 module.exports 之间的源码，
+// 那段切片里引用不到 BIB_SET_PRIMITIVES，多一条依赖就会让求值抛错。
+const CONTEXT_TOOLTIP = typeof BIB_SET_PRIMITIVES.Tooltip === 'function' ? BIB_SET_PRIMITIVES.Tooltip : null;
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
@@ -336,6 +348,9 @@ function buildFieldColorCss() {
         ['.bi-root ' + attr, 'inherit'],
         ['.bi-root ' + attr + ' .bi-model-provider', 'var(--bi-label-primary)'],
       ];
+    } else if (kind === 'meter') {
+      // 原生圆环类：回退原生同款弱提示色（--bi-separator 即 --dsw-alias-label-tertiary，与原生 ContextMeter 同色）
+      pairs = [['.bi-root ' + attr, 'var(--bi-separator)']];
     } else if (kind === 'muted') {
       pairs = [['.bi-root ' + attr, 'var(--bi-label-supporting)']];
     } else {
@@ -469,11 +484,236 @@ function installStyles() {
       .bi-root, .bib-set-root { --bi-palette-red: #d92d20; --bi-palette-green: #087f5b; --bi-palette-blue: #0044cc; --bi-palette-purple: #6941c6; --bi-palette-orange: #b54708; --bi-palette-neutral: var(--dsw-alias-label-primary, var(--bi-label-primary, #333)); }
       body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff6961; --bi-palette-green: #86efac; --bi-palette-blue: #66a3ff; --bi-palette-purple: #b19cf7; --bi-palette-orange: #fdb022; }
       @media (prefers-contrast: more) { body:not([data-ds-dark-theme]) .bi-root, body:not([data-ds-dark-theme]) .bib-set-root { --bi-palette-red: #ad1717; --bi-palette-green: #05603a; --bi-palette-blue: #003399; --bi-palette-purple: #4a1fb8; --bi-palette-orange: #7a2e0e; } body[data-ds-dark-theme] .bi-root, body[data-ds-dark-theme] .bib-set-root { --bi-palette-red: #ff7770; --bi-palette-blue: #80b3ff; --bi-palette-purple: #c9b8ff; --bi-palette-orange: #ffcc80; } }
+      /* 上下文占用圆环（接管 DSH 原生 ContextMeter）：几何、字体、字号、圆角与原生逐条对齐，
+         唯一的变化是它现在住在信息栏主行最右端，与这一行文字共用同一条基线。 */
+      .bi-ctx { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: 8px; }
+      /* 颜色走字段体系：容器带 data-field，描边用 currentColor，因此换色只改一处（未自定义时回退原生弱提示色）。 */
+      .bi-ctx-trigger { display: inline-flex; align-items: center; gap: 6px; flex: none; margin: 0; padding: 1px 8px; border: none; border-radius: 24px; background: 0 0; color: inherit; font-family: inherit; font-size: var(--dsh-content-font-size-secondary, 13px); font-variant-numeric: tabular-nums; line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); white-space: nowrap; cursor: pointer; }
+      .bi-ctx-trigger:hover, .bi-ctx-trigger[aria-expanded="true"] { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14)); color: var(--bi-label-primary); }
+      .bi-ctx-ring { flex: none; display: block; }
+      .bi-ctx-track { fill: none; stroke: var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.35)); stroke-width: 2px; }
+      .bi-ctx-fill { fill: none; stroke: currentColor; stroke-width: 2px; stroke-linecap: round; }
+      /* 构成明细面板：与原生 ContextMeter 面板同构（264px 宽 / 12px 内边距 / 12px 圆角 / 4px 构成条）。 */
+      .bi-ctx-panel { z-index: 1100; box-sizing: border-box; width: min(264px, calc(100vw - 24px)); padding: 12px; border: 0; border-radius: 12px; background: var(--dsw-specific-menu, #fff); color: var(--dsw-alias-label-secondary, #5a6169); box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.18)); font-size: 12px; line-height: 20px; cursor: default; position: fixed; }
+      .bi-ctx-panel-header { display: flex; align-items: center; gap: 6px; }
+      .bi-ctx-panel-headline { color: var(--dsw-alias-label-tertiary, #8a9099); }
+      .bi-ctx-panel-headline:empty { display: none; }
+      .bi-ctx-panel-percent { color: var(--dsw-alias-label-primary, #1f2328); font-weight: 500; }
+      .bi-ctx-panel-figures { margin-left: auto; color: var(--dsw-alias-label-primary, #1f2328); font-weight: 500; font-variant-numeric: tabular-nums; }
+      .bi-ctx-panel-bar { display: flex; gap: 1px; height: 4px; margin: 10px 0 12px; border-radius: 999px; background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14)); overflow: hidden; }
+      .bi-ctx-segment { flex: none; min-width: 2px; height: 100%; border-radius: 1px; background: var(--bi-ctx-tint, var(--dsw-alias-label-tertiary, #8a9099)); }
+      .bi-ctx-seg-system { --bi-ctx-tint: var(--dsw-static-neutral-bluish-400, #a5b4fc); }
+      .bi-ctx-seg-tools { --bi-ctx-tint: #a78bfa; }
+      .bi-ctx-seg-messages { --bi-ctx-tint: var(--dsw-static-blue-450, #3b7bfa); }
+      .bi-ctx-panel-rows { display: block; margin: 6px 0 0; }
+      .bi-ctx-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; }
+      .bi-ctx-panel-row dt { display: flex; align-items: center; color: var(--dsw-alias-label-secondary, #5a6169); }
+      .bi-ctx-panel-row dd { margin: 0; color: var(--dsw-alias-label-primary, #1f2328); font-variant-numeric: tabular-nums; }
+      .bi-ctx-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; background: var(--bi-ctx-tint, var(--dsw-alias-label-tertiary, #8a9099)); }
+      /* 圆环已由本插件接管：隐藏信息栏所在 dock 里的原生那一份，保证屏幕上有且只有一个圆环。
+         不绑 DSH 的哈希类名，只认结构——「同一个 dock 行 + 直接子级 span + 内含 14px 圆环按钮」，
+         并要求该 span 内不含本插件信息栏（避免误伤包着信息栏的插槽包装元素）。 */
+      [class*="_dock"]:has(.bi-root) > span:not(:has(.bi-root)):has(button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"]) { display: none !important; }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
 ` + FIELD_COLOR_CSS + `
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
+}
+
+// ---------- 上下文占用圆环（接管 DSH 原生 ContextMeter） ----------
+// DSH 0.1.6-alpha.2 起，原生把「上下文占用」圆环从输入框工具行挪到了信息栏所在的 dock 行，
+// 于是它与本插件注册进同一 dock 的信息栏成了同一行的两个兄弟节点（原生固定 12px 间隙，看起来是两块东西）。
+// 用户拍板（2026-09-18）：圆环由本插件接管——外观、几何、文字与交互面板与原生完全一致，
+// 但显隐（fields.contextUsage）与配色（colors.contextUsage）并入本插件的字段体系，
+// 并渲染在本插件信息栏主行（即「简洁模式」可见的那一行）最右端；原生那一份由样式隐藏，
+// 屏幕上有且只有一个圆环，且它不再是"另一块"，而是这一行的收尾。
+// 几何与原生 ContextMeter 相同：14px viewBox、2px 描边、半径 5.5。
+const CONTEXT_RADIUS = 5.5;
+const CONTEXT_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RADIUS;
+// 本地化占位标记：把「上下文已用 {percent}」这句按语序切开，让百分比单独着色（与原生同一手法，兼容中英语序）。
+const CONTEXT_READING_SLOT = '\u0000';
+// 面板位置参数与原生 useAnchoredPosition(side:'top', gap:8, margin:12) 一致。
+const CONTEXT_PANEL_GAP = 8;
+const CONTEXT_PANEL_MARGIN = 12;
+const CONTEXT_PANEL_WIDTH = 264;
+// 构成明细三行（顺序即色块顺序；色值与原生 ContextMeter 完全相同）。
+const CONTEXT_PANEL_ROWS = [
+  { key: 'systemTokens', label: 'ui.contextSystem', tint: 'bi-ctx-seg-system' },
+  { key: 'toolsTokens', label: 'ui.contextTools', tint: 'bi-ctx-seg-tools' },
+  { key: 'messageTokens', label: 'ui.contextMessages', tint: 'bi-ctx-seg-messages' },
+];
+// 原生圆环的悬浮说明走 primitives 的 Tooltip（组件而非浏览器 title）；定义见文件顶部的 CONTEXT_TOOLTIP。
+
+// 上下文占用（算法与 DSH 原生 contextOccupancy 完全一致）：分子优先取 projectedTokens，退回 pressureTokens；
+// 分子或容量任一缺失就整块不渲染——与原生"两者齐备才显示"同一条规矩，绝不猜数字。
+function contextOccupancy(pressure) {
+  if (!pressure) return null;
+  const usedTokens = pressure.projectedTokens != null ? pressure.projectedTokens : pressure.pressureTokens;
+  const contextWindow = pressure.contextWindow;
+  // 容量必须为正：原生对 0 会算出 Infinity / NaN（渲染成 100% 或 NaN%），这里按"没有容量"处理。
+  if (usedTokens == null || contextWindow == null || !(contextWindow > 0)) return null;
+  const percent = Math.min(100, Math.round((usedTokens / contextWindow) * 100));
+  if (!isFinite(percent)) return null;
+  return { percent: percent, usedTokens: usedTokens, contextWindow: contextWindow };
+}
+
+// 与原生的 formatTokens 同规则；K/M 缩写交给 common 命名空间的本地化模板（插件字典缺失时自然回落英文）。
+function contextTokenText(value) {
+  const scaled = function (candidate) { return candidate >= 100 ? String(Math.round(candidate)) : String(Math.round(candidate * 10) / 10); };
+  if (value < 1e3) return String(value);
+  if (value < 1e6) return t('number.thousand', { value: scaled(value / 1e3) });
+  return t('number.million', { value: scaled(value / 1e6) });
+}
+
+// 圆环 + 可点开的构成明细面板。props：{ context: contextOccupancy 结果, breakdown: contextBreakdown 投影 }
+function ContextMeterRing(props) {
+  const context = props.context;
+  const [open, setOpen] = React.useState(false);
+  const [panelPosition, setPanelPosition] = React.useState(null);
+  const rootRef = React.useRef(null);
+  const panelRef = React.useRef(null);
+
+  // 数据消失时收起面板（与原生同一处理）：面板内容依赖 context，留着会显示空白。
+  React.useEffect(function () {
+    if (!context && open) setOpen(false);
+  }, [context, open]);
+
+  // 打开时才量一次位置：超出视口就翻到下方，滚动/缩放时重算，避免面板飘离圆环。
+  React.useEffect(function () {
+    if (!open || !context) return undefined;
+    if (typeof window === 'undefined') return undefined;
+    const place = function () {
+      const root = rootRef.current;
+      if (!root || typeof root.getBoundingClientRect !== 'function') return;
+      const rect = root.getBoundingClientRect();
+      const panel = panelRef.current;
+      const width = panel && panel.offsetWidth ? panel.offsetWidth : CONTEXT_PANEL_WIDTH;
+      const height = panel && panel.offsetHeight ? panel.offsetHeight : 0;
+      const maxLeft = Math.max(CONTEXT_PANEL_MARGIN, window.innerWidth - CONTEXT_PANEL_MARGIN - width);
+      let left = rect.left + rect.width / 2 - width / 2;
+      left = Math.min(Math.max(left, CONTEXT_PANEL_MARGIN), maxLeft);
+      let top = rect.top - CONTEXT_PANEL_GAP - height;
+      if (top < CONTEXT_PANEL_MARGIN) {
+        top = Math.min(window.innerHeight - CONTEXT_PANEL_MARGIN - height, rect.bottom + CONTEXT_PANEL_GAP);
+        if (top < CONTEXT_PANEL_MARGIN) top = CONTEXT_PANEL_MARGIN;
+      }
+      setPanelPosition({ left: left, top: top });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return function () {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, context]);
+
+  // Esc 关闭 + 点圆环与面板之外关闭（与原生 useDismissOnOutsidePointer 同一行为）
+  React.useEffect(function () {
+    if (!open) return undefined;
+    if (typeof document === 'undefined') return undefined;
+    const onKeyDown = function (event) { if (event.key === 'Escape') setOpen(false); };
+    const onPointerDown = function (event) {
+      const target = event && event.target;
+      const root = rootRef.current;
+      const panel = panelRef.current;
+      if (root && target && root.contains(target)) return;
+      if (panel && target && panel.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return function () {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [open]);
+
+  // 数据不足整块不渲染（与原生一致）。hooks 已全部就位，调用顺序稳定。
+  if (!context) return null;
+
+  const percent = context.percent;
+  const reading = percent + '%';
+  const ariaText = t('ui.contextAria', { percent: reading });
+  const parts = t('ui.contextAria', { percent: CONTEXT_READING_SLOT }).split(CONTEXT_READING_SLOT);
+  const headBefore = String(parts[0] || '').trim();
+  const headAfter = String(parts[1] || '').trim();
+  const breakdown = props.breakdown || null;
+  const breakdownTotal = breakdown
+    ? (breakdown.systemTokens || 0) + (breakdown.toolsTokens || 0) + (breakdown.messageTokens || 0)
+    : 0;
+  // 有构成数据就按三段着色，否则退化成整条（与原生同一降级）。
+  const segments = (!breakdown || breakdownTotal <= 0
+    ? [{ key: 'total', tint: 'bi-ctx-seg-total', width: percent }]
+    : CONTEXT_PANEL_ROWS.map(function (row) {
+      return { key: row.key, tint: row.tint, width: (percent * (breakdown[row.key] || 0)) / breakdownTotal };
+    })).filter(function (segment) { return segment.width > 0; });
+
+  const buttonProps = {
+    type: 'button',
+    className: 'bi-ctx-trigger',
+    'aria-label': ariaText,
+    'aria-haspopup': 'dialog',
+    'aria-expanded': open,
+    // 信息栏根节点自带 onClick（切换完整/简洁），不拦下冒泡会把界面顺带切走。
+    onClick: function (event) { event.stopPropagation(); setOpen(!open); },
+    onKeyDown: function (event) { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); },
+  };
+  if (CONTEXT_TOOLTIP === null) buttonProps.title = ariaText;
+  const button = React.createElement('button', buttonProps,
+    React.createElement('svg', { className: 'bi-ctx-ring', viewBox: '0 0 14 14', width: 14, height: 14, 'aria-hidden': true },
+      React.createElement('circle', { className: 'bi-ctx-track', cx: 7, cy: 7, r: CONTEXT_RADIUS }),
+      React.createElement('circle', {
+        className: 'bi-ctx-fill', cx: 7, cy: 7, r: CONTEXT_RADIUS,
+        strokeDasharray: (CONTEXT_CIRCUMFERENCE * percent / 100) + ' ' + CONTEXT_CIRCUMFERENCE,
+        transform: 'rotate(-90 7 7)',
+      })),
+    React.createElement('span', { className: 'bi-ctx-percent' }, reading));
+  // 与原生 ContextMeter 同一用法：label / side / delayMs / disabled（面板打开时让位，不再弹提示）。
+  const trigger = CONTEXT_TOOLTIP === null ? button
+    : React.createElement(CONTEXT_TOOLTIP, { label: ariaText, side: 'top', delayMs: 200, disabled: open }, button);
+
+  const panel = open ? React.createElement('div', {
+    ref: panelRef,
+    className: 'bi-ctx-panel',
+    style: panelPosition || { visibility: 'hidden', left: 0, top: 0 },
+    role: 'dialog',
+    'aria-label': t('ui.contextUsed'),
+    onClick: function (event) { event.stopPropagation(); },
+  },
+    React.createElement('div', { className: 'bi-ctx-panel-header' },
+      React.createElement('span', { className: 'bi-ctx-panel-headline' }, headBefore),
+      React.createElement('span', { className: 'bi-ctx-panel-percent' }, reading),
+      React.createElement('span', { className: 'bi-ctx-panel-headline' }, headAfter),
+      React.createElement('span', { className: 'bi-ctx-panel-figures' },
+        t('ui.contextFigures', { used: contextTokenText(context.usedTokens), window: contextTokenText(context.contextWindow) }))),
+    React.createElement('div', { className: 'bi-ctx-panel-bar' },
+      segments.map(function (segment) {
+        return React.createElement('div', {
+          key: segment.key, className: 'bi-ctx-segment ' + segment.tint, style: { width: segment.width + '%' },
+        });
+      })),
+    breakdown && breakdownTotal > 0 ? React.createElement('dl', { className: 'bi-ctx-panel-rows' },
+      CONTEXT_PANEL_ROWS.map(function (row) {
+        return React.createElement('div', { key: row.key, className: 'bi-ctx-panel-row' },
+          React.createElement('dt', null,
+            React.createElement('span', { className: 'bi-ctx-swatch ' + row.tint, 'aria-hidden': true }),
+            t(row.label)),
+          React.createElement('dd', null, '~' + contextTokenText(breakdown[row.key] || 0)));
+      })) : null) : null;
+
+  // 面板挂到 body（原生同样 portal 到 body）；react-dom 不可用时降级为就地渲染，position:fixed 仍按量到的坐标摆。
+  const portalTarget = typeof document !== 'undefined' && document.body ? document.body : null;
+  const panelNode = panel === null ? null
+    : (ReactDOM !== null && portalTarget ? ReactDOM.createPortal(panel, portalTarget) : panel);
+
+  return React.createElement('span', {
+    ref: rootRef,
+    className: 'bi-ctx',
+    'data-field': 'contextUsage',
+    style: fieldStyle('contextUsage'),
+  }, trigger, panelNode);
 }
 
 // ---------- 设置页 ----------
@@ -1464,6 +1704,10 @@ module.exports = {
       // 原生/会话投影（hooks 无条件调用）
       const statsProj = props.useProjection ? props.useProjection('sessionStats') : undefined;
       const usageProj = props.useProjection ? props.useProjection('tokenUsage') : undefined;
+      // DSH 0.1.6-alpha.2 原生上下文圆环的同一对投影：插件接管后由这里读数。
+      // 键缺席时快照是 undefined（不是缺面），因此与原生一样"没数据就不渲染"。
+      const pressureProj = props.useProjection ? props.useProjection('contextPressure') : undefined;
+      const breakdownProj = props.useProjection ? props.useProjection('contextBreakdown') : undefined;
 
       const [state, setState] = React.useState({
         loading: true, selectionKey: '', balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null,
@@ -2344,7 +2588,15 @@ module.exports = {
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
-       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes);
+       // 上下文占用圆环（DSH 原生信息，由本插件接管）：挂在主行最右端——即「简洁模式」可见的那一行里的最后一个元素。
+       // 与其它字段同源：fields.contextUsage 管显隐、colors.contextUsage 管配色；数据不足时整块不渲染。
+       const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
+       const contextNode = contextInfo === null ? null : React.createElement(ContextMeterRing, {
+         key: 'ctx',
+         context: contextInfo,
+         breakdown: breakdownProj,
+       });
+       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes, contextNode);
 
       let row1 = null;
       if (statsProj) {
@@ -2417,8 +2669,8 @@ module.exports = {
 
       // D6 用户拍板：全部字段隐藏 = 底栏彻底移除——不渲染任何 DOM（无空行/占位高度/悬空分隔符），
       // density 点击因无 DOM 而天然无副作用、不报错。两条路径：①配置层面所有字段都被关闭；
-      // ②渲染层面（数据条件导致）原生行/主行全空。
-      if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0)) {
+      // ②渲染层面（数据条件导致）原生行/主行/圆环全空。
+      if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0 && contextNode === null)) {
         return null;
       }
 
