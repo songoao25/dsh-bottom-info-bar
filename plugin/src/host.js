@@ -1259,11 +1259,17 @@ export const __settingsInternals = {
 // 安全底线：任何读取失败 / 无法判定的情况一律返回 true（按「还在装」处理，绝不删数据）。
 function bundleStillReferenced() {
   try {
+    // 保险①：数据与 profile 必须同属一个 DSH home。数据目录被指到别处（自定义部署）时，
+    // profile 未必在默认位置，两者对不上就判定不了——一律按「还在装」处理。
+    if (dirname(DATA_DIR) !== dirname(PROFILE_ROOT)) return true
     if (!existsSync(PROFILE_ROOT)) return true
+    let profileDirs = 0
     let readableManifests = 0
-    const names = readdirSync(PROFILE_ROOT)
-    for (const name of names) {
-      const manifestPath = join(PROFILE_ROOT, name, 'package.json')
+    const entries = readdirSync(PROFILE_ROOT, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      profileDirs += 1
+      const manifestPath = join(PROFILE_ROOT, entry.name, 'package.json')
       if (!existsSync(manifestPath)) continue
       let parsed = null
       try {
@@ -1281,8 +1287,9 @@ function bundleStillReferenced() {
         if (deps && typeof deps === 'object' && Object.hasOwn(deps, BUNDLE_NAME)) return true
       }
     }
-    // 一份 manifest 都没读出来 = 根本没判定成功，按「还在装」处理，绝不删数据。
-    if (readableManifests === 0) return true
+    // 保险②：一个 profile 目录都没有 / 一份 manifest 都没读出来 = 根本没判定成功，
+    // 按「还在装」处理，绝不删数据。
+    if (profileDirs === 0 || readableManifests === 0) return true
   } catch (err) {
     return true
   }

@@ -5,6 +5,7 @@
 // 另有静态断言：插件页 bundle 配置入口（plugins.bundle.config）与设置页入口并存、
 // 复制兜底的临时节点必定摘除。
 // 用法：node tests/test-runtime-uninstall.mjs
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,8 +36,10 @@ check('导出用的下载链接与 objectURL 均被回收',
   clientSrc.includes('if (link.parentNode) link.parentNode.removeChild(link);')
   && clientSrc.includes('window.URL.revokeObjectURL(url)'), true)
 check('宿主卸载判定：读不到 / 判定不了时一律按「还在装」处理（绝不删数据）',
-  hostSrc.includes('if (readableManifests === 0) return true')
+  hostSrc.includes('if (profileDirs === 0 || readableManifests === 0) return true')
   && /\} catch \(err\) \{\s*\n\s*return true\s*\n\s*\}/.test(hostSrc), true)
+check('保险①：数据与 profile 不同属一个 DSH home 时绝不清（自定义部署不敢判定）',
+  hostSrc.includes('if (dirname(DATA_DIR) !== dirname(PROFILE_ROOT)) return true'), true)
 check('卸载判定可用环境变量隔离（测试专用，运行期不设置）',
   hostSrc.includes("const PROFILE_ROOT = process.env.DSH_BOTTOM_INFO_BAR_PROFILE_ROOT || join(homedir(), '.dsh', 'profiles')"), true)
 check('dispose 先判卸载再决定清不清空（不是无脑删）',
@@ -112,11 +115,50 @@ resetData()
 runDispose()
 check('manifest 损坏（判定不了）→ 保守保留，绝不删', existsSync(sentinel), true)
 
-// ⑤ profiles 目录不存在 → 同样保守保留
+// ⑤ profiles 目录不存在 → 判定不了 → 保守保留
 rmSync(profilesRoot, { recursive: true, force: true })
 resetData()
 runDispose()
 check('profiles 目录不存在 → 保守保留，绝不删', existsSync(sentinel), true)
+
+// ⑥ profiles 目录在，但里面一个 profile 子目录都没有 → 判定不了 → 保守保留
+mkdirSync(profilesRoot, { recursive: true })
+resetData()
+runDispose()
+check('profiles 目录为空（扫不到任何 profile）→ 保守保留，绝不删', existsSync(sentinel), true)
+
+// ⑦ 保险①：数据目录与 profile 根目录不属于同一个 DSH home → 判定不了 → 保留
+//    DATA_DIR / PROFILE_ROOT 都是模块级常量，只能在子进程里换一套环境验证。
+{
+  const { spawnSync } = await import('node:child_process')
+  const splitHome = join(tmpRoot, 'split')
+  const splitData = join(splitHome, 'elsewhere', 'data')
+  const splitProfiles = join(splitHome, 'profiles')
+  const splitManifest = join(splitProfiles, 'web', 'package.json')
+  mkdirSync(join(splitProfiles, 'web'), { recursive: true })
+  mkdirSync(splitData, { recursive: true })
+  writeFileSync(splitManifest, JSON.stringify({ dsh: { profile: { bundles: [] } } }))
+  writeFileSync(join(splitData, 'sentinel.json'), '{"keep":true}')
+  const script = [
+    "import { existsSync } from 'node:fs'",
+    "const plugin = (await import(process.env.LIB)).default",
+    "const ctx = { get: () => undefined, credentials: { resolve: async () => undefined }, shell: { resolve: () => ({}), run: async () => ({ exitCode: 0, stdout: { text: '' } }) }, interval: () => () => {}, timeout: () => () => {}, on: () => () => {}, inject: (_s, cb) => { cb({ effect(fn) { const d = fn(); return () => { if (typeof d === 'function') d() } }, webServer: { register: () => () => {} } }); return () => {} } }",
+    "const dispose = plugin.apply(ctx)",
+    "if (typeof dispose === 'function') dispose()",
+    "process.stdout.write(String(existsSync(process.env.SENTINEL)))",
+  ].join('\n')
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DSH_BOTTOM_INFO_BAR_DATA_DIR: splitData,
+      DSH_BOTTOM_INFO_BAR_PROFILE_ROOT: splitProfiles,
+      LIB: fileURLToPath(new URL('../plugin/lib/index.js', import.meta.url)),
+      SENTINEL: join(splitData, 'sentinel.json'),
+    },
+  })
+  check('保险①：数据目录不在 profile 所属的 DSH home 下 → 保守保留，绝不删', (r.stdout || '').trim(), 'true')
+}
 
 try { rmSync(tmpRoot, { recursive: true, force: true }) } catch (err) { /* 临时目录清不掉不影响结论 */ }
 
