@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.12.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.2...v1.12.0) (2026-09-18)
+
+
+### Features
+
+* adopt the native context ring into the info bar fields ([#93](https://github.com/songoao25/dsh-bottom-info-bar/issues/93)) ([d472c1f](https://github.com/songoao25/dsh-bottom-info-bar/commit/d472c1f53d8bed7ed31ff4f187d93215f6589bf4))
+
 ## [1.11.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.11.1...v1.11.2) (2026-09-16)
 
 
