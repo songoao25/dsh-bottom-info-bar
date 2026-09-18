@@ -15,6 +15,34 @@
 
 ---
 
+## 2026-09-18
+
+### v1.12.0：把 DSH 原生「上下文用量圆环」接管进字段系统
+
+- 背景：DSH 升到 `0.1.6-alpha.2` 后，原生 `ContextMeter`（那颗显示上下文占用的圆环）被挪进了 composer dock 那一行。它虽然和信息栏同排，但**不归插件管**——位置、间距、颜色、开关全都碰不到，用户看到的是「一颗外来的圆环挤在信息栏旁边」。
+- 用户需求（原话要点）：把它**无缝并进插件**；放在**「简洁模式」那一行的最右端**（= 信息栏主行 `row2`，因为紧凑模式只隐藏次要行、保留主行）；调好边距做到「无感」；像其他自定义字段一样能**开关 + 配色**；点击弹出的明细面板要和原生**完全一样**。
+- 方案定调（用户拍板）：**不做替代品，做搬运工** —— 把原生实现整体搬进插件，再交给字段系统接管。不自己重新设计交互，避免和原生行为产生差异。
+- 落地要点：
+  - 新字段 `contextUsage`，`group: 'native'`、`colorKind: 'meter'`（新增色种，颜色随宿主走 `--bi-separator`），但渲染位置固定在主行右端，跟随「简洁模式」那一行。
+  - 数据源与原生同源：读 `contextPressure` / `contextBreakdown` 两个 projection。占用算法照抄原生（`projectedTokens ?? pressureTokens` ÷ `contextWindow`），**额外加了 `contextWindow > 0` 的防护**——原生在窗口为 0/缺失时会算出 `NaN%` / `Infinity`，插件侧直接判空不渲染。
+  - 交互照搬原生：点击弹上下文构成明细面板（系统提示词 / 工具定义 / 对话消息），用 `ReactDOM.createPortal` 挂到 `document.body`，避免被信息栏的层叠上下文裁剪；Esc 与点击外部关闭；点击时 `stopPropagation`——**否则会误触发信息栏自身的密度切换**（这个坑实测过）。
+  - 优先复用 `@deepseek-ai/dsh-client-ui-primitives` 的 `Tooltip`（原生用的就是它），拿不到时回退到 `title` 属性，保证老宿主不白屏。
+- ⚠ 关键决策：隐藏原生那颗圆环，用的是**结构选择器**而不是哈希类名 ——
+  ```css
+  [class*="_dock"]:has(.bi-root) > span:not(:has(.bi-root)):has(button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"]) { display: none !important; }
+  ```
+  理由：DSH 的 CSS 类名是构建期哈希（如 `.JObwrW_root`、`.uV2eYG_dock`），**每次发版都会变**，写死等于埋一颗下次升级必然引爆的哑弹。选择器同时约束了三个条件（是含 `.bi-root` 的 dock 的直接子节点 / 自身不含 `.bi-root` / 内含 14×14 的 dialog 按钮），所以**不可能误伤信息栏自己的容器**。这是本项目「不耦合易变哈希名」的既定经验在原生接管场景下的第一次应用。
+- 测试：全量 `node tests/run-all.mjs` 通过。新增 13 条断言覆盖：占用算法、数据缺失返回 null、零窗口 / NaN 窗口返回 null、超 100% 封顶、圆环在 `row2` 末尾、`fieldVisible` / `data-field` / `fieldStyle` 三件套、结构隐藏选择器、圆环几何（`RADIUS=5.5` / viewBox `0 0 14 14` / `stroke-width 2`）、Tooltip 复用、portal + Esc、`stopPropagation`、移除全部字段时 `contextNode` 一并移除、中英文案成对。
+- 踩坑（可复用）：
+  - 构建脚本会先 `rm -rf plugin/lib`，在宿主 Node 22 上会撞**安全删除守卫**（`SAFE_DELETE_BULK_CONFIRM_REQUIRED`）。解法：构建命令前加 `CODEBUDDY_SAFE_DELETE_ENABLED=0`。
+  - 测试 `test-field-config-client.js` 的 D1 是从 `const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]` 这个锚点**开始切片 eval** 的。所以任何新引入的模块级常量（如 `CONTEXT_TOOLTIP`）**必须声明在锚点之前**，否则切片里看不见它定义域外的变量，直接报 `is not defined`。
+  - DSH 前端不再提供单文件插件路由（`/plugins/<name>/client.js` 会 404）；实际是从 `index.html` 里的 `/plugins/??a,b,c&rev=<hash>` **合并请求**取包。想验证线上跑的是不是新代码，必须用**当前** `rev` 去取，否则会拿到 0 字节的陈旧响应。
+- 生效方式：插件客户端代码是**从磁盘读**的，本机 DSH 网页版**刷新页面即可**，不需要重启服务。已用合并包的当前 `rev` 抓包确认 `CONTEXT_TOOLTIP` / `bi-ctx-trigger` / `contextOccupancy` 均已在线。
+- 发布证据：修复 PR #93 已合并（`d472c1f`），release PR #94 已合并，tag / GitHub Release 为 `v1.12.0`，npm `dsh-bottom-info-bar` latest 已核对为 `1.12.0`（发布流水线日志有 `+ dsh-bottom-info-bar@1.12.0`，registry 生效约滞后 50 秒）。
+- 附带清零：本地 `main` 再次出现「陈旧 + 与远端分叉」的旧疾（本地留着未压缩的 `ec09259`，远端是压缩后的 `ce8878f`）。处置沿用安全路径——**先确认工作区干净、且本地那条提交在同名分支上另有保留**，再 `git reset --hard origin/main`；全程不要在有未提交改动时 `git checkout main`。
+
+---
+
 ## 2026-09-16
 
 ### v1.11.2：适配 DSH 0.1.6-alpha.1 的设置服务加载方式
