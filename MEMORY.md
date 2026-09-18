@@ -17,6 +17,19 @@
 
 ## 2026-09-18
 
+### v1.13.0：适配插件管理页的运行时装卸（账单安全优先）
+
+- 起因：alpha.2 发布说明要求「请开发者检查插件加载和卸载逻辑」（依赖解析改为运行时、插件管理页支持运行时卸载）。用户要求做到「安装卸载非常完美、不留残留」，并强调**账单数据丢一次就是重大事故**——故本版的排序是：账单安全 > 功能完整 > 卸载彻底。
+- 用户拍板：①卸载即清空（账本＋设置，不留副本）②配置入口两处都注册 ③必须写卸载自检测试 ④卸载后原生界面要恢复原样 ⑤判定必须加保险。
+- ⚠ 核心认知（用户提问，务必记住这个推理）：**「卸载之后你怎么扫描？」不是悖论。** 扫描发生在 dispose 里，即**卸载进行中、代码还在内存的最后一刻**。顺序是：插件管理页改 `package.json` 摘掉本插件 → Cordis 调本插件 dispose → **此刻代码仍活着**，扫 `package.json` 发现自己已不在列表 → 判定真卸载 → 清数据 → 插件被摘除。真卸完后确实什么都做不了，所以清理只能写在 dispose 里。
+- 判据：扫 `~/.dsh/profiles/*/package.json` 的 `dsh.profile.bundles` 与 `dependencies`/`devDependencies`/`optionalDependencies`，都没有本插件才算真卸载；只是停用那一排（仅改 `cordis.patch.yml` 的 `disabled`）或 DSH 重启 → 一个字不删。
+- 三道保险（方向＝「只有能明确证明已卸载才清」）：①数据与 profile 必须同属一个 DSH home（`dirname(DATA_DIR) === dirname(PROFILE_ROOT)`），否则不判定 ②必须至少扫到一个 profile 目录且读出一份 manifest ③manifest 损坏 / 目录缺失 / 目录为空 / 任何异常 → 一律保留。
+- 顺带：新增 `plugins.bundle.config` 槽位（键＝包名，按宿主要求给 `summary` / `page` 两视图），与 `settings.section` 并存；复制兜底的临时 textarea 改 finally 必摘除（原先抛错时会留在 body 上）。
+- 已知边界（已如实告知用户）：DSH 没在运行时被卸载（手动改配置 / 关掉 DSH 后卸）→ dispose 不跑 → 数据不会被清，只能靠 `uninstall.sh` 兜底。
+- 踩坑：`tests/test-localization.mjs` 的槽位桩按 `options.name` 分类，新槽位落进 `else` 分支把 `dock`（信息栏本体）覆盖了，导致那批信息栏断言实际在渲染设置页。**教训：给本插件新增任何 slot 注册，必须同步检查该测试的槽位桩。**
+- 测试：新增 `tests/test-runtime-uninstall.mjs`（16 条断言，含真卸载清空、停用/重启不动、link 安装算引用、四条保守分支；跨 home 保险因 DATA_DIR/PROFILE_ROOT 是模块级常量，改用子进程换环境验证）。全量测试通过。
+- 发布证据：PR #96 合并（`a0fb17f`），release PR #97 合并，tag / Release `v1.13.0`，npm latest 已核对为 `1.13.0`（registry 生效滞后约 60 秒，务必轮询确认）。
+
 ### v1.12.0：把 DSH 原生「上下文用量圆环」接管进字段系统
 
 - 背景：DSH 升到 `0.1.6-alpha.2` 后，原生 `ContextMeter`（那颗显示上下文占用的圆环）被挪进了 composer dock 那一行。它虽然和信息栏同排，但**不归插件管**——位置、间距、颜色、开关全都碰不到，用户看到的是「一颗外来的圆环挤在信息栏旁边」。
