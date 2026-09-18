@@ -68,10 +68,16 @@ function copyTextToClipboard(text) {
       area.style.top = '-1000px';
       area.style.opacity = '0';
       document.body.appendChild(area);
-      area.select();
-      area.setSelectionRange(0, text.length);
-      const ok = document.execCommand('copy');
-      document.body.removeChild(area);
+      let ok = false;
+      try {
+        area.select();
+        area.setSelectionRange(0, text.length);
+        ok = document.execCommand('copy');
+      } finally {
+        // 卸载自检：无论复制成功还是抛错，临时 textarea 都必须从 body 摘掉，
+        // 否则会在页面上留下一个游离节点。
+        if (area.parentNode) area.parentNode.removeChild(area);
+      }
       if (ok) resolve(); else reject(new Error('copy rejected'));
     } catch (err) {
       reject(err);
@@ -1590,6 +1596,17 @@ function InfoBarSettingsSection() {
   }
 }
 
+// 新版插件管理（DSH 0.1.6-alpha.2）的 bundle 配置入口：显示在插件页里本 bundle 自己的页面上。
+// 宿主通过 props.view 要两种形态：'summary' 是标题下那一行简介，'page' 是带自己保存控件的表单。
+// 与设置页入口并存——老用户在设置页里的习惯位置不变，新用户在插件页也能直接配。
+function InfoBarBundleConfig(props) {
+  const view = props && props.view;
+  if (view === 'summary') {
+    return React.createElement('span', { className: 'bib-bundle-summary' }, t('ui.bundleConfigSummary'));
+  }
+  return React.createElement(InfoBarSettingsSection);
+}
+
 module.exports = {
   inject: ['slots', 'locale'],
   async apply(ctx) {
@@ -1678,6 +1695,13 @@ module.exports = {
       return slots.register(
         { name: 'settings.section', id: 'bottom-info-bar', order: 100, locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
         InfoBarSettingsSection);
+    });
+    // 新版插件管理（0.1.6-alpha.2）：bundle 自己的配置页，键为本 bundle 的包名。
+    // 与上面的 settings.section 并存，插件页与设置页都能配，卸载时随 slots.inject 一起撤销。
+    slots.inject('plugins.bundle.config', function () {
+      return slots.register(
+        { name: 'plugins.bundle.config', id: 'dsh-bottom-info-bar', locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
+        InfoBarBundleConfig);
     });
 
     const initialDensityVersion = densityVersion;

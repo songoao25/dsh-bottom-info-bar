@@ -106,12 +106,16 @@ let plugin
 let settings
 let dock
 let navLabel
+let bundleConfig
 const locale = createLocale('en')
 const slots = {
   inject: (_, register) => register(),
   register(options, component) {
     assert.equal(options.locale, 'dsh-bottom-info-bar')
+    // 三类槽位必须分开接：plugins.bundle.config 是 0.1.6-alpha.2 插件管理页的 bundle 配置入口，
+    // 落到 else 会把 dock（信息栏本体）覆盖掉，下面所有信息栏断言都会变成在渲染设置页。
     if (options.name === 'settings.section') { settings = component; navLabel = options.label }
+    else if (options.name === 'plugins.bundle.config') { bundleConfig = component }
     else dock = component
     return () => {}
   },
@@ -209,6 +213,12 @@ function infoBar(mode, density = 'full', error = null) {
 }
 for (const language of ['zh', 'en']) {
   locale.setLocale(language)
+  // 插件管理页的 bundle 配置入口：简介视图必须是一行真文案（不吃 useState，不影响下面的顺序）
+  const summary = text(bundleConfig({ view: 'summary' }))
+  assert.ok(summary.length > 0, summary)
+  assert.doesNotMatch(summary, /\b(?:ui|host|field|group)\.[A-Za-z]/)
+  assert.doesNotMatch(summary, /undefined/)
+  if (language === 'en') assert.doesNotMatch(summary, /\p{Script=Han}/u)
   for (const mode of ['balance', 'subscription', 'billing']) {
     for (const density of ['full', 'compact']) {
       const tree = infoBar(mode, density)

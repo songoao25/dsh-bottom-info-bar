@@ -16,6 +16,9 @@ import * as hostLocale from './host-locale.js'
 const t = hostLocale.createHostTranslator()
 
 const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
+// DSH_BOTTOM_INFO_BAR_PROFILE_ROOT 仅供测试隔离（指向临时 profiles 目录），运行期不设置。
+const PROFILE_ROOT = process.env.DSH_BOTTOM_INFO_BAR_PROFILE_ROOT || join(homedir(), '.dsh', 'profiles')
+const BUNDLE_NAME = 'dsh-bottom-info-bar'
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
 const DATA_BACKUP_FILE = DATA_FILE + '.bak'
 const DATA_TEMP_FILE = DATA_FILE + '.tmp'
@@ -1245,6 +1248,58 @@ export const __settingsInternals = {
   CUSTOM_TEXT_MAX_LEN: CUSTOM_TEXT_MAX_LEN,
   DEFAULT_TIME_FORMAT: DEFAULT_TIME_FORMAT,
   DEFAULT_TIME_ZONES: DEFAULT_TIME_ZONES,
+}
+
+// ---------- 运行时卸载：判定「真卸载」还是「只是停用 / 重启」 ----------
+// 新版插件管理（DSH 0.1.6-alpha.2）支持运行时卸载 bundle。插件行被 dispose 时，宿主自己
+// 分不清三件事：①用户真的把插件卸掉了 ②只是在插件页把这一排停用 ③DSH 正常重启。
+// 判据：真卸载时，profile 的 package.json 里已经不再有本 bundle（`dsh.profile.bundles`
+// 与 dependencies 都查）；停用只改 cordis.patch.yml 的 disabled，重启什么都不改，两者
+// 都仍能在 package.json 里查到本 bundle。
+// 安全底线：任何读取失败 / 无法判定的情况一律返回 true（按「还在装」处理，绝不删数据）。
+function bundleStillReferenced() {
+  try {
+    if (!existsSync(PROFILE_ROOT)) return true
+    let readableManifests = 0
+    const names = readdirSync(PROFILE_ROOT)
+    for (const name of names) {
+      const manifestPath = join(PROFILE_ROOT, name, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      let parsed = null
+      try {
+        parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      } catch (err) {
+        continue
+      }
+      if (!parsed || typeof parsed !== 'object') continue
+      readableManifests += 1
+      const profile = parsed.dsh && parsed.dsh.profile
+      const bundles = profile && Array.isArray(profile.bundles) ? profile.bundles : []
+      if (bundles.indexOf(BUNDLE_NAME) !== -1) return true
+      for (const key of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+        const deps = parsed[key]
+        if (deps && typeof deps === 'object' && Object.hasOwn(deps, BUNDLE_NAME)) return true
+      }
+    }
+    // 一份 manifest 都没读出来 = 根本没判定成功，按「还在装」处理，绝不删数据。
+    if (readableManifests === 0) return true
+  } catch (err) {
+    return true
+  }
+  return false
+}
+
+// 真卸载：连目录一起清掉（账本 + 设置 + 备份），不留残留。
+// 只在 bundleStillReferenced() 为 false 时调用；调用点必须已经确认「不再被任何 profile 引用」。
+function clearPluginData() {
+  try {
+    if (!existsSync(DATA_DIR)) return true
+    rmSync(DATA_DIR, { recursive: true, force: true })
+    return true
+  } catch (err) {
+    console.warn('[dsh-bottom-info-bar] 卸载清理数据目录失败：' + String((err && err.message) || err))
+    return false
+  }
 }
 
 export default {
@@ -4315,6 +4370,12 @@ export default {
 
     // 卸载时冲刷未落盘的记账记录
     return function () {
+      // 真卸载（profile 的 package.json 里已无本 bundle）：连数据目录一起清空，不留残留。
+      // 只是停用那一排、或 DSH 正常重启时，走下面的冲刷分支，一个字都不删。
+      if (!bundleStillReferenced()) {
+        clearPluginData();
+        return;
+      }
       if (dirty || summariesDirty) flushSave();
     };
   },
