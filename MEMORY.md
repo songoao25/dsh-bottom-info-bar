@@ -15,6 +15,20 @@
 
 ---
 
+## 2026-09-20
+
+### Issue #99 / v1.14.0：接入 Command Code 订阅额度
+
+- 来源：Issue #99 提供了 Command Code 官网、额度说明和 CLI 线索；需求不是只显示供应商名，而是接入 5 小时、周、已知套餐月度 credits 及剩余量。
+- 落地：`command` 为规范 provider ID，兼容 `command-code`；凭据按 `COMMAND_CODE_API_KEY` → `CMD_API_KEY` → 进程环境 → `~/.commandcode/auth.json` 读取；请求 `/alpha/whoami?limits=1`、`/alpha/billing/credits`、`/alpha/billing/subscriptions`；快照用 `balanceUnit: "credits"` 区分 credits 与货币余额。
+- 安全边界：无凭据、401/429、超时、畸形响应、未知套餐和空窗口不猜测数据；失败保留旧快照。订阅接口失败时仍可保留已取得的窗口额度，credits 接口失败则整次保留旧快照。
+- 测试：Command Code 解析器 11/11、双模式 127/127；静态 Host 冒烟覆盖凭据优先级、Bearer、官方路径、无凭据、畸形响应和失败保留；`node tests/run-all.mjs`、构建和 `git diff --check` 全部通过。
+- 发布证据：PR #100 合并（`c31f3de`），Release PR #101 合并（`a52d069`）；tag / GitHub Release 为 `v1.14.0`，npm `latest` 已核对为 `1.14.0`，主干 CodeQL 通过。
+- 真实验证边界：本次没有真实 Command Code 账号，在线鉴权和真实额度结果未做实测；Issue 回复必须明确这一点，不能把 fixture / stub 测试写成真实账号验证。
+- 可复用流程：新服务商适配应拆成 provider/别名、凭据优先级、官方请求、统一快照与单位、失败保留、解析 fixture、无凭据不发请求的 Host 冒烟、全量测试、最后再做真实账号 canary；“协议适配完成”和“真实在线验证完成”必须分开记录。
+
+---
+
 ## 2026-09-18
 
 ### v1.13.0：适配插件管理页的运行时装卸（账单安全优先）
