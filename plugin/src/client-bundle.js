@@ -2128,6 +2128,7 @@ module.exports = {
         if (provider === 'opencode-go' || provider === 'opencode') return 'OpenCode Go';
         if (provider === 'zai' || provider === 'zai-coding-cn') return t('ui.zhipu');
         if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return t('ui.xiaomiMiMo');
+        if (provider === 'command' || provider === 'command-code') return t('ui.commandCode');
         return t('ui.subscription');
       }
 
@@ -2384,15 +2385,16 @@ module.exports = {
         // v1.8：充值余额模式——无额度窗口但有 balance 字段（如智谱普通 API 余额用户）
         // 显示"余额 ¥XX.XX"，与 Coding Plan 额度窗口互斥
         if (!hasData && typeof sub.balance === 'number' && isFinite(sub.balance)) {
+          const isCreditsBalance = sub.balanceUnit === 'credits';
+          const balanceValue = isCreditsBalance ? fmt(sub.balance, 2) : '¥' + fmt(sub.balance, 2);
           if (fieldVisible('subBalance')) {
-            const balTxt = '¥' + fmt(sub.balance, 2);
-            const titleLines = [t('ui.subscriptionSource', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (hostText(sub.plan) || t('ui.prepaidBalance')) + ')',
-              t('ui.availableBalance', { balTxt: balTxt })];
+            const titleLines = [t('ui.subscriptionSource', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (hostText(sub.plan) || (isCreditsBalance ? t('ui.commandCode') : t('ui.prepaidBalance'))) + ')',
+              isCreditsBalance ? t('ui.availableCredits', { value: balanceValue }) : t('ui.availableBalance', { balTxt: balanceValue })];
             groups.push(fieldSpan('subBalance', 'subbal', React.createElement('span', { title: titleLines.join('\n') },
-              metric(t('ui.balance.pushBalanceGroups'), balTxt))));
+              metric(isCreditsBalance ? t('ui.credits') : t('ui.balance.pushBalanceGroups'), balanceValue))));
           }
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
-          pushSessionCost(groups, trailingErrorGroups, false);
+          if (!isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
           if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
@@ -2422,6 +2424,8 @@ module.exports = {
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
           const LOW_QUOTA_PERCENT = 20;
           const titleLines = [t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (sub.plan ? ' (' + hostText(sub.plan) + ')' : '')]
+            .concat(sub.balanceUnit === 'credits' && typeof sub.balance === 'number' && isFinite(sub.balance)
+              ? [t('ui.availableCredits', { value: fmt(sub.balance, 2) })] : [])
             .concat(windows.map(function (w) {
               return t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })
                 + (w.resetsAt ? t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) }) : '');

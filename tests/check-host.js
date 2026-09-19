@@ -77,7 +77,7 @@ if (missingHandlers.length === 0) console.log('PASS  ' + handlers.length + ' 个
 else { ok = false; console.log('FAIL  缺失 handler：' + missingHandlers.join(', ')); }
 
 // 关键函数必须存在（防漏贴类缺陷）
-const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'computeEstimate', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage'];
+const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'computeEstimate', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'parseCommandCodeUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage', 'fetchCommandCodeUsage'];
 const missCritical = critical.filter((f) => !defined.has(f));
 if (missCritical.length === 0) console.log('PASS  关键函数齐备：' + critical.join(', '));
 else { ok = false; console.log('FAIL  关键函数缺失：' + missCritical.join(', ')); }

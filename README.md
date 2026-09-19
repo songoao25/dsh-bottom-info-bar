@@ -94,7 +94,7 @@ Shows the **real balance** from the provider's `/user/balance` (or equivalent) A
 
 When the balance drops below ¥20, the amount and a `Low` label turn red.
 
-### Subscription mode (ChatGPT / Codex, OpenCode Go, Zhipu, Xiaomi MiMo Token Plan)
+### Subscription mode (ChatGPT / Codex, OpenCode Go, Zhipu, Xiaomi MiMo Token Plan, Command Code)
 
 Shows **quota remaining per window** (5-hour / weekly / monthly, where remaining = 100 − used) and a **countdown to the next reset**. Quota and countdown always come from the same window, so they can never disagree.
 
@@ -102,6 +102,7 @@ Shows **quota remaining per window** (5-hour / weekly / monthly, where remaining
 - **OpenCode Go** — reads quota from `opencode.ai/zen/go/v1/usage` using `OPENCODE_GO_API_KEY` (Settings → Models) or the opencode CLI login at `~/.local/share/opencode/auth.json`. Missing key → a "not configured" hint, not an error.
 - **Zhipu** — GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`): plan tier plus the 5-hour and weekly windows (including the credit-based plans introduced on 2026-07-30).
 - **Xiaomi MiMo Token Plan** — monthly Credits quota via `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` per region (fallback `XIAOMI_API_KEY`): plan name plus the monthly window.
+- **Command Code** — reads the official CLI quota endpoints using `COMMAND_CODE_API_KEY` or `CMD_API_KEY` from Settings → Models, the same environment variables, or the CLI login at `~/.commandcode/auth.json`: monthly credits plus 5-hour and weekly windows. Credits are displayed as credits, never as currency; unknown plan IDs do not get an invented monthly percentage.
 
 In compact mode the bar prefers the shortest window (5-hour > weekly > monthly), because it refreshes fastest; if the 5-hour window is unavailable it falls back to weekly, then monthly.
 
@@ -157,6 +158,7 @@ The bar detects the provider from DSH's current model list — **no configuratio
 | opencode-go / opencode | OpenCode Go | `OPENCODE_GO_API_KEY` or the opencode auth file |
 | zai / zai-coding-cn | Zhipu | `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`) |
 | xiaomi-token-plan-cn / -sgp / -ams | Xiaomi MiMo | `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` (fallback `XIAOMI_API_KEY`) |
+| command / command-code | Command Code | `COMMAND_CODE_API_KEY` or `CMD_API_KEY`, or `~/.commandcode/auth.json` |
 
 ### Cloud-billing (real monthly bill)
 
@@ -223,6 +225,7 @@ ChatGPT binding and token maintenance belong to the separate plugin `dsh-chatgpt
 | Balance says **Not configured: DEEPSEEK_API_KEY** | Add the key under Settings → Models |
 | Balance shows **Refresh failed** but a figure is still visible | Transient network or key issue; it retries automatically after 60 s and keeps the last known value. **Hover the warning** for details. |
 | OpenCode Go shows **Refresh failed** with a missing-credentials tooltip | Add `OPENCODE_GO_API_KEY` under Settings → Models, or log in with the opencode CLI |
+| Command Code shows **Refresh failed** or no quota | Add `COMMAND_CODE_API_KEY` or `CMD_API_KEY` under Settings → Models, or log in with the Command Code CLI. The plugin only reads `~/.commandcode/auth.json`; it never writes the login file. |
 | ChatGPT shows **Not connected** | Install the companion plugin `dsh-chatgpt-subscription` and sign in |
 | ChatGPT plan or expiry is blank | Sign in again or rebind. If the token genuinely lacks those fields the bar leaves them empty rather than guessing. |
 | How do I update? | Click the red **Update available** label to copy the command, then restart `dsh web`. See [Updating](#updating). |

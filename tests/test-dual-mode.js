@@ -75,6 +75,10 @@ check('provider=chatgpt → subscription', detectBillingMode('chatgpt', 'auto').
 check('provider=opencode-go → subscription', detectBillingMode('opencode-go', 'auto').mode, 'subscription');
 check('provider=opencode → subscription', detectBillingMode('opencode', 'auto').mode, 'subscription');
 check('provider=openai-codex → subscription', detectBillingMode('openai-codex', 'auto').mode, 'subscription');
+check('provider=command → subscription', detectBillingMode('command', 'auto').mode, 'subscription');
+check('provider=command-code → subscription', detectBillingMode('command-code', 'auto').mode, 'subscription');
+check('订阅源映射：command → command-code', subscriptionSourceFor('command'), 'command-code');
+check('订阅源映射：command-code → command-code', subscriptionSourceFor('command-code'), 'command-code');
 check('订阅源映射：openai-codex → codex', subscriptionSourceFor('openai-codex'), 'codex');
 check('订阅源映射：chatgpt → codex', subscriptionSourceFor('chatgpt'), 'codex');
 check('订阅源映射：deepseek → null', subscriptionSourceFor('deepseek'), null);
@@ -107,6 +111,7 @@ check('账户映射：xiaomi-token-plan-sgp → xiaomi-token-plan', accountForPr
 check('账户映射：together → together', accountForProvider('together'), 'together');
 check('账户映射：amazon-bedrock → amazon-bedrock', accountForProvider('amazon-bedrock'), 'amazon-bedrock');
 check('账户映射：cloudflare-ai-gateway → cloudflare', accountForProvider('cloudflare-ai-gateway'), 'cloudflare');
+check('账户映射：command → command-code', accountForProvider('command'), 'command-code');
 check('账户映射：未知 → null', accountForProvider('some-unknown'), null);
 check('未知 provider → balance（兜底）', detectBillingMode('some-new-provider', 'auto').mode, 'balance');
 check('空 provider → balance（兜底）', detectBillingMode('', 'auto').mode, 'balance');
@@ -114,7 +119,7 @@ check('自动识别忽略旧的手动覆盖参数：codex 仍为 subscription', 
 check('自动识别忽略旧的手动覆盖参数：deepseek 仍为 balance', detectBillingMode('deepseek', 'subscription').mode, 'balance');
 check('自动识别理由只含 provider', detectBillingMode('codex', 'balance').reason, 'provider:codex');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
-check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams']));
+check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code']));
 check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']));
 
 check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5 小时', seven_day: '周', monthly: '月' }));
@@ -210,6 +215,7 @@ check('client hover 距重置用天级格式（避免与剩余%混淆）', clien
 check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup；v1.9 PR2 经 subServiceGroup 门控+着色）', clientSrc.includes("const subAnchor = subscriptionProviderGroup();")
   && clientSrc.includes("groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));"), true);
 check('client 订阅服务名映射含 OpenCode Go / Codex / ChatGPT', clientSrc.includes("return 'OpenCode Go'") && clientSrc.includes("return 'Codex'") && clientSrc.includes("return 'ChatGPT'"), true);
+check('client 订阅服务名含 Command Code', clientSrc.includes("provider === 'command' || provider === 'command-code'") && clientSrc.includes("t('ui.commandCode')"), true);
 check('client 订阅失败提示按实际订阅服务命名，不把 Codex 误称为 ChatGPT', clientSrc.includes('const serviceName = subscriptionServiceName(source);'), true);
 check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.includes("if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';"), true);
 check('client codex → Codex 保持（映射不变）', clientSrc.includes("if (provider === 'codex') return 'Codex';"), true);
@@ -219,6 +225,7 @@ check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("t
 check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
 check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) })"), true);
 check('client 订阅制显示充值余额（sub.balance）', subFn.includes('sub.balance'), true);
+check('client credits 余额不按人民币显示', subFn.includes("sub.balanceUnit === 'credits'") && subFn.includes("t('ui.availableCredits'") && subFn.includes("t('ui.credits')"), true);
 check('client 订阅·充值余额形态追加本会话花费块（共用 pushSessionCost）', subFn.includes('pushSessionCost(groups, trailingErrorGroups, false)'), true);
 check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
 check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
