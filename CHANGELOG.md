@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.13.0...v1.14.0) (2026-09-19)
+
+
+### Features
+
+* support Command Code subscription quotas ([#100](https://github.com/songoao25/dsh-bottom-info-bar/issues/100)) ([c31f3de](https://github.com/songoao25/dsh-bottom-info-bar/commit/c31f3de571527326f33322366e505bdddf2ee49e))
+
 ## [1.13.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.12.0...v1.13.0) (2026-09-18)
 
 
