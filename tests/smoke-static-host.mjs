@@ -3,7 +3,7 @@
 // → 捕获 webServer 路由 → 用假 req/res 逐方法验证 HTTP 分发、记账、同源防护、配置切换、
 //   记账持久化（落盘 → 重新 apply → 记录仍在）。
 // 用法：node tests/smoke-static-host.mjs
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,6 +13,9 @@ process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = tmpData
 // 隔离订阅源凭证：指向不存在的 auth 文件 → no-key 分支，测试绝不读取真实登录态/发网络请求
 process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(tmpData, 'no-codex-auth.json')
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(tmpData, 'no-opencode-auth.json')
+process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH = join(tmpData, 'no-command-code-auth.json')
+delete process.env.COMMAND_CODE_API_KEY
+delete process.env.CMD_API_KEY
 
 const plugin = (await import('../plugin/lib/index.js')).default
 
@@ -34,7 +37,10 @@ function makeStub(providerId, model, options) {
       return undefined
     },
     credentials: {
-      resolve: async (name) => (opts.credentialName === name ? { value: opts.credentialValue || 'test-key' } : undefined),
+      resolve: async (name) => {
+        if (opts.credentials && Object.hasOwn(opts.credentials, name)) return { value: opts.credentials[name] }
+        return opts.credentialName === name ? { value: opts.credentialValue || 'test-key' } : undefined
+      },
     },
     shell: { resolve: () => ({}), run: async () => ({ exitCode: 0, stdout: { text: '' } }) },
     interval() { captured.intervalCalls += 1; return () => {} },
@@ -196,6 +202,81 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
     check('getSubscriptionSnapshot（opencode-go 未配置）→ no-key 引导', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'opencode-go' && r.payload.error && r.payload.error.kind === 'no-key')
   }
   ogDisposer()
+}
+
+// ---------- Command Code 额度端到端（Issue #99：官方 CLI credits / subscriptions 响应） ----------
+{
+  const noKeyCtx = makeStub('command', 'command-model')
+  const noKeyDisposer = plugin.apply(noKeyCtx.ctx)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  {
+    const r = await invoke(noKeyCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+    check('Command Code 未配置凭据 → no-key 且不发请求', r.status === 200 && r.payload.source === 'command-code' && r.payload.error && r.payload.error.kind === 'no-key')
+  }
+  noKeyDisposer()
+
+  const commandResponses = {
+    credits: {
+      success: true,
+      credits: {
+        planId: 'individual-pro-v1',
+        monthlyCredits: 60,
+        purchasedCredits: 5,
+        freeCredits: 2,
+        windowLimits: {
+          fiveHour: { cap: 100, used: 25, resetAt: 1789284984 },
+          weekly: { cap: 1000, used: 400, resetAt: '2026-09-19T08:26:46Z' },
+        },
+      },
+    },
+    subscriptions: { success: true, data: { planId: 'individual-pro-v1', status: 'active', currentPeriodEnd: '2026-10-01T00:00:00Z' } },
+  }
+  const requested = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => {
+    requested.push({ url: String(url), headers: options && options.headers })
+    if (String(url).includes('/alpha/whoami')) return { ok: true, json: async () => ({ success: true, org: { id: 'org-test' } }) }
+    if (String(url).includes('/alpha/billing/credits')) return { ok: true, json: async () => commandResponses.credits }
+    if (String(url).includes('/alpha/billing/subscriptions')) return { ok: true, json: async () => commandResponses.subscriptions }
+    return { ok: false, status: 404, json: async () => ({}) }
+  }
+  try {
+    writeFileSync(join(tmpData, 'no-command-code-auth.json'), JSON.stringify({ apiKey: 'file-command-key' }))
+    const fileCtx = makeStub('command', 'command-model')
+    const fileDisposer = plugin.apply(fileCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(fileCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+      const fileRequests = requested.filter((entry) => entry.url.includes('https://api.commandcode.ai/'))
+      check('Command Code CLI auth.json 回退 → 读取 apiKey', r.status === 200 && r.payload.error === null && fileRequests.length === 3 && fileRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer file-command-key'), JSON.stringify(r.payload))
+    }
+    fileDisposer()
+    rmSync(join(tmpData, 'no-command-code-auth.json'), { force: true })
+    requested.length = 0
+
+    const commandCtx = makeStub('command', 'command-model', { credentials: { COMMAND_CODE_API_KEY: 'test-command-key', CMD_API_KEY: 'wrong-command-key' } })
+    const commandDisposer = plugin.apply(commandCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('command', 'command-model'))
+      check('Command Code → subscription 模式', r.status === 200 && r.payload.mode === 'subscription' && r.payload.reason === 'provider:command')
+    }
+    {
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+      check('Command Code → 官方 credits/订阅接口解析成功', r.status === 200 && r.payload.source === 'command-code' && r.payload.plan === 'Command Code Pro' && r.payload.error === null, JSON.stringify(r.payload))
+      check('Command Code → 5 小时 / 周 / 月窗口 + credits 单位', r.payload.windows.length === 3 && r.payload.windows.map((w) => w.key).join(',') === 'five_hour,seven_day,monthly' && r.payload.balance === 67 && r.payload.balanceUnit === 'credits', JSON.stringify(r.payload))
+      const commandRequests = requested.filter((entry) => entry.url.includes('https://api.commandcode.ai/'))
+      check('Command Code → Bearer 请求与 orgId 查询参数', commandRequests.length === 3 && commandRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer test-command-key') && commandRequests.some((entry) => entry.url.includes('orgId=org-test')), JSON.stringify(requested))
+    }
+    {
+      commandResponses.credits = { success: true, credits: { windowLimits: { fiveHour: { cap: 0, used: 0 } } } }
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'command', model: 'command-model' } }), { 'sec-fetch-site': 'same-origin' })
+      check('Command Code 响应漂移 → parse 错误而非空白覆盖', r.status === 200 && r.payload.error && r.payload.error.kind === 'parse' && r.payload.windows.length === 3 && r.payload.balance === 67, JSON.stringify(r.payload))
+    }
+    commandDisposer()
+  } finally {
+    globalThis.fetch = realFetch
+  }
 }
 
 // ---------- 智谱积分制端到端（Issue #85：CREDIT_LIMIT + 空窗口不得覆盖旧快照） ----------

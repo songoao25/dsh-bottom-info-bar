@@ -152,6 +152,28 @@ const SUBSCRIPTION_RETRY_BACKOFF_MS = 60000 // 订阅刷新失败后的退避期
 // 本插件只读令牌查询额度，令牌的绑定/续期由独立插件 dsh-chatgpt-subscription 维护
 const CODEX_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH || join(homedir(), '.codex', 'auth.json')
 const OPENCODE_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH || join(homedir(), '.local', 'share', 'opencode', 'auth.json')
+const COMMAND_CODE_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH || join(homedir(), '.commandcode', 'auth.json')
+const COMMAND_CODE_API_BASE = 'https://api.commandcode.ai'
+const COMMAND_CODE_PLAN_TOTAL_CREDITS = {
+  'individual-go': 10,
+  'individual-goat': 70,
+  'individual-pro': 30,
+  'individual-pro-v1': 80,
+  'individual-provider': 15,
+  'individual-max': 150,
+  'individual-ultra': 300,
+  'teams-pro': 40,
+}
+const COMMAND_CODE_PLAN_NAMES = {
+  'individual-go': 'Go',
+  'individual-goat': 'GOAT',
+  'individual-pro': 'Pro',
+  'individual-pro-v1': 'Pro',
+  'individual-provider': 'Provider',
+  'individual-max': 'Max',
+  'individual-ultra': 'Ultra',
+  'teams-pro': 'Teams Pro',
+}
 
 // ---------- 服务商账户映射（v1.6 分账核心）：DSH provider id → 账户键；未知返回 null ----------
 // v1.7：新增 xiaomi（按量）、xiaomi-token-plan-*（套餐）、together / fireworks / amazon-bedrock / cloudflare-*（云账单）
@@ -167,6 +189,7 @@ function accountForProvider(pid) {
   if (pid === 'zai' || pid === 'zai-coding-cn') return 'zai' // 订阅源 zai
   if (pid === 'xiaomi') return 'xiaomi'
   if (pid === 'xiaomi-token-plan-cn' || pid === 'xiaomi-token-plan-sgp' || pid === 'xiaomi-token-plan-ams') return 'xiaomi-token-plan'
+  if (pid === 'command' || pid === 'command-code') return 'command-code'
   if (pid === 'together') return 'together'
   if (pid === 'fireworks') return 'fireworks'
   if (pid === 'amazon-bedrock') return 'amazon-bedrock'
@@ -188,6 +211,7 @@ function subscriptionSourceFor(providerId) {
   if (providerId === 'xiaomi-token-plan-cn') return 'xiaomi-cn'
   if (providerId === 'xiaomi-token-plan-sgp') return 'xiaomi-sgp'
   if (providerId === 'xiaomi-token-plan-ams') return 'xiaomi-ams'
+  if (providerId === 'command' || providerId === 'command-code') return 'command-code'
   return null
 }
 
@@ -290,6 +314,81 @@ function parseOpenCodeGoUsage(body, windowLabels) {
     })
   }
   return { plan: 'OpenCode Go', windows: windows }
+}
+
+// Command Code 的额度接口返回 credits.windowLimits（fiveHour / weekly）与套餐周期 credits。
+// 套餐总额只使用官方 CLI 当前目录中的已知 planId；未知套餐不猜测月度百分比。
+function commandCodePayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || body.success === false) return null
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) return body.data
+  return body
+}
+
+function commandCodePlanInfo(planId) {
+  if (typeof planId !== 'string' || planId.trim().length === 0) return null
+  const normalized = planId.trim().toLowerCase().replace(/_/g, '-')
+  const keys = Object.keys(COMMAND_CODE_PLAN_TOTAL_CREDITS).sort(function (a, b) { return b.length - a.length })
+  for (const key of keys) {
+    if (normalized !== key && !normalized.startsWith(key + '-')) continue
+    return { id: key, name: COMMAND_CODE_PLAN_NAMES[key], totalCredits: COMMAND_CODE_PLAN_TOTAL_CREDITS[key] }
+  }
+  return null
+}
+
+function commandCodeWindow(value, key, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const cap = parseFiniteNonNegativeAmount(value.cap)
+  const used = parseFiniteNonNegativeAmount(value.used)
+  if (cap == null || cap <= 0 || used == null) return null
+  return {
+    key: key,
+    label: label,
+    usedPercent: Math.round(Math.max(0, Math.min(100, (used / cap) * 100))),
+    resetsAt: normalizeResetAt(value.resetAt),
+  }
+}
+
+// 解析 Command Code /alpha/billing/credits + /alpha/billing/subscriptions 响应。
+// credits 接口失败时由调用方返回错误；subscriptions 只是套餐/月度窗口增强信息，失败不丢弃已取得的滚动窗口。
+function parseCommandCodeUsage(creditsBody, subscriptionBody, windowLabels) {
+  const creditsPayload = commandCodePayload(creditsBody)
+  const credits = creditsPayload && creditsPayload.credits
+  if (!credits || typeof credits !== 'object' || Array.isArray(credits)) return null
+  const wl = windowLabels || WINDOW_LABELS
+  const windows = []
+  const fiveHour = commandCodeWindow(credits.windowLimits && credits.windowLimits.fiveHour, 'five_hour', wl.five_hour)
+  const weekly = commandCodeWindow(credits.windowLimits && credits.windowLimits.weekly, 'seven_day', wl.seven_day)
+  if (fiveHour) windows.push(fiveHour)
+  if (weekly) windows.push(weekly)
+
+  const subscriptionPayload = commandCodePayload(subscriptionBody)
+  const subscriptionPlanId = subscriptionPayload && typeof subscriptionPayload.planId === 'string' ? subscriptionPayload.planId : null
+  const creditPlanId = typeof credits.planId === 'string' ? credits.planId : null
+  const planId = subscriptionPlanId || creditPlanId
+  const planInfo = commandCodePlanInfo(planId)
+  const status = subscriptionPayload && typeof subscriptionPayload.status === 'string' ? subscriptionPayload.status.toLowerCase() : ''
+  const monthlyCredits = parseFiniteNonNegativeAmount(credits.monthlyCredits)
+  const monthlyReset = subscriptionPayload ? normalizeResetAt(subscriptionPayload.currentPeriodEnd) : null
+  if (monthlyCredits != null && planInfo && status === 'active' && planInfo.totalCredits > 0) {
+    windows.push({
+      key: 'monthly',
+      label: wl.monthly,
+      usedPercent: Math.round(Math.max(0, Math.min(100, ((planInfo.totalCredits - monthlyCredits) / planInfo.totalCredits) * 100))),
+      resetsAt: monthlyReset,
+    })
+  }
+
+  const purchasedCredits = parseFiniteNonNegativeAmount(credits.purchasedCredits)
+  const freeCredits = parseFiniteNonNegativeAmount(credits.freeCredits)
+  const balance = monthlyCredits != null && purchasedCredits != null && freeCredits != null
+    ? monthlyCredits + purchasedCredits + freeCredits : null
+  if (windows.length === 0 && balance == null) return null
+  return {
+    plan: planInfo && status === 'active' ? 'Command Code ' + planInfo.name : null,
+    windows: windows,
+    balance: balance,
+    balanceUnit: balance == null ? null : 'credits',
+  }
 }
 
 // 快照更新规则（"失败保留旧快照"的纯函数形态）：失败保留旧 data/fetchedAt 只换 error；成功换 data 并更新 fetchedAt
@@ -1907,6 +2006,80 @@ export default {
       }
     }
 
+    // Command Code 凭据：DSH 设置中的标准名 → Provider API 文档兼容名 → 进程环境 → CLI 登录文件。
+    // ~/.commandcode/auth.json 只读 apiKey，绝不写回或把密钥放进错误信息。
+    async function resolveCommandCodeKey() {
+      for (const name of ['COMMAND_CODE_API_KEY', 'CMD_API_KEY']) {
+        const configured = await resolveCredentialValue(name)
+        if (configured) return configured
+      }
+      for (const name of ['COMMAND_CODE_API_KEY', 'CMD_API_KEY']) {
+        if (typeof process.env[name] === 'string' && process.env[name].length > 0) return process.env[name]
+      }
+      try {
+        const auth = JSON.parse(readFileSync(COMMAND_CODE_AUTH_FILE, 'utf8'))
+        if (auth && typeof auth.apiKey === 'string' && auth.apiKey.length > 0) return auth.apiKey
+      } catch (err) { /* 未配置或文件损坏 → 返回 no-key */ }
+      return null
+    }
+
+    async function fetchCommandCodeJson(key, path) {
+      try {
+        const res = await fetch(COMMAND_CODE_API_BASE + path, {
+          headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' },
+          signal: AbortSignal.timeout(15000),
+        })
+        if (!res.ok) {
+          return { error: {
+            kind: res.status === 401 ? 'auth' : 'http',
+            message: res.status === 401
+              ? t('host.commandCodeAuthenticationFailed')
+              : t('host.requestFailedHTTP', { status: res.status }),
+          } }
+        }
+        let body
+        try {
+          body = await res.json()
+        } catch (err) {
+          return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } }
+        }
+        return { body: body }
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } }
+      }
+    }
+
+    function commandCodeOrgId(body) {
+      const payload = commandCodePayload(body)
+      if (!payload) return null
+      if (payload.org && typeof payload.org.id === 'string' && payload.org.id.length > 0) return payload.org.id
+      if (payload.user && typeof payload.user.orgId === 'string' && payload.user.orgId.length > 0) return payload.user.orgId
+      return typeof payload.orgId === 'string' && payload.orgId.length > 0 ? payload.orgId : null
+    }
+
+    async function fetchCommandCodeUsage() {
+      const key = await resolveCommandCodeKey()
+      if (!key) return { error: { kind: 'no-key', message: t('host.commandCodeIsNotConfigured') } }
+      try {
+        const whoami = await fetchCommandCodeJson(key, '/alpha/whoami?limits=1')
+        if (whoami.error) return { error: whoami.error }
+        const orgId = commandCodeOrgId(whoami.body)
+        const suffix = orgId ? '?orgId=' + encodeURIComponent(orgId) : ''
+        const results = await Promise.all([
+          fetchCommandCodeJson(key, '/alpha/billing/credits' + suffix),
+          fetchCommandCodeJson(key, '/alpha/billing/subscriptions' + suffix),
+        ])
+        const creditsResult = results[0]
+        const subscriptionResult = results[1]
+        if (creditsResult.error) return { error: creditsResult.error }
+        const parsed = parseCommandCodeUsage(creditsResult.body, subscriptionResult.error ? null : subscriptionResult.body, windowLabels)
+        if (!parsed) return { error: { kind: 'parse', message: t('host.commandCodeQuotaUnrecognized') } }
+        return { data: Object.assign({ provider: 'command-code' }, parsed) }
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } }
+      }
+    }
+
     // v1.6 T6：智谱（zai）订阅额度查询
     // 凭据：优先 ZAI_CODING_CN_API_KEY，回退 ZAI_API_KEY
     // host：zai-coding-cn → https://open.bigmodel.cn；zai → https://api.z.ai
@@ -2244,6 +2417,7 @@ export default {
     const SUBSCRIPTION_SOURCES = {
       codex: { fetch: fetchCodexUsage },
       'opencode-go': { fetch: fetchOpenCodeGoUsage },
+      'command-code': { fetch: fetchCommandCodeUsage },
       zai: { fetch: fetchZaiUsage },
       // v1.7 FR-9：小米 Token Plan 三集群各为独立源（地区隔离，快照互不串扰）
       'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn'); } },
@@ -2352,7 +2526,7 @@ export default {
       const bm = selectionIsResolved(sel)
         ? detectBillingMode(sel.provider)
         : { mode: 'unknown', provider: '', reason: sel.reason || 'selection-unavailable' };
-      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], balance: null, fetchedAt: null, error: null };
+      const out = { mode: bm.mode, provider: sel.provider, reason: bm.reason, source: null, plan: null, planType: null, expiryAt: null, windows: [], balance: null, balanceUnit: null, fetchedAt: null, error: null };
       if (bm.mode !== 'subscription') return out;
       const sourceKey = subscriptionSourceFor(sel.provider);
       if (!sourceKey) return out;
@@ -2381,6 +2555,7 @@ export default {
         out.planType = cur.data.planType;
         out.expiryAt = cur.data.expiryAt;
         out.balance = typeof cur.data.balance === 'number' ? cur.data.balance : null;
+        out.balanceUnit = cur.data.balanceUnit || null;
       }
       out.fetchedAt = cur.fetchedAt;
       out.error = cur.error;
@@ -2538,6 +2713,8 @@ export default {
       'xiaomi-token-plan-cn': t('ui.xiaomiMiMo'),
       'xiaomi-token-plan-sgp': t('ui.xiaomiMiMo'),
       'xiaomi-token-plan-ams': t('ui.xiaomiMiMo'),
+      command: t('ui.commandCode'),
+      'command-code': t('ui.commandCode'),
       together: 'Together',
       fireworks: 'Fireworks',
       'amazon-bedrock': 'AWS Bedrock',
