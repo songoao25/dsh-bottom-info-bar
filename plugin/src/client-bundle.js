@@ -722,8 +722,8 @@ function ContextMeterRing(props) {
   }, trigger, panelNode);
 }
 
-// ---------- 设置页 ----------
-// 与信息栏共用同一 bundle 作用域；页面只负责呈现设置状态和提交用户操作。
+// ---------- 插件配置页 ----------
+// 与信息栏共用同一 bundle 作用域；页面只负责呈现配置状态和提交用户操作。
 const BIB_SET_EVENT = 'dsh-bib-config-changed';
 const BIB_LEDGER_EVENT = 'dsh-bib-ledger-changed';
 const BIB_SET_PRESET_LABELS = { red: "color.red", green: "color.green", blue: "color.blue", purple: "color.purple", orange: "color.orange", neutral: "color.neutral" };
@@ -793,7 +793,7 @@ function bibSetHideHostScrollbars(root) {
   };
 }
 
-// ---------- 设置页样式（融入 DSH 设置面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
+// ---------- 插件配置页样式（融入 DSH 面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
 function bibSetInstallStyles() {
   const id = 'dsh-bottom-info-bar-settings';
   const existing = document.querySelector('style[data-plugin-css="' + id + '"]');
@@ -1596,9 +1596,9 @@ function InfoBarSettingsSection() {
   }
 }
 
-// 新版插件管理（DSH 0.1.6-alpha.2）的 bundle 配置入口：显示在插件页里本 bundle 自己的页面上。
+// DSH 0.1.6-alpha.2 的 bundle 配置入口：显示在插件页里本 bundle 自己的页面上。
 // 宿主通过 props.view 要两种形态：'summary' 是标题下那一行简介，'page' 是带自己保存控件的表单。
-// 与设置页入口并存——老用户在设置页里的习惯位置不变，新用户在插件页也能直接配。
+// 插件页是唯一配置入口，避免与全局设置页维护两份相同表单。
 function InfoBarBundleConfig(props) {
   const view = props && props.view;
   if (view === 'summary') {
@@ -1685,19 +1685,11 @@ module.exports = {
       return function () { if (occupantDispose) occupantDispose(); };
     });
 
-    // v1.9.0 PR2 信息底栏设置页（v1.9.1 单文件化）：与信息栏同一 apply、复用已等好的 slots 变量，
-    // 直接注册 settings.section——官方 dsh-client-ui-settings-general 同型写法（name/id/order/label + 组件），
-    // 不再有跨文件拼接、module.exports 重写与 async 串接。
+    // 插件配置页与信息栏同一 bundle/生命周期；样式在插件页打开时复用。
     ctx.effect(function () {
       return bibSetInstallStyles();
-    }, 'dsh-bottom-info-bar: settings styles');
-    slots.inject('settings.section', function () {
-      return slots.register(
-        { name: 'settings.section', id: 'bottom-info-bar', order: 100, locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
-        InfoBarSettingsSection);
-    });
-    // 新版插件管理（0.1.6-alpha.2）：bundle 自己的配置页，键为本 bundle 的包名。
-    // 与上面的 settings.section 并存，插件页与设置页都能配，卸载时随 slots.inject 一起撤销。
+    }, 'dsh-bottom-info-bar: plugin config styles');
+    // Bundle 自己的配置页，键为本 bundle 的包名。卸载时随 slots.inject 一起撤销。
     slots.inject('plugins.bundle.config', function () {
       return slots.register(
         // `plugins.bundle.config` is a keyed slot. DSH validates `key` (the
@@ -1716,7 +1708,7 @@ module.exports = {
       }
     } catch (err) { /* 默认完整 */ }
 
-    // v1.9.0 PR2：字段配置与密度同型——启动拉取一次；设置页保存成功后派发 CustomEvent 即时同步；
+    // 字段配置与密度同型——启动拉取一次；插件页保存成功后派发 CustomEvent 即时同步；
     // load() 周期顺带校准（宿主常驻内存缓存，拉取即回）
     refreshFieldConfig();
     ctx.effect(function () {
@@ -1764,7 +1756,7 @@ module.exports = {
         };
       }, []);
 
-      // v1.9.0 PR2：字段配置订阅——设置页保存（CustomEvent）或周期校准更新配置时重渲染。
+      // 字段配置订阅——插件页保存（CustomEvent）或周期校准更新配置时重渲染。
       // 配置本体存模块级单例，组件只记版本号；订阅建立时立即回读避免首帧用过期配置。
       const [fieldConfigTick, setFieldConfigTick] = React.useState(fieldConfigVersion);
       React.useEffect(function () {
@@ -1860,7 +1852,7 @@ module.exports = {
       const lastSelectionKeyRef = React.useRef('');
       const activeSessionModel = sessionModel && sessionModel.sessionId === sessionId ? sessionModel : null;
       const load = React.useCallback(function (selection) {
-        // v1.9.0 PR2：周期顺带校准字段配置（宿主内存缓存，即回；设置页变更另有 CustomEvent 即时通道）
+        // 周期顺带校准字段配置（宿主内存缓存，即回；插件页变更另有 CustomEvent 即时通道）
         refreshFieldConfig();
         const requestVersion = ++loadVersionRef.current;
         const activeSelection = selection || activeSessionModel;

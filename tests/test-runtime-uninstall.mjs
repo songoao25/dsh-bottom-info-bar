@@ -2,7 +2,7 @@
 // 覆盖两件事：
 // ① 「真卸载」与「只是停用那一排 / DSH 重启」必须分得清 —— 判错一次就是永久丢花费账本。
 // ② 真卸载时数据目录连根清掉，不留残留；其他情况一个字都不删。
-// 另有静态断言：插件页 bundle 配置入口（plugins.bundle.config）与设置页入口并存、
+// 另有静态断言：插件页 bundle 配置入口（plugins.bundle.config）是唯一配置入口、
 // 复制兜底的临时节点必定摘除。
 // 用法：node tests/test-runtime-uninstall.mjs
 import { fileURLToPath } from 'node:url'
@@ -24,9 +24,8 @@ function check(label, actual, expected) {
 check('插件页 bundle 配置入口已注册（键为包名 dsh-bottom-info-bar）',
   clientSrc.includes("slots.inject('plugins.bundle.config', function () {")
   && clientSrc.includes("{ name: 'plugins.bundle.config', key: 'dsh-bottom-info-bar'"), true)
-check('设置页入口保留（两处并存，老用户不用重新找）',
-  clientSrc.includes("slots.inject('settings.section', function () {")
-  && clientSrc.includes("{ name: 'settings.section', id: 'bottom-info-bar'"), true)
+check('不注册全局设置页入口（配置仅在插件详情页维护）',
+  !clientSrc.includes("slots.inject('settings.section', function () {"), true)
 check('bundle 配置按宿主要求的两种视图渲染（summary 一行简介 / page 带保存的表单）',
   clientSrc.includes("if (view === 'summary') {")
   && clientSrc.includes("return React.createElement(InfoBarSettingsSection);"), true)
