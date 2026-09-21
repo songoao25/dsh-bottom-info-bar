@@ -83,6 +83,15 @@ check(
       '\n      ③ 或（仅老宿主兜底）写成同一行的 try { ... } catch { ... }。详见 MEMORY.md / Issue #67。'
 )
 
+// DSH 0.1.6-alpha.2 的 web Cordis Context 不保证 `timeout` 成员可读；
+// 2026-09-21 这会让回答完成后的账单持久化失败。插件自己的防抖落盘应
+// 使用标准计时器，不能再把宿主 Context 当成定时器服务。
+check(
+  '守卫 1b：账单防抖不读取 ctx.timeout',
+  !/\bctx\.timeout\s*\(/.test(readFileSync(join(root, 'plugin/src/host.js'), 'utf8')),
+  'ctx.timeout 会在当前 DSH web Cordis Context 中触发未注入服务错误'
+)
+
 // ---------- 守卫 2：记忆文件必须唯一且通用 ----------
 //
 // 项目记忆属于项目，不属于工具。任何工具专属的隐藏记忆目录都不允许出现。

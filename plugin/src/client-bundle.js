@@ -1700,7 +1700,10 @@ module.exports = {
     // 与上面的 settings.section 并存，插件页与设置页都能配，卸载时随 slots.inject 一起撤销。
     slots.inject('plugins.bundle.config', function () {
       return slots.register(
-        { name: 'plugins.bundle.config', id: 'dsh-bottom-info-bar', locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
+        // `plugins.bundle.config` is a keyed slot. DSH validates `key` (the
+        // bundle package name), not the list-slot `id` field; using `id` makes
+        // this entire web entry fail during boot.
+        { name: 'plugins.bundle.config', key: 'dsh-bottom-info-bar', locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
         InfoBarBundleConfig);
     });
 
