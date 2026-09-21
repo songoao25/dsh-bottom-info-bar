@@ -15,6 +15,19 @@
 
 ---
 
+## 2026-09-21
+
+### v1.14.1：修复 DSH 0.1.6-alpha.2 的运行时激活与账单落盘
+
+- 根因：当前 DSH 将 `plugins.bundle.config` 视作 keyed slot；客户端误传列表槽位的 `id`，导致网页启动时该 entry 不激活。Host 端又把账单防抖交给未注入的 `ctx.timeout`，在当前 Cordis Context 会报错并使本次账单无法保存。
+- 修复：bundle 配置入口改传包名 `key: 'dsh-bottom-info-bar'`；账单防抖改用标准 `setTimeout` / `clearTimeout`，保持原有防抖与 dispose 冲刷语义。
+- 回归防线：`test-runtime-uninstall` 锁定 keyed config 入口；`test-source-guards` 禁止重新读取 `ctx.timeout`。构建、全量测试、`git diff --check` 与 `npm pack --dry-run` 全部通过。
+- 真实验证：在本机 DSH `0.1.6-alpha.2` Web profile 重启后，信息栏实际显示在输入框下方；插件管理页显示本插件已启用且组件为 Running，插件页与设置页的 Info Bar 配置入口都可打开。重启后日志没有 `Failed to load plugins`、`dsh-bottom-info-bar: failed`、keyed-slot 激活失败或新的 `ctx.timeout` 错误。
+- 发布证据：PR #103（`4119a06`）CI、CodeQL 与自动合并通过后合并；Release PR #104（`049512d`）通过检查并合并；tag / GitHub Release 为 `v1.14.1`，npm publish workflow 成功，registry `latest` 已读回 `1.14.1`。
+- 可复用经验：DSH slot 的 `id` 与 `key` 不能混用；遇到 Cordis Proxy 报未注入成员时，插件自有的非服务能力应优先采用标准平台 API。发布验证仍需区分本地真实界面、GitHub 工作流成功和 npm registry 实际读回。
+
+---
+
 ## 2026-09-20
 
 ### Issue #99 / v1.14.0：接入 Command Code 订阅额度
