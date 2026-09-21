@@ -24,9 +24,10 @@ assert.match(readFileSync(patchPath, 'utf8'), /- insert:/)
 
 assert.match(source, /inject:\s*\['slots', 'locale'\]/, 'client must wait on the public slots service')
 assert.match(source, /slots\.inject\('conversation\.composer\.dock'/, 'composer dock slot must remain registered')
-assert.match(source, /slots\.inject\('settings\.section'/, 'settings section slot must remain registered')
+assert.doesNotMatch(source, /slots\.inject\('settings\.section'/, 'global settings section must not be registered')
+assert.match(source, /slots\.inject\('plugins\.bundle\.config'/, 'plugin configuration slot must remain registered')
 assert.match(source, /require\('react'\)/, 'React must stay an external client module')
 assert.match(artifact, /window\.__ModuleLoader__\.load/, 'built client must use the DSH module loader')
 assert.match(artifact, /require\('react'\)/, 'built client must retain external React loading')
 
-console.log('alpha.4 client contract OK (conversation composer + settings + React)')
+console.log('alpha.4 client contract OK (conversation composer + plugin configuration + React)')

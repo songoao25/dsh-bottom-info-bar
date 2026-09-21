@@ -103,7 +103,6 @@ const React = {
   cloneElement: (node, props) => ({ ...node, props: { ...node.props, ...props } }),
 }
 let plugin
-let settings
 let dock
 let navLabel
 let bundleConfig
@@ -112,10 +111,8 @@ const slots = {
   inject: (_, register) => register(),
   register(options, component) {
     assert.equal(options.locale, 'dsh-bottom-info-bar')
-    // 三类槽位必须分开接：plugins.bundle.config 是 0.1.6-alpha.2 插件管理页的 bundle 配置入口，
-    // 落到 else 会把 dock（信息栏本体）覆盖掉，下面所有信息栏断言都会变成在渲染设置页。
-    if (options.name === 'settings.section') { settings = component; navLabel = options.label }
-    else if (options.name === 'plugins.bundle.config') { bundleConfig = component }
+    // plugins.bundle.config 是唯一配置入口；落到 else 会把 dock（信息栏本体）覆盖掉。
+    if (options.name === 'plugins.bundle.config') { bundleConfig = component; navLabel = options.label }
     else dock = component
     return () => {}
   },
@@ -130,7 +127,7 @@ vm.runInNewContext(readFileSync(new URL('../plugin/lib/client.js', import.meta.u
 })
 await plugin.apply({ slots, locale, get: () => null, effect(fn, label) { if (label.endsWith(': dictionaries')) fn() } })
 assert.deepEqual(Array.from(plugin.inject), ['slots', 'locale'])
-function render() { stateIndex = 0; return settings({}) }
+function render() { stateIndex = 0; return expand(bundleConfig({ view: 'page' })) }
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes)
   if (!tree || typeof tree !== 'object') return []
@@ -155,7 +152,7 @@ await new Promise((resolve) => setImmediate(resolve))
 const alerts = nodes(render()).filter((node) => node.props.role === 'alert').map(text)
 assert.ok(alerts.includes('"Balance": Could not save: Offline'), JSON.stringify(alerts))
 assert.equal(states[0].fields.balance, true, 'A failed save must restore field visibility')
-// The settings page follows DSH's shared locale service and does not duplicate
+// The plugin configuration page follows DSH's shared locale service and does not duplicate
 // a plugin-only language switcher.
 assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
 console.log('PASS  Failed field saves use English punctuation and preserve rollback behavior')
@@ -182,7 +179,7 @@ locale.setLocale('en')
 assert.match(text(render()), /Info Bar/)
 assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
 locale.setLocale('en')
-console.log('PASS  Settings page follows DSH global locale without a duplicate language control')
+console.log('PASS  Plugin configuration page follows DSH global locale without a duplicate language control')
 
 function expand(tree) {
   if (Array.isArray(tree)) return tree.map(expand)

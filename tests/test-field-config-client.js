@@ -92,10 +92,10 @@ check('D6 分组：其余 26 个全部归入插件组', FIELD_REGISTRY.filter((f
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
-// ---------- ⑤ 设置页（settings.section）：M1 单文件注册 / M2 屏显防护 / 无障碍 / 乐观更新 / CustomEvent ----------
-check('设置页注册 DSH settings.section 插座（apply 内直接 slots.inject）', clientSrc.includes("slots.inject('settings.section'"), true);
-check('注册条目含 id/order/label（侧栏导航行自动生成）', clientSrc.includes("id: 'bottom-info-bar'")
-  && clientSrc.includes('order: 100')
+// ---------- ⑤ 插件配置页（plugins.bundle.config）：唯一入口 / M2 屏显防护 / 无障碍 / 乐观更新 / CustomEvent ----------
+check('配置页仅注册 DSH plugins.bundle.config 插座（不重复注册全局设置页）', clientSrc.includes("slots.inject('plugins.bundle.config'")
+  && !clientSrc.includes("slots.inject('settings.section'"), true);
+check('配置条目以包名 key 注册并保留本地化标题', clientSrc.includes("key: 'dsh-bottom-info-bar'")
   && clientSrc.includes("label: function () { return t('ui.infoBar'); }"), true);
 check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
   && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
@@ -106,13 +106,13 @@ check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼�
     && !buildSrc.includes('baseExports')
     && !buildSrc.includes('applyInfoBarSettingsSection');
 })(), true);
-check('M1 拆除拼接：settings.section 与信息栏同一 apply、同一 slots.inject 路径（无 async 串接/module.exports 重写）', (function () {
+check('M1 拆除拼接：插件配置页与信息栏同一 apply、同一 slots.inject 路径（无 async 串接/module.exports 重写）', (function () {
   const applyStart = clientSrc.indexOf('async apply(ctx)');
   const applySlice = applyStart === -1 ? '' : clientSrc.slice(applyStart);
   const dockIdx = applySlice.indexOf("slots.inject('conversation.composer.dock'");
-  const setIdx = applySlice.indexOf("slots.inject('settings.section'");
+  const configIdx = applySlice.indexOf("slots.inject('plugins.bundle.config'");
   return applyStart !== -1
-    && dockIdx !== -1 && setIdx !== -1 && setIdx > dockIdx
+    && dockIdx !== -1 && configIdx !== -1 && configIdx > dockIdx
     && !clientSrc.includes('const baseExports = module.exports;')
     && !clientSrc.includes('applyInfoBarSettingsSection')
     && !clientSrc.includes('await applyInfoBarSettingsSection');
@@ -286,10 +286,10 @@ check('焦点可见 + 减少动效降级', clientSrc.includes(':focus-visible')
 check('设置页样式复用 DSH 设计令牌（--dsw-alias-*）融入既有面板风格', clientSrc.includes('--dsw-alias-border-l2')
   && clientSrc.includes('--dsw-alias-bg-layer-3') && clientSrc.includes('--dsw-alias-label-tertiary'), true);
 check('设置页复用信息栏预设定色板变量（同一三套主题）', clientSrc.includes("'var(--bi-palette-' + option + ')'"), true);
-check('构建产物含被注入的字段注册表与设置页注册（非空锚点占位）', (function () {
+check('构建产物含被注入的字段注册表与插件配置页注册（非空锚点占位）', (function () {
   const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
   return lib.includes("id: 'anchorGroup'")
-    && lib.includes("name: 'settings.section'")
+    && lib.includes("name: 'plugins.bundle.config'")
     && lib.includes('function InfoBarSettingsSection');
 })(), true);
 
