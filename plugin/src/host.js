@@ -3619,10 +3619,17 @@ export default {
     function scheduleSave() {
       dirty = true;
       if (saveDisposer) return;
-      saveDisposer = ctx.timeout(function () {
+      // `ctx.timeout` is not a guaranteed Cordis context member in current DSH
+      // web hosts: accessing it can throw "cannot get property \"timeout\"
+      // without inject" after an otherwise successful plugin boot. This timer
+      // only debounces this plugin's own file write, so a standard timer keeps
+      // it independent of optional host services and preserves the disposer
+      // contract used by flushSave()/plugin disposal.
+      const timer = setTimeout(function () {
         saveDisposer = null;
         if (dirty) flushSave();
       }, 4000);
+      saveDisposer = function () { clearTimeout(timer); };
     }
 
     // Persist the one-time legacy-id migration even if the user makes no new

@@ -23,7 +23,7 @@ function check(label, actual, expected) {
 // ---------- 静态断言 ----------
 check('插件页 bundle 配置入口已注册（键为包名 dsh-bottom-info-bar）',
   clientSrc.includes("slots.inject('plugins.bundle.config', function () {")
-  && clientSrc.includes("{ name: 'plugins.bundle.config', id: 'dsh-bottom-info-bar'"), true)
+  && clientSrc.includes("{ name: 'plugins.bundle.config', key: 'dsh-bottom-info-bar'"), true)
 check('设置页入口保留（两处并存，老用户不用重新找）',
   clientSrc.includes("slots.inject('settings.section', function () {")
   && clientSrc.includes("{ name: 'settings.section', id: 'bottom-info-bar'"), true)
