@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.0...v1.14.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* adapt runtime activation for DSH alpha.2 ([#103](https://github.com/songoao25/dsh-bottom-info-bar/issues/103)) ([4119a06](https://github.com/songoao25/dsh-bottom-info-bar/commit/4119a069dfc12a537ce6a2589f7297ab4cd96534))
+
 ## [1.14.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.13.0...v1.14.0) (2026-09-19)
 
 
