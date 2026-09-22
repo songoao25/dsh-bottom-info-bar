@@ -476,6 +476,44 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     && lib.includes('function InfoBarSettingsSection');
 })(), true);
 
+// ---------- ⑤-2 原生 Switch 类名隔离（2026-09-22 真机取证：OFF 态开关整列不可见 + 2px 错位） ----------
+// 根因：设置页把插件类名 .bib-set-switch 交给宿主原生 Switch，而该规则带 appearance/background/padding
+// 等外观声明；宿主自身的开关规则与它特异性同为 (0,1,0)，插件 <style> 后插入 → 插件赢：
+// ① OFF 态轨道 background 被清成 transparent（light 1.00:1 / dark 1.02:1，4 行开关全看不见）；
+// ② 轨道 padding 被清零（滑块内缩 18/2 → 16/4，2px 错位）。ON 态正常只是因为宿主用了 (0,2,0)。
+// 结论：原生分支只准挂纯布局类 .bib-set-switch-host；.bib-set-switch 只服务兜底 <button>。
+{
+  const switchFn = extractFunctionFrom(clientSrc, 'bibSetSwitch');
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  // 先剥掉 CSS 注释再扫声明块：解释这条坑的注释文字里出现类名/属性名不构成规则本身
+  // （本项目踩过一次「用 source.includes 断言 CSS → 被注释误伤」的坑）
+  const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
+  const nativeBranch = switchFn.slice(
+    switchFn.indexOf('if (BIB_SET_NATIVE_SWITCH) {'),
+    switchFn.indexOf("return React.createElement('button'"));
+  check('原生 Switch 不再复用插件外观类名 .bib-set-switch（否则反向覆盖宿主 OFF 态轨道）',
+    nativeBranch.length > 0
+    && !/bib-set-switch(?![-\w])/.test(nativeBranch)
+    && !/className\s*:\s*'bib-set-switch\s+bib-set-switch--native'/.test(clientSrc), true);
+  check('原生 Switch 只挂布局类 .bib-set-switch-host',
+    nativeBranch.includes("className: 'bib-set-switch-host'"), true);
+  check('.bib-set-switch-host 声明块内无任何外观/尺寸声明（只允许布局声明）', (function () {
+    const FORBIDDEN = /^(?:appearance|background|border|padding|margin|transform|opacity|width|height|inline-size|block-size|box-shadow|filter|color)/;
+    const re = /\.bib-set-switch-host[^{}]*\{([^}]*)\}/g;
+    let m, blocks = 0;
+    const offenders = [];
+    while ((m = re.exec(cssOnly)) !== null) {
+      blocks++;
+      m[1].split(';').map(function (d) { return d.trim(); }).filter(Boolean).forEach(function (d) {
+        if (FORBIDDEN.test(d)) offenders.push(d);
+      });
+    }
+    return blocks >= 1 && offenders.length === 0;
+  })(), true);
+  check('插件样式表里不再残留 .bib-set-switch--native（旧原生分支的类名）',
+    !/\.bib-set-switch--native/.test(cssOnly), true);
+}
+
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
 // primitives 走两个宿主版本各加载一次（新版 Regular / 旧版 …Outline14），
 // 再各用「primitives 一个图标都没有」的极端情形加载一次，确认模块体在任何

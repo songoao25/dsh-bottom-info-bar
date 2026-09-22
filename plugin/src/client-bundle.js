@@ -964,9 +964,14 @@ function bibSetInstallStyles() {
       .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }
       /* ===== 原生组件衔接 ===== */
-      /* 开关：宿主原生 Switch 自带几何，这里只负责对齐位置，不再叠自己的轨道样式。 */
-      .bib-set-switch { flex: none; }
-      .bib-set-switch--native { margin: 0; }
+      /* 开关：宿主原生 Switch 自带 track/thumb 几何，插件只允许给它布局类声明。
+         宿主开关规则（._switch_*）与 .bib-set-switch-host 特异性同为 (0,1,0)，而插件 <style>
+         后插入 → 任何外观声明都会反过来压过宿主：OFF 态轨道 background 被清成透明（整列开关
+         看不见，实测对比度 light 1.00:1 / dark 1.02:1）、轨道 padding 被清零（滑块 18/2 →
+         16/4，2px 错位）。故原生分支只挂 .bib-set-switch-host；本规则体内禁止出现
+         appearance/background/border/padding/margin/transform/opacity/width/height/
+         border-radius 等任何外观或尺寸声明。 */
+      .bib-set-switch-host { flex: none; }
       /* 时区下拉：锚点是原生 Button，展开的是原生 Menu 卡片（替代系统自带的 <select>）。 */
       .bib-set-select { display: inline-flex; flex: none; min-width: 0; }
       .bib-set-select-trigger { justify-content: space-between; gap: 6px; min-width: 160px; max-width: 100%; }
@@ -997,7 +1002,10 @@ function bibSetInstallStyles() {
          尺寸/描边对齐 14px 图标观感，方向由父级 data-expanded 驱动，不依赖任何宿主类名。 */
       .bib-set-chevron-glyph { display: block; width: 6px; height: 6px; margin-top: -3px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg); backface-visibility: hidden; transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1), color 120ms ease; }
       .bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }
-      /* 开关：对齐宿主原生的 Switch（36×20 轨道 + 16px 圆钮 + 10px 圆角），语义 = role:switch + aria-checked */
+      /* 开关：本规则只服务插件自己的兜底 <button>（宿主 primitives 取不到原生 Switch 时才走这条路径）。
+         原生分支不得使用 .bib-set-switch 这个类名——它带外观声明，会以「同特异性 + 后插入」压过宿主，
+         详见上方「原生组件衔接」处的说明。兜底几何对齐宿主原生 Switch
+         （36×20 轨道 + 16px 圆钮 + 10px 圆角），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 10px; }
       .bib-set-switch:disabled { cursor: default; opacity: 0.5; }
       .bib-set-switch:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
@@ -1080,7 +1088,8 @@ function bibSetSwitch(props) {
       label: props.label,
       disabled: props.disabled === true,
       title: props.title,
-      className: 'bib-set-switch bib-set-switch--native',
+      // 只挂布局类：绝不把插件的外观类名交给宿主原生 Switch（会反向覆盖宿主外观，见该规则处注释）
+      className: 'bib-set-switch-host',
     });
   }
   return React.createElement('button', {
