@@ -247,18 +247,19 @@ check('设置页布局不再依赖内联样式，卡片内容层与边界连续'
 check('设置面板对齐 DSH 原生扁平列表（无卡片边框圆角、.5px 分隔线、原生字号与控件尺寸）', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   return install.includes('border-bottom: 0.5px solid var(--dsw-alias-border-l2)')
-    && install.includes('padding: 16px 0')
+    && install.includes('padding: 12px 0')
     && install.includes('.bib-set-card { --bib-set-surface: transparent;')
     && install.includes('overflow: visible; border: 0; background: transparent; border-radius: 0;')
-    && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 22px;')
+    && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 20px;')
     && install.includes('.bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 400; line-height: 22px;')
     && install.includes('.bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }')
     && install.includes('.bib-set-card-desc { width: 100%; min-width: 0; margin: 4px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }')
     && install.includes('.bib-set-data-title { margin: 0 0 4px; color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 400; line-height: 22px; }')
-    // 输入框/按钮取宿主 primitives 的 .input / SettingsForm .save 尺寸
+    // 输入框/按钮取宿主 primitives 的 .input / Button.module.css .sm 尺寸
     && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: 8px; background: var(--dsw-alias-bg-layer-3);')
-    && install.includes('.bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l3);')
-    && install.includes('border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 500;')
+    && install.includes('.bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex;')
+    && install.includes('height: 28px; border: 0.5px solid var(--dsw-alias-border-l3);')
+    && install.includes('border-radius: 14px; padding: 0 10px; font-size: 12px; font-weight: 400;')
     // 开关取宿主原生 Switch 几何（36×20 轨道 / 16px 圆钮 / 10px 圆角）
     && install.includes('.bib-set-switch-track { position: relative; display: inline-block; box-sizing: border-box; width: 36px; height: 20px; border-radius: 10px;')
     && install.includes('.bib-set-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;')
@@ -267,6 +268,19 @@ check('设置面板对齐 DSH 原生扁平列表（无卡片边框圆角、.5px 
     // 不许再出现卡片视觉残留
     && !install.includes('border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px;')
     && !install.includes('padding: 14px 16px');
+})(), true);
+// 区块排版对齐同一页面里原生区块（X_2TxG_sectionHead / X_2TxG_row）：
+// 标题与折叠箭头左对齐紧贴（不再 space-between 甩到最右端）、区块间距 32px、
+// 行上下留白 12px（原生插件详情页的行内边距）。
+check('区块排版对齐同页原生区块（标题与箭头左对齐、32px 区块间距、12px 行留白）', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  return install.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: flex-start; gap: 6px;')
+    && install.includes('flex-direction: column; gap: 32px;')
+    && install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 12px 0;')
+    && install.includes('.bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 12px 0;')
+    && install.includes('.bib-set-page-head { display: flex; flex-direction: column; width: 100%; min-width: 0; }')
+    && !install.includes('justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 20px;')
+    && !install.includes('padding: 16px 0');
 })(), true);
 // 展开节奏：max-height 巨值会让内容瞬间撑开、再被 220ms 淡入/位移拖长（拖沓的来源）。
 // 用 grid-template-rows 0fr→1fr 让高度本身参与过渡，并把总时长压到原生量级。
@@ -293,7 +307,7 @@ check('设置面板动效尊重「减少动态效果」偏好', (function () {
 check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 760px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
   && clientSrc.includes('contain: inline-size')
   && clientSrc.includes('.bib-set-card { --bib-set-surface: transparent; display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
-  && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0;')
+  && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-width: 0;')
   && clientSrc.includes('.bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px;')
   && clientSrc.includes('.bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px;')
   && clientSrc.includes('.bib-set-search-shell { position: relative; width: 100%; min-width: 0; }')

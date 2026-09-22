@@ -817,18 +817,20 @@ function bibSetInstallStyles() {
       .bib-set-root { --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */ box-sizing: border-box; max-inline-size: 100%; min-inline-size: 0; }
       .bib-settings, .bib-settings * { box-sizing: border-box; }
       /* 页面标题行（M2 首渲骨架）：数据未到也先渲染标题，绝不白屏 */
-      .bib-set-page-title { width: 100%; margin: 0; font-size: 18px; font-weight: 600; line-height: 26px; color: var(--dsw-alias-label-primary); }
+      /* 页头（标题 + 说明）作为一整块，与下面的区块之间用原生 detailSections 的 32px 间距。 */
+      .bib-set-page-head { display: flex; flex-direction: column; width: 100%; min-width: 0; }
+      .bib-set-page-title { width: 100%; margin: 0; font-size: 15px; font-weight: 600; line-height: 22px; color: var(--dsw-alias-label-primary); }
       /* 只保留 DSH 设置面板这一层纵向滚动：根节点比宿主视口多 2px，确保收起时也会
          进入同一个滚动状态；插件自身和字段清单不再创建第二、第三条滚动轨道。 */
-      .bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 760px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible; contain: inline-size; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
+      .bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 760px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible; contain: inline-size; flex-direction: column; gap: 32px; color: var(--dsw-alias-label-primary); }
       /* 仅隐藏视觉轨道，不关闭滚动能力；宿主标记由组件生命周期维护。 */
       .bib-settings, .bib-set-field-list, [data-dsh-bib-hide-scrollbars="true"] { scrollbar-width: none; -ms-overflow-style: none; }
       .bib-settings::-webkit-scrollbar, .bib-set-field-list::-webkit-scrollbar, [data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
-      .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
+      .bib-set-intro { width: 100%; margin: 4px 0 0; color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
       .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
       /* 搜索行始终是字段卡片的一部分，固定为「剩余宽度 + 计数」两条轨道；
          展开/折叠和结果文案不会改变搜索框的宽度或页面的外层高度。 */
-      .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 16px 0; }
+      .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 12px 0; }
       .bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 34px; }
       .bib-set-search-shell { position: relative; width: 100%; min-width: 0; }
       .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: 34px; min-height: 34px; padding: 0 30px 0 12px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: 8px; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 1.5; }
@@ -838,15 +840,17 @@ function bibSetInstallStyles() {
       /* 原生扁平列表：不再有卡片边框/圆角/底色，分隔交给 .5px 的细分隔线，
          与 DSH 原生设置页（.Pt1bsG_row）保持同一套观感。 */
       .bib-set-card { --bib-set-surface: transparent; display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; overflow: visible; border: 0; background: transparent; border-radius: 0; }
-      .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 16px 0; border: 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); background: transparent; color: inherit; font: inherit; text-align: left; }
+      .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 12px 0; border: 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); background: transparent; color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
       .bib-set-card-header:not(.bib-set-card-header--static):hover { background: transparent; }
       .bib-set-card-header:not(.bib-set-card-header--static):focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
       .bib-set-card-header--static { cursor: default; }
-      .bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 20px; }
-      /* 原生设置页实测基线（dsh-client-ui-settings-general）：行标题 14/400/22、
-         行说明 12/18 次要色 + 上方 4px、行高 16px 上下留白、.5px 细分隔线。 */
-      .bib-set-card-title { min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 22px; color: var(--dsw-alias-label-primary); }
+      /* 标题与折叠箭头左对齐紧贴（对齐原生 X_2TxG_sectionHead 的「标题 + 计数」），
+         不再用 space-between 把箭头甩到整行最右端。 */
+      .bib-set-card-header-main { display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-width: 0; min-height: 20px; }
+      /* 实测基线：宿主插件详情页区块标题 14/500/20，行标题 14/400/22，
+         行说明 12/18 次要色 + 上方 4px，行上下留白 12px，分隔线 .5px。 */
+      .bib-set-card-title { min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--dsw-alias-label-primary); }
       .bib-set-card-desc { width: 100%; min-width: 0; margin: 4px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
       /* 字段清单以 grid-template-rows 0fr→1fr 展开：高度本身参与过渡，不再用
          max-height 巨值把内容瞬间撑开、再让淡入/位移拖满 220ms（观感拖沓的来源）。
@@ -856,10 +860,10 @@ function bibSetInstallStyles() {
       .bib-set-collapse-inner { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: 0; overflow: visible; }
       /* 字段清单跟随唯一的宿主滚动层，避免覆盖式滚动条彼此重叠。 */
       .bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible; }
-      .bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; margin: 0; padding: 0 0 4px; background: transparent; }
+      .bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; margin: 0; padding: 0; background: transparent; }
       .bib-set-empty { margin: 0; padding: 20px 0 22px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
-      .bib-set-group-title { margin: 16px 0 0; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 16px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
+      .bib-set-group-title { margin: 12px 0 0; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; min-width: 0; box-sizing: border-box; padding: 12px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 8px; }
       .bib-set-row--language { justify-content: flex-end; }
       /* 字段行固定为「标签 + 开关」首行、「颜色」次行；不让色板挤压开关或依赖偶然换行。 */
@@ -920,15 +924,17 @@ function bibSetInstallStyles() {
       .bib-set-hex:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       /* 底部操作行：原生 SettingsForm 的 footer 语义（细分隔线 + 右对齐按钮组） */
-      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; box-sizing: border-box; padding: 16px 0 0; border-top: 0.5px solid var(--dsw-alias-border-l2); }
-      .bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); background: transparent; border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 500; line-height: 1.5; transition: background-color 120ms ease, border-color 120ms ease; }
+      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; box-sizing: border-box; padding: 12px 0 0; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+      /* 按钮取宿主原生小号胶囊（Button.module.css .sm）：h28 / r14 / 12px / 0 10px，
+         与插件详情页里原生的「卸载」按钮同一套几何。 */
+      .bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; height: 28px; border: 0.5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); background: transparent; border-radius: 14px; padding: 0 10px; font-size: 12px; font-weight: 400; line-height: 18px; transition: background-color 120ms ease, border-color 120ms ease; }
       .bib-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); border-color: var(--dsw-alias-border-l3); }
       .bib-set-btn:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-alert { margin: 0; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-data-actions { width: 100%; min-width: 0; box-sizing: border-box; padding: 0; }
-      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 16px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
+      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 12px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
       .bib-set-data-row:last-child { border-bottom: none; }
       .bib-set-data-copy { min-width: 0; }
       .bib-set-data-title { margin: 0 0 4px; color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 400; line-height: 22px; }
@@ -936,7 +942,7 @@ function bibSetInstallStyles() {
       .bib-set-data-button-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
       .bib-set-btn--destructive { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       .bib-set-btn--destructive:hover { background: rgba(217,45,32,0.08); border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
-      @media (max-width: 600px) { .bib-set-card-header { padding: 14px 0; } .bib-set-toolbar { padding: 14px 0; } .bib-set-body { padding: 0 0 4px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-footer { justify-content: flex-start; } .bib-set-data-actions { padding: 0; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
+      @media (max-width: 600px) { .bib-settings { gap: 24px; } .bib-set-card-header { padding: 12px 0; } .bib-set-toolbar { padding: 12px 0; } .bib-set-body { padding: 0; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-footer { justify-content: flex-start; } .bib-set-data-actions { padding: 0; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
       @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
     `;
   document.head.appendChild(style);
@@ -1027,6 +1033,8 @@ function bibSetChevron(props) {
 
 function bibSetCardHeader(props) {
   const className = 'bib-set-card-header' + (props.static ? ' bib-set-card-header--static' : '');
+  // 标题与折叠箭头同一行、左对齐（对齐原生 X_2TxG_sectionHead 的「标题 + 计数」排布）；
+  // 箭头紧贴标题，不再甩到整行最右端留出几百像素空白。
   const title = React.createElement('span', {
     id: props.titleId,
     className: 'bib-set-card-title',
@@ -1321,13 +1329,15 @@ function InfoBarSettingsSection() {
   try {
     if (status === 'loading') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
-        bibSetPageTitle(),
-        React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings')));
+        React.createElement('div', { className: 'bib-set-page-head' },
+          bibSetPageTitle(),
+          React.createElement('p', { className: 'bib-set-status' }, t('ui.loadingInfoBarSettings'))));
     }
     if (status === 'error') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
-        bibSetPageTitle(),
-        React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater'))));
+        React.createElement('div', { className: 'bib-set-page-head' },
+          bibSetPageTitle(),
+          React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater')))));
     }
 
   const fieldsById = {};
@@ -1578,9 +1588,10 @@ function InfoBarSettingsSection() {
           ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
           : groupsChildren))));
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
-    bibSetPageTitle(),
-    React.createElement('p', { className: 'bib-set-intro' },
-      t('ui.chooseWhichFieldsToShow')),
+    React.createElement('div', { className: 'bib-set-page-head' },
+      bibSetPageTitle(),
+      React.createElement('p', { className: 'bib-set-intro' },
+        t('ui.chooseWhichFieldsToShow'))),
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
       bibSetCardHeader({
         titleId: 'bib-set-fields-title',
@@ -1620,8 +1631,9 @@ function InfoBarSettingsSection() {
       }, t('ui.resetColors'))));
   } catch (err) {
     return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
-      bibSetPageTitle(),
-      React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) })));
+      React.createElement('div', { className: 'bib-set-page-head' },
+        bibSetPageTitle(),
+        React.createElement('p', { className: 'bib-set-alert', role: 'alert' }, t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) }))));
   }
 }
 
