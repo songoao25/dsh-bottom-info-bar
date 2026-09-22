@@ -335,6 +335,122 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   }
 }
 
+// ---------- MiniMax Token Plan 端到端（FR-15：B 级半官方端点，按 provider 路由 host/凭据） ----------
+{
+  const noKeyCtx = makeStub('minimax', 'MiniMax-M3')
+  const noKeyDisposer = plugin.apply(noKeyCtx.ctx)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  {
+    const r = await invoke(noKeyCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('minimax', 'MiniMax-M3'), { 'sec-fetch-site': 'same-origin' })
+    check('MiniMax 未配置凭据 → no-key 且不发请求',
+      r.status === 200 && r.payload.source === 'minimax' && r.payload.error && r.payload.error.kind === 'no-key',
+      JSON.stringify(r.payload))
+  }
+  noKeyDisposer()
+
+  const MINIMAX_GLOBAL = {
+    base_resp: { status_code: 0, status_msg: 'success' },
+    model_remains: [{
+      model_name: 'MiniMax-M3',
+      current_interval_total_count: 1500,
+      current_interval_usage_count: 228,
+      current_weekly_total_count: 10000,
+      current_weekly_usage_count: 1240,
+      start_time: 1776355200000,
+      end_time: 1776373200000,
+      remains_time: 7151954,
+      weekly_start_time: 1776009600000,
+      weekly_end_time: 1776614400000,
+      weekly_remains_time: 248351954,
+    }],
+  }
+  const MINIMAX_1004 = {
+    base_resp: { status_code: 1004, status_msg: 'login fail' },
+    model_remains: [],
+  }
+  const requested = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => {
+    requested.push({ url: String(url), headers: options && options.headers })
+    if (String(url).startsWith('https://api.minimax.io/v1/token_plan/remains')) {
+      return { ok: true, json: async () => MINIMAX_GLOBAL }
+    }
+    if (String(url).startsWith('https://api.minimaxi.com/v1/token_plan/remains')) {
+      return { ok: true, json: async () => MINIMAX_GLOBAL }
+    }
+    return { ok: false, status: 404, json: async () => ({}) }
+  }
+  try {
+    const ctx = makeStub('minimax', 'MiniMax-M3', { credentials: { MINIMAX_API_KEY: 'test-minimax-key' } })
+    const disposer = plugin.apply(ctx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('minimax', 'MiniMax-M3'))
+      check('MiniMax → subscription 模式（Global）',
+        r.status === 200 && r.payload.mode === 'subscription' && r.payload.reason === 'provider:minimax',
+        JSON.stringify(r.payload))
+    }
+    {
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('minimax', 'MiniMax-M3'), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax Global → 解析成功 + 套餐名 MiniMax Token Plan',
+        r.status === 200 && r.payload.source === 'minimax' && r.payload.plan === 'MiniMax Token Plan' && r.payload.error === null,
+        JSON.stringify(r.payload))
+      check('MiniMax Global → 5 小时 + 周窗口，百分比 15% / 12%',
+        Array.isArray(r.payload.windows) && r.payload.windows.length === 2
+          && r.payload.windows[0].key === 'five_hour' && r.payload.windows[0].usedPercent === 15
+          && r.payload.windows[1].key === 'seven_day' && r.payload.windows[1].usedPercent === 12,
+        JSON.stringify(r.payload.windows))
+      const mreqs = requested.filter((entry) => entry.url.startsWith('https://api.minimax.io/v1/token_plan/remains'))
+      check('MiniMax Global → Bearer 请求打到 api.minimax.io',
+        mreqs.length === 1 && mreqs[0].headers && mreqs[0].headers.Authorization === 'Bearer test-minimax-key',
+        JSON.stringify(mreqs))
+    }
+    {
+      requested.length = 0
+      const cnCtx = makeStub('minimax-cn', 'MiniMax-M3', { credentials: { MINIMAX_CN_API_KEY: 'test-minimax-cn-key' } })
+      const cnDisposer = plugin.apply(cnCtx.ctx)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      const r = await invoke(cnCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('minimax-cn', 'MiniMax-M3'), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax CN → 解析成功 + api.minimaxi.com 路由',
+        r.status === 200 && r.payload.source === 'minimax' && r.payload.error === null
+          && requested.some((entry) => entry.url.startsWith('https://api.minimaxi.com/v1/token_plan/remains')),
+        JSON.stringify(r.payload))
+      cnDisposer()
+    }
+    {
+      // 1004 业务码 → auth 错误（必须用 Subscription Key），不是 parse 错误
+      globalThis.fetch = async (url) => {
+        requested.push({ url: String(url) })
+        return { ok: true, json: async () => MINIMAX_1004 }
+      }
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'minimax', model: 'MiniMax-M3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax base_resp.status_code=1004 → auth 错误（提示需要 Subscription Key）',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'auth' && /Subscription Key/i.test(r.payload.error.message),
+        JSON.stringify(r.payload))
+    }
+    {
+      // 空 model_remains → 解析错误，保留旧快照（与智谱零窗口同型）
+      globalThis.fetch = async () => ({ ok: true, json: async () => ({ base_resp: { status_code: 0 }, model_remains: [] }) })
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'minimax', model: 'MiniMax-M3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax 空 model_remains → parse 错误，旧快照被保留',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'parse'
+          && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour',
+        JSON.stringify(r.payload))
+    }
+    {
+      // HTTP 401 → auth 错误（按量 Key 错用）
+      globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) })
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'minimax', model: 'MiniMax-M3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax HTTP 401 → auth 错误',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'auth',
+        JSON.stringify(r.payload))
+    }
+    disposer()
+  } finally {
+    globalThis.fetch = realFetch
+  }
+}
+
 // ---------- llm/stream 记账 ----------
 {
   const seen = await feedUsage(first.captured.llmListener)

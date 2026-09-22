@@ -301,6 +301,7 @@ function accountForProvider(pid) {
   if (pid === 'xiaomi') return 'xiaomi'
   if (pid === 'xiaomi-token-plan-cn' || pid === 'xiaomi-token-plan-sgp' || pid === 'xiaomi-token-plan-ams') return 'xiaomi-token-plan'
   if (pid === 'command' || pid === 'command-code') return 'command-code'
+  if (pid === 'minimax' || pid === 'minimax-cn') return 'minimax'
   if (pid === 'together') return 'together'
   if (pid === 'fireworks') return 'fireworks'
   if (pid === 'amazon-bedrock') return 'amazon-bedrock'
@@ -323,6 +324,7 @@ function subscriptionSourceFor(providerId) {
   if (providerId === 'xiaomi-token-plan-sgp') return 'xiaomi-sgp'
   if (providerId === 'xiaomi-token-plan-ams') return 'xiaomi-ams'
   if (providerId === 'command' || providerId === 'command-code') return 'command-code'
+  if (providerId === 'minimax' || providerId === 'minimax-cn') return 'minimax'
   return null
 }
 
@@ -500,6 +502,119 @@ function parseCommandCodeUsage(creditsBody, subscriptionBody, windowLabels) {
     balance: balance,
     balanceUnit: balance == null ? null : 'credits',
   }
+}
+
+// ---------- FR-15 / MiniMax Token Plan 解析（半官方 B 级端点） ----------
+// 数据源：GET /v1/token_plan/remains（官方 CLI MiniMax-AI/cli PR #104，已切换至此端点；旧端点
+// v1/api/openplatform/coding_plan/remains 已被官方弃用）。api.minimax.io 与 api.minimaxi.com
+// 双域名均提供同一接口。
+//
+// 响应形态：base_resp.{status_code,status_msg} + model_remains[]，每个条目同时含
+//   - 5 小时窗口：current_interval_total_count / current_interval_usage_count（已用！PR #104 明确修正）
+//                  + start_time/end_time（毫秒）+ remains_time（距结束毫秒）
+//   - 周窗口    ：current_weekly_total_count / current_weekly_usage_count（已用）
+//                  + weekly_start_time/weekly_end_time（毫秒）+ weekly_remains_time
+//
+// 安全边界：
+//   - 必须 Subscription Key；按量 API Key → base_resp.status_code=1004（"login fail"）→ auth 错误；
+//     客户端据此显示「请使用 Subscription Key」并降级本地记账。
+//   - model_remains 为空（无活跃 Token Plan / 低价档）→ 与智谱零窗口同型：按解析失败保留旧快照。
+//   - 多模型返回（Plus/Ultra 等高阶档位会按模型拆分）：累加每个模型的 5h/周 计数，得到「总已用 / 总配额」；
+//     百分比按总量推算，绝不取首个模型的百分比替代整体（高用量模型被低估 = 误报安全感）。
+//   - 字段容错：string/number 都接受（上游曾出现字符串数值），负数/缺失归零。
+function minimaxBaseUrl(providerId) {
+  return providerId === 'minimax-cn' ? 'https://api.minimaxi.com' : 'https://api.minimax.io'
+}
+
+// 从原始条目里取数字（容忍字符串；负数归零；无法解析返回 null）
+function minimaxNumericField(value) {
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  }
+  return null
+}
+
+// 聚合 model_remains[] 各项的 5 小时 / 周窗口计数；返回 null 表示两个窗口都无法构成
+function minimaxAggregateWindowCounts(modelRemains) {
+  if (!Array.isArray(modelRemains)) return null
+  let fiveHourTotal = 0
+  let fiveHourUsed = 0
+  let weeklyTotal = 0
+  let weeklyUsed = 0
+  let anyWindow = false
+  for (let i = 0; i < modelRemains.length; i++) {
+    const entry = modelRemains[i]
+    if (!entry || typeof entry !== 'object') continue
+    const ihTotal = minimaxNumericField(entry.current_interval_total_count)
+    const ihUsed = minimaxNumericField(entry.current_interval_usage_count)
+    if (ihTotal != null && ihUsed != null) {
+      fiveHourTotal += ihTotal
+      fiveHourUsed += ihUsed
+      anyWindow = true
+    }
+    const wkTotal = minimaxNumericField(entry.current_weekly_total_count)
+    const wkUsed = minimaxNumericField(entry.current_weekly_usage_count)
+    if (wkTotal != null && wkUsed != null) {
+      weeklyTotal += wkTotal
+      weeklyUsed += wkUsed
+      anyWindow = true
+    }
+  }
+  if (!anyWindow) return null
+  return { fiveHourTotal: fiveHourTotal, fiveHourUsed: fiveHourUsed, weeklyTotal: weeklyTotal, weeklyUsed: weeklyUsed }
+}
+
+// 在 model_remains[] 中找最早到达的窗口结束时刻（毫秒）：用来给整组 5h 窗口一个 resetsAt，
+// 客户端简洁模式以此选窗（重置时刻为 null → 整组静默消失，必须保兜底）。
+// 多模型时取「最先耗尽」的窗口结束，更贴合用户视角的"何时能再用"。
+function minimaxEarliestResetMs(modelRemains, kind) {
+  if (!Array.isArray(modelRemains)) return null
+  const field = kind === 'weekly' ? 'weekly_end_time' : 'end_time'
+  let earliest = null
+  for (let i = 0; i < modelRemains.length; i++) {
+    const entry = modelRemains[i]
+    if (!entry || typeof entry !== 'object') continue
+    const v = minimaxNumericField(entry[field])
+    if (v == null) continue
+    if (earliest == null || v < earliest) earliest = v
+  }
+  return earliest
+}
+
+// 解析 MiniMax /v1/token_plan/remains → 统一窗口数组（与智谱/Z.ai 一致）。
+// base_resp.status_code≠0 → 抛出 parse 错误（业务错误），让调用方按上游异常处理。
+// 空 model_remains 或全部条目字段缺失 → null（同智谱零窗口闸门，避免空窗口静默覆盖旧快照）。
+function parseMinimaxTokenPlanRemains(body, windowLabels) {
+  if (!body || typeof body !== 'object') return null
+  const baseResp = body.base_resp
+  if (baseResp && typeof baseResp === 'object' && typeof baseResp.status_code === 'number' && baseResp.status_code !== 0) return null
+  const modelRemains = body.model_remains
+  if (!Array.isArray(modelRemains) || modelRemains.length === 0) return null
+  const counts = minimaxAggregateWindowCounts(modelRemains)
+  if (!counts) return null
+  const wl = windowLabels || WINDOW_LABELS
+  const windows = []
+  if (counts.fiveHourTotal > 0) {
+    windows.push({
+      key: 'five_hour',
+      label: wl.five_hour,
+      usedPercent: Math.round(Math.max(0, Math.min(100, (counts.fiveHourUsed / counts.fiveHourTotal) * 100))),
+      resetsAt: minimaxEarliestResetMs(modelRemains, 'five_hour'),
+    })
+  }
+  if (counts.weeklyTotal > 0) {
+    windows.push({
+      key: 'seven_day',
+      label: wl.seven_day,
+      usedPercent: Math.round(Math.max(0, Math.min(100, (counts.weeklyUsed / counts.weeklyTotal) * 100))),
+      resetsAt: minimaxEarliestResetMs(modelRemains, 'weekly'),
+    })
+  }
+  if (windows.length === 0) return null
+  // 套餐名：MiniMax 没有给 plan name，只能用统一的"MiniMax"（与服务商显示名保持一致；细节由客户端 toolbar 提供）
+  return { plan: 'MiniMax Token Plan', windows: windows }
 }
 
 // 快照更新规则（"失败保留旧快照"的纯函数形态）：失败保留旧 data/fetchedAt 只换 error；成功换 data 并更新 fetchedAt
@@ -2191,6 +2306,61 @@ export default {
       }
     }
 
+    // ---------- FR-15 / MiniMax Token Plan 订阅额度查询 ----------
+    // 端点：GET /v1/token_plan/remains；按 provider 路由 baseUrl（minimax→api.minimax.io，
+    // minimax-cn→api.minimaxi.com）。凭据按 provider 优先 MINIMAX_API_KEY（Global）/
+    // MINIMAX_CN_API_KEY（CN），互相回退（用户通常只配一套）。
+    // 认证：Authorization: Bearer <Subscription Key>；按量 API Key 会被 401/1004 拒绝，错误信息显式提示。
+    async function resolveMinimaxKey(providerId) {
+      const isCn = providerId === 'minimax-cn'
+      const primary = isCn ? 'MINIMAX_CN_API_KEY' : 'MINIMAX_API_KEY'
+      const fallback = isCn ? 'MINIMAX_API_KEY' : 'MINIMAX_CN_API_KEY'
+      try {
+        const cred = await ctx.credentials.resolve(primary)
+        if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value
+      } catch (err) { /* 回退 */ }
+      try {
+        const cred = await ctx.credentials.resolve(fallback)
+        if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value
+      } catch (err) { /* 未配置 */ }
+      return null
+    }
+
+    async function fetchMinimaxTokenPlanUsage(providerId) {
+      const resolvedProvider = providerId === 'minimax-cn' ? 'minimax-cn' : 'minimax'
+      const key = await resolveMinimaxKey(resolvedProvider)
+      if (!key) return { error: { kind: 'no-key', message: t('host.minimaxTokenPlanCredentials') } }
+      const base = minimaxBaseUrl(resolvedProvider)
+      try {
+        const res = await fetch(base + '/v1/token_plan/remains', {
+          headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' },
+          signal: AbortSignal.timeout(15000),
+        })
+        if (res.status === 401 || res.status === 403) {
+          return { error: { kind: 'auth', message: t('host.minimaxTokenPlanRequiresSubscription') } }
+        }
+        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } }
+        let body
+        try { body = await res.json() } catch (err) {
+          return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } }
+        }
+        // base_resp.status_code===1004 是官方明确给出的"非 Subscription Key"业务错误码，
+        // 单独翻译成 auth 而非泛 parse 错误（提示用户换 Key），其他非零码保持 parse 错误。
+        const baseResp = body && body.base_resp
+        if (baseResp && typeof baseResp === 'object' && typeof baseResp.status_code === 'number' && baseResp.status_code !== 0) {
+          if (baseResp.status_code === 1004) {
+            return { error: { kind: 'auth', message: t('host.minimaxTokenPlanRequiresSubscription') } }
+          }
+          return { error: { kind: 'parse', message: t('host.minimaxTokenPlanQuotaUnrecognized') } }
+        }
+        const parsed = parseMinimaxTokenPlanRemains(body, windowLabels)
+        if (!parsed) return { error: { kind: 'parse', message: t('host.minimaxTokenPlanQuotaUnrecognized') } }
+        return { data: Object.assign({ provider: 'minimax' }, parsed) }
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } }
+      }
+    }
+
     // v1.6 T6：智谱（zai）订阅额度查询
     // 凭据：优先 ZAI_CODING_CN_API_KEY，回退 ZAI_API_KEY
     // host：zai-coding-cn → https://open.bigmodel.cn；zai → https://api.z.ai
@@ -2534,6 +2704,8 @@ export default {
       'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn'); } },
       'xiaomi-sgp': { fetch: function () { return fetchXiaomiTokenPlanUsage('sgp'); } },
       'xiaomi-ams': { fetch: function () { return fetchXiaomiTokenPlanUsage('ams'); } },
+      // FR-15：MiniMax Token Plan 单源覆盖 minimax / minimax-cn 两套（同一接口形态，按 provider 路由 host/凭据）
+      minimax: { fetch: function (pid) { return fetchMinimaxTokenPlanUsage(pid || 'minimax'); } },
     };
 
     // 触发一次刷新（并发去重 + seq 防旧覆盖）；返回本次刷新 Promise
@@ -2831,6 +3003,9 @@ export default {
       'amazon-bedrock': 'AWS Bedrock',
       'cloudflare-ai-gateway': 'Cloudflare',
       'cloudflare-workers-ai': 'Cloudflare',
+      // FR-15：MiniMax Token Plan（与客户端 toolbar 保持一致）
+      minimax: 'MiniMax',
+      'minimax-cn': 'MiniMax',
     };
 
     // ---------- DSH 模型/服务商目录名与能力缓存（M5：与模型切换器完全一致） ----------

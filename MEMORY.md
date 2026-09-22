@@ -15,6 +15,36 @@
 
 ---
 
+## 2026-09-23
+
+### v1.15.0：适配 MiniMax（海螺）Coding Plan / Token Plan 订阅（FR-15）
+
+- 起因：MiniMax Coding Plan / Token Plan 由官方 CLI（MiniMax-AI/cli PR #104）切换到的 `/v1/token_plan/remains` 数据面端点提供 5 小时 + 周窗口计数；端点未在文档页逐字公开，但官方 CLI 在用 + 多个社区项目交叉验证（B 级半官方），A3 调研已记录。
+- 用户要求：把 MiniMax Coding Plan 接进订阅模式（`5h + 周窗口 + 重置倒计时`），与智谱、小米、Command Code 一致。
+- 落地（`plugin/src/host.js` + `client-bundle.js` + `constants.js` + `locales.js`）：
+  1. `minimax`（→ `api.minimax.io`）+ `minimax-cn`（→ `api.minimaxi.com`）加入 `SUBSCRIPTION_PROVIDERS`，单源 `minimax` 覆盖两 provider（按 provider 路由 baseUrl/凭据，模式与 `zai`/`zai-coding-cn` 同型）。
+  2. 凭据：`MINIMAX_API_KEY`（Global） / `MINIMAX_CN_API_KEY`（CN），互相回退防只配一套；纯 Bearer 认证。
+  3. 解析器 `parseMinimaxTokenPlanRemains` 处理 `model_remains[]`：每条目同时含 5h + 周计数；**多模型时累加**各模型额度算整体百分比，绝不取首模型替代（高用量模型被低估 = 误报安全感 —— 这正是 Plus/Ultra 等高阶档会按模型拆分的初衷）。
+  4. 三类业务错误分别处理：`base_resp.status_code=1004` → auth 错误（提示「请使用 Subscription Key」）；其他非零 → parse 错误；空 `model_remains` → parse 错误并保留旧快照（与智谱零窗口闸门同型，避免空数组被当成成功覆盖好数据）。
+  5. 重置时刻：多模型时取「最早到达」的窗口结束毫秒（用户视角"何时能再用"），不让最久未用的模型把整体 resetsAt 拉到几天后。
+  6. 客户端 `subscriptionServiceName` 加 `minimax` / `minimax-cn` → `t('ui.minimax')`，与 `PROVIDER_DISPLAY` 静态回退保持一致。
+- 测试（45 条新断言 + 9 条端到端冒烟 + dual-mode 模式/源/账户补 6 条）：
+  - `tests/test-minimax-token-plan.js`：单模型/多模型/数字容错/聚合/降级/i18n/客户端映射/host 路由，全 45 条 PASS。
+  - `tests/smoke-static-host.mjs`：9 个真实解析链路冒烟（no-key / Global/CN 路由 / 1004 降级 / 空 model_remains 保留旧快照 / HTTP 401），全部 PASS。
+  - `tests/test-dual-mode.js`：补 `subscriptionSourceFor`、`accountForProvider`、`detectBillingMode` 对 MiniMax 三件断言。
+  - `tests/check-host.js` 关键函数白名单补 5 个新纯函数（`parseMinimaxTokenPlanRemains` / `minimaxAggregateWindowCounts` / `minimaxNumericField` / `minimaxBaseUrl` / `fetchMinimaxTokenPlanUsage` / `resolveMinimaxKey`），未定义引用扫描全过。
+- 安全边界（与同类适配一致）：
+  - Subscription Key 是真实账户凭证（官方警告「能消耗全部配额」）→ 仅作请求头 Bearer，错误信息绝不回显 Key。
+  - `current_interval_usage_count` / `current_weekly_usage_count` 是「已用」不是「剩余」（PR #104 明确修正）→ 解析器按"已用 + 总额"推算百分比，绝不把已用当成剩余。
+  - 按量 API Key → 1004 → auth 错误，**不静默**也**不臆测数据**，客户端据此提示用户换 Key。
+- 真实验证边界（已在通知稿明示）：没有真实 Subscription Key 做端到端联调；解析、错误码、降级、基线由 fixture 与 mock 覆盖；如在真实账号上遇边界情况需要补充测试。
+- 可复用经验：
+  1. **半官方端点（B 级）集成模式**：文档未公开 + 官方 CLI 在用 → 借鉴已有的「智谱 1004 / Z.ai 401 → auth」分层错误码翻译模式，比单纯看 HTTP 状态码更精确地告知用户"为什么"。
+  2. **「多模型按模型拆分」型响应**必须聚合而非取首：累加各模型计数后算整体百分比，与"按比例展示"的直觉一致；任何"取首个"的捷径都会在某个模型被重度使用、其他模型空闲时被误报。
+  3. **空响应闸门**：空数组按解析失败处理（与智谱零窗口同型），让 `mergeSubscriptionResult` 保留上一份好快照——这是把"无活跃订阅"和"网络/解析异常"在 UI 上区分开的唯一手段。
+
+---
+
 ## 2026-09-22
 
 ### 适配 DSH 0.1.7-alpha.1：插件页「信息栏设置」白屏（React #130）+ 宿主语言读不到

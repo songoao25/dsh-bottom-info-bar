@@ -36,6 +36,7 @@ const cases = [
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.js'], join(root), process.execPath],
   ['test-zai-quota（Issue #85 智谱 CREDIT_LIMIT 积分制 + 窗口时长闸门/百分比推算/降级）', ['tests/test-zai-quota.js'], join(root), process.execPath],
   ['test-commandcode-quota（Issue #99 Command Code credits/窗口/未知套餐降级）', ['tests/test-commandcode-quota.js'], join(root), process.execPath],
+  ['test-minimax-token-plan（FR-15 MiniMax Token Plan 多模型聚合 + Subscription Key 错误码降级）', ['tests/test-minimax-token-plan.js'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.js'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
   ['test-session-lineage（Issue #44 父子会话精确归属）', ['tests/test-session-lineage.mjs'], join(root), process.execPath],

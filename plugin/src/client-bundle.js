@@ -2153,6 +2153,7 @@ module.exports = {
         if (provider === 'zai' || provider === 'zai-coding-cn') return t('ui.zhipu');
         if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return t('ui.xiaomiMiMo');
         if (provider === 'command' || provider === 'command-code') return t('ui.commandCode');
+        if (provider === 'minimax' || provider === 'minimax-cn') return t('ui.minimax');
         return t('ui.subscription');
       }
 
