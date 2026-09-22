@@ -55,7 +55,6 @@ const BIB_SET_NATIVE_INPUT = bibSetNative('Input');
 const BIB_SET_NATIVE_MENU = bibSetNative('Menu');
 // 决策 2/4：分组折叠用原生 DisclosureRow，重置二次确认用原生 RiskConfirmation。
 // 与上面同一条铁律：取不到时退回插件内等价实现，绝不把 undefined 交给 React.createElement。
-const BIB_SET_NATIVE_DISCLOSURE = bibSetNative('DisclosureRow');
 const BIB_SET_NATIVE_RISK_CONFIRM = bibSetNative('RiskConfirmation');
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
@@ -763,20 +762,6 @@ const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 // 字段分组由 constants.js 注入，保持宿主白名单、信息栏和设置页一致。
 const FIELD_GROUP_ORDER = /*__FIELD_GROUP_ORDER__*/[];
 const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
-// 每行出现条件文案：modes → 中文（余额制/订阅制/账单制/原生统计行/通用）
-const BIB_SET_MODE_LABELS = { balance: "mode.balance", subscription: "mode.subscription", billing: "mode.billing", native: "mode.native", common: "mode.common" };
-function bibSetModeText(field) {
-  if (!field || !Array.isArray(field.modes) || field.modes.length === 0) return '';
-  if (field.modes.length === 1 && field.modes[0] === 'native') return t('ui.nativeStatsField');
-  const labels = [];
-  for (let i = 0; i < field.modes.length; i++) {
-    const key = BIB_SET_MODE_LABELS[field.modes[i]];
-    const label = key && t(key);
-    if (label && labels.indexOf(label) === -1) labels.push(label);
-  }
-  return labels.length > 0 ? t('ui.shownIn') + labels.join(t('ui.listSeparator')) : '';
-}
-
 function bibSetDispatchChanged() {
   // 设置页保存成功后广播：信息栏监听并立即重拉配置（宿主内存缓存，即回）
   try { document.dispatchEvent(new CustomEvent(BIB_SET_EVENT)); } catch (err) { /* 事件总线不可用时静默：30s 周期校准兜底 */ }
@@ -866,8 +851,10 @@ function bibSetInstallStyles() {
          只允许 max-inline-size: 100%。 */
       .bib-set-root {
         --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */
-        --bib-sec-gap: 32px;
-        --bib-sec-inner: 12px;
+        /* 页面区块 24px；同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
+        --bib-sec-gap: 24px;
+        --bib-sec-inner: 16px;
+        --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
         --bib-count-size: 12px; --bib-count-line: 18px;
@@ -877,10 +864,11 @@ function bibSetInstallStyles() {
         --bib-row-gap: 16px;
         --bib-row-label-size: 13.5px; --bib-row-label-weight: 500; --bib-row-label-line: 20px;
         --bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;
-        --bib-btn-height: 28px; --bib-btn-radius: 14px; --bib-btn-pad-inline: 10px; --bib-btn-size: 12px; --bib-btn-line: 18px;
-        --bib-input-height: 34px; --bib-input-radius: 8px; --bib-input-pad-inline: 12px; --bib-input-size: 13px;
+        --bib-control-radius: 8px;
+        --bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius); --bib-btn-pad-inline: 10px; --bib-btn-size: 12px; --bib-btn-line: 18px;
+        --bib-input-height: 34px; --bib-input-radius: var(--bib-control-radius); --bib-input-pad-inline: 12px; --bib-input-size: 13px;
         --bib-rule: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16));
-        --bib-swatch-size: 20px; --bib-swatch-radius: 6px;
+        --bib-swatch-size: 20px; --bib-swatch-radius: var(--bib-control-radius);
         --bib-menu-dot-size: 12px;
         --bib-field-gap: 6px; --bib-field-pad-block: 12px;
         --bib-field-label-size: 13px; --bib-field-label-weight: 500; --bib-field-label-line: 1.5;
@@ -905,12 +893,12 @@ function bibSetInstallStyles() {
       /* 搜索行：左侧输入框吃满剩余宽度，右侧计数用 auto 轨道。
          计数框原来是写死的 104px + nowrap，文案一变长就会被切——改成 auto 轨道，永不裁切。 */
       .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }
-      .bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 34px; }
+      .bib-set-search-row { display: block; width: 100%; min-width: 0; min-height: 34px; }
       .bib-set-search-shell { position: relative; width: 100%; min-width: 0; }
       .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: var(--bib-input-height); min-height: var(--bib-input-height); padding: 0 30px 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-count { display: block; min-width: 0; box-sizing: border-box; color: var(--dsw-alias-label-secondary); font-size: var(--bib-count-size); line-height: var(--bib-count-line); font-variant-numeric: tabular-nums; text-align: right; }
+      .bib-set-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
       /* ===== 区块：完全照宿主插件详情页（dsh-client-ui-plugin-manager 的 X_2TxG_*）=====
          .X_2TxG_detailSections { flex-direction:column; gap:32px }   → .bib-settings 的 32px
          .X_2TxG_detailSection  { flex-direction:column; gap:12px }   → .bib-set-card
@@ -953,18 +941,23 @@ function bibSetInstallStyles() {
       .bib-set-field-list { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible; }
       .bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; margin: 0; padding: 0; background: transparent; }
       .bib-set-empty { margin: 0; padding: 16px 0; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
-      /* ===== 分组折叠（决策 2）===== 
-         原生路径：DisclosureRow 自带头部样式，这里只给组容器与计数徽标的排版。
-         兜底路径：自绘头部用真 button（aria-expanded）+ bibSetChevron，折叠体复用
-         .bib-set-collapse 的 grid 轨道过渡。 */
-      .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; }
-      .bib-set-group-head { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
-      /* 组头标题与区块标题同级（14/500/20 主文字色）：分组头是「可点的区块标题」，
-         不该缩成一行小字——那正是「看不出来这里是干什么的」的来源。 */
+      /* ===== 内容分组 =====
+         这是“可进入的设置分组”，不是一行注释。采用受 macOS 设置启发的分组表单：
+         一整块可点击的表面、标题/状态/动作文字三层信息，以及稳定可见的“展开/收起”。
+         这样用户不会把一个小箭头旁的文字误认为说明文案。 */
+      /* 两个可展开分组是并列的独立入口，留出 16px 呼吸空间，不能像同一列表行挤在一起。 */
+      .bib-set-field-list { gap: var(--bib-group-gap); }
+      .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }
+      .bib-set-group--expanded { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.03)); }
+      .bib-set-group-head { display: block; min-width: 0; }
       .bib-set-group-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
-      .bib-set-group-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-count-size); line-height: var(--bib-count-line); font-variant-numeric: tabular-nums; }
-      .bib-set-group-fallback-head { appearance: none; display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-      .bib-set-group-fallback-head:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
+      .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 48px; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
+      .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
+      .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
+      .bib-set-group--expanded .bib-set-group-fallback-head { border-bottom: var(--bib-rule); }
+      .bib-set-group-action { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--bib-set-brand); font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }
+      .bib-set-group-action .bib-set-chevron { color: currentColor; }
+      .bib-set-group .bib-set-body { padding: 0 12px 2px; }
       /* 行 = 原生详情页的 .X_2TxG_row：padding 12px 2px、下边线 .5px、最后一行无线、
          无圆角、无 hover 填充、无负外边距。
          之前照插件列表的 .X_2TxG_card 写成「margin 0 -8px + padding 8px + r12」，又被
@@ -983,7 +976,6 @@ function bibSetInstallStyles() {
       .bib-set-rowText--field { min-width: 0; }
       /* 行标题照原生 .X_2TxG_rowId：13.5/500/20。 */
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
-      .bib-set-keep { flex: none; padding: 0 6px; border-radius: 999px; background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.12)); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 500; line-height: 16px; }
       .bib-set-rowDesc { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }
       /* ===== 原生组件衔接 ===== */
       /* 开关：宿主原生 Switch 自带 track/thumb 几何，插件只允许给它布局类声明。
@@ -1021,7 +1013,7 @@ function bibSetInstallStyles() {
          左边界与区块标题一致（都是容器左边缘），不再有自己的内缩。 */
       .bib-set-alert--error { display: flex; align-items: center; gap: 10px; color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); overflow-wrap: anywhere; white-space: pre-wrap; }
       /* 警示：.X_2TxG_banner（12% 警示色底、r10、8px 12px 内边距） */
-      .bib-set-alert--warning { background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f59e0b) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: 10px; padding: 8px 12px; }
+      .bib-set-alert--warning { background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f59e0b) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--bib-control-radius); padding: 8px 12px; }
       /* 信息/加载中：安静的一行（原生 sectionCount 的字号与色阶） */
       .bib-set-alert--info { color: var(--dsw-alias-label-secondary); }
       .bib-set-statedot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
@@ -1097,7 +1089,7 @@ function bibSetInstallStyles() {
       .bib-set-color-native-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; border: 0; opacity: 0; pointer-events: none; }
       /* 原生取色器色井：保留系统行为，仅样式化为圆角色井 */
       .bib-set-well { display: inline-flex; flex: none; }
-      .bib-set-well input[type="color"] { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 28px; height: 28px; padding: 3px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128,128,128,0.4)); border-radius: 8px; background: var(--dsw-alias-bg-layer-3, transparent); cursor: pointer; }
+      .bib-set-well input[type="color"] { appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 28px; height: 28px; padding: 3px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128,128,128,0.4)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, transparent); cursor: pointer; }
       .bib-set-well input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
       .bib-set-well input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
       .bib-set-well input[type="color"]::-moz-color-swatch { border: none; border-radius: 5px; }
@@ -1190,14 +1182,6 @@ function bibSetButton(props) {
     title: props.title,
     onClick: props.onClick,
   }, children);
-}
-
-// 只读标签（「推荐」等）：优先用宿主原生 Tag。
-function bibSetTag(props) {
-  if (BIB_SET_NATIVE_TAG) {
-    return React.createElement(BIB_SET_NATIVE_TAG, { tone: props.tone || 'quiet', className: props.className }, props.children);
-  }
-  return React.createElement('span', { className: 'bib-set-keep' + (props.className ? ' ' + props.className : '') }, props.children);
 }
 
 // 状态点：优先用宿主原生 StateDot（done/ongoing/warning/error/idle）。
@@ -1442,13 +1426,8 @@ function bibSetColorPicker(props) {
 }
 
 function bibSetFieldRow(field, props) {
-  const isAnchor = field.anchor === true;
   const descParts = [];
-  if (isAnchor) descParts.push(t('ui.identifiesTheProviderAndModel'));
-  const modeText = bibSetModeText(field);
-  if (modeText) descParts.push(modeText + t('ui.sentenceEnd'));
   if (field.note) descParts.push(t(field.note));
-  if (field.suggestKeep) descParts.push(t('ui.keepEnabledToSeeThese'));
 
   const value = props.colorOf(field.id);
   const isPreset = value !== null && PRESET_COLOR_SET.has(value);
@@ -1510,9 +1489,7 @@ function bibSetFieldRow(field, props) {
 
   const rowMain = React.createElement('div', { className: 'bib-set-row-main' },
     React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
-      React.createElement('div', { className: 'bib-set-rowTitle' },
-        fieldLabel,
-        field.suggestKeep ? bibSetTag({ tone: 'quiet', children: t('ui.recommended') }) : null),
+      React.createElement('div', { className: 'bib-set-rowTitle' }, fieldLabel),
       React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
     bibSetSwitch({
       label: t('ui.show', { label: fieldLabel }),
@@ -1528,30 +1505,25 @@ function bibSetFieldRow(field, props) {
     rowMain);
 }
 
-// 分组折叠头（决策 2）：优先用宿主原生 DisclosureRow（受控 open + onToggle + expandable），
-// 取不到时退回自绘真 button 头 + grid 轨道折叠体。绝不能把 undefined 交给 createElement。
+// 分组折叠头：整块表面都是明确的操作入口，末端以“展开/收起”文字补足箭头的含义。
+// 这比把 DisclosureRow 当作标题文字更接近 macOS 设置里的可进入分组，也保留原生 button 语义。
 function bibSetDisclosure(props) {
   const open = props.open === true;
   const onToggle = function () { if (props.onToggle) props.onToggle(); };
-  if (BIB_SET_NATIVE_DISCLOSURE) {
-    return React.createElement(BIB_SET_NATIVE_DISCLOSURE, {
-      open: open,
-      expandable: true,
-      onToggle: onToggle,
-      title: props.title,
-      className: 'bib-set-group',
-    }, props.children);
-  }
-  return React.createElement('div', { className: 'bib-set-group' },
+  return React.createElement('section', { className: 'bib-set-group' + (open ? ' bib-set-group--expanded' : '') },
     React.createElement('button', {
       type: 'button',
       className: 'bib-set-group-fallback-head',
       'aria-expanded': open,
+      'aria-controls': props.contentId,
       onClick: onToggle,
     },
-      bibSetChevron({ expanded: open }),
-      props.title),
+      props.title,
+      React.createElement('span', { className: 'bib-set-group-action', 'aria-hidden': 'true' },
+        open ? t('ui.collapse') : t('ui.expand'),
+        bibSetChevron({ expanded: open }))),
     React.createElement('div', {
+      id: props.contentId,
       className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed'),
       'aria-hidden': open ? undefined : 'true',
       inert: open ? undefined : true,
@@ -1567,16 +1539,14 @@ function bibSetFieldGroups(props) {
     const visibleFields = groupFields.filter(function (field) { return props.matchesSearch(field, props.query); });
     // 搜索无命中的组整组不渲染（空状态由上层统一给出）
     if (props.searchActive && visibleFields.length === 0) continue;
-    const enabledCount = groupFields.filter(function (field) { return props.fieldOn(field.id); }).length;
     const groupLabel = FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group;
-    // 组头标题右侧带「已启用 N/M」计数（N/M 按组内全量字段计，不随搜索缩放）
+    // 组卡只保留名称与明确的动作；状态数字和分类说明会增加阅读负担。
     const title = React.createElement('span', { className: 'bib-set-group-head' },
-      React.createElement('span', { className: 'bib-set-group-label' }, groupLabel),
-      React.createElement('span', { className: 'bib-set-group-count' },
-        t('ui.groupEnabledCount', { enabled: enabledCount, total: groupFields.length })));
+      React.createElement('span', { className: 'bib-set-group-label' }, groupLabel));
     groups.push(React.createElement(bibSetDisclosure, {
       key: 'g-' + group,
       title: title,
+      contentId: 'bib-set-group-' + group,
       open: props.groupOpenOf(group),
       onToggle: function () { props.onGroupToggle(group); },
     }, React.createElement('div', { className: 'bib-set-body' },
@@ -1774,9 +1744,9 @@ function InfoBarSettingsSection() {
     });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
-  // 决策 2：折叠状态下沉到「原生字段 / 插件字段」两个分组，各自独立、默认折叠；
-  // 搜索输入时两分组自动展开（用户随后仍可手动折叠，箭头始终反映真实状态）。
-  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });
+  // 首屏先展示最常见的原生字段，插件字段按需展开；搜索时两组自动展开。
+  // 用户随后仍可手动折叠，箭头与 aria-expanded 始终反映真实状态。
+  const [groupOpen, setGroupOpen] = React.useState({ native: true, plugin: false });
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
@@ -2088,11 +2058,12 @@ function InfoBarSettingsSection() {
     ? t('ui.searchResultCount', { count: fieldsMatchCount })
     : t('ui.enabledFieldsCount', { count: fieldsEnabledCount });
   // 字段卡片 = 搜索工具栏 + 两个独立折叠的分组（决策 2）。搜索无命中时给明确空状态。
+  // 分组必须作为 field-list 的直接子项，flex gap 才会真实落在两张卡之间；
+  // 旧的 .bib-set-body 包装层让 16px 间距只存在于样式表中，画面上仍会挤在一起。
   const fieldsBody = React.createElement('div', { className: 'bib-set-field-list' },
-    React.createElement('div', { className: 'bib-set-body' },
-      searchActive && fieldsMatchCount === 0
-        ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
-        : groupsChildren));
+    searchActive && fieldsMatchCount === 0
+      ? React.createElement('p', { className: 'bib-set-empty', role: 'status' }, t('ui.noSearchResults'))
+      : groupsChildren);
   // 决策 4：确认弹窗（勾选前「确认」按钮由 RiskConfirmation 禁用）。
   const resetDialog = resetConfirm !== null && BIB_SET_NATIVE_RISK_CONFIRM
     ? React.createElement(BIB_SET_NATIVE_RISK_CONFIRM, {
@@ -2114,10 +2085,7 @@ function InfoBarSettingsSection() {
     })
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
-    React.createElement('div', { className: 'bib-set-page-head' },
-      bibSetPageTitle(),
-      React.createElement('p', { className: 'bib-set-intro' },
-        t('ui.chooseWhichFieldsToShow'))),
+    React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
     React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
@@ -2134,7 +2102,7 @@ function InfoBarSettingsSection() {
               },
               'aria-label': t('ui.searchFieldsLabel') || 'Search visible content'
             })),
-          React.createElement('span', { className: 'bib-set-count', role: 'status', 'aria-live': 'polite', 'aria-label': fieldSummary }, fieldSummary))),
+          React.createElement('span', { className: 'bib-set-count', role: 'status', 'aria-live': 'polite' }, fieldSummary))),
       fieldsBody,
       // 「恢复默认」行（决策 4：带二次确认）：照「导出账单」的原生行几何，
       // 挂在「显示内容」区块底部，不再悬浮在页面右下角。
