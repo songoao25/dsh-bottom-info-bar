@@ -46,7 +46,13 @@ check('更新标签不是链接或按钮', !client.includes('window.open')
   && client.includes("fieldSpan('updateNotice', 'update', React.createElement('span'")
   && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('a'")
   && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('button'"))
-check('不包含自动更新命令执行逻辑', !client.includes('child_process') && !host.includes('exec(') && !host.includes('spawn('))
+// host 侧连「探测 git 仓库状态」都不许开子进程（v1.14.3）：更新命令只被复制、绝不执行，
+// 探测只读文件系统完成。锁死这条，避免以后有人图省事改成 spawnSync('git', …)。
+check(
+  '不包含自动更新命令执行逻辑（host/client 均不引入子进程）',
+  !client.includes('child_process') && !host.includes('child_process')
+  && !host.includes('exec(') && !host.includes('spawn(')
+)
 
 console.log(`结果：${pass} PASS / ${fail} FAIL`)
 process.exit(fail > 0 ? 1 : 0)

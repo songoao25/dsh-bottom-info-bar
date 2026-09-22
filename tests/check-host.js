@@ -35,7 +35,7 @@ while ((m = callRe.exec(executable))) {
 const builtins = new Set([
   'console', 'ctx', 'harness', 'Date', 'Math', 'Set', 'Map', 'Array', 'Object',
   'String', 'Number', 'Boolean', 'parseFloat', 'parseInt', 'isNaN', 'JSON',
-  'Promise', 'Error', 'Intl', 'btoa', 'atob', 'TextEncoder', 'TextDecoder',
+  'Promise', 'Error', 'Intl', 'RegExp', 'btoa', 'atob', 'TextEncoder', 'TextDecoder',
   'undefined', 'null', 'true', 'false', 'typeof', 'void', 'function', 'return',
   'new', 'async', 'await', 'for', 'while', 'if', 'else', 'catch', 'try', 'throw',
   'const', 'let', 'var', 'switch', 'case', 'default', 'break', 'continue', 'do',
@@ -43,7 +43,7 @@ const builtins = new Set([
   'apply', // 插件入口（对象形式 apply(ctx)）
   'next',  // waterfall 事件回调参数（llm/stream 的 next()）
   // Node 标准库导入与全局（静态形态）
-  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename',
+  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename', 'resolve', 'isAbsolute',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',

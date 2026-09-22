@@ -9,7 +9,7 @@
 import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 // v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
 import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
 import * as hostLocale from './host-locale.js'
@@ -97,9 +97,120 @@ function dshHomeDir() {
 
 // 「更新命令」取决于本插件是怎么装上的，两者不能混用：
 //   - npm 安装       → dsh plugin add …@latest；
-//   - link:（本地代码 / 一键脚本安装）→ git pull。这类安装若改用 npm 命令，会把符号
+//   - link:（本地代码 / 一键脚本安装）→ git 快进到远端默认分支。这类安装若改用 npm 命令，会把符号
 //     链接换成 registry 版本，用户本地那份代码从此不再生效（本仓库 install.sh 即此类）。
 // 读不到 profile 配置时按 npm 处理：那是最常见、也是唯一能从 npm 自动更新的形态。
+//
+// link: 形态的两条硬约束（2026-09-22 用户实测「点了标签复制命令、也执行了，但没有更新」后修正）：
+//   ① 不能依赖「当前分支有可用的上游」：`git pull --ff-only` 在分支没有推到远端时直接失败
+//      （Your configuration specifies to merge with the ref … but no such ref was fetched），
+//      而开发分支本来就不该被推到远端——用户遇到的正是这条；
+//   ② 要装的是「已发布版本」＝远端默认分支：当前不在默认分支时先 checkout 过去再快进，否则即使
+//      fetch 成功，装的仍是分支上的旧代码。
+// 全部探测只用只读文件读取完成（host 绝不执行任何命令，见 test-update-check 的守卫）；读不出
+// 默认分支时退回保守命令。真正改动用户副本的只有用户自己粘贴的那条命令，且始终是 --ff-only。
+const GIT_LAYOUT_WALK_UP_LIMIT = 40
+
+function readTextFileOrNull(file) {
+  try { return readFileSync(file, 'utf8') } catch { return null }
+}
+
+// 从 link 目标向上找 git 工作副本，返回 { root, gitDir, commonDir }；不是 git 副本时返回 null。
+function findGitLayout(target) {
+  let dir = target
+  for (let step = 0; step < GIT_LAYOUT_WALK_UP_LIMIT; step++) {
+    const marker = join(dir, '.git')
+    if (existsSync(marker)) {
+      let isDirectory = false
+      try { isDirectory = statSync(marker).isDirectory() } catch { return null }
+      let gitDir = marker
+      if (!isDirectory) {
+        // 链接工作树 / 子模块：.git 是一个指向真实 gitdir 的文件
+        const text = readTextFileOrNull(marker)
+        const match = text ? text.match(/^gitdir:\s*(.+?)\s*$/m) : null
+        if (!match) return null
+        gitDir = isAbsolute(match[1]) ? match[1] : resolve(dir, match[1])
+      }
+      // 链接工作树：config 与远端 refs 都在 commondir 里（HEAD 仍在 gitDir）
+      let commonDir = gitDir
+      const common = readTextFileOrNull(join(gitDir, 'commondir'))
+      if (common && common.trim().length > 0) {
+        commonDir = isAbsolute(common.trim()) ? common.trim() : resolve(gitDir, common.trim())
+      }
+      return { root: dir, gitDir: gitDir, commonDir: commonDir }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+function currentBranchOf(layout) {
+  const text = readTextFileOrNull(join(layout.gitDir, 'HEAD'))
+  const match = text ? text.match(/^ref:\s*refs\/heads\/(.+?)\s*$/m) : null
+  return match ? match[1] : null // detached HEAD → null
+}
+
+function remotesOf(layout) {
+  const text = readTextFileOrNull(join(layout.commonDir, 'config'))
+  if (!text) return []
+  const names = []
+  for (const match of text.matchAll(/^\[remote\s+"([^"]+)"\]/gm)) names.push(match[1])
+  return names
+}
+
+// 远端默认分支：优先 refs/remotes/<r>/HEAD（clone 时写好），其次 main / master（松散 ref 或 packed-refs）。
+function defaultBranchOf(layout, remote) {
+  const head = readTextFileOrNull(join(layout.commonDir, 'refs', 'remotes', remote, 'HEAD'))
+  const symbolic = head ? head.match(/^ref:\s*refs\/remotes\/[^/]+\/(.+?)\s*$/m) : null
+  if (symbolic) return symbolic[1]
+  const packed = readTextFileOrNull(join(layout.commonDir, 'packed-refs')) || ''
+  const escapedRemote = remote.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const candidate of ['main', 'master']) {
+    if (existsSync(join(layout.commonDir, 'refs', 'remotes', remote, candidate))) return candidate
+    if (new RegExp(' refs/remotes/' + escapedRemote + '/' + candidate + '$', 'm').test(packed)) return candidate
+  }
+  return null
+}
+
+// link: 安装的 git 同步命令：目标常是仓库内的子目录（…/dsh-bottom-info-bar/plugin），
+// 一律以探测到的仓库根为准；路径可能含空格，必须做 shell 转义。
+function linkGitSyncCommandFor(target) {
+  const fallback = 'git -C ' + shellQuote(target) + ' pull --ff-only'
+  const layout = findGitLayout(target)
+  if (!layout) return fallback
+  const quotedRoot = shellQuote(layout.root)
+  const remotes = remotesOf(layout)
+  const remote = remotes.indexOf('origin') >= 0 ? 'origin' : remotes[0]
+  if (!remote) return 'git -C ' + quotedRoot + ' pull --ff-only'
+  const branch = defaultBranchOf(layout, remote)
+  if (!branch) return 'git -C ' + quotedRoot + ' pull --ff-only'
+  const steps = ['git -C ' + quotedRoot + ' fetch ' + remote]
+  if (currentBranchOf(layout) !== branch) steps.push('git -C ' + quotedRoot + ' checkout ' + shellQuote(branch))
+  steps.push('git -C ' + quotedRoot + ' merge --ff-only ' + remote + '/' + shellQuote(branch))
+  return steps.join(' && ')
+}
+
+// link: 的完整更新命令 = git 同步 + 重建 lib。
+// plugin/package.json 的 main 指向 lib/index.js，而 lib/ 是构建产物、不入 git；只拉代码不重建，
+// 用户重启后加载的仍是旧 lib —— 等于「更新了但没生效」（install.sh 里同样是先 build 再 add）。
+function linkUpdateCommandFor(target) {
+  const gitCommand = linkGitSyncCommandFor(target)
+  const buildScript = join(target, 'scripts', 'build.mjs')
+  if (!existsSync(buildScript)) return gitCommand
+  return gitCommand + ' && node ' + shellQuote(buildScript)
+}
+
+// 命令行里的路径必须转义：克隆目录可能带空格（/Users/John Doe/dev/…）。
+// POSIX 用单引号（内部单引号按 '\'' 拼接）；Windows 用双引号（PowerShell / cmd 都认）。
+function shellQuote(value) {
+  const text = String(value)
+  if (/^[A-Za-z0-9@%_+=:,./-]+$/.test(text)) return text
+  if (process.platform === 'win32') return '"' + text.replace(/"/g, '""') + '"'
+  return "'" + text.replace(/'/g, "'\\''") + "'"
+}
+
 function updateCommandForInstall() {
   const profile = runningProfileName()
   const npmCommand = 'dsh plugin --profile ' + profile + ' add dsh-bottom-info-bar@latest'
@@ -109,7 +220,7 @@ function updateCommandForInstall() {
     const spec = pkg && pkg.dependencies && pkg.dependencies['dsh-bottom-info-bar']
     if (typeof spec === 'string' && spec.startsWith('link:')) {
       const target = spec.slice('link:'.length).trim()
-      if (target.length > 0) return { installMode: 'link', updateCommand: 'git -C ' + target + ' pull --ff-only' }
+      if (target.length > 0) return { installMode: 'link', updateCommand: linkUpdateCommandFor(target) }
     }
   } catch (err) { /* 读不到就按 npm 处理 */ }
   return { installMode: 'npm', updateCommand: npmCommand }
@@ -4190,10 +4301,15 @@ export default {
     const ROUTE_PREFIX = '/_dsh/dsh-bottom-info-bar';
     const ROUTES = {
       getUpdateInfo: async function () {
-        // 版本信息（启动时查一次缓存）+ 本次安装形态对应的更新命令。
+        // npm 的最新版本只在进程启动时查一次；但「已安装版本」每次都从磁盘重读——
+        // 用户更新完本地副本后刷新页面就能看到新版本、提醒随之消失，不必等宿主重启。
         // 命令按安装形态区分，避免把 link: 安装的用户引导到 npm 命令而丢掉本地代码。
         const info = await updateInfoPromise
-        return Object.assign({}, info, updateCommandForInstall())
+        const current = packageVersion()
+        return Object.assign({}, info, updateCommandForInstall(), {
+          current: current,
+          available: !!info.latest && compareVersions(info.latest, current) > 0,
+        })
       },
       getBalanceSnapshot: async function (args) {
         const sel = selectionFromArgs(args);

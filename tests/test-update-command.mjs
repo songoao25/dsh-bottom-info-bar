@@ -1,10 +1,13 @@
 // 版本更新提醒：点击标签复制更新命令（2026-09-11 需求）
 //
-// 两件事必须锁死，否则会退化：
+// 三件事必须锁死，否则会退化：
 //   ① 点击标签只复制，**不能顺带切换简洁/完整模式**——信息栏根节点自带 onClick，
 //      所以标签的点击处理必须 stopPropagation。这条最容易在后续重构中被删掉。
 //   ② 复制出来的命令必须与「安装形态」匹配：npm 安装用 dsh plugin add，
-//      link: 安装（一键脚本 / 本地代码）必须用 git pull——用错会把用户的本地代码顶掉。
+//      link: 安装（一键脚本 / 本地代码）必须用 git——用错会把用户的本地代码顶掉。
+//   ③ link: 的命令必须真的跑得通（2026-09-22 用户实测「复制了、执行了、却没有更新」）：
+//      不能依赖当前分支有可用上游（`git pull` 在分支没推到远端时直接失败），
+//      且必须指向远端默认分支（不在默认分支时先 checkout 过去再 --ff-only 快进）。
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,7 +58,7 @@ for (const lang of ['zh', 'en']) {
   check(`文案(${lang})：提供「已复制」反馈文案`, typeof LOCALES[lang]['ui.updateCommandCopied'] === 'string' && LOCALES[lang]['ui.updateCommandCopied'].length > 0)
 }
 
-// ---------- ③ host 运行时：命令必须匹配安装形态 ----------
+// ---------- ③ host 运行时：命令必须匹配安装形态，且 link: 的命令真的能跑 ----------
 async function getUpdateInfoWithProfile(profilePackage) {
   const home = mkdtempSync(join(tmpdir(), 'bib-upd-'))
   const dataDir = mkdtempSync(join(tmpdir(), 'bib-upd-data-'))
@@ -108,6 +111,31 @@ async function getUpdateInfoWithProfile(profilePackage) {
   }
 }
 
+// 夹具：用纯文件系统搭一个「像真的 clone」的 git 副本（HEAD / config / refs/remotes/origin/HEAD），
+// 不依赖机器上装没装 git。（host 的探测也全走只读文件读取，见 test-update-check 的子进程守卫。）
+const fixtureDirs = []
+function makeRepoFixture(options = {}) {
+  const repo = join(mkdtempSync(join(tmpdir(), 'bib-repo-')), options.name || 'repo')
+  fixtureDirs.push(repo)
+  const gitDir = join(repo, '.git')
+  mkdirSync(join(gitDir, 'refs', 'remotes', 'origin'), { recursive: true })
+  writeFileSync(join(gitDir, 'HEAD'), 'ref: refs/heads/' + (options.branch || 'main') + '\n')
+  writeFileSync(
+    join(gitDir, 'config'),
+    '[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = https://github.com/songoao25/dsh-bottom-info-bar.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n'
+  )
+  if (options.defaultBranch) {
+    writeFileSync(join(gitDir, 'refs', 'remotes', 'origin', 'HEAD'), 'ref: refs/remotes/origin/' + options.defaultBranch + '\n')
+  }
+  if (options.packedRefs) writeFileSync(join(gitDir, 'packed-refs'), options.packedRefs)
+  mkdirSync(join(repo, 'plugin'), { recursive: true })
+  if (options.withBuildScript) {
+    mkdirSync(join(repo, 'plugin', 'scripts'), { recursive: true })
+    writeFileSync(join(repo, 'plugin', 'scripts', 'build.mjs'), '// fixture\n')
+  }
+  return { repo, target: join(repo, 'plugin') }
+}
+
 const npmCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': '^1.10.19' } })
 check(
   'host：npm 安装 → 命令为 dsh plugin add …@latest',
@@ -115,12 +143,114 @@ check(
   npmCase && { mode: npmCase.installMode, cmd: npmCase.updateCommand }
 )
 check('host：getUpdateInfo 仍带回当前版本号（未破坏原有用途）', npmCase && typeof npmCase.current === 'string' && npmCase.current.length > 0)
+check(
+  'host：返回的可用性由「磁盘上的已安装版本」决定（更新完本地副本刷新即可看到新版本）',
+  npmCase && npmCase.available === false && npmCase.latest === null,
+  npmCase && { available: npmCase.available, latest: npmCase.latest }
+)
 
 const linkCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:/opt/example/dsh-bottom-info-bar/plugin' } })
 check(
-  'host：link: 安装 → 命令为 git pull（用 npm 命令会把用户本地代码顶掉）',
+  'host：link: 安装但目标不是 git 副本 → 保守退回 git pull（不误报 npm 命令）',
   linkCase && linkCase.installMode === 'link' && linkCase.updateCommand === 'git -C /opt/example/dsh-bottom-info-bar/plugin pull --ff-only',
   linkCase && { mode: linkCase.installMode, cmd: linkCase.updateCommand }
+)
+
+// ③-a 默认分支上：fetch + merge --ff-only，不依赖上游、不再出现裸 git pull
+const onMain = makeRepoFixture({ branch: 'main', defaultBranch: 'main' })
+const mainCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + onMain.target } })
+check(
+  'host：link: 在默认分支 → fetch origin 后 --ff-only 快进默认分支（不依赖上游）',
+  mainCase && mainCase.updateCommand === 'git -C ' + onMain.repo + ' fetch origin && git -C ' + onMain.repo + ' merge --ff-only origin/main',
+  mainCase && { mode: mainCase.installMode, cmd: mainCase.updateCommand }
+)
+check(
+  'host：命令以仓库根为准（link 目标在 plugin/ 子目录里）',
+  mainCase && (mainCase.updateCommand || '').indexOf('git -C ' + onMain.repo + ' ') === 0
+    && (mainCase.updateCommand || '').indexOf(onMain.target) === -1,
+  mainCase && mainCase.updateCommand
+)
+check(
+  'host：回归——不能退回「当前分支无上游」就失败的裸 git pull',
+  mainCase && !/ pull --ff-only/.test(mainCase.updateCommand || ''),
+  mainCase && mainCase.updateCommand
+)
+
+// ③-a2 源码副本：plugin/lib 是构建产物（main 指向 lib/index.js，lib 不入 git），
+// 只拉代码不重建 = 重启后加载的还是旧 lib，等于「更新了却没生效」。
+const withBuild = makeRepoFixture({ branch: 'main', defaultBranch: 'main', withBuildScript: true })
+const buildCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + withBuild.target } })
+check(
+  'host：link: 源码副本 → 命令末尾重建 lib（对齐 install.sh 的 build 步骤）',
+  buildCase && buildCase.updateCommand
+    === 'git -C ' + withBuild.repo + ' fetch origin && git -C ' + withBuild.repo + ' merge --ff-only origin/main && node ' + join(withBuild.target, 'scripts', 'build.mjs'),
+  buildCase && buildCase.updateCommand
+)
+
+// ③-b 用户在功能分支上（正是 2026-09-22 用户遇到的情形：分支没推到远端、本地版本落后）
+const onBranch = makeRepoFixture({ branch: 'codex/plugin-page-only-config', defaultBranch: 'main' })
+const branchCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + onBranch.target } })
+check(
+  'host：link: 在功能分支 → 先 checkout 默认分支再快进（否则装了也还是分支旧代码）',
+  branchCase && branchCase.updateCommand
+    === 'git -C ' + onBranch.repo + ' fetch origin && git -C ' + onBranch.repo + ' checkout main && git -C ' + onBranch.repo + ' merge --ff-only origin/main',
+  branchCase && { mode: branchCase.installMode, cmd: branchCase.updateCommand }
+)
+check(
+  'host：功能分支未推送（无远端跟踪 ref）也不再产出会失败的 git pull',
+  branchCase && !/ pull --ff-only/.test(branchCase.updateCommand || ''),
+  branchCase && branchCase.updateCommand
+)
+
+// ③-c detached HEAD（用户手动 checkout 过 tag / commit）同样应当回到默认分支
+const detached = makeRepoFixture({ branch: '', defaultBranch: 'main' })
+writeFileSync(join(detached.repo, '.git', 'HEAD'), '0123456789abcdef0123456789abcdef01234567\n')
+const detachedCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + detached.target } })
+check(
+  'host：detached HEAD → 回到默认分支再快进',
+  detachedCase && detachedCase.updateCommand.indexOf(' checkout main ') > 0 && /merge --ff-only origin\/main$/.test(detachedCase.updateCommand || ''),
+  detachedCase && detachedCase.updateCommand
+)
+
+// ③-d 没有 refs/remotes/origin/HEAD（remote add + fetch 的仓库）→ 从 packed-refs 认出 main
+const packed = makeRepoFixture({
+  branch: 'feature', packedRefs: '# pack-refs with: peeled fully-peeled sorted \nabcdef0123456789abcdef0123456789abcdef01 refs/remotes/origin/main\n',
+})
+const packedCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + packed.target } })
+check(
+  'host：远端没有 HEAD ref 时用 packed-refs 认出默认分支',
+  packedCase && packedCase.updateCommand
+    === 'git -C ' + packed.repo + ' fetch origin && git -C ' + packed.repo + ' checkout main && git -C ' + packed.repo + ' merge --ff-only origin/main',
+  packedCase && packedCase.updateCommand
+)
+
+// ③-e 路径带空格必须转义，否则粘到终端直接断词
+const spaced = makeRepoFixture({ branch: 'main', defaultBranch: 'main', name: 'dsh bottom info bar' })
+const spacedCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + spaced.target } })
+check(
+  'host：仓库路径带空格 → 单引号转义',
+  spacedCase && spacedCase.updateCommand === "git -C '" + spaced.repo + "' fetch origin && git -C '" + spaced.repo + "' merge --ff-only origin/main",
+  spacedCase && spacedCase.updateCommand
+)
+
+// ③-f linked worktree（.git 是文件 + commondir）：远端信息在 commondir 里
+const worktreeRoot = mkdtempSync(join(tmpdir(), 'bib-wt-'))
+fixtureDirs.push(worktreeRoot)
+const commonGit = join(worktreeRoot, 'common.git')
+const wtGit = join(worktreeRoot, 'wt-gitdir')
+mkdirSync(join(commonGit, 'refs', 'remotes', 'origin'), { recursive: true })
+mkdirSync(wtGit, { recursive: true })
+mkdirSync(join(worktreeRoot, 'wt', 'plugin'), { recursive: true })
+writeFileSync(join(commonGit, 'config'), '[remote "origin"]\n\turl = https://github.com/songoao25/dsh-bottom-info-bar.git\n')
+writeFileSync(join(commonGit, 'refs', 'remotes', 'origin', 'HEAD'), 'ref: refs/remotes/origin/main\n')
+writeFileSync(join(wtGit, 'HEAD'), 'ref: refs/heads/main\n')
+writeFileSync(join(wtGit, 'commondir'), '../common.git\n')
+writeFileSync(join(worktreeRoot, 'wt', '.git'), 'gitdir: ' + wtGit + '\n')
+const worktreeCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + join(worktreeRoot, 'wt', 'plugin') } })
+check(
+  'host：linked worktree（.git 文件 + commondir）也能读远端默认分支',
+  worktreeCase && worktreeCase.updateCommand === 'git -C ' + join(worktreeRoot, 'wt') + ' fetch origin && git -C ' + join(worktreeRoot, 'wt') + ' merge --ff-only origin/main',
+  worktreeCase && worktreeCase.updateCommand
 )
 
 const noProfile = await getUpdateInfoWithProfile(null)
@@ -129,6 +259,8 @@ check(
   noProfile && noProfile.installMode === 'npm' && typeof noProfile.updateCommand === 'string' && noProfile.updateCommand.length > 0,
   noProfile && { mode: noProfile.installMode, cmd: noProfile.updateCommand }
 )
+
+for (const dir of fixtureDirs) rmSync(dir, { recursive: true, force: true })
 
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
 process.exit(failures === 0 ? 0 : 1)

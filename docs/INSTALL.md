@@ -79,25 +79,29 @@ dsh plugin --profile web add dsh-bottom-info-bar@latest
 # 重启 dsh web
 ```
 
-如果最初使用本地代码 / symlink 安装（方式二、方式三）：
+如果最初使用本地代码 / symlink 安装（方式二、方式三），要**三步一起做**：拉代码 → 切到默认分支 → 重新构建：
 
 ```bash
 cd dsh-bottom-info-bar
-git pull
-cd plugin && node scripts/build.mjs
+git fetch origin && git checkout main && git merge --ff-only origin/main
+node plugin/scripts/build.mjs
 # 重启 dsh web
 ```
 
+- **别只用 `git pull`**：分支没推到远端时它会直接失败（`no such ref was fetched`）——开发分支就是这种状态；而且 `link:` 安装加载的是构建产物 `plugin/lib/`（不入 git），只拉代码不重建，重启后跑的还是旧代码。
+- 停在功能分支上时，更新前要先切回默认分支：信息栏加载的就是这份副本，快进一个功能分支不会改变任何东西。
+- 三条命令都是 `--ff-only` / 非破坏性的：工作区不干净或分支上有本地提交时，git 会拒绝执行，而不是覆盖你的改动。
+
 本地 symlink 安装**不会**被 NPM 更新命令替换；想迁移到 NPM，先移除旧安装，再执行 NPM 安装命令。
 
-> 无论哪种方式，**更新后都必须重启 `dsh web`** 才会生效。
+> 无论哪种方式，**更新后都必须重启 `dsh web`** 才会生效。红色提醒标签消失得更早：悬浮提示里的版本号读的是磁盘上已安装的那一份，刷新页面就会更新。
 
 ## 看到红色版本提醒怎么办
 
 信息栏出现红色的「新版本提醒」标签时，**直接点击该标签**即可把更新命令复制到剪贴板；粘到终端执行，然后重启 `dsh web`。
 
 - 标签悬浮提示里同时给出了另一条路径：把更新交给有本机终端权限的 Agent 处理。
-- 复制出来的命令与你的安装方式匹配（npm 装 → `dsh plugin … add …@latest`；`link:` 装 → `git -C <目录> pull --ff-only`），所以**不存在"用错命令把本地代码顶掉"的风险**。
+- 复制出来的命令与你的安装方式匹配（npm 装 → `dsh plugin … add …@latest`；`link:` 装 → `git fetch` + 切默认分支 + `--ff-only` 快进 + 重建 `lib`），所以**不存在"用错命令把本地代码顶掉"的风险**。
 - **插件不会自动更新自己**：它只负责提示，并准备好命令；机器上的一切改动都由你运行命令后才发生。
 
 如果想让 Agent 代劳，可以把下面这句话发给它：
