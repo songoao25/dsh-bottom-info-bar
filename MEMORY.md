@@ -17,6 +17,28 @@
 
 ## 2026-09-22
 
+### 配置区真正的同页基线 + 「给宿主原生组件套插件类名」事故（用户第 4 轮反馈后：独立审计 + 度量层重构）
+
+- 用户原话：「还是裁切了，你从根因上去解决，不要治标不治本。所有的问题都要从根因上解决：1. 独立审计解决优化。2. 不能沿用已有方案，要重构。3. 看看 DeepSeek 官方的指导是怎么去做的。」
+- **本文第 20 行那节也错了一半，以本节为准**：`.X_2TxG_card / cardHead / cardDesc` 属于插件**列表页**的卡，不是配置区。配置区的**真·同页基线**是宿主紧随我们之后的原生行区块：
+  - 宿主 `dsh-client-ui-plugin-manager` 的 `PackageDetail` 渲染树：`detailSections` → [`section.detailSection[data-plugin-config]`（我们的配置槽）→ `RowsSection`（宿主原生行区块）→ `plugins.detail.section` 槽]。**`RowsSection` 就在我们正下方**，用的就是 `.X_2TxG_rows` + `.X_2TxG_row`。
+  - 权威度量（从 `lib/client.js` 全文提取，非猜测）：`.page{padding:28px clamp(24px,4vw,48px) 48px; gap:32px}`、**`.page > *{width:100%; max-width:960px}`**、`.detailSections{gap:32px;margin-top:32px}`、`.detailSection{gap:12px}`、`.sectionHead{align-items:baseline;gap:10px}`、`.sectionTitle 14/500/20`、`.sectionCount 12/18 二级色`、`.pageIntro 13/20`、`.groupTitle 14/500/22`、`.rows{gap:0}`、**`.row{padding:12px 2px; border-bottom:.5px solid border-l2}` + `.row:last-child{border-bottom:0}`**、`.rowLine{align-items:center;gap:16px}`、`.rowId 13.5/500/20`、`.rowModule 11.5/16`（两者都是等宽字体，因为它们是包名/模块路径）、`.rowIcon 40×40`、`.failure{错误色;align-items:center;gap:10px}`、`.reason{12/18;overflow-wrap:anywhere;pre-wrap}`、`.banner{警示色 12%;r10;padding:8px 12px}`。
+  - **行的正确几何 = `padding: 12px 2px` + `0.5px` 下边线**（既不是 `padding: 8px` + 无分隔线，也不是列表卡的 `margin: 0 -8px`）。同页 `RowsSection` 就是这么画的，我们的行因此能和它上下对齐。**抄 `margin: 0 -8px` 必然被折叠容器的 `overflow:hidden` 切掉右 8px**。
+  - **宽度铁律**：宿主已把内容钉在 `min(100%, 960px)`，插件根节点**绝不能再设 px 级 `max-width`**。曾经写 `max-width:760px`，在 1440 视口里把内容整体压窄 200px、900 视口压窄 12px，右侧控件够不到宿主右边界——**这是「对不齐」的唯一真凶**（第三方审计报告里唯一一条 P1）。
+  - 横向内缩**只能来自行自己的 `padding-inline`**；内容块（page-head / toolbar / card-header / footer / alerts / group-title）左右 padding 必须归零，否则整块比宿主左沿右偏 8px。
+- **重构方式（用户要求「不能沿用已有方案」）**：所有度量收敛成 `.bib-set-root` 上的**度量层 CSS 变量**（`--bib-sec-gap / --bib-sec-inner / --bib-head-gap / --bib-title-* / --bib-count-* / --bib-intro-* / --bib-desc-* / --bib-row-pad-* / --bib-row-gap / --bib-row-label-* / --bib-row-hint-* / --bib-input-* / --bib-btn-* / --bib-rule`），每条注释标注来源规则，规则只准引用变量。改度量只需改一处。回归测试相应改为**锁两层事实**（变量定义 + 规则引用），**不退回裸数字**。
+- ⚠ **事故（本轮最贵的教训）：给宿主原生组件传插件自己的类名，会以「同特异性 + 后插入」覆盖宿主外观。**
+  - `bibSetSwitch` 的原生分支传了 `className: 'bib-set-switch bib-set-switch--native'`，而 `.bib-set-switch` 里有 `appearance:none; background:0 0; border:0; padding:0; margin:0`，与宿主 `._switch_1vyxu_10{background:var(--dsw-alias-border-l3); padding:2px}` **特异性同为 (0,1,0)**，插件 `<style>` 后插入 → 插件赢。
+  - 后果：**OFF 态轨道背景被清成透明 → 4 行开关（主时间 / 世界时间 / 当前时段 / 下次价格切换）肉眼完全消失**（对比度 1.00:1，浅深色皆然），滑块内缩从 `18/2` 变 `16/4`（差 2px）。ON 态没事，因为宿主用 `[aria-checked=true]`（(0,2,0)）压过了我们。用户看到的就是「有的行有按钮、有的行没有」。
+  - 修法：原生分支只挂 `.bib-set-switch-host { flex: none; }`（**只允许布局声明**），并用 `.bib-set-row-main > .bib-set-switch-host { grid-column:2; grid-row:1; align-self:start }` 把行内位置**显式钉死**（否则会依赖兄弟节点书写顺序的隐式自动放置：`controls` 带 `grid-column:1/-1`，一旦它挪到 switch 前面，开关就会被挤到第二行）。兜底 `<button>` 的 `.bib-set-switch` / `-track` / `-thumb` 规则**不是死代码**——原生组件取不到时才会渲染，必须保留。
+  - **通用规范：宿主 primitives 组件一律不得复用插件自绘兜底控件的类名。要给它布局就新开一个只含布局声明的类。**
+- **默认色点描边（用户 2026-09-22 拍板原话：「加深描边到看得清」）**：`.bib-set-dot-default .bib-set-dot-core` 的 1px 内描边原用 `--dsw-alias-border-l3`（浅色 12% 黑，16px 小圆上对比度仅 1.32:1 ≈ 看不见），改用 `--dsw-alias-label-tertiary`（与中间那道斜线同一个令牌）：浅色 ≈3.9:1、深色 ≈5:1，仍是纯宿主令牌、随主题自动翻转。**彩色预设点保持无描边**（加了会变「手绘控件」观感）。
+- **「聊天页底部空白越拉越长」取证结论：不是本插件（有反证）。** `active` 相态下 `.bi-root` 底边到视口底**恒 4px**（来自宿主 `.uV2eYG_root{padding-bottom:4px}`）、composer seat 与视口底 gap 0.00px；**把 `.bi-root` 折叠成 0 高反而出现 38px 空白** → 信息栏在填坑、不在挖坑。32 种尺寸 × 11 种 UI 状态 × 5 个真实会话全部 4.0px。唯一能造出成片空白的是**宿主相态**：`[data-phase=hero]` 下 seat 变 `static` + `scrollBody{justify-content:center}`（hero 空会话在 1080×660 下空 191px，**且那时插件根本没渲染**）；`[data-phase=settling]` 下 seat 连 `visibility:hidden`。改窗口高度 500–1200、重载、hero→active 迁移均无漂移、无累积。
+  - **取证方法坑（会造假象）**：按 `style[data-plugin-css]` 移除样式会误删 130+ 个宿主 CSS Module（宿主模块也带 `data-plugin-css`），必须用 `style[data-plugin="dsh-bottom-info-bar"]`（全页只有 2 个标签）。
+- 判定「像不像原生」的正确基准（审计纠正我的一处假警报）：**不要拿 `.X_2TxG_rowId` 的文字左沿当基准**——它前面有 40px `rowIcon` + 16px `rowLine` gap，会让所有行标题都显示「偏左 58–60px」。插件的行没有图标列，**正确基准是 `.X_2TxG_sectionTitle` 左沿与 `.X_2TxG_row` 的 padding box**。
+- 提交链：`0bac305`（原生组件 + 详情页度量）→ `7e455da`（复盘文档）→ `4f7ded1`（断言锁到 token 层）→ `f73634e`（开关外观事故）→ `819b211`（定位钉死）→ `1eadf9f`（色点描边）。`test-field-config-client` 127 → **136 PASS / 0 FAIL**。
+- **另一条待办**：`dsh-chatgpt-subscription` 同步去掉 `.cgpt-page` 的 `max-width:760px`（同样的 P1），并把 `.cgpt-rowDesc` 对齐 `11.5/16`；已完成于 `c01cd4b`。
+
 ### 修正上文：插件配置区的原生基线是「插件详情页 X_2TxG_*」，不是「设置弹窗 Pt1bsG_row」
 
 - 用户二次反馈（原话）：「被裁切了，并且整体的风格没有什么变化，没有完全适配 DH 的风格，做得非常差」「还有这种选项框，是这种非常古老的组件，没有用原生组件」「还有这个显示报错，它的布局排版也非常的差」。**上一版是照错基线做的**，所以「度量都对」但用户看还是不像。
@@ -32,7 +54,7 @@
 - **接 primitives 的硬约束（复用自 React #130 那条）**：`require('@deepseek-ai/dsh-client-ui-primitives')` 拿到的成员必须先过存在性判断（`typeof === 'function' || object`）并保留自绘兜底，**绝不把 `undefined` 交给 `createElement`**。新增的统一入口是 `bibSetNative(name)` + `bibSetButton/Tag/StateDot/Alert/TimeZonePicker` 包装层。
 - **验收方式升级：不只看截图，要读运行时事实。** 无头浏览器里逐项读回：`buttonClasses` 命中 `_button_* _outline_* _sm_*`（原生按钮生效）、`selects: 0` 且 `selectTriggers: 2`（`<select>` 已彻底消失）、`fallbackSwitchTracks: 0`（原生开关生效）、`settings gap=32px` / `card gap=12px` / `row pad=8px bd=0 r=12px` / `headMain baseline gap=10px` / `pageTitle 14px/500/20px`（度量对齐）、**`clip: []`**（裁切归零）、控制台零 error/warn。
 - 回归防线：新增「**列表内容不得横向越界**」测试用例，用**只扫 CSS 声明块的正则**匹配 `margin: 0 -8px` / `width: calc(100% + 16px)`（避免被我自己写的解释性注释误伤——这个坑踩过一次）。`test-field-config-client` 127 PASS / 0 FAIL。
-- 同步修正本文下面「设置面板对齐原生风格」一节的过期数值：行上下留白 **8px**（不是 12px）、页标题 **14/500/20**（不是 15/600/22，那是设置弹窗 `presetSettingsTitle` 的值）。**该节其余结论（缓存陷阱、扁平≠原生、量而非估）依然成立。**
+- 同步修正本文下面「设置面板对齐原生风格」一节的过期数值：行上下留白 ~~8px~~ → **`12px 2px` + `0.5px` 下边线**（本日期顶部最新一节已推翻这里的 8px：`X_2TxG_cardHead{padding:8px}` 属于**插件列表页的卡**，不是配置区）、页标题 **14/500/20**（不是 15/600/22，那是设置弹窗 `presetSettingsTitle` 的值）。**该节其余结论（缓存陷阱、扁平≠原生、量而非估）依然成立。**
 
 ### 设置面板对齐原生风格：先解决「改了但用户看不到」，再谈像不像
 
@@ -40,7 +62,7 @@
 - **头号根因不是 CSS，是缓存。** 宿主用 `Cache-Control: public, max-age=31536000, immutable` + `?rev=<启动时算出的哈希>` 提供所有 client bundle。`rev` 在**宿主启动时**定型，所以只要不重启 `dsh web`，浏览器就会一直拿它那份 `immutable` 的老副本——刷新页面（包括普通 F5）都没用，改了多少 CSS 用户都看不到。本次改动的第一步动作应该是「重启 `dsh web`」，我把它排在最后，白挨了一轮差评。
   无头浏览器每次都是全新 context（无缓存），所以我自己验收永远是新的，**本地自测通过 ≠ 用户能看到**。以后再改 client bundle：改完先重启宿主，再自测。
 - **「对齐原生」不能靠估，要去真实页面量。** 上一版我只把卡片改成扁平，行距/字号/控件几何全是拍脑袋，结果一半像一半不像。这轮改成在**同一个插件详情页**里直接量宿主自己渲染的区块（`X_2TxG_sectionHead` / `X_2TxG_row` / `X_2TxG_detailSections` / primitives 的 `Button.module.css .sm`），照抄数值：
-  - 区块标题 14/500/20（`sectionTitle`）；区块间距 **32px**（`detailSections` 的 gap）；行上下留白 ~~12px~~ → **8px**（见上一节的修正：真实值是 `X_2TxG_cardHead { padding: 8px }`；无论如何都不是设置弹窗的 16px）。
+  - 区块标题 14/500/20（`sectionTitle`）；区块间距 **32px**（`detailSections` 的 gap）；行上下留白 ~~12px~~ → ~~8px~~ → **`12px 2px`（含 `0.5px` 下边线）**——两次修正都错了：`X_2TxG_cardHead { padding: 8px }` 是插件**列表页的卡**，配置区该照的是同页 `RowsSection` 的 `.X_2TxG_row`。见本日期顶部最新一节。
   - 小按钮是**胶囊**：h28 / r14 / 12px 字号 / `0 10px` 内边距（和同页原生「卸载」按钮一致）；输入框才是 r8 / 34px。
   - 开关 36×20 / r10 / 16px 圆钮 / 120ms —— 与原生 `Switch.module.css` 完全一致（已验证 computed style）。
   - 折叠箭头要紧贴标题（原生 `sectionHead` 是「标题 + 计数」左对齐）；原来用 `space-between` 把箭头甩到整行最右端，几百像素空白，一眼就假。
