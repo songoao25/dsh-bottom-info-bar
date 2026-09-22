@@ -163,7 +163,7 @@ function text(tree) {
 }
 const rendered = nodes(render())
 const descriptions = rendered.filter((node) => node.props.className === 'bib-set-rowDesc').map(text)
-assert.ok(descriptions.includes('Shown in: Balance. Shows the account balance; a low balance appears in red.'))
+assert.ok(descriptions.includes('Shows the account balance; a low balance appears in red.'))
 for (const description of descriptions) {
   assert.doesNotMatch(description, /\.[A-Z]| {2}/, description)
 }
@@ -190,7 +190,7 @@ const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
 states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 assert.match(text(render()), /信息栏/)
-assert.match(text(render()), /原生统计行字段/)
+assert.doesNotMatch(text(render()), /原生统计行字段/)
 assert.match(text(render()), /账户余额/)
 locale.setLocale('en')
 assert.match(text(render()), /Info Bar/)
