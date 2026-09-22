@@ -17,6 +17,20 @@
 
 ## 2026-09-22
 
+### v1.14.3：修好 link: 安装的「更新命令」——拉代码 + 切默认分支 + 重建产物
+
+- 用户报告（原话要点）：红色「新版本提醒」里点标签复制的更新命令，实际操作之后并没有实现更新；并追问「为什么本地端也显示更新？不应该先更新完本地再推云端吗？为什么本地显示的还是旧版本？」。
+- 现场取证：profile 为 `dsh-bottom-info-bar: link:/Users/songsong/code/dsh-bottom-info-bar/plugin`；工作副本停在 `codex/plugin-page-only-config`（从未推送），实测 `git pull --ff-only` 直接失败——`Your configuration specifies to merge with the ref 'refs/heads/codex/plugin-page-only-config' from the remote, but no such ref was fetched.`；npm 已是 1.14.2 而本机仍跑 1.14.1。
+- 两个根因（缺一都修不好）：
+  1. **命令依赖「当前分支有可用上游」**：开发分支没推到远端时 `git pull` 必然失败；就算成功，快进的也是功能分支，而不是信息栏真正加载的已发布代码。
+  2. **link: 安装加载的是构建产物**：`main` 指向 `lib/index.js`，`lib/` 不入 git（`install.sh` 是「先 build 再 add」）。只拉代码不重建，重启后跑的仍是旧代码——「更新了却没生效」的另一半。
+- 修法（`plugin/src/host.js`）：`linkUpdateCommandFor()` 用**只读文件读取**探测 git 布局（向上找 `.git`；支持 `.git` 文件 + `commondir` 的 linked worktree；remote 优先 `origin`；默认分支取 `refs/remotes/<r>/HEAD`，回退到 `main`/`master` 的松散 ref 或 `packed-refs`），拼出 `git -C <仓库根> fetch origin && git -C <仓库根> checkout <默认分支> && git -C <仓库根> merge --ff-only origin/<默认分支> && node <link 目标>/scripts/build.mjs`；路径含空格按平台转义（POSIX 单引号 / Windows 双引号）；布局读不出来时退回保守命令。`getUpdateInfo` 改为每次调用都从磁盘重读「已安装版本」（npm 最新版仍只在进程启动时查一次），更新完刷新页面提醒即消失。
+- 设计约束（刻意为之）：**host 绝不执行任何命令**。`tests/test-update-check.js` 的守卫从「不含 `exec(` / `spawn(`」升级为「host 与 client 都不得出现 `child_process`」；真正改动用户副本的只有用户自己粘贴的那条命令，且始终是 `--ff-only`（工作区不干净 / 有本地提交时 git 自己拒绝）。
+- 测试：`tests/test-update-command.mjs` 用纯文件系统搭夹具覆盖 8 种布局（默认分支 / 功能分支未推送 / detached HEAD / packed-refs / 路径含空格 / linked worktree / 有构建脚本 / 非 git 目录），22 条断言，含「不得再产出会失败的裸 `git pull`」回归断言；`tests/check-host.js` 白名单补 `RegExp` 与 `node:path` 的 `resolve`/`isAbsolute`；全量 `node tests/run-all.mjs`、构建、`git diff --check` 全绿。
+- 发布证据：PR #108（`801f07e`）CI 与自动合并通过；发布 PR #109（`cec79a7`）合并；tag / GitHub Release `v1.14.3`；publish-npm workflow success；npm `latest` 已读回 `1.14.3`。
+- 真实验证：合并后用**信息栏将来会复制的那条原样命令**在本机执行——fetch → checkout main → `--ff-only` 到发布提交 → 重建 lib，本地版本落到 1.14.3，即用户报的那条路径已端到端跑通。
+- 可复用经验：**「提醒用户有新版本」和「给用户的更新命令真的能跑」是两件事**；`link:` 安装的更新 = 拉代码 **+** 切默认分支 **+** 重建产物，三者缺一都会表现为「更新了但没生效」；凡是「交给用户自己去跑」的命令，必须用真实安装形态端到端验证一次，而不是只做字符串断言。
+
 ### v1.14.2（补记）：配置入口收进插件页 —— 并补上上一轮漏掉的收尾
 
 - 内容：`fix: keep info bar configuration in plugin details`（PR #106 / `4984110`，发布 PR #107 / `4a7647d`）：插件页里 bundle 自己的配置页成为**唯一**入口，去掉与全局设置页重复的第二份表单（v1.14.1 之后 DSH 把同一个 `plugins.bundle.config` 渲染成了两处重复入口）。
