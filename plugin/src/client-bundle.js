@@ -972,6 +972,12 @@ function bibSetInstallStyles() {
          appearance/background/border/padding/margin/transform/opacity/width/height/
          border-radius 等任何外观或尺寸声明。 */
       .bib-set-switch-host { flex: none; }
+      /* 原生 Switch 的行内定位：它目前靠 CSS 网格自动放置「恰好」落在 (1,2)，但这是顺序依赖的隐式
+         定位——同容器里 .bib-set-controls--field 带 grid-column: 1 / -1，一旦有人把 controls 挪到
+         switch 之前，自动放置游标就会把开关挤到第二行。本规则只做定位、不含任何外观或尺寸声明
+         （外观一律交还宿主，见上），把开关的行内位置显式钉死，不再取决于兄弟节点的书写顺序。
+         旧版写死的正是 grid-column: 2; grid-row: 1; align-self: start;，本次按新类名恢复回来。 */
+      .bib-set-row-main > .bib-set-switch-host { grid-column: 2; grid-row: 1; align-self: start; }
       /* 时区下拉：锚点是原生 Button，展开的是原生 Menu 卡片（替代系统自带的 <select>）。 */
       .bib-set-select { display: inline-flex; flex: none; min-width: 0; }
       .bib-set-select-trigger { justify-content: space-between; gap: 6px; min-width: 160px; max-width: 100%; }

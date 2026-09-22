@@ -514,6 +514,33 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     !/\.bib-set-switch--native/.test(cssOnly), true);
 }
 
+// ---------- ⑤-3 原生 Switch 行内定位：显式钉死，消除兄弟书写顺序依赖（2026-09-22） ----------
+// 背景：旧规则 .bib-set-row-main > .bib-set-switch 随类名改成 .bib-set-switch-host 后不再匹配原生
+// Switch，开关仅靠 CSS 网格自动放置「恰好」落在 (1,2)；而同容器里 .bib-set-controls--field 带
+// grid-column: 1 / -1 —— 一旦有人把 controls 挪到 switch 之前，自动放置游标就会把开关挤到第二行。
+// 修法：按新类名恢复显式定位，且规则体只做定位、不含任何外观/尺寸声明（外观一律交还宿主）。
+{
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  // 与 ⑤-2 同一套写法：先剥掉 CSS 注释再扫声明块，避免被解释性中文注释误伤
+  const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
+  const re = /\.bib-set-row-main\s*>\s*\.bib-set-switch-host\s*\{([^}]*)\}/g;
+  const m = re.exec(cssOnly);
+  const decls = m ? m[1].split(';').map(function (d) { return d.trim(); }).filter(Boolean) : [];
+  check('原生 Switch 行内定位显式钉死，不再依赖网格自动放置的兄弟书写顺序',
+    !!m
+    && decls.indexOf('grid-column: 2') !== -1
+    && decls.indexOf('grid-row: 1') !== -1
+    && decls.indexOf('align-self: start') !== -1, true);
+  check('.bib-set-row-main > .bib-set-switch-host 只做定位，不含任何外观或尺寸声明', (function () {
+    // 白名单：只允许 grid-column / grid-row / align-self 三类声明（其余一律视为外观/尺寸越界）
+    const ALLOWED = /^(?:grid-column|grid-row|align-self)$/;
+    const offenders = decls
+      .map(function (d) { return d.split(':')[0].trim(); })
+      .filter(function (prop) { return !ALLOWED.test(prop); });
+    return !!m && decls.length === 3 && offenders.length === 0;
+  })(), true);
+}
+
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
 // primitives 走两个宿主版本各加载一次（新版 Regular / 旧版 …Outline14），
 // 再各用「primitives 一个图标都没有」的极端情形加载一次，确认模块体在任何
