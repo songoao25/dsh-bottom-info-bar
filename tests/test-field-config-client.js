@@ -157,20 +157,28 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
   && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
-check('折叠箭头方向与实际展开状态同步（搜索只负责打开列表）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
-  && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed;')
-  && clientSrc.includes('if (value.trim().length > 0) setFieldsCollapsed(false);')
-  && clientSrc.includes("'aria-expanded': props.expanded")
-  && clientSrc.includes('expanded: fieldsExpanded')
-  && clientSrc.includes("'aria-controls': props.contentId")
-  && clientSrc.includes("const fieldsBody = React.createElement('div', {")
-  && clientSrc.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
-  && clientSrc.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
-  && clientSrc.includes("inert: fieldsExpanded ? undefined : true")
-  && clientSrc.includes("const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');")
-  && clientSrc.includes('.bib-set-chevron-icon--expanded { transform: rotate(180deg);')
-  && !clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);')
-  && !clientSrc.includes('IconChevronLeftOutline14'), true);
+// 决策 2：折叠状态下沉到两个分组，各自独立、默认折叠；搜索输入时两分组自动展开。
+// 原生路径用 DisclosureRow（受控 open + onToggle + expandable）；兜底路径自绘真 button 头
+// （aria-expanded）+ grid 轨道折叠体（aria-hidden/inert 同步真实状态）。
+check('分组折叠：两组各持受控 open、默认折叠、搜索自动展开，箭头方向与真实状态同步', (function () {
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
+    && !clientSrc.includes('fieldsCollapsed')
+    && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });')
+    && body.includes('groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; }')
+    && clientSrc.includes('React.createElement(bibSetDisclosure, {')
+    && clientSrc.includes('open: props.groupOpenOf(group),')
+    && clientSrc.includes('const BIB_SET_NATIVE_DISCLOSURE = bibSetNative(\'DisclosureRow\');')
+    && clientSrc.includes('open: open,')
+    && clientSrc.includes('expandable: true,')
+    && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
+    && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")
+    && clientSrc.includes("inert: open ? undefined : true")
+    && clientSrc.includes("const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');")
+    && clientSrc.includes('.bib-set-chevron-icon--expanded { transform: rotate(180deg);')
+    && !clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);')
+    && !clientSrc.includes('IconChevronLeftOutline14');
+})(), true);
 // 真渲染级回归：把 bibSetChevron 抽出来在受控作用域里跑两遍——
 // ① 宿主提供了箭头图标 ② 宿主两边都没有（改名/删包）。
 // createElement 在收到 undefined/null 类型时直接抛错（等价 React #130），
@@ -217,12 +225,22 @@ check('折叠头部使用原生 button 语义，避免 div role=button 与自定
     && !header.includes("role: 'button'")
     && !header.includes('tabIndex: 0');
 })(), true);
+// 决策 2 后折叠头 = bibSetDisclosure：原生路径交 DisclosureRow，兜底路径自绘真 button。
+check('折叠头部（分组）使用原生 button 语义，避免 div role=button 与自定义键盘逻辑', (function () {
+  const header = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
+  return header.includes("type: 'button'")
+    && header.includes("'aria-expanded': open")
+    && header.includes('bibSetChevron({ expanded: open })')
+    && !header.includes("role: 'button'")
+    && !header.includes('tabIndex: 0');
+})(), true);
 check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return body.includes('const [fieldsCollapsed, setFieldsCollapsed] = React.useState(true);')
-    && body.includes("className: 'bib-set-collapse' + (fieldsExpanded ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
-    && body.includes("'aria-hidden': fieldsExpanded ? undefined : 'true'")
-    && body.includes('inert: fieldsExpanded ? undefined : true')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
+    && !clientSrc.includes('fieldsCollapsed')
+    && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
+    && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")
+    && clientSrc.includes('inert: open ? undefined : true')
     && !clientSrc.includes('if (!props.expanded) return []')
     && !body.includes('disabledOnly')
     && !body.includes('disabledCount')
@@ -405,13 +423,23 @@ check('设置页隐藏滚动条轨道但保留滚动能力，且只标记滚动�
     && !clientSrc.includes("style.setProperty('overflow-y'")
     && !clientSrc.includes("style.setProperty('scrollbar-gutter'");
 })(), true);
-check('字段行采用显式两行网格，开关与色板不会挤出卡片', clientSrc.includes('--bib-row-gap: 16px;')
+// 决策 1/3 落地后的新事实：字段行是单行三列网格（左标题/说明，右开关 + 色块），
+// 色板/系统取色器/hex 只允许出现在「宿主没有原生 Menu」的兜底分支里。
+check('字段行改单行三列：开关与色块显式钉死，行内控件组只留兜底路径', clientSrc.includes('--bib-row-gap: 16px;')
   && clientSrc.includes('--bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;')
   && clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline);')
-  && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto;')
+  && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;')
+  && clientSrc.includes('.bib-set-row-main > .bib-set-switch-host { grid-column: 2; grid-row: 1; align-self: start; }')
+  && clientSrc.includes('.bib-set-row-main > .bib-set-color-host, .bib-set-row-main > .bib-set-swatch { grid-column: 3; grid-row: 1; align-self: start; }')
   && clientSrc.includes('.bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }')
   && clientSrc.includes('.bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }')
-  && clientSrc.includes('.bib-set-subcontrols { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding-left: 0; overflow-x: clip; }'), true);
+  && clientSrc.includes('function bibSetColorPicker(props)')
+  && clientSrc.includes("React.createElement(bibSetColorPicker, {")
+  && (clientSrc.match(/'bib-set-controls bib-set-controls--field'/g) || []).length === 1
+  && clientSrc.includes('.bib-set-swatch {')
+  && clientSrc.includes('var(--bib-swatch-size)')
+  && clientSrc.includes("className: 'bib-set-swatch' + (isDefault ? ' bib-set-swatch--default' : '')")
+  && clientSrc.includes('flex: 0 0 auto; transition: box-shadow 120ms var(--ds-ease-in-out, ease); }'), true);
 check('设置页只保留卡片标题折叠入口，删除展开全部/折叠全部按钮文案', !clientSrc.includes("t('ui.expandAll')")
   && !clientSrc.includes("t('ui.collapseAll')")
   && !localesSrc.includes('"ui.expandAll"')
@@ -454,8 +482,24 @@ check('乐观更新 + 失败回退 + 版本号守卫（参照 density toggle）'
   && clientSrc.includes('if (seq !== opSeqRef.current)'), true);
 check('保存成功后派发 CustomEvent 联动信息栏', clientSrc.includes('bibSetDispatchChanged()')
   && clientSrc.includes("document.dispatchEvent(new CustomEvent(BIB_SET_EVENT))"), true);
-check('重置标签/重置颜色为两个独立按钮', clientSrc.includes("runReset('fields')") && clientSrc.includes("runReset('colors')")
-  && clientSrc.includes("t('ui.resetLabels')") && clientSrc.includes("t('ui.resetColors')"), true);
+// 决策 4 落地后的新事实：重置不再一键执行——两条路径都先确认
+// （原生 RiskConfirmation 勾选后才能确认；无原生组件时退回 window.confirm）。
+check('重置有二次确认，未确认不得执行（原生 RiskConfirmation + confirm 兜底）', clientSrc.includes("requestReset('fields')") && clientSrc.includes("requestReset('colors')")
+  && clientSrc.includes("t('ui.resetLabels')") && clientSrc.includes("t('ui.resetColors')")
+  && clientSrc.includes('function requestReset(kind)')
+  && clientSrc.includes('const BIB_SET_NATIVE_RISK_CONFIRM = bibSetNative(\'RiskConfirmation\');')
+  && clientSrc.includes("if (!BIB_SET_NATIVE_RISK_CONFIRM) {")
+  && clientSrc.includes('confirmed = typeof window !== \'undefined\' && typeof window.confirm === \'function\'')
+  && clientSrc.includes('if (confirmed) runReset(kind);')
+  && clientSrc.includes('setResetAcknowledged(false);')
+  && clientSrc.includes('acknowledged: resetAcknowledged,')
+  && clientSrc.includes('onAcknowledgedChange: function (next) { setResetAcknowledged(next === true); }')
+  && clientSrc.includes('onConfirm: function () {')
+  && clientSrc.includes('if (kind) runReset(kind);')
+  && localesSrc.includes('"ui.resetConfirmTitle"')
+  && localesSrc.includes('"ui.resetConfirmAcknowledge"')
+  && localesSrc.includes('"ui.resetConfirmDescColors"')
+  && localesSrc.includes('"ui.resetConfirmDescFields"'), true);
 check('保存失败有 role=alert 文案；状态通知 aria-live=polite', clientSrc.includes("const role = tone === 'error' ? 'alert' : 'status';")
   && clientSrc.includes("{ className: className, role: role }")
   && clientSrc.includes("'aria-live': 'polite'"), true);
