@@ -17,6 +17,40 @@
 
 ## 2026-09-23
 
+### v1.15.0 续：MiniMax Token Plan 真实响应 schema 修正（f577a58）
+
+- 现场取证：v1.15.0 上线后用户在桌面实测 → 信息栏订阅行识别 `MiniMax · M3 视觉` 正确，但「刷新失败」红字一直不消失。
+  用户进一步把真实 Subscription Key（`sk-cp-…`）贴在会话里让我直接打 API。
+- 关键证据（node fetch 直接命中生产端点）：
+  - `https://api.minimax.io/v1/token_plan/remains` → HTTP 200 `{"base_resp":{"status_code":2049,"status_msg":"invalid api key"}}`
+    （国内 Key 打 Global 域名，2049 = 跨域/Key 失效）
+  - `https://api.minimaxi.com/v1/token_plan/remains` → HTTP 200 + 真实 `model_remains[]`
+- 真正错位的字段语义：**调研文档假设的 `current_interval_total_count` / `current_interval_usage_count`
+  在真实响应中恒为 0**（占位字段），真实额度信息在 `current_interval_remaining_percent`
+  / `current_weekly_remaining_percent`（剩余百分比，0-100）。旧解析器看到 `total=0` → 跳过
+  两个窗口 → `windows.length===0` → 抛 parse 错误 → 客户端显示「刷新失败」。
+- 修法（`plugin/src/host.js`）：
+  1. 替换聚合器：从「已用 / 总额推算」改为「直接读 remaining_percent → usedPercent = 100 − rem」。
+  2. 多桶聚合从「累加计数」改为「取最紧剩余」（未启用桶顶成 100% 与用户已在 general 用了不少的
+     体感相反）。
+  3. 新增 `base_resp.status_code=2049` → auth 翻译（覆盖跨域/Key 失效场景，国内 Key 打 Global
+     时实测返回此码）。
+  4. 同步更新 `test-minimax-token-plan.js`（45 → 62 条断言，全部基于真实响应 schema）、
+     `smoke-static-host.mjs`（MINIMAX_REAL fixture 用 general 64% / video 100% 真实形态）、
+     `check-host.js` 关键函数白名单（`minimaxAggregateWindowCounts` → `minimaxAggregateRemainingPercents`）。
+- 真实验证（用户给的真实 Key）：
+  - 解析后 `usedPercent`：5h = 36%（取 general 桶 64% 剩余）、周 = 0%（两个桶都 100% 剩余）。
+  - `resetsAt`：5h = general 桶 end_time（先结束）、周 = 同 weekly_end_time。
+  - 与用户截图里看到的 `MiniMax · M3 视觉 | 刷新失败 | 21%` 形态完全对应（21% 是上下文圆环，与订阅数据无关）。
+- 安全边界（不变，仅重申）：
+  - 用户 Key 已在会话/Hindsight/日志中暴露，**视为已泄露**；已建议用户立即在 MiniMax 控制台作废重发。
+  - host 端错误信息继续不含 Key；解析层只对 schema 错误做兜底，不回显任何上游 payload。
+- 教训（**血的：调研文档 ≠ 真实响应 schema**）：
+  1. **半官方端点（B 级）必须用真实 Key 跑一次才能信**。A3 调研写的字段名 / 语义都来自第三方社区逆向（cc-switch / token_manager），作者是照文档/CLI 推出来的，没真拿 Key 实测。本仓库 v1.15.0 没真跑过就发布了，等于把这份二手信息当真值用。
+  2. **解析器永远要分两层：schema 校验 + 取值**。旧实现"看到 total=0 就跳"是隐性假设"total 一定有意义"；新实现把"remaining_percent 为空"和"窗口无数据"显式分开，缺失就当窗口不可用、绝不报错也不报错成 0%。
+  3. **任何"已用 / 总额"推算都比"直接读剩余%"脆弱**：推算要求两个字段都正确，直接读只需要一个；上游一旦其中之一变占位（这次的情况），整个推算就静默失败。
+  4. **`if hunk < 100`** 类型防御必须存在（这次没用上是因为 remaining 直接给的就是百分比，但下次未必）。
+
 ### v1.15.0：适配 MiniMax（海螺）Coding Plan / Token Plan 订阅（FR-15）
 
 - 起因：MiniMax Coding Plan / Token Plan 由官方 CLI（MiniMax-AI/cli PR #104）切换到的 `/v1/token_plan/remains` 数据面端点提供 5 小时 + 周窗口计数；端点未在文档页逐字公开，但官方 CLI 在用 + 多个社区项目交叉验证（B 级半官方），A3 调研已记录。
