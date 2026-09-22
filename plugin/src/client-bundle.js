@@ -1042,7 +1042,8 @@ function bibSetInstallStyles() {
       .bib-set-dot:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
       .bib-set-dot[aria-checked="true"] { box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-2, #fff), 0 0 0 4px var(--dsw-alias-label-primary); }
       .bib-set-dot-core { display: block; width: 16px; height: 16px; border-radius: 50%; }
-      .bib-set-dot-default .bib-set-dot-core { background: var(--dsw-alias-bg-layer-2, transparent); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l3, rgba(128,128,128,0.4)); position: relative; overflow: hidden; }
+      /* 「默认」色点描边改用 label-tertiary：border-l3 在浅色主题只有 12% 黑，16px 小圆上对比度约 1.3:1 等于看不见；label-tertiary 与中间那道斜线同令牌，浅色约 3.9:1、深色约 5:1，达标且随主题自动翻转。 */
+      .bib-set-dot-default .bib-set-dot-core { background: var(--dsw-alias-bg-layer-2, transparent); box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); position: relative; overflow: hidden; }
       .bib-set-dot-default .bib-set-dot-core::after { content: ''; position: absolute; left: -2px; top: 50%; width: 20px; height: 1px; background: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); transform: rotate(-45deg); }
       /* 原生取色器色井：保留系统行为，仅样式化为圆角色井 */
       .bib-set-well { display: inline-flex; flex: none; }

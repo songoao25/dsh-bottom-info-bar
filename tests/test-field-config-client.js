@@ -795,5 +795,51 @@ function withFakeDocument(run) {
     && localesSrc.includes('"ui.contextSystem": "系统提示词"') && localesSrc.includes('"ui.contextMessages": "Conversation messages"'), true);
 }
 
+// ---------- ⑤-4 「默认」色点描边对比度回归（2026-09-22 真机取证：16px 小圆描边淡到看不见） ----------
+// 根因：.bib-set-dot-default .bib-set-dot-core 的 box-shadow 用 --dsw-alias-border-l3，
+// 浅色主题解析成 rgba(0,0,0,0.12)，叠白底对比度约 1.32:1（远低于 WCAG 非文本 3:1）等于看不见。
+// 修法：改用宿主自己的 --dsw-alias-label-tertiary（与中间斜线同令牌），浅色约 3.9:1、深色约 5:1。
+// 约束：只改「默认」这一个点；彩色预设点靠实色辨识，通用规则 .bib-set-dot-core 不许描边。
+{
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  // 与 ⑤-2/⑤-3 同一套写法：先剥掉 CSS 注释再扫声明块。
+  // 本条尤其必要——改动上方那条解释性中文注释里同时出现了 label-tertiary 与 border-l3 两个令牌名。
+  const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
+  // 按「选择器 → 声明块」切分，选择器按逗号拆开做精确成员比较（避免 .bib-set-dot-core 子串匹配到
+  // .bib-set-dot-default .bib-set-dot-core）
+  const rules = [];
+  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+  let rm;
+  while ((rm = ruleRe.exec(cssOnly)) !== null) {
+    rules.push({
+      selectors: rm[1].split(',').map(function (s) { return s.trim(); }),
+      decls: rm[2].split(';').map(function (d) { return d.trim(); }).filter(Boolean),
+    });
+  }
+  const declsOf = function (selector) {
+    return rules
+      .filter(function (r) { return r.selectors.indexOf(selector) !== -1; })
+      .reduce(function (acc, r) { return acc.concat(r.decls); }, []);
+  };
+  const defaultDecls = declsOf('.bib-set-dot-default .bib-set-dot-core');
+  check('「默认」色点描边改用宿主 --dsw-alias-label-tertiary 令牌（对比度 1.3:1 → 约 3.9:1）',
+    defaultDecls.some(function (d) {
+      return /^box-shadow\s*:[^;]*var\(--dsw-alias-label-tertiary/.test(d);
+    }), true);
+  check('「默认」色点描边不再使用 --dsw-alias-border-l3 令牌',
+    defaultDecls.length > 0
+    && defaultDecls.every(function (d) { return d.indexOf('var(--dsw-alias-border-l3') === -1; }), true);
+  check('彩色预设点通用规则 .bib-set-dot-core 不加任何描边/阴影（border-radius 除外，圆点必需）', (function () {
+    const generic = declsOf('.bib-set-dot-core');
+    const offenders = generic.filter(function (d) {
+      const prop = d.split(':')[0].trim();
+      if (prop === 'box-shadow') return true;
+      // 只禁描边类 border 声明；border-radius 是圆点几何必需，不算描边
+      return prop.indexOf('border') === 0 && prop !== 'border-radius';
+    });
+    return generic.length > 0 && offenders.length === 0;
+  })(), true);
+}
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
