@@ -17,6 +17,15 @@
 
 ## 2026-09-23
 
+### v1.14.4 发布：折叠分组留白 + 文案收敛 + 发布元数据守卫改精确
+
+- 内容（PR #116，squash 合并 `f6de5f7`）：①修「原生信息 / 插件信息」两个折叠分组贴在一起——根因是两张分组卡被包在同一个中间容器里，flex 的 gap 作用不到卡片之间；改为分组直接成为字段列表的相邻子项，统一 16px 分组间距，收起/展开/搜索自动展开都保留真实留白。②分组名收敛为「原生信息 / 插件信息」，插件简介收敛为「在输入框下方显示当前模型、余额和花费。」③收紧 `plugin/package.json` 的 description。
+- **CI 守卫误报及根因修复**：守卫 4 此前把 `plugin/package.json` 整文件锁死，连 description 这类非版本改动也拦（本地全量测试全绿、CI 却红——因为该守卫本地无 `GITHUB_BASE_REF` 时自动 SKIP，本地测不出 PR 场景）。已改为：manifest 与 CHANGELOG 仍整文件锁死，package.json **只锁 version 字段**（diff 行匹配 `^[+-]\s*"version"\s*:`）。双向验证过：description 改动 PASS，临时分支 bump version 仍 FAIL。
+  - **可复用经验 1**：凡 PR 动过 GUARDED 清单里的文件，本地先 `GITHUB_BASE_REF=main node tests/test-source-guards.mjs` 预演一遍，别等 CI 报红。
+  - **可复用经验 2（本次丢过一次工作）**：反向验证时**绝不能带着未提交改动去开临时分支再 commit**——`git checkout -b` 会把工作区改动一起带过去，`commit -a` 就把正经改动卷进临时提交，删分支即丢失。先提交，再开临时分支做反向验证。
+- 发布证据：release PR #117 合并；tag / GitHub Release `v1.14.4`；publish-npm workflow success（日志 `+ dsh-bottom-info-bar@1.14.4`）；npm registry latest 已轮询读回 `1.14.4`（registry 生效滞后约 1–2 分钟，轮询等待即可，不必怀疑流水线）。
+- Git 操作备忘：①分支首个提交已随 #114 squash 进 main 后，`git rebase origin/main` 会自动跳过等价补丁（git cherry 可先确认），PR diff 即只剩真实新工作；②本地没有远端分支的跟踪引用时，裸 `--force-with-lease` 会报 stale info 拒推——用显式写法 `--force-with-lease=refs/heads/<分支>:<远端当前 SHA>`。
+
 ### 设置页折叠分组的真实留白（待发版）
 
 - 用户发现「原生信息」与「插件信息」在收起和同时展开时都贴在一起。根因不是间距令牌过小：两张分组卡被包在同一个中间容器中，`flex` 的 `gap` 只作用到该容器，无法作用到卡片之间。
