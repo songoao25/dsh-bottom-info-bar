@@ -959,7 +959,9 @@ function bibSetInstallStyles() {
          .bib-set-collapse 的 grid 轨道过渡。 */
       .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; }
       .bib-set-group-head { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
-      .bib-set-group-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* 组头标题与区块标题同级（14/500/20 主文字色）：分组头是「可点的区块标题」，
+         不该缩成一行小字——那正是「看不出来这里是干什么的」的来源。 */
+      .bib-set-group-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       .bib-set-group-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-count-size); line-height: var(--bib-count-line); font-variant-numeric: tabular-nums; }
       .bib-set-group-fallback-head { appearance: none; display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
       .bib-set-group-fallback-head:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 2px; }
@@ -1063,7 +1065,7 @@ function bibSetInstallStyles() {
       .bib-set-time-parts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
       .bib-set-time-part { display: inline-flex; align-items: center; gap: 4px; }
       .bib-set-time-part-label { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-secondary); }
-      .bib-set-custom-text-input { flex: 1 1 200px; box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-custom-text-count { color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); white-space: nowrap; }
       .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
@@ -1104,9 +1106,10 @@ function bibSetInstallStyles() {
       .bib-set-hex { box-sizing: border-box; width: 96px; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--bib-input-size); line-height: 1.5; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-3, transparent); border: 0.5px solid var(--dsw-alias-border-l4, rgba(128,128,128,0.4)); border-radius: var(--bib-input-radius); }
       .bib-set-hex:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
-      /* 页脚操作行：右对齐按钮组。原生详情页的区块之间没有分隔线，这里也不画，
-         只靠 32px 区块间距区分（页脚自身就是 .bib-settings 的最后一个区块）。 */
-      .bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; box-sizing: border-box; padding: 0; }
+      /* 页脚操作行已被「恢复默认」行取代：它现在是「显示内容」区块里的最后一个
+         .bib-set-data-row（同「导出账单」的行几何），不再悬浮在页面右下角。 */
+      .bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }
+      .bib-set-reset-row .bib-set-data-copy { display: flex; flex-direction: column; gap: 2px; }
       /* 按钮优先渲染宿主原生 Button（.sm = h28 / r14 / 12px / 0 10px）；
          下面这份只是宿主没有 Button 时的等价兜底。 */
       .bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; height: var(--bib-btn-height); border: 0.5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); background: transparent; border-radius: var(--bib-btn-radius); padding: 0 var(--bib-btn-pad-inline); font-size: var(--bib-btn-size); font-weight: 400; line-height: var(--bib-btn-line); transition: background-color 120ms ease, border-color 120ms ease; }
@@ -1124,7 +1127,7 @@ function bibSetInstallStyles() {
       .bib-set-data-button-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
       .bib-set-btn--destructive { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       .bib-set-btn--destructive:hover { background: rgba(217,45,32,0.08); border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
-      @media (max-width: 600px) { .bib-settings { gap: 24px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-footer { justify-content: flex-start; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
+      @media (max-width: 600px) { .bib-settings { gap: 24px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
       @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
     `;
   document.head.appendChild(style);
@@ -1642,7 +1645,6 @@ function bibSetCustomTextSection(props) {
     }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
       React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('label', { className: 'bib-set-fieldblock-label', htmlFor: 'bib-set-custom-text-input' }, t('ui.customTextTitle')),
         React.createElement('input', {
           id: 'bib-set-custom-text-input',
           type: 'text',
@@ -1655,7 +1657,8 @@ function bibSetCustomTextSection(props) {
           onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
           'aria-label': t('ui.customTextTitle'),
         }),
-        React.createElement('p', { className: 'bib-set-fieldblock-hint' }, props.customTextOf().length + '/64'))));
+        React.createElement('p', { className: 'bib-set-fieldblock-hint' },
+          t('ui.customTextCount', { value: props.customTextOf().length })))));
 }
 
 const USAGE_EXPORT_COLUMNS = [
@@ -2132,7 +2135,25 @@ function InfoBarSettingsSection() {
               'aria-label': t('ui.searchFieldsLabel') || 'Search visible content'
             })),
           React.createElement('span', { className: 'bib-set-count', role: 'status', 'aria-live': 'polite', 'aria-label': fieldSummary }, fieldSummary))),
-      fieldsBody),
+      fieldsBody,
+      // 「恢复默认」行（决策 4：带二次确认）：照「导出账单」的原生行几何，
+      // 挂在「显示内容」区块底部，不再悬浮在页面右下角。
+      React.createElement('div', { className: 'bib-set-data-row bib-set-reset-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.resetRowTitle')),
+          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.resetRowDesc')),
+          feedback),
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          bibSetButton({
+            disabled: saving || dataBusy,
+            onClick: function () { requestReset('fields'); },
+            children: t('ui.resetLabels'),
+          }),
+          bibSetButton({
+            disabled: saving || dataBusy,
+            onClick: function () { requestReset('colors'); },
+            children: t('ui.resetColors'),
+          })))),
     bibSetTimeDateSection({
       fieldOn: fieldOn,
       timeFormatOf: timeFormatOf,
@@ -2149,19 +2170,7 @@ function InfoBarSettingsSection() {
     }),
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
-    resetDialog,
-    React.createElement('div', { className: 'bib-set-footer' },
-      feedback,
-      bibSetButton({
-        disabled: saving || dataBusy,
-        onClick: function () { requestReset('fields'); },
-        children: t('ui.resetLabels'),
-      }),
-      bibSetButton({
-        disabled: saving || dataBusy,
-        onClick: function () { requestReset('colors'); },
-        children: t('ui.resetColors'),
-      })));
+    resetDialog);
   } catch (err) {
     return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),

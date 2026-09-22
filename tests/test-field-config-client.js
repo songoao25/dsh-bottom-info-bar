@@ -364,7 +364,20 @@ check('横向既不自带内边距（否则与宿主 323.2 错位）也不越界
     && install.includes('.bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }')
     && install.includes('.bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 0;')
     && install.includes('.bib-set-alerts { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; padding: 0; }')
-    && install.includes('.bib-set-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; box-sizing: border-box; padding: 0; }');
+    // 「恢复默认」行：照「导出账单」的原生行几何挂在「显示内容」区块底部，不再有悬浮页脚
+    && install.includes('.bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }')
+    && !install.includes('.bib-set-footer');
+})(), true);
+// 「界面太乱」整改（2026-09-22 用户反馈）：自定义文字输入框不得再被 flex-basis 撑成 200px 大框、
+// 分组头必须与区块标题同级（14/500 主文字色）、「恢复默认」行进区块、字数提示要能看懂。
+check('设置页原生化整改：输入框单行、分组头同级、恢复默认行进区块、无重复标题', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  return install.includes('.bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height);')
+    && !install.includes('flex: 1 1 200px')
+    && install.includes('.bib-set-group-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }')
+    && clientSrc.includes('\'bib-set-data-row bib-set-reset-row\'')
+    && clientSrc.includes('t(\'ui.customTextCount\', { value: props.customTextOf().length })')
+    && !clientSrc.includes('htmlFor: \'bib-set-custom-text-input\'');
 })(), true);
 // 展开节奏：max-height 巨值会让内容瞬间撑开、再被 220ms 淡入/位移拖长（拖沓的来源）。
 // 用 grid-template-rows 0fr→1fr 让高度本身参与过渡，并把总时长压到原生量级。
