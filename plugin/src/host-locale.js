@@ -16,6 +16,34 @@ function readHostSettings(ctx) {
   try { return ctx.settings } catch { return undefined }
 }
 
+// DSH 0.1.7 起 settings 服务换了实现（@deepseek-ai/dsh-settings 的 SettingsForms）：
+// 旧的 settings.get(ns) 被整块移除，只剩 describe() / update() / replace() / mutate()，
+// 描述项形如 [{ ns: 'locale', value: { preference: 'en' }, … }]。
+// 这里按宿主能力择优读取：先认新宿主的 describe()，再退回旧宿主的 get(ns)，
+// 都认不出来就用 zh —— 读不到语言绝不能抛错（宿主语言只是显示层细节）。
+export function readHostLocalePreference(settings) {
+  if (!settings || typeof settings !== 'object') return undefined
+  if (typeof settings.describe === 'function') {
+    try {
+      const described = settings.describe()
+      if (Array.isArray(described)) {
+        for (const entry of described) {
+          if (!entry || entry.ns !== 'locale') continue
+          const value = entry.value
+          if (value && typeof value.preference === 'string') return value.preference
+        }
+      }
+    } catch { /* 落到旧宿主路径 */ }
+  }
+  if (typeof settings.get === 'function') {
+    try {
+      const value = settings.get('locale')
+      if (value && typeof value.preference === 'string') return value.preference
+    } catch { /* 读不到就按默认语言 */ }
+  }
+  return undefined
+}
+
 export function createHostTranslator(ctx) {
   let injectedSettings
   if (ctx && typeof ctx.inject === 'function') {
@@ -27,8 +55,7 @@ export function createHostTranslator(ctx) {
   }
   const translate = function (key, params) {
     const settings = injectedSettings || readHostSettings(ctx)
-    const preference = settings && typeof settings.get === 'function' ? settings.get('locale')?.preference : undefined
-    const locale = preference === 'en' ? 'en' : 'zh'
+    const locale = readHostLocalePreference(settings) === 'en' ? 'en' : 'zh'
     return formatHostText(locale, key, params)
   }
   // Only presentation fields are localized at serialization. Cached snapshots

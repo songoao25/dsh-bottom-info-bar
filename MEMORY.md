@@ -17,6 +17,22 @@
 
 ## 2026-09-22
 
+### 适配 DSH 0.1.7-alpha.1：插件页「信息栏设置」白屏（React #130）+ 宿主语言读不到
+
+- 用户报告（原话）：「dsh 信息栏插件页设置没有移植」——升级 DSH 到 0.1.7-alpha.1 后，插件页里本插件的配置区块整块空白。
+- 现场取证（**关键：只看日志查不出来**）：宿主机启动日志无任何 error；`/_dsh/dsh-bottom-info-bar/getConfig` 仍返回 200；`.bi-root` 在真实会话里正常渲染；插件自有设置 `~/.dsh/dsh-bottom-info-bar/settings.json` 完好（字段显隐 / 颜色 / 自定义文案全在）。
+  真正的证据只在**浏览器控制台**：`slot entry crashed in 'plugins.bundle.config'` + `React error #130`（Element type is invalid … got: undefined），`[data-plugin-config]` 区块存在但内容为空。
+- 根因：`@deepseek-ai/dsh-client-ui-primitives` 把图标导出名从 `IconChevronDownOutline14` 改成 `IconChevronDownOutlineRegular` / `…Medium`（尺寸后缀改成描边档位），两个名字各只在一边存在。旧写法 `React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, …)` 在新宿主上拿到 `undefined` → React #130 → 插槽错误边界把整个配置区块渲染成空白。
+  **一个图标取不到，整页 700 行表单陪葬。**
+- 修法：新增模块级 `BIB_SET_CHEVRON_ICON`，按 `Regular → Medium → 14 → null` 运行时择名；三边都缺时退回 CSS 画的箭头（`.bib-set-chevron-glyph`，方向由父级 `data-expanded` 驱动）。**任何情况下都不再把 `undefined` 交给 `React.createElement`。**
+  顺带同类问题：`settings` 服务在 0.1.7 换成 `SettingsForms`，`get(ns)` 被整块移除只剩 `describe()`；`host-locale.js` 因此永远回退 `zh`。新增 `readHostLocalePreference()`：`describe()` 优先（按 `ns === 'locale'` 取 `value.preference`），`get(ns)` 兜底。
+- 测试升级（本次最重要的防线）：光有字符串断言拦不住这类回归，新增**渲染级**用例——把 `bibSetChevron` 抽出来在受控作用域里跑，`createElement` 收到非 string/function 就抛错（等价 React #130），分别验证「图标可用」与「图标全缺」两条路径都不抛错；`lib/client.js` 工厂加载测试也从 1 种 primitives 桩扩到 3 种（新版名 / 旧版名 / 一个图标都没有）。`test-localization.mjs` 补 describe 形状、describe 抛错回落、畸形返回三类用例。
+- 真实验证：重启 `dsh web` 后打开插件页，信息栏配置区块正常渲染（显示内容 / 账单数据 / 导出 / 清除 / 恢复默认），控制台零 `slot entry crashed`；同一轮也确认 `dsh-chatgpt-subscription` 的插件页正常。
+- 可复用经验：
+  1. **宿主接口名不是契约**。凡是「取宿主某个成员」的地方都要假定它明天会改名或消失：要么 `typeof x === 'function'` 判定后降级，要么候选名列表择一，**永远不让 `undefined` 流到 React 或函数调用位**。
+  2. **升级后必须真开浏览器看界面**，并搜控制台 `slot entry crashed`。日志里不会留痕，接口被移除是静默失效。
+  3. 新增 `docs/DSH-HOST-COMPATIBILITY.md` 记录依赖面清单（插槽名 / 投影 / settings / primitives 图标 / 模块加载器）与升级后核对步骤，下次升级照单核对。
+
 ### v1.14.3：修好 link: 安装的「更新命令」——拉代码 + 切默认分支 + 重建产物
 
 - 用户报告（原话要点）：红色「新版本提醒」里点标签复制的更新命令，实际操作之后并没有实现更新；并追问「为什么本地端也显示更新？不应该先更新完本地再推云端吗？为什么本地显示的还是旧版本？」。

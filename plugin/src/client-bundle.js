@@ -27,6 +27,18 @@ try {
 // 必须定义在这里（FIELD_REGISTRY 锚点之前）：D1 结构测试会切片求值锚点之后到 module.exports 之间的源码，
 // 那段切片里引用不到 BIB_SET_PRIMITIVES，多一条依赖就会让求值抛错。
 const CONTEXT_TOOLTIP = typeof BIB_SET_PRIMITIVES.Tooltip === 'function' ? BIB_SET_PRIMITIVES.Tooltip : null;
+// 设置页卡片头部的折叠箭头同样取自 primitives，但它的导出名跟着宿主版本变过：
+//   DSH ≤0.1.6：IconChevronDownOutline14（尺寸写进名字）
+//   DSH ≥0.1.7：IconChevronDownOutlineRegular / IconChevronDownOutlineMedium（改成描边档位）
+// 两边各只有自己那一套名字，所以运行时择优；都取不到时退回 CSS 画的箭头。
+// 绝不能把 undefined 直接交给 React.createElement：那会让整个插件页配置区块抛
+// React #130 而整块白屏——2026-09-22 升级到 0.1.7-alpha.1 后正是这么踩的（信息栏
+// 本体照常显示，只有插件页的「信息栏设置」整块空白且控制台报 slot entry crashed）。
+// 同样必须定义在 FIELD_REGISTRY 锚点之前：锚点之后的切片求值看不到 BIB_SET_PRIMITIVES。
+const BIB_SET_CHEVRON_ICON = BIB_SET_PRIMITIVES.IconChevronDownOutlineRegular
+  || BIB_SET_PRIMITIVES.IconChevronDownOutlineMedium
+  || BIB_SET_PRIMITIVES.IconChevronDownOutline14
+  || null;
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
@@ -857,6 +869,10 @@ function bibSetInstallStyles() {
       .bib-set-card-header:not(.bib-set-card-header--static):hover .bib-set-chevron, .bib-set-card-header:not(.bib-set-card-header--static):focus-visible .bib-set-chevron { color: var(--dsw-alias-label-primary); }
       .bib-set-chevron-icon { display: block; width: 14px; height: 14px; transform-box: fill-box; transform-origin: center; backface-visibility: hidden; will-change: transform; transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), color 150ms ease; }
       .bib-set-chevron-icon--expanded { transform: rotate(180deg); }
+      /* 兜底箭头：宿主 primitives 两边都取不到图标时使用（见 BIB_SET_CHEVRON_ICON）。
+         尺寸/描边对齐 14px 图标观感，方向由父级 data-expanded 驱动，不依赖任何宿主类名。 */
+      .bib-set-chevron-glyph { display: block; width: 6px; height: 6px; margin-top: -3px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg); backface-visibility: hidden; transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), color 150ms ease; }
+      .bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }
       /* 开关：iOS 原生质感（40×24 轨道 + 18px 圆钮），语义 = role:switch + aria-checked */
       .bib-set-switch { appearance: none; background: 0 0; border: 0; padding: 0; margin: 0; cursor: pointer; display: inline-flex; flex: none; border-radius: 12px; }
       .bib-set-switch:disabled { cursor: default; opacity: 0.5; }
@@ -989,11 +1005,16 @@ function bibSetPageTitle() {
 
 function bibSetChevron(props) {
   const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');
+  // 宿主图标缺失时退回同一位置上的 CSS 箭头（见 .bib-set-chevron-glyph）：
+  // 宁可少一个图形，也不让 React 收到 undefined 类型的元素。
+  const glyph = BIB_SET_CHEVRON_ICON
+    ? React.createElement(BIB_SET_CHEVRON_ICON, { size: 14, className: iconClass })
+    : React.createElement('span', { className: 'bib-set-chevron-glyph' });
   return React.createElement('span', {
     className: 'bib-set-chevron',
     'data-expanded': props.expanded ? 'true' : 'false',
     'aria-hidden': 'true',
-  }, React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14, className: iconClass }));
+  }, glyph);
 }
 
 function bibSetCardHeader(props) {

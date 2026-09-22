@@ -135,15 +135,26 @@ check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设�
 })(), true);
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
   && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("label: t('ui.show', { label: fieldLabel })"), true);
-check('折叠箭头复用 DSH 原生上下箭头且不暴露字符箭头', clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
-  && clientSrc.includes('IconChevronDownOutline14')
-  && clientSrc.includes("React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14, { size: 14, className: iconClass })")
+check('折叠箭头复用 DSH 原生下箭头，且按宿主版本择名（新 Regular/Medium ↔ 旧 …Outline14）',
+  clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
+  && clientSrc.includes('const BIB_SET_CHEVRON_ICON = BIB_SET_PRIMITIVES.IconChevronDownOutlineRegular')
+  && clientSrc.includes('|| BIB_SET_PRIMITIVES.IconChevronDownOutlineMedium')
+  && clientSrc.includes('|| BIB_SET_PRIMITIVES.IconChevronDownOutline14')
+  && clientSrc.includes('|| null;')
+  && clientSrc.includes('React.createElement(BIB_SET_CHEVRON_ICON, { size: 14, className: iconClass })')
   && clientSrc.includes('.bib-set-chevron-icon--expanded { transform: rotate(180deg);')
   && clientSrc.includes("className: 'bib-set-chevron'")
   && clientSrc.includes("'aria-hidden': 'true'")
   && !clientSrc.includes('IconChevronUpOutline14')
   && !clientSrc.includes('IconChevronLeftOutline14')
   && !clientSrc.includes("collapsed.fields ? '▶' : '▼'"), true);
+check('图标名不允许裸用（必须经 BIB_SET_CHEVRON_ICON 择名，防止宿主改名后 React #130 白屏）',
+  !/React\.createElement\(BIB_SET_PRIMITIVES\.Icon/.test(clientSrc)
+  && !clientSrc.includes('React.createElement(BIB_SET_PRIMITIVES.IconChevronDownOutline14'), true);
+check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，方向由父级 data-expanded 驱动）',
+  clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
+  && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
+  && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
 check('折叠箭头方向与实际展开状态同步（搜索只负责打开列表）', clientSrc.includes('const searchActive = searchQuery.trim().length > 0;')
   && clientSrc.includes('const fieldsExpanded = !fieldsCollapsed;')
   && clientSrc.includes('if (value.trim().length > 0) setFieldsCollapsed(false);')
@@ -158,6 +169,37 @@ check('折叠箭头方向与实际展开状态同步（搜索只负责打开列�
   && clientSrc.includes('.bib-set-chevron-icon--expanded { transform: rotate(180deg);')
   && !clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);')
   && !clientSrc.includes('IconChevronLeftOutline14'), true);
+// 真渲染级回归：把 bibSetChevron 抽出来在受控作用域里跑两遍——
+// ① 宿主提供了箭头图标 ② 宿主两边都没有（改名/删包）。
+// createElement 在收到 undefined/null 类型时直接抛错（等价 React #130），
+// 所以这条测试能真正拦住「宿主改名 → 插件页配置区块整块白屏」这类回归。
+check('渲染级：图标可用时用原生图标、缺失时退回 CSS 箭头，两种情况都不抛错', (function () {
+  const fnSrc = extractFunctionFrom(clientSrc, 'bibSetChevron');
+  const fakeIcon = function () { return null; };
+  function renderWith(icon) {
+    const createElement = function (type, props, children) {
+      if (typeof type !== 'string' && typeof type !== 'function') {
+        throw new Error('React #130：元素类型为 ' + String(type));
+      }
+      return { type: type, props: props, children: children };
+    };
+    const factory = new Function('BIB_SET_CHEVRON_ICON', 'React', 'return (' + fnSrc + ');');
+    return factory(icon, { createElement: createElement })({ expanded: false });
+  }
+  const withIcon = renderWith(fakeIcon);
+  const withoutIcon = renderWith(null);
+  const glyph = withoutIcon.children;
+  return withIcon.type === 'span'
+    && withIcon.props.className === 'bib-set-chevron'
+    && withIcon.children.type === fakeIcon
+    && typeof withIcon.children.props.className === 'string'
+    && withIcon.children.props.className.indexOf('bib-set-chevron-icon') === 0
+    && withoutIcon.type === 'span'
+    && withoutIcon.props.className === 'bib-set-chevron'
+    && glyph.type === 'span'
+    && glyph.props.className === 'bib-set-chevron-glyph'
+    && glyph.props.size === undefined;
+})(), true);
 check('设置页基础结构拆分为可复用卡片/行组件', clientSrc.includes('function bibSetCardHeader(props)')
   && clientSrc.includes('function bibSetFieldRow(field, props)')
   && clientSrc.includes('function bibSetFieldGroups(props)')
@@ -294,25 +336,36 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
 })(), true);
 
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
+// primitives 走两个宿主版本各加载一次（新版 Regular / 旧版 …Outline14），
+// 再各用「primitives 一个图标都没有」的极端情形加载一次，确认模块体在任何
+// 宿主图标命名下都不抛错（择名逻辑必须能容忍全缺失）。
 {
   const code = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
-  let captured = null;
-  const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
-  const fakeRequire = function (name) {
-    if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
-    if (name === '@deepseek-ai/dsh-client-ui-primitives') return {
-      IconChevronDownOutline14: function () { return null; },
+  function loadWith(primitives) {
+    let captured = null;
+    const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
+    const fakeRequire = function (name) {
+      if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
+      if (name === '@deepseek-ai/dsh-client-ui-primitives') return primitives;
+      throw new Error('unexpected require: ' + name);
     };
-    throw new Error('unexpected require: ' + name);
-  };
-  try {
     new Function('window', 'require', code)(fakeWindow, fakeRequire);
-    const exported = captured && captured.factory(fakeRequire);
-    check('lib/client.js 工厂可加载且导出 inject/apply', !!captured && captured.id === 'dsh-bottom-info-bar'
-      && Array.isArray(exported.inject) && typeof exported.apply === 'function', true);
-  } catch (err) {
-    check('lib/client.js 工厂可加载且导出 inject/apply（' + err.message + '）', false, true);
+    return captured && captured.factory(fakeRequire);
   }
+  const hosts = [
+    ['新版宿主（Regular/Medium）', { IconChevronDownOutlineRegular: function () { return null; }, IconChevronDownOutlineMedium: function () { return null; }, Tooltip: function () { return null; } }],
+    ['旧版宿主（…Outline14）', { IconChevronDownOutline14: function () { return null; } }],
+    ['宿主无任何图标', {}],
+  ];
+  hosts.forEach(function (entry) {
+    try {
+      const exported = loadWith(entry[1]);
+      check('lib/client.js 工厂可加载且导出 inject/apply（' + entry[0] + '）',
+        !!exported && Array.isArray(exported.inject) && typeof exported.apply === 'function', true);
+    } catch (err) {
+      check('lib/client.js 工厂可加载且导出 inject/apply（' + entry[0] + '：' + err.message + '）', false, true);
+    }
+  });
 }
 
 // ---------- ⑦ 最终 CSS 结构校验（D1 回归锁，堵住「纯字符串断言测 CSS」的盲区） ----------

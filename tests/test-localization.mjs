@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import fixture from './locale-fixture.cjs'
-import { createHostTranslator, localizeHostText } from '../plugin/src/host-locale.js'
+import { createHostTranslator, localizeHostText, readHostLocalePreference } from '../plugin/src/host-locale.js'
 
 const { dictionaries, createLocale } = fixture
 assert.deepEqual(Object.keys(dictionaries.zh).sort(), Object.keys(dictionaries.en).sort())
@@ -30,6 +30,29 @@ preference = 'en'
 assert.equal(hostT('host.unknownProvider'), 'Unknown provider')
 preference = '<invalid>'
 assert.equal(hostT('host.unknownProvider'), '未知服务商')
+
+// DSH 0.1.7 起 settings 服务换成 SettingsForms：get(ns) 被移除，只剩 describe()。
+// 只认 get 的旧写法会在新宿主上静默回退 zh —— 宿主语言是英文时插件却吐中文。
+// 这里锁定「新宿主 describe() 优先、旧宿主 get(ns) 兜底、都读不到回退 zh」三条路径。
+{
+  const describedHost = { settings: { describe: () => [{ ns: 'llm-deepseek', value: {} }, { ns: 'locale', value: { preference: 'en' } }] } }
+  assert.equal(createHostTranslator(describedHost)('host.unknownProvider'), 'Unknown provider')
+  assert.equal(readHostLocalePreference(describedHost.settings), 'en')
+
+  const describedZhHost = { settings: { describe: () => [{ ns: 'locale', value: { preference: 'zh' } }] } }
+  assert.equal(createHostTranslator(describedZhHost)('host.unknownProvider'), '未知服务商')
+
+  // describe() 抛错时不得崩：继续走旧 get(ns) 兜底
+  const brokenDescribeHost = { settings: { describe: () => { throw new Error('boom') }, get: () => ({ preference: 'en' }) } }
+  assert.equal(createHostTranslator(brokenDescribeHost)('host.unknownProvider'), 'Unknown provider')
+
+  // describe() 返回畸形值 / 没有 locale 节时回退 zh
+  assert.equal(createHostTranslator({ settings: { describe: () => 'nope' } })('host.unknownProvider'), '未知服务商')
+  assert.equal(createHostTranslator({ settings: { describe: () => [{ ns: 'locale', value: null }] } })('host.unknownProvider'), '未知服务商')
+  assert.equal(readHostLocalePreference(undefined), undefined)
+  assert.equal(readHostLocalePreference({}), undefined)
+  console.log('PASS  host locale reads the 0.1.7 describe() shape and still falls back to the legacy get(ns)')
+}
 
 // 防复发（v1.10.0 启动崩溃回归）：cordis 宿主 ctx 未 inject settings 时，直接访问
 // ctx.settings 会抛 "cannot get property 'settings' without inject"。translate 必须
