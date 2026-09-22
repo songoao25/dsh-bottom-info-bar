@@ -56,7 +56,11 @@ check('浅色普通信息与估算说明使用高对比深灰，三级文字仅�
   && clientSrc.includes('.bi-muted{ color: var(--bi-label-supporting); }')
   && clientSrc.includes('--bi-separator: var(--dsw-alias-label-tertiary'), true);
 check('估算余额使用中性说明色', clientSrc.includes("className: 'bi-muted'"), true);
-check('正常订阅额度不使用绿色成功色', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''"), true);
+// v1.15.0：订阅窗口按 quotaDisplayMode 决定是 used 还是 remaining；告警色依旧应用 bi-quota-low
+// 验证：(1) 源码不再硬编码只看 remaining；(2) bi-quota-low 仍作为警示色
+check('正常订阅额度不使用绿色成功色', !clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''")
+  && clientSrc.includes("isLow = quotaMode === 'used' ? w.usedPercent >= (100 - LOW_QUOTA_PERCENT) : remaining <= LOW_QUOTA_PERCENT")
+  && clientSrc.includes("'bi-quota-low'"), true);
 check('高峰价与低余额共用警示红；状态标签用 600，避免与关键数值争夺层级', clientSrc.includes('.bi-peak    { color: var(--bi-state-alert); font-weight: 600; }'), true);
 check('空闲价为浅色与深色主题分别使用高对比绿色', clientSrc.includes('--bi-state-price-low: #087f5b')
   && clientSrc.includes('--bi-state-price-low: #86efac'), true);

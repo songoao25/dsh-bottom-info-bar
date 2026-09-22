@@ -1431,10 +1431,19 @@ function normalizeCustomTextValue(value) {
   if (value.length > CUSTOM_TEXT_MAX_LEN) return undefined
   return value
 }
+// FR-15 续：订阅窗口百分比方向（'used' = 已用，'remaining' = 剩余）。
+// 旧实现只有"剩余"；v1.15.0 默认切到"已用"（用户体感"已用 X%"比"剩余 Y%"更直观），
+// 但保留 'remaining' 选项让老用户可恢复。
+const QUOTA_DISPLAY_MODES = ['used', 'remaining']
+function normalizeQuotaDisplayMode(value) {
+  return value === 'used' || value === 'remaining' ? value : null
+}
 function defaultFieldSettings() {
-  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '' }
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'used' }
   for (const field of FIELD_REGISTRY) {
-    const isNewField = field.id === 'mainTime' || field.id === 'worldTime' || field.id === 'customText'
+    // v1.15.0：subWindowWeek（订阅周窗口）默认改为关闭（仅新用户生效；老用户的 settings.json
+    // 里有 subWindowWeek:true 时保留），避免初次使用就被一长串额度窗口撑爆
+    const isNewField = field.id === 'mainTime' || field.id === 'worldTime' || field.id === 'customText' || field.id === 'subWindowWeek'
     settings.fields[field.id] = isNewField ? false : true
     settings.colors[field.id] = null // null=未自定义 → 客户端沿用原语义色（零回归）
   }
@@ -1497,6 +1506,11 @@ function sanitizeSettings(raw) {
     const normalized = normalizeCustomTextValue(raw.customText)
     if (normalized === undefined) dropped.push('customText')
     else settings.customText = normalized
+  }
+  if ('quotaDisplayMode' in raw) {
+    const normalized = normalizeQuotaDisplayMode(raw.quotaDisplayMode)
+    if (normalized === null) dropped.push('quotaDisplayMode')
+    else settings.quotaDisplayMode = normalized
   }
   return { settings: settings, dropped: dropped }
 }
@@ -1586,6 +1600,8 @@ export const __settingsInternals = {
   sanitizeSettings: sanitizeSettings,
   normalizeColorValue: normalizeColorValue,
   defaultFieldSettings: defaultFieldSettings,
+  normalizeQuotaDisplayMode: normalizeQuotaDisplayMode,
+  QUOTA_DISPLAY_MODES: QUOTA_DISPLAY_MODES,
   settingsFile: SETTINGS_FILE,
   isValidTimeZone: isValidTimeZone,
   normalizeTimeFormatValue: normalizeTimeFormatValue,
@@ -2045,6 +2061,7 @@ export default {
         timeFormat: { ...fieldSettings.timeFormat },
         timeZones: { ...fieldSettings.timeZones },
         customText: fieldSettings.customText,
+        quotaDisplayMode: fieldSettings.quotaDisplayMode,
         configVersion: settingsConfigVersion,
         persisted: persistError == null,
         warning: persistError == null ? null : String(persistError),
@@ -4627,7 +4644,7 @@ export default {
       },
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
-        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue'))) {
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
           throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
@@ -4637,6 +4654,8 @@ export default {
         let normalizedTimeZones = null;
         let normalizedCustomText = null;
         let hasCustomTextPatch = false;
+        let normalizedQuotaDisplayMode = null;
+        let hasQuotaDisplayModePatch = false;
         if (Object.hasOwn(patch, 'fields')) {
           const patchFields = patch.fields;
           if (!isPlainSettingsObject(patchFields)) throw invalidArgument(t('host.fieldsMustBeAnObject'));
@@ -4695,6 +4714,14 @@ export default {
           }
           normalizedCustomText = normalized
         }
+        if (Object.hasOwn(patch, 'quotaDisplayMode')) {
+          hasQuotaDisplayModePatch = true
+          const normalized = normalizeQuotaDisplayMode(patch.quotaDisplayMode)
+          if (normalized === null) {
+            throw invalidArgument(t('host.quotaDisplayModeInvalid'))
+          }
+          normalizedQuotaDisplayMode = normalized
+        }
         let changed = false;
         let persistError = null;
         for (const key of Object.keys(normalizedFields || {})) {
@@ -4727,6 +4754,12 @@ export default {
             changed = true;
           }
         }
+        if (hasQuotaDisplayModePatch) {
+          if (fieldSettings.quotaDisplayMode !== normalizedQuotaDisplayMode) {
+            fieldSettings.quotaDisplayMode = normalizedQuotaDisplayMode
+            changed = true;
+          }
+        }
         if (changed) {
           settingsConfigVersion += 1;
           persistError = persistSettings();
@@ -4734,12 +4767,13 @@ export default {
         return settingsPayload(persistError);
       },
       resetFieldConfig: function () {
-        // 只重置标签显隐 + 时间格式/时区/自定义文本；颜色保持不动（两个重置按钮彼此独立）
+        // 只重置标签显隐 + 时间格式/时区/自定义文本/订阅窗口百分比方向；颜色保持不动（两个重置按钮彼此独立）
         const defaults = defaultFieldSettings()
         fieldSettings.fields = shallowSettingsCopy(defaults.fields);
         fieldSettings.timeFormat = { ...defaults.timeFormat }
         fieldSettings.timeZones = { ...defaults.timeZones }
         fieldSettings.customText = defaults.customText
+        fieldSettings.quotaDisplayMode = defaults.quotaDisplayMode
         // 自定义文本重置后为空，开关已为 false，无需额外修正
         settingsConfigVersion += 1;
         const persistError = persistSettings();

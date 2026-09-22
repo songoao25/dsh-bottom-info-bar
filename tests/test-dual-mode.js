@@ -215,7 +215,10 @@ check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn
 check('client 窗口渲染由 hasData 门控（空窗口跳过不占位）', subFn.includes('if (hasData) {'), true);
 check('client 订阅失败原因统一通过简短悬停说明', clientSrc.includes('subscriptionFailureHint') && clientSrc.includes("t('ui.isTemporarilyUnavailableCheckYour'"), true);
 check('client 预警阈值常量 = 20（剩余 ≤20% 即告警，与 host 余额 ALERT_THRESHOLD=20 一致）', clientSrc.includes('const LOW_QUOTA_PERCENT = 20'), true);
-check('client 预警触发条件：剩余 ≤20% 时将对应额度数字标红', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''"), true);
+// v1.15.0：告警判定按 quotaDisplayMode 翻转（已用模式看 usedPercent 是否 ≥ 80%；剩余模式看 remaining 是否 ≤ 20%）。
+// 测试改为验证「已用模式会触发」和「剩余模式会触发」两条路径。
+check('client 预警触发条件：已用模式（默认）下 usedPercent ≥ 80% 触发 bi-quota-low', clientSrc.includes("quotaMode === 'used' ? w.usedPercent >= (100 - LOW_QUOTA_PERCENT)"), true);
+check('client 预警触发条件：剩余模式下 remaining ≤ 20% 触发 bi-quota-low', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT"), true);
 check('client 距重置倒计时使用同一窗口，并通过统一 metric 间距呈现', clientSrc.includes("metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now))"), true);
 check('client fmtResetCountdown 天级格式（1d 21h）', clientSrc.includes("d + 'd ' + h + 'h'"), true);
 check('client hover 明细含重置时刻（formatDateTime）', clientSrc.includes("t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) })"), true);
@@ -230,7 +233,7 @@ check('client codex → Codex 保持（映射不变）', clientSrc.includes("if 
 check('client 剩余 = 100 - 已用（钳制 ≥0）', clientSrc.includes('return Math.max(0, 100 - w.usedPercent);'), true);
 check('client 紧凑标签 five_hour → 5h', clientSrc.includes("if (key === 'five_hour') return '5h';"), true);
 check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })"), true);
-check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
+check('client 告急时仅将对应额度数字标为鲜红色（bi-quota-low 仍存在）', clientSrc.includes("'bi-quota-low'") && clientSrc.includes("const numberClass = isLow ? 'bi-quota-low' : '';"), true);
 check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) })"), true);
 check('client 订阅制显示充值余额（sub.balance）', subFn.includes('sub.balance'), true);
 check('client credits 余额不按人民币显示', subFn.includes("sub.balanceUnit === 'credits'") && subFn.includes("t('ui.availableCredits'") && subFn.includes("t('ui.credits')"), true);

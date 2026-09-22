@@ -173,7 +173,7 @@ const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 const PRESET_COLOR_SET = new Set(PRESET_COLORS);
 
-let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '' };
+let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: 'used' };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -187,6 +187,7 @@ function applyFieldConfigSnapshot(next) {
     timeFormat: next && next.timeFormat && typeof next.timeFormat === 'object' ? next.timeFormat : { year: true, month: true, day: true, hour: true, minute: true, second: false },
     timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
     customText: typeof (next && next.customText) === 'string' ? next.customText : '',
+    quotaDisplayMode: (next && (next.quotaDisplayMode === 'remaining' || next.quotaDisplayMode === 'used')) ? next.quotaDisplayMode : 'used',
   };
   if (next && typeof next.customTextValue === 'string' && !next.customText) fieldConfig.customText = next.customTextValue;
   fieldConfigVersion += 1;
@@ -1296,7 +1297,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: (cfg.quotaDisplayMode === 'remaining' || cfg.quotaDisplayMode === 'used') ? cfg.quotaDisplayMode : 'used', configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -1350,6 +1351,7 @@ function InfoBarSettingsSection() {
         timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
         timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
         customText: typeof res.customText === 'string' ? res.customText : ((prev && prev.customText) || ''),
+        quotaDisplayMode: (res.quotaDisplayMode === 'remaining' || res.quotaDisplayMode === 'used') ? res.quotaDisplayMode : ((prev && prev.quotaDisplayMode) || 'used'),
         configVersion: typeof res.configVersion === 'number' ? res.configVersion : ((prev && prev.configVersion) || 0),
       };
     });
@@ -1465,6 +1467,21 @@ function InfoBarSettingsSection() {
       function () { return t('ui.customText'); });
   }
 
+  // v1.15.0：订阅窗口百分比方向（已用 / 剩余）—— 乐观更新 + 失败回退，模式与 timeZone / customText 同型
+  function quotaDisplayModeOf() {
+    const s = snapshot;
+    return (s && (s.quotaDisplayMode === 'remaining' || s.quotaDisplayMode === 'used')) ? s.quotaDisplayMode : 'used';
+  }
+  function setQuotaDisplayMode(next) {
+    if (next !== 'used' && next !== 'remaining') return;
+    const current = quotaDisplayModeOf();
+    if (current === next) return;
+    commit({ quotaDisplayMode: next },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: next }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: current }); }); },
+      function () { return t('ui.quotaDisplayModeLabel'); });
+  }
+
   function runReset(kind) {
     setOpError(null);
     setNotice(null);
@@ -1555,6 +1572,28 @@ function InfoBarSettingsSection() {
     onCustomTextCommit: commitCustomText,
   });
 
+  // v1.15.0：订阅窗口百分比方向（独立小卡，紧贴可见内容之上；与 customText / timeZone 同型 select）
+  const quotaModeCard = React.createElement('section', { className: 'bib-set-card bib-set-card--quota-mode', 'aria-labelledby': 'bib-set-quota-mode-title' },
+    React.createElement('div', { className: 'bib-set-row bib-set-row--field' },
+      React.createElement('div', { className: 'bib-set-row-main' },
+        React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
+          React.createElement('div', { id: 'bib-set-quota-mode-title', className: 'bib-set-rowTitle' }, t('ui.quotaDisplayModeLabel')),
+          React.createElement('div', { className: 'bib-set-rowDesc' }, t('ui.quotaDisplayModeNote'))),
+        React.createElement('div', { className: 'bib-set-controls bib-set-controls--field' },
+          React.createElement('select', {
+            key: 'quota-mode',
+            className: 'bib-set-time-zone',
+            'aria-label': t('ui.quotaDisplayModeLabel'),
+            value: quotaDisplayModeOf(),
+            onChange: function (e) {
+              const value = e && e.target ? e.target.value : '';
+              if (value === 'used' || value === 'remaining') setQuotaDisplayMode(value);
+            },
+          }, [
+            React.createElement('option', { key: 'used', value: 'used' }, t('ui.quotaDisplayUsed')),
+            React.createElement('option', { key: 'remaining', value: 'remaining' }, t('ui.quotaDisplayRemaining')),
+          ])))));
+
   const feedback = [];
   if (opError) feedback.push(React.createElement('p', { key: 'err', className: 'bib-set-alert', role: 'alert' }, opError.text()));
   else if (notice) feedback.push(React.createElement('p', { key: 'notice', className: 'bib-set-notice', role: 'status' }, notice.text()));
@@ -1581,6 +1620,7 @@ function InfoBarSettingsSection() {
     bibSetPageTitle(),
     React.createElement('p', { className: 'bib-set-intro' },
       t('ui.chooseWhichFieldsToShow')),
+    quotaModeCard,
     React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-fields-title' },
       bibSetCardHeader({
         titleId: 'bib-set-fields-title',
@@ -2448,6 +2488,9 @@ module.exports = {
 
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
           const LOW_QUOTA_PERCENT = 20;
+          // v1.15.0：用户可选按「已用 / 剩余」显示窗口数字（默认已用，更符合"用掉多少"的直觉）。
+          // 告警条件也跟着翻转 —— 「显示已用」下用 used >= 80% 触发；「显示剩余」下用 remaining <= 20% 触发。
+          const quotaMode = (fieldConfig && fieldConfig.quotaDisplayMode === 'remaining') ? 'remaining' : 'used';
           const titleLines = [t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (sub.plan ? ' (' + hostText(sub.plan) + ')' : '')]
             .concat(sub.balanceUnit === 'credits' && typeof sub.balance === 'number' && isFinite(sub.balance)
               ? [t('ui.availableCredits', { value: fmt(sub.balance, 2) })] : [])
@@ -2460,11 +2503,13 @@ module.exports = {
             const w = visible[i];
             if (i > 0) winNodes.push(' · ');
             const remaining = remainingPercent(w);
-            const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';
+            const displayValue = quotaMode === 'used' ? w.usedPercent : remaining;
+            const isLow = quotaMode === 'used' ? w.usedPercent >= (100 - LOW_QUOTA_PERCENT) : remaining <= LOW_QUOTA_PERCENT;
+            const numberClass = isLow ? 'bi-quota-low' : '';
             // 每个窗口独立 data-field（subWindow5h/Week/Month），色变量按字段注入；「低」字标签保留
             winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,
-              metric(compactWindowLabel(w.key), remaining + '%', numberClass)));
-            if (remaining <= LOW_QUOTA_PERCENT) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, t('ui.low')));
+              metric(compactWindowLabel(w.key), displayValue + '%', numberClass)));
+            if (isLow) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, t('ui.low')));
           }
           // 全部窗口被隐藏（或紧凑模式无候选）→ 整组不推送，分隔符由组装层正确收合
           if (winNodes.length > 0) {
