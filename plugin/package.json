@@ -1,6 +1,6 @@
 {
   "name": "dsh-bottom-info-bar",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "description": "在输入框下方显示当前模型、余额和花费。",
   "keywords": [
     "deepseek",
