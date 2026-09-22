@@ -509,18 +509,27 @@ function parseCommandCodeUsage(creditsBody, subscriptionBody, windowLabels) {
 // v1/api/openplatform/coding_plan/remains 已被官方弃用）。api.minimax.io 与 api.minimaxi.com
 // 双域名均提供同一接口。
 //
-// 响应形态：base_resp.{status_code,status_msg} + model_remains[]，每个条目同时含
-//   - 5 小时窗口：current_interval_total_count / current_interval_usage_count（已用！PR #104 明确修正）
-//                  + start_time/end_time（毫秒）+ remains_time（距结束毫秒）
-//   - 周窗口    ：current_weekly_total_count / current_weekly_usage_count（已用）
-//                  + weekly_start_time/weekly_end_time（毫秒）+ weekly_remains_time
+// 响应形态（真实联调修正，2026-09-23 拿到真实 Subscription Key 后修正）：
+//   base_resp.{status_code,status_msg} + model_remains[]，每个条目同时含
+//     - 5 小时窗口：current_interval_remaining_percent（剩余 0-100）+ start_time/end_time（毫秒）
+//                    + remains_time（距结束毫秒）+ current_interval_status（窗口状态：1=进行中 / 3=未启用）
+//     - 周窗口    ：current_weekly_remaining_percent（剩余 0-100）+ weekly_start_time/weekly_end_time
+//                    + weekly_remains_time + current_weekly_status
+//     - current_interval_total_count / current_interval_usage_count（已用）字段：
+//                    **真实数据里恒为 0**（估计是占位字段或尚未启用），不能据此推算百分比。
+//
+// 多桶语义：每个 model_remains[] 条目代表一种模型配额桶（general / video / …）。
+// info bar 上下文只关心"用户当前还有多少额度可用"，因此按窗口类型聚合时取
+// **剩余百分比最低**（即最紧的桶）作为该窗口的呈现值 —— 取首个桶会让未启用过的桶把
+// 数字顶成 100%，与用户的真实体感（已经在 general 上用了不少）相反。
 //
 // 安全边界：
 //   - 必须 Subscription Key；按量 API Key → base_resp.status_code=1004（"login fail"）→ auth 错误；
 //     客户端据此显示「请使用 Subscription Key」并降级本地记账。
+//   - Global 域名（api.minimax.io）会对国内 Subscription Key 返回 base_resp.status_code=2049
+//     （"invalid api key"）—— 不是 1004，需要 fetch 层按 status_code 全部翻译为 auth 错误
+//     （保留具体码 1004 的原文，其他非零码用通用 Subscription Key 提示）。
 //   - model_remains 为空（无活跃 Token Plan / 低价档）→ 与智谱零窗口同型：按解析失败保留旧快照。
-//   - 多模型返回（Plus/Ultra 等高阶档位会按模型拆分）：累加每个模型的 5h/周 计数，得到「总已用 / 总配额」；
-//     百分比按总量推算，绝不取首个模型的百分比替代整体（高用量模型被低估 = 误报安全感）。
 //   - 字段容错：string/number 都接受（上游曾出现字符串数值），负数/缺失归零。
 function minimaxBaseUrl(providerId) {
   return providerId === 'minimax-cn' ? 'https://api.minimaxi.com' : 'https://api.minimax.io'
@@ -536,39 +545,51 @@ function minimaxNumericField(value) {
   return null
 }
 
-// 聚合 model_remains[] 各项的 5 小时 / 周窗口计数；返回 null 表示两个窗口都无法构成
-function minimaxAggregateWindowCounts(modelRemains) {
+// 把剩余百分比（0-100）归一化到 [0, 100] 整数；缺失或非法返回 null。
+// 剩余百分比可能是 number 也可能是 string number（上游历史字段曾出现），按 minimaxNumericField 走。
+function minimaxRemainingPercent(value) {
+  const v = minimaxNumericField(value)
+  if (v == null) return null
+  return Math.round(Math.max(0, Math.min(100, v)))
+}
+
+// 聚合 model_remains[] 各项的 5h / 周剩余百分比：取最低剩余（即最紧的桶）。
+// 同时记录最早到达的 end_time / weekly_end_time，作为整组 resetsAt（与旧实现同语义）。
+function minimaxAggregateRemainingPercents(modelRemains) {
   if (!Array.isArray(modelRemains)) return null
-  let fiveHourTotal = 0
-  let fiveHourUsed = 0
-  let weeklyTotal = 0
-  let weeklyUsed = 0
+  let fiveHourRemaining = null
+  let weeklyRemaining = null
+  let fiveHourEnd = null
+  let weeklyEnd = null
   let anyWindow = false
   for (let i = 0; i < modelRemains.length; i++) {
     const entry = modelRemains[i]
     if (!entry || typeof entry !== 'object') continue
-    const ihTotal = minimaxNumericField(entry.current_interval_total_count)
-    const ihUsed = minimaxNumericField(entry.current_interval_usage_count)
-    if (ihTotal != null && ihUsed != null) {
-      fiveHourTotal += ihTotal
-      fiveHourUsed += ihUsed
+    const rem5 = minimaxRemainingPercent(entry.current_interval_remaining_percent)
+    if (rem5 != null) {
+      if (fiveHourRemaining == null || rem5 < fiveHourRemaining) fiveHourRemaining = rem5
       anyWindow = true
     }
-    const wkTotal = minimaxNumericField(entry.current_weekly_total_count)
-    const wkUsed = minimaxNumericField(entry.current_weekly_usage_count)
-    if (wkTotal != null && wkUsed != null) {
-      weeklyTotal += wkTotal
-      weeklyUsed += wkUsed
+    const remW = minimaxRemainingPercent(entry.current_weekly_remaining_percent)
+    if (remW != null) {
+      if (weeklyRemaining == null || remW < weeklyRemaining) weeklyRemaining = remW
       anyWindow = true
     }
+    const end5 = minimaxNumericField(entry.end_time)
+    if (end5 != null && (fiveHourEnd == null || end5 < fiveHourEnd)) fiveHourEnd = end5
+    const endW = minimaxNumericField(entry.weekly_end_time)
+    if (endW != null && (weeklyEnd == null || endW < weeklyEnd)) weeklyEnd = endW
   }
   if (!anyWindow) return null
-  return { fiveHourTotal: fiveHourTotal, fiveHourUsed: fiveHourUsed, weeklyTotal: weeklyTotal, weeklyUsed: weeklyUsed }
+  return {
+    fiveHourRemaining: fiveHourRemaining,
+    weeklyRemaining: weeklyRemaining,
+    fiveHourEnd: fiveHourEnd,
+    weeklyEnd: weeklyEnd,
+  }
 }
 
-// 在 model_remains[] 中找最早到达的窗口结束时刻（毫秒）：用来给整组 5h 窗口一个 resetsAt，
-// 客户端简洁模式以此选窗（重置时刻为 null → 整组静默消失，必须保兜底）。
-// 多模型时取「最先耗尽」的窗口结束，更贴合用户视角的"何时能再用"。
+// 在 model_remains[] 中找最早到达的窗口结束时刻（毫秒）：保留给旧路径（如果有调用方依赖）。
 function minimaxEarliestResetMs(modelRemains, kind) {
   if (!Array.isArray(modelRemains)) return null
   const field = kind === 'weekly' ? 'weekly_end_time' : 'end_time'
@@ -584,7 +605,7 @@ function minimaxEarliestResetMs(modelRemains, kind) {
 }
 
 // 解析 MiniMax /v1/token_plan/remains → 统一窗口数组（与智谱/Z.ai 一致）。
-// base_resp.status_code≠0 → 抛出 parse 错误（业务错误），让调用方按上游异常处理。
+// base_resp.status_code≠0 → 返回 null（由 fetch 层按 status_code==1004 翻译为 auth，其余为 parse）。
 // 空 model_remains 或全部条目字段缺失 → null（同智谱零窗口闸门，避免空窗口静默覆盖旧快照）。
 function parseMinimaxTokenPlanRemains(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
@@ -592,28 +613,28 @@ function parseMinimaxTokenPlanRemains(body, windowLabels) {
   if (baseResp && typeof baseResp === 'object' && typeof baseResp.status_code === 'number' && baseResp.status_code !== 0) return null
   const modelRemains = body.model_remains
   if (!Array.isArray(modelRemains) || modelRemains.length === 0) return null
-  const counts = minimaxAggregateWindowCounts(modelRemains)
-  if (!counts) return null
+  const agg = minimaxAggregateRemainingPercents(modelRemains)
+  if (!agg) return null
   const wl = windowLabels || WINDOW_LABELS
   const windows = []
-  if (counts.fiveHourTotal > 0) {
+  if (agg.fiveHourRemaining != null) {
     windows.push({
       key: 'five_hour',
       label: wl.five_hour,
-      usedPercent: Math.round(Math.max(0, Math.min(100, (counts.fiveHourUsed / counts.fiveHourTotal) * 100))),
-      resetsAt: minimaxEarliestResetMs(modelRemains, 'five_hour'),
+      usedPercent: 100 - agg.fiveHourRemaining,
+      resetsAt: agg.fiveHourEnd,
     })
   }
-  if (counts.weeklyTotal > 0) {
+  if (agg.weeklyRemaining != null) {
     windows.push({
       key: 'seven_day',
       label: wl.seven_day,
-      usedPercent: Math.round(Math.max(0, Math.min(100, (counts.weeklyUsed / counts.weeklyTotal) * 100))),
-      resetsAt: minimaxEarliestResetMs(modelRemains, 'weekly'),
+      usedPercent: 100 - agg.weeklyRemaining,
+      resetsAt: agg.weeklyEnd,
     })
   }
   if (windows.length === 0) return null
-  // 套餐名：MiniMax 没有给 plan name，只能用统一的"MiniMax"（与服务商显示名保持一致；细节由客户端 toolbar 提供）
+  // 套餐名：MiniMax API 不返回 plan/level 字段，沿用统一的"MiniMax Token Plan"（与服务商显示名保持一致）
   return { plan: 'MiniMax Token Plan', windows: windows }
 }
 
@@ -2344,11 +2365,12 @@ export default {
         try { body = await res.json() } catch (err) {
           return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } }
         }
-        // base_resp.status_code===1004 是官方明确给出的"非 Subscription Key"业务错误码，
-        // 单独翻译成 auth 而非泛 parse 错误（提示用户换 Key），其他非零码保持 parse 错误。
+        // base_resp.status_code 业务错误：1004 = "login fail"（按量 Key 错用 Subscription 端点），
+        // 2049 = "invalid api key"（跨域：拿国内 Key 打 Global 端点或 Key 已失效），
+        // 都翻译成 auth —— 用户换 Key / 切域名都能自愈。其他非零码保持 parse 错误。
         const baseResp = body && body.base_resp
         if (baseResp && typeof baseResp === 'object' && typeof baseResp.status_code === 'number' && baseResp.status_code !== 0) {
-          if (baseResp.status_code === 1004) {
+          if (baseResp.status_code === 1004 || baseResp.status_code === 2049) {
             return { error: { kind: 'auth', message: t('host.minimaxTokenPlanRequiresSubscription') } }
           }
           return { error: { kind: 'parse', message: t('host.minimaxTokenPlanQuotaUnrecognized') } }

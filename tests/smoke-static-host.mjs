@@ -336,6 +336,10 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
 }
 
 // ---------- MiniMax Token Plan 端到端（FR-15：B 级半官方端点，按 provider 路由 host/凭据） ----------
+// 真实响应 schema（2026-09-23 用户给真实 Subscription Key 后实测修正）：
+// model_remains[] 是多个「模型配额桶」，各自有 current_interval_remaining_percent /
+// current_weekly_remaining_percent（剩余百分比，0-100）。total/usage_count 字段在
+// 真实数据中恒为 0 —— 是占位字段，不能据此推算百分比。
 {
   const noKeyCtx = makeStub('minimax', 'MiniMax-M3')
   const noKeyDisposer = plugin.apply(noKeyCtx.ctx)
@@ -348,24 +352,24 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   }
   noKeyDisposer()
 
-  const MINIMAX_GLOBAL = {
+  // 真实形态：general 桶 5h 用了一些（剩余 64%），video 桶未启用（剩余 100%）
+  const MINIMAX_REAL = {
     base_resp: { status_code: 0, status_msg: 'success' },
-    model_remains: [{
-      model_name: 'MiniMax-M3',
-      current_interval_total_count: 1500,
-      current_interval_usage_count: 228,
-      current_weekly_total_count: 10000,
-      current_weekly_usage_count: 1240,
-      start_time: 1776355200000,
-      end_time: 1776373200000,
-      remains_time: 7151954,
-      weekly_start_time: 1776009600000,
-      weekly_end_time: 1776614400000,
-      weekly_remains_time: 248351954,
-    }],
+    model_remains: [
+      { model_name: 'general', current_interval_remaining_percent: 64, current_weekly_remaining_percent: 100,
+        current_interval_status: 1, current_weekly_status: 3,
+        end_time: 1790078400000, weekly_end_time: 1790524800000 },
+      { model_name: 'video', current_interval_remaining_percent: 100, current_weekly_remaining_percent: 100,
+        current_interval_status: 3, current_weekly_status: 3,
+        end_time: 1790092800000, weekly_end_time: 1790524800000 },
+    ],
   }
   const MINIMAX_1004 = {
     base_resp: { status_code: 1004, status_msg: 'login fail' },
+    model_remains: [],
+  }
+  const MINIMAX_2049 = {
+    base_resp: { status_code: 2049, status_msg: 'invalid api key' },
     model_remains: [],
   }
   const requested = []
@@ -373,10 +377,10 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   globalThis.fetch = async (url, options) => {
     requested.push({ url: String(url), headers: options && options.headers })
     if (String(url).startsWith('https://api.minimax.io/v1/token_plan/remains')) {
-      return { ok: true, json: async () => MINIMAX_GLOBAL }
+      return { ok: true, json: async () => MINIMAX_REAL }
     }
     if (String(url).startsWith('https://api.minimaxi.com/v1/token_plan/remains')) {
-      return { ok: true, json: async () => MINIMAX_GLOBAL }
+      return { ok: true, json: async () => MINIMAX_REAL }
     }
     return { ok: false, status: 404, json: async () => ({}) }
   }
@@ -395,11 +399,18 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
       check('MiniMax Global → 解析成功 + 套餐名 MiniMax Token Plan',
         r.status === 200 && r.payload.source === 'minimax' && r.payload.plan === 'MiniMax Token Plan' && r.payload.error === null,
         JSON.stringify(r.payload))
-      check('MiniMax Global → 5 小时 + 周窗口，百分比 15% / 12%',
+      // 真实数据：general 5h 剩余 64% → 已用 36%；两个桶周都 100% 剩余 → 已用 0%
+      check('MiniMax Global → 5h + 周窗口，已用 36% / 0%（取最紧桶剩余百分比）',
         Array.isArray(r.payload.windows) && r.payload.windows.length === 2
-          && r.payload.windows[0].key === 'five_hour' && r.payload.windows[0].usedPercent === 15
-          && r.payload.windows[1].key === 'seven_day' && r.payload.windows[1].usedPercent === 12,
+          && r.payload.windows[0].key === 'five_hour' && r.payload.windows[0].usedPercent === 36
+          && r.payload.windows[1].key === 'seven_day' && r.payload.windows[1].usedPercent === 0,
         JSON.stringify(r.payload.windows))
+      check('MiniMax Global → 5h 重置 = 最紧桶 end_time',
+        r.payload.windows[0].resetsAt === 1790078400000,
+        JSON.stringify(r.payload.windows[0]))
+      check('MiniMax Global → 周重置 = 最紧桶 weekly_end_time',
+        r.payload.windows[1].resetsAt === 1790524800000,
+        JSON.stringify(r.payload.windows[1]))
       const mreqs = requested.filter((entry) => entry.url.startsWith('https://api.minimax.io/v1/token_plan/remains'))
       check('MiniMax Global → Bearer 请求打到 api.minimax.io',
         mreqs.length === 1 && mreqs[0].headers && mreqs[0].headers.Authorization === 'Bearer test-minimax-key',
@@ -429,12 +440,20 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
         JSON.stringify(r.payload))
     }
     {
+      // 2049 业务码（跨域 / Key 失效）→ auth 错误（2026-09-23 用户真实场景：拿国内 Key 打 Global）
+      globalThis.fetch = async () => ({ ok: true, json: async () => MINIMAX_2049 })
+      const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'minimax', model: 'MiniMax-M3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('MiniMax base_resp.status_code=2049 → auth 错误（跨域 Key 失效）',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'auth' && /Subscription Key/i.test(r.payload.error.message),
+        JSON.stringify(r.payload))
+    }
+    {
       // 空 model_remains → 解析错误，保留旧快照（与智谱零窗口同型）
       globalThis.fetch = async () => ({ ok: true, json: async () => ({ base_resp: { status_code: 0 }, model_remains: [] }) })
       const r = await invoke(ctx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'minimax', model: 'MiniMax-M3' } }), { 'sec-fetch-site': 'same-origin' })
       check('MiniMax 空 model_remains → parse 错误，旧快照被保留',
         r.status === 200 && r.payload.error && r.payload.error.kind === 'parse'
-          && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour',
+          && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour' && r.payload.windows[0].usedPercent === 36,
         JSON.stringify(r.payload))
     }
     {
