@@ -50,7 +50,7 @@ That is the whole setup: configure your provider's API key, restart, done.
 <details>
 <summary>Other ways to install (and which one to pick)</summary>
 
-**Recommended: the npm command above.** It is the only install method that lets the built-in update reminder hand you a working update command — see [Updating](#updating).
+**Recommended: the npm command above.** It is the only install method with no build step: the update reminder hands you one command, and nothing has to be rebuilt afterwards — see [Updating](#updating).
 
 **From a local checkout** (for development, or to run unreleased code):
 
@@ -131,7 +131,15 @@ The copied command matches how the plugin was installed:
 | Installed via | Command you get |
 |---|---|
 | npm (`dsh plugin add dsh-bottom-info-bar`) | `dsh plugin --profile <profile> add dsh-bottom-info-bar@latest` |
-| `link:` — local checkout or the one-command script | `git -C <your checkout> pull --ff-only` |
+| `link:` — local checkout or the one-command script | `git -C <repo> fetch origin && git -C <repo> checkout main && git -C <repo> merge --ff-only origin/main && node <repo>/plugin/scripts/build.mjs` |
+
+For a `link:` install the plugin reads your checkout's git state (read-only, no command is run) and composes that command from three facts:
+
+- **It targets the repository's default branch, not the branch you happen to be on.** A checkout parked on a feature branch fast-forwards to nothing useful, so the command switches to the default branch first. Nothing is thrown away: if the working tree is dirty or the branch has local commits, git refuses by itself instead of overwriting anything.
+- **It never uses `git pull`.** `pull` fails outright on a branch that was never pushed to a remote (`no such ref was fetched`), which is exactly what a local development branch looks like.
+- **It rebuilds `plugin/lib/` at the end.** A `link:` install loads the built `lib/` — a build output that is not in git — so pulling without rebuilding leaves the old code running after a restart. This is the same build step `install.sh` runs.
+
+The version shown in the tooltip is read from what is installed on disk and refreshes with the page, so an update clears the label without waiting for a restart. The host code itself takes effect on the next `dsh web` restart.
 
 It is never applied automatically. The plugin only tells you a newer version exists; nothing on your machine changes until you run the command yourself.
 
@@ -229,6 +237,7 @@ ChatGPT binding and token maintenance belong to the separate plugin `dsh-chatgpt
 | ChatGPT shows **Not connected** | Install the companion plugin `dsh-chatgpt-subscription` and sign in |
 | ChatGPT plan or expiry is blank | Sign in again or rebind. If the token genuinely lacks those fields the bar leaves them empty rather than guessing. |
 | How do I update? | Click the red **Update available** label to copy the command, then restart `dsh web`. See [Updating](#updating). |
+| I updated and the label is still there | The version is read from the checkout on disk: refresh the page. If the label persists, check that the update actually changed the installed copy (`link:` installs must rebuild `plugin/lib/`). |
 | The model is shown as `V41-Flash` | Not a typo — that is DSH's spelling of **V4.1 Flash**. See [About the model name](#about-the-model-name-deepseek-v41-flash). |
 | Compact mode shows a different quota window than full mode | Intentional: compact prefers the shortest window (5-hour > weekly > monthly). Quota and countdown still come from the same window. |
 | Why is the model's reasoning not shown? | DSH does not render internal reasoning — a DSH interface limitation, not this plugin |
