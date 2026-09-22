@@ -231,17 +231,68 @@ check('折叠切换可见性：不再触发宿主 WebView 的零高 grid 动画'
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   return !body.includes('style:')
-    && clientSrc.includes('.bib-set-collapse { display: block; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: 0;')
-    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
-    && clientSrc.includes('transition: max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1)')
+    && clientSrc.includes('.bib-set-collapse { display: grid; grid-template-rows: 0fr; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden;')
+    && clientSrc.includes('.bib-set-collapse--expanded { grid-template-rows: 1fr;')
+    && clientSrc.includes('transition: grid-template-rows 150ms cubic-bezier(0.4, 0, 0.2, 1)')
+    && clientSrc.includes('.bib-set-collapse-inner { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: 0;')
     && clientSrc.includes('contain: layout paint')
+    && !clientSrc.includes('max-height: 100000px')
     && !clientSrc.includes('.bib-set-collapse--collapsed { display: none; }')
     && clientSrc.includes('.bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
-check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 720px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
+// 原生风格对齐：设置面板必须与 DSH 原生设置页同一套观感——
+// 扁平列表 + .5px 细分隔线 + 原生字号阶梯 + 原生控件尺寸。
+// 这条测试锁住「不许再退回卡片式（边框/圆角/深色底）」。
+check('设置面板对齐 DSH 原生扁平列表（无卡片边框圆角、.5px 分隔线、原生字号与控件尺寸）', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  return install.includes('border-bottom: 0.5px solid var(--dsw-alias-border-l2)')
+    && install.includes('padding: 16px 0')
+    && install.includes('.bib-set-card { --bib-set-surface: transparent;')
+    && install.includes('overflow: visible; border: 0; background: transparent; border-radius: 0;')
+    && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 22px;')
+    && install.includes('.bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 400; line-height: 22px;')
+    && install.includes('.bib-set-rowDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }')
+    && install.includes('.bib-set-card-desc { width: 100%; min-width: 0; margin: 4px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }')
+    && install.includes('.bib-set-data-title { margin: 0 0 4px; color: var(--dsw-alias-label-primary); font-size: 14px; font-weight: 400; line-height: 22px; }')
+    // 输入框/按钮取宿主 primitives 的 .input / SettingsForm .save 尺寸
+    && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: 8px; background: var(--dsw-alias-bg-layer-3);')
+    && install.includes('.bib-set-btn { appearance: none; font: inherit; cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l3);')
+    && install.includes('border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 500;')
+    // 开关取宿主原生 Switch 几何（36×20 轨道 / 16px 圆钮 / 10px 圆角）
+    && install.includes('.bib-set-switch-track { position: relative; display: inline-block; box-sizing: border-box; width: 36px; height: 20px; border-radius: 10px;')
+    && install.includes('.bib-set-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;')
+    && install.includes('background: var(--dsw-alias-label-primary-foreground, #fff);')
+    && install.includes('transition: transform 120ms ease; }')
+    // 不许再出现卡片视觉残留
+    && !install.includes('border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px;')
+    && !install.includes('padding: 14px 16px');
+})(), true);
+// 展开节奏：max-height 巨值会让内容瞬间撑开、再被 220ms 淡入/位移拖长（拖沓的来源）。
+// 用 grid-template-rows 0fr→1fr 让高度本身参与过渡，并把总时长压到原生量级。
+check('「显示内容」展开改为 grid 轨道过渡，时长压到原生量级（无 max-height 巨值、无纵向位移）', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  return install.includes('grid-template-rows: 0fr;')
+    && install.includes('grid-template-rows: 1fr;')
+    && install.includes('grid-template-rows 150ms cubic-bezier(0.4, 0, 0.2, 1)')
+    && !install.includes('max-height: 100000px')
+    && !install.includes('max-height: 0;')
+    && !install.includes('transform: translateY(-4px)')
+    && !install.includes('transition: max-height')
+    && install.includes('transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1), color 120ms ease; }');
+})(), true);
+check('设置面板动效尊重「减少动态效果」偏好', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  const idx = install.indexOf('@media (prefers-reduced-motion: reduce)');
+  if (idx === -1) return false;
+  const block = install.slice(idx);
+  return block.includes('.bib-set-collapse')
+    && block.includes('.bib-set-switch-thumb')
+    && block.includes('transition: none;');
+})(), true);
+check('设置页卡片宽度固定，列表展开不会触发横向跳动', clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%; max-width: 760px; max-inline-size: 100%; min-width: 0; min-inline-size: 0; min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
   && clientSrc.includes('contain: inline-size')
-  && clientSrc.includes('.bib-set-card { --bib-set-surface: var(--dsw-alias-bg-layer-2, transparent); display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
+  && clientSrc.includes('.bib-set-card { --bib-set-surface: transparent; display: block; flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
   && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0;')
   && clientSrc.includes('.bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px;')
   && clientSrc.includes('.bib-set-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px;')
@@ -254,7 +305,7 @@ check('设置页只保留宿主单一滚动层，滚动条不会重叠', (functi
   return !clientSrc.includes('function bibSetStabilizeHostScroll(root)')
     && clientSrc.includes('.bib-settings { display: flex; flex: 0 0 auto; align-self: stretch; width: 100%; inline-size: 100%;')
     && clientSrc.includes('min-height: calc(100% + 2px); min-block-size: calc(100% + 2px); overflow: visible;')
-    && clientSrc.includes('.bib-set-collapse--expanded { max-height: 100000px;')
+    && clientSrc.includes('.bib-set-collapse { display: grid; grid-template-rows: 0fr;')
     && clientSrc.includes('.bib-set-field-list { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; max-height: none; overflow: visible;')
     && !clientSrc.includes('overflow-y: scroll;')
     && !clientSrc.includes('overflow-y: auto;')
