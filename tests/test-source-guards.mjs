@@ -151,8 +151,19 @@ if (!baseRef) {
     console.log('WARN  守卫 4：无法取得基线（' + String(err && err.message).split('\n')[0] + '），跳过本次检查')
   }
   if (changed) {
-    const GUARDED = ['.release-please-manifest.json', 'plugin/package.json', 'CHANGELOG.md']
+    // manifest 与 CHANGELOG 整文件锁死（Release Please 只会整体重写它们）。
+    // plugin/package.json 只锁 version 字段：description / keywords 等非版本字段的
+    // 正常改动不该被拦（守卫的意图是防手工 bump 版本号，不是冻结整个文件）。
+    const GUARDED = ['.release-please-manifest.json', 'CHANGELOG.md']
     const touched = changed.filter((f) => GUARDED.includes(f))
+    if (changed.includes('plugin/package.json')) {
+      let versionTouched = null
+      try {
+        const pkgDiff = git(['diff', `origin/${baseRef}...HEAD`, '--', 'plugin/package.json'])
+        versionTouched = pkgDiff.split('\n').some((l) => /^[+-]\s*"version"\s*:/.test(l))
+      } catch (err) { /* 取不到 diff 就当作动过版本号，宁可拦住 */ }
+      if (versionTouched !== false) touched.push('plugin/package.json（version 字段）')
+    }
     // 逃生舱：万一 Release Please 自身把元数据弄坏了，必须还有办法人工抢修。
     // 因为 main 开了 enforce_admins，没有这个标记就会被永久卡死。
     // 用法：在 PR 的任一提交信息里写上 [release-metadata-override]，并在 PR 描述里说明原因。
