@@ -17,17 +17,34 @@
 
 ## 2026-09-22
 
+### 修正上文：插件配置区的原生基线是「插件详情页 X_2TxG_*」，不是「设置弹窗 Pt1bsG_row」
+
+- 用户二次反馈（原话）：「被裁切了，并且整体的风格没有什么变化，没有完全适配 DH 的风格，做得非常差」「还有这种选项框，是这种非常古老的组件，没有用原生组件」「还有这个显示报错，它的布局排版也非常的差」。**上一版是照错基线做的**，所以「度量都对」但用户看还是不像。
+- **DSH 里「设置弹窗」和「插件详情页」是两套完全不同的排版基线，不能混用**（这是本次最大的认知修正）：
+  - **设置弹窗**（`dsh-client-ui-settings-general`，`Pt1bsG_row`）：`.5px` 细分隔线、`padding: 16px 0`、扁平密排行。上一版照的是这套。
+  - **插件详情页**（`dsh-client-ui-plugin-manager`，`X_2TxG_*`）：**插件的配置区就渲染在这里**。真实度量是——`.detailSections { gap: 32px; margin-top: 32px }`、`.detailSection { gap: 12px }`、`.sectionHead { align-items: baseline; gap: 10px }`、`.sectionTitle 14px/500/20`、`.sectionCount 12/18 label-secondary`、`.card { border-radius: 12px; margin: 0 -8px }`、`.cardHead { gap: 14px; padding: 8px }`、`.cardDesc 13/18 label-tertiary`、**无任何分隔线**。
+  - 结论：**判基线前先确认渲染位置**（`[data-plugin-config]` 在哪个页面里），再读那个页面的 CSS 模块，别凭「设置」两个字猜。
+- **三个具体缺陷与修法**（详见 `0bac305` 提交信息）：
+  1. **裁切**——照抄 `.X_2TxG_card { margin: 0 -8px }` 负外边距，但本插件根容器横向没有排水沟内边距、字段清单外面又套着 `overflow: hidden` 的折叠容器，行比容器宽 16px，右侧颜色井 / hex 输入框被裁掉。**是我自己引入的裁切**。修法：行改 `width: 100%; margin: 0; padding: 8px`，父级各内容块各自 `padding: 0 8px`——视觉同样对齐，且永不越界。另一处：搜索行计数框写死 `width: 104px` + `white-space: nowrap`，文案一长就切字，改 `grid-template-columns: minmax(0,1fr) auto`。
+     **教训：负外边距只在「父级有对应内边距 + 无 overflow 裁剪」时才安全；抄宿主的负外边距前必须先确认这两个前提。**
+  2. **古老组件**——时区用的是原生 `<select>`。改用宿主 primitives 的 `Menu`（锚点 + `portal` + `items`），实测弹出 12 个 `menuitem`、容器带 `_portal_` 类。开关换原生 `Switch`（36×20 / r10 / 16px 圆钮），按钮换原生 `Button`（`variant: primary|outline|ghost|toolbar`，`size: sm` = 28px 胶囊），并接入 `Tag` / `StateDot`。
+  3. **报错排版**——原来是「『错误』两字单独占一行 + 正文甩到下面一大片空白」。改为照宿主 `.X_2TxG_failure`（行内、gap 10、错误色）+ `.X_2TxG_reason`（12/18、`overflow-wrap: anywhere`、`white-space: pre-wrap`）的形态：独立整块、可任意换行；警示走 `.X_2TxG_banner`（12% 警示色底 + r10 + `8px 12px`）。
+- **接 primitives 的硬约束（复用自 React #130 那条）**：`require('@deepseek-ai/dsh-client-ui-primitives')` 拿到的成员必须先过存在性判断（`typeof === 'function' || object`）并保留自绘兜底，**绝不把 `undefined` 交给 `createElement`**。新增的统一入口是 `bibSetNative(name)` + `bibSetButton/Tag/StateDot/Alert/TimeZonePicker` 包装层。
+- **验收方式升级：不只看截图，要读运行时事实。** 无头浏览器里逐项读回：`buttonClasses` 命中 `_button_* _outline_* _sm_*`（原生按钮生效）、`selects: 0` 且 `selectTriggers: 2`（`<select>` 已彻底消失）、`fallbackSwitchTracks: 0`（原生开关生效）、`settings gap=32px` / `card gap=12px` / `row pad=8px bd=0 r=12px` / `headMain baseline gap=10px` / `pageTitle 14px/500/20px`（度量对齐）、**`clip: []`**（裁切归零）、控制台零 error/warn。
+- 回归防线：新增「**列表内容不得横向越界**」测试用例，用**只扫 CSS 声明块的正则**匹配 `margin: 0 -8px` / `width: calc(100% + 16px)`（避免被我自己写的解释性注释误伤——这个坑踩过一次）。`test-field-config-client` 127 PASS / 0 FAIL。
+- 同步修正本文下面「设置面板对齐原生风格」一节的过期数值：行上下留白 **8px**（不是 12px）、页标题 **14/500/20**（不是 15/600/22，那是设置弹窗 `presetSettingsTitle` 的值）。**该节其余结论（缓存陷阱、扁平≠原生、量而非估）依然成立。**
+
 ### 设置面板对齐原生风格：先解决「改了但用户看不到」，再谈像不像
 
 - 用户反馈（原话）：「信息栏这个设置面板被裁切了」「整体风格没变化，没有完全契合 dsh 风格，做的非常差」。
 - **头号根因不是 CSS，是缓存。** 宿主用 `Cache-Control: public, max-age=31536000, immutable` + `?rev=<启动时算出的哈希>` 提供所有 client bundle。`rev` 在**宿主启动时**定型，所以只要不重启 `dsh web`，浏览器就会一直拿它那份 `immutable` 的老副本——刷新页面（包括普通 F5）都没用，改了多少 CSS 用户都看不到。本次改动的第一步动作应该是「重启 `dsh web`」，我把它排在最后，白挨了一轮差评。
   无头浏览器每次都是全新 context（无缓存），所以我自己验收永远是新的，**本地自测通过 ≠ 用户能看到**。以后再改 client bundle：改完先重启宿主，再自测。
 - **「对齐原生」不能靠估，要去真实页面量。** 上一版我只把卡片改成扁平，行距/字号/控件几何全是拍脑袋，结果一半像一半不像。这轮改成在**同一个插件详情页**里直接量宿主自己渲染的区块（`X_2TxG_sectionHead` / `X_2TxG_row` / `X_2TxG_detailSections` / primitives 的 `Button.module.css .sm`），照抄数值：
-  - 区块标题 14/500/20（`sectionTitle`）；区块间距 **32px**（`detailSections` 的 gap）；行上下留白 **12px**（插件详情页行内边距，不是设置弹窗的 16px）。
+  - 区块标题 14/500/20（`sectionTitle`）；区块间距 **32px**（`detailSections` 的 gap）；行上下留白 ~~12px~~ → **8px**（见上一节的修正：真实值是 `X_2TxG_cardHead { padding: 8px }`；无论如何都不是设置弹窗的 16px）。
   - 小按钮是**胶囊**：h28 / r14 / 12px 字号 / `0 10px` 内边距（和同页原生「卸载」按钮一致）；输入框才是 r8 / 34px。
   - 开关 36×20 / r10 / 16px 圆钮 / 120ms —— 与原生 `Switch.module.css` 完全一致（已验证 computed style）。
   - 折叠箭头要紧贴标题（原生 `sectionHead` 是「标题 + 计数」左对齐）；原来用 `space-between` 把箭头甩到整行最右端，几百像素空白，一眼就假。
-  - 页标题降到 15/600/22（原生 `presetSettingsTitle` 的值），不再和宿主已渲染的 20/500 页面标题抢层级。
+  - 页标题降到 ~~15/600/22（原生 `presetSettingsTitle` 的值）~~ → **14/500/20**（见上一节的修正：`presetSettingsTitle` 是设置弹窗的值，插件详情页不用它），不再和宿主已渲染的 20/500 页面标题抢层级。
 - 「显示内容」展开动画：`max-height: 0 → 100000px` 的问题是高度几毫秒就撑满、剩下 220ms 全在放淡入和 4px 位移，观感就是「先弹开再慢慢虚化」。改成 `grid-template-rows: 0fr → 1fr`（高度本身参与过渡）+ 总时长 150ms + 去掉位移；实测高度曲线 0→647→2555→3381→3646 在 ~150ms 内收敛。
 - 教训：**扁平 ≠ 原生**。DSH 原生同时存在「扁平行列表」和「带边框分组卡」两种形态；只做减法（去边框去圆角）会把页面变成没有层次的白板。真正决定像不像的是**留白节奏、字号阶梯、控件几何**这三样。
 - 排查手法留档：用无头 Chromium 读 `getComputedStyle` 逐项核对，并遍历「配置区块内所有元素 vs 面板右边界」找横向越界；注意 `[class*="_panel"]` 这种选择器会误命中隐藏的旧弹窗，判越界前要先确认参照物可见。
