@@ -1,6 +1,6 @@
 # 信息栏插件
 
-<img src="assets/wechat-group.jpg" width="118" align="right" alt="微信群 DeepThinking —— 扫码加入">
+<img src="assets/wechat-group.png" width="118" align="right" alt="微信群 DeepThinking —— 扫码加入">
 
 [**English**](README.md) | **中文**
 
@@ -9,18 +9,16 @@
 [![Last commit](https://img.shields.io/github/last-commit/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar)
 [![CI](https://img.shields.io/github/actions/workflow/status/songoao25/dsh-bottom-info-bar/ci.yml)](https://github.com/songoao25/dsh-bottom-info-bar/actions)
 
-DeepSeek Harness 输入框下方那行统计栏的**直接替代品**。
+DeepSeek Harness 输入框下方那行统计栏的**直接替代品**：原生统计栏有的（轮次与步数、LLM 与工具耗时、缓存命中率、输入输出 token）**全部保留**，另外补上**服务商与具体模型**、**真实余额**（或订阅额度、或本月真实账单）、**高峰/空闲价格**与切换倒计时，以及**本对话已经花了多少**。
 
-原生统计栏有的（轮次与步数、LLM 耗时、工具调用、缓存命中率、输入输出 token）它**全部保留**，另外补上干活时真正想随时看到的东西：**真实余额**（或订阅额度、或本月真实账单）、**服务商与具体模型**、**高峰/空闲价格**与切换倒计时，以及**本对话已经花了多少**。
+装一次、重启一次即可。计费模式自动识别，每一个数字**要么来自服务商接口，要么被明确标注为估算**。
 
-装一次、重启一次，之后每次启动自动生效。计费模式自动识别，每一个数字**要么来自服务商接口，要么被明确标注为估算**。
+![信息栏完整视图](assets/info-bar-full.webp)
+![信息栏简洁视图](assets/info-bar-compact.webp)
 
-> 💬 **想更快提建议，或者想聊聊 AI？** 扫码加入微信群 **DeepThinking**。
-> <sub>二维码由微信生成、有效期约 7 天；若已过期，欢迎开个 Issue 说一声，我们会更新。</sub>
+<sub>**完整**与**简洁**两种视图（截图为英文界面；DSH 语言设为中文后文案自动切换）。点击信息栏即可切换。</sub>
 
-![信息栏预览：ChatGPT 订阅、DeepSeek 余额、OpenCode Go 订阅，各含完整与简洁两种视图](assets/bottom-info-bar-preview.jpeg)
-
-<sub>截图为中文界面；DSH 语言设为 English 时文案会自动切换。图中自上而下三组：**ChatGPT 订阅**、**DeepSeek 余额**、**OpenCode Go 订阅**——每组都是先**完整**视图、后**简洁**视图。</sub>
+> 💬 想提建议或聊聊 AI？扫码加入微信群 **DeepThinking**。<sub>二维码有效期约 7 天，过期了欢迎开个 Issue 提醒我们更新。</sub>
 
 ## 一眼看懂
 
@@ -29,7 +27,7 @@ DeepSeek Harness 输入框下方那行统计栏的**直接替代品**。
 - **与 DSH 显示完全一致** —— 服务商与模型名取自 DSH 模型切换器，新模型自动跟随，不用改插件。
 - **高峰 / 空闲价** —— 两个价格并列，并给出切换倒计时（周末全天空闲价）。
 - **诚实的花费记账** —— 本对话（含子代理）、今天、近 30 天、累计，落盘保存，重启不丢。
-- **原生观感** —— 顶替原生统计栏而不是并列重复；点击切换完整/简洁，字段与配色可在设置里自选。
+- **原生观感** —— 顶替原生统计栏而不是并列重复；点击切换完整/简洁，字段与配色在**插件页**里自选。
 
 ## 前置要求
 
@@ -45,7 +43,9 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 然后 **重启 `dsh web`** —— 插件在宿主进程启动时组合，**刷新页面不够**。
 
-安装就到这里：配好服务商的 API Key、重启，完事。
+安装就到这里：配好服务商的 API Key、重启，完事。重启后插件会出现在**插件**页并处于启用状态：
+
+![插件列表：bottom-info-bar 已安装并启用](assets/plugins-installed.webp)
 
 <details>
 <summary>其它安装方式（以及该怎么选）</summary>
@@ -73,6 +73,18 @@ cd dsh-bottom-info-bar
 
 详细步骤与故障排查见 [docs/INSTALL.md](docs/INSTALL.md)。
 </details>
+
+## 插件配置
+
+配置都在**插件页**（插件 → bottom-info-bar）里，不在 DSH 的全局设置里：字段、配色、账单数据都在这里，改完自动保存。
+
+![插件页：信息栏配置（可见内容 + 账单数据）](assets/plugin-page.webp)
+
+<sub>**可见内容**列出全部字段（原生字段在前、信息栏自己的字段在后），并显示已开启数量；**账单数据**可导出 CSV/JSON 或清除记录。</sub>
+
+![字段配置：每个字段一个开关与一个颜色](assets/field-config.webp)
+
+<sub>每个字段都有独立开关与颜色，默认配色跟随 DSH。</sub>
 
 ## 它不做什么
 
@@ -207,7 +219,7 @@ cd dsh-bottom-info-bar
 - **查看与迁移** —— 用任意编辑器打开 `usage-records.json`。换电脑时，在 DSH 关闭状态下整目录拷贝即可。
 - **内容** —— 每条模型响应一条记录（`id / ts / model / provider / sessionId / input / cacheRead / cacheWrite / output / currency / cost / status`），`status` 为 `completed` 或 `interrupted`。**绝不保存对话内容、提示词或 API Key。**
 - **保留** —— 没有静默的条数上限；若需要跨机器长期留存，请把该目录纳入你的常规备份。
-- **管理** —— **设置 → 信息栏 → 账单数据**可导出 CSV/JSON，或在确认后清除插件记录。设置、登录信息与价目数据不受影响；**卸载插件也不会删除你的数据**。
+- **管理** —— **插件页 → 账单数据**可导出 CSV/JSON，或在确认后清除插件记录。设置、登录信息与价目数据不受影响；**卸载插件也不会删除你的数据**。
 
 > 金额只按当前服务商币种聚合（DeepSeek 为 CNY、OpenAI 参考价为 USD），跨币种绝不混加。DeepSeek 高峰时段为北京时间工作日 09:00–12:00 与 14:00–18:00；周末全天空闲价。
 
@@ -219,7 +231,7 @@ cd dsh-bottom-info-bar
 # 或手动：dsh plugin --profile web remove dsh-bottom-info-bar
 ```
 
-重启后原生统计栏自动恢复，无残留。记账数据仍保留在 `~/.dsh/dsh-bottom-info-bar/`——想彻底清零，请在「设置 → 信息栏 → 账单数据」中导出后确认清除。
+重启后原生统计栏自动恢复，无残留。记账数据仍保留在 `~/.dsh/dsh-bottom-info-bar/`——想彻底清零，请在「插件页 → 账单数据」中导出后确认清除。
 
 ChatGPT 的绑定与令牌维护属于独立插件 `dsh-chatgpt-subscription`，卸载本信息栏不会影响它。
 
