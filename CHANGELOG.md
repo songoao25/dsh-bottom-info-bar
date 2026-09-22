@@ -2,6 +2,15 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.3...v1.14.4) (2026-09-22)
+
+
+### Bug Fixes
+
+* 设置面板对齐 DSH 原生扁平风格，展开动效压到 150ms ([#114](https://github.com/songoao25/dsh-bottom-info-bar/issues/114)) ([3d507c1](https://github.com/songoao25/dsh-bottom-info-bar/commit/3d507c13db170d37dda02b7269580105bacc680d))
+* 设置页收尾——折叠分组真实留白 + 文案收敛 ([#116](https://github.com/songoao25/dsh-bottom-info-bar/issues/116)) ([f6de5f7](https://github.com/songoao25/dsh-bottom-info-bar/commit/f6de5f77c742f18b46040c4227137cdd19b8a13c))
+* 适配 DSH 0.1.7 的宿主接口改名与设置读取 ([#112](https://github.com/songoao25/dsh-bottom-info-bar/issues/112)) ([9314102](https://github.com/songoao25/dsh-bottom-info-bar/commit/9314102a9863c3648520a5a5e5748e8f38ede631))
+
 ## [1.14.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.2...v1.14.3) (2026-09-22)
 
 
