@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.4...v1.14.5) (2026-09-23)
+
+
+### Bug Fixes
+
+* let the plugin name and description follow the host language ([#124](https://github.com/songoao25/dsh-bottom-info-bar/issues/124)) ([dfb80e1](https://github.com/songoao25/dsh-bottom-info-bar/commit/dfb80e1c42dc02485e58216df8f6499661d79e0d))
+
 ## [1.14.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.3...v1.14.4) (2026-09-22)
 
 
