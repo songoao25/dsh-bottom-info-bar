@@ -18,6 +18,12 @@
 
 ## 2026-09-23
 
+### v1.14.5 发布：插件元数据双语（locale 字典）
+
+- 内容（PR #124，squash 合并 `dfb80e1`）：新增 `plugin/locale/{en,zh}.json`（`{"meta":{"description":…}}`）+ `package.json` 的 `exports`/`files` 补 `./locale/*.json`，让插件页标题下与插件列表里的描述跟随宿主语言；`description` 改为英文，作为 npm 页面与 en 回退值。同时刷新两张英文 README 截图（原先在英文界面里显示中文描述）。
+- 发布证据：release PR #125 合并（`18960b0`）→ tag / GitHub Release `v1.14.5`（11:01:46Z）→ publish-npm run `35852159535` success，日志 `+ dsh-bottom-info-bar@1.14.5`，tarball 11 个文件（162.7 kB）**含 `locale/en.json` 与 `locale/zh.json`** → npm `dist-tags.latest = 1.14.5` 已轮询读回。
+- 收尾：本地 main 快进到 `18960b0` 并重跑 `node plugin/scripts/build.mjs` 重建 `lib/`；工作区干净、分支已删。
+
 ### 插件描述不随语言切换：改用 DSH 的包级语言字典（fix）
 
 - 现象：宿主界面切英文后，插件页标题下与插件列表里的描述仍是中文。根因：那段文字来自 `plugin/package.json` 的 `description`，与插件自己的 `src/locales.js`（只管设置页/信息栏文案）无关。
