@@ -232,6 +232,18 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
     subscriptions: { success: true, data: { planId: 'individual-pro-v1', status: 'active', currentPeriodEnd: '2026-10-01T00:00:00Z' } },
   }
   const requested = []
+  // 判断「某个请求是不是发往 Command Code 官方 API」时，不能用 URL 字符串包含域名：
+  // CodeQL js/incomplete-url-substring-sanitization（High）—— 'https://api.commandcode.ai/'
+  // 出现在 URL 的任意位置都算包含，例如 https://evil.example/?u=https://api.commandcode.ai/ 也会命中。
+  // 必须解析出协议与主机名后精确比较。
+  const isCommandCodeApiRequest = (entry) => {
+    try {
+      const parsed = new URL(String(entry.url))
+      return parsed.protocol === 'https:' && parsed.hostname === 'api.commandcode.ai'
+    } catch {
+      return false
+    }
+  }
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, options) => {
     requested.push({ url: String(url), headers: options && options.headers })
@@ -247,7 +259,7 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
     await new Promise((resolve) => setTimeout(resolve, 30))
     {
       const r = await invoke(fileCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
-      const fileRequests = requested.filter((entry) => entry.url.includes('https://api.commandcode.ai/'))
+      const fileRequests = requested.filter(isCommandCodeApiRequest)
       check('Command Code CLI auth.json 回退 → 读取 apiKey', r.status === 200 && r.payload.error === null && fileRequests.length === 3 && fileRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer file-command-key'), JSON.stringify(r.payload))
     }
     fileDisposer()
@@ -265,8 +277,8 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
       const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
       check('Command Code → 官方 credits/订阅接口解析成功', r.status === 200 && r.payload.source === 'command-code' && r.payload.plan === 'Command Code Pro' && r.payload.error === null, JSON.stringify(r.payload))
       check('Command Code → 5 小时 / 周 / 月窗口 + credits 单位', r.payload.windows.length === 3 && r.payload.windows.map((w) => w.key).join(',') === 'five_hour,seven_day,monthly' && r.payload.balance === 67 && r.payload.balanceUnit === 'credits', JSON.stringify(r.payload))
-      const commandRequests = requested.filter((entry) => entry.url.includes('https://api.commandcode.ai/'))
-      check('Command Code → Bearer 请求与 orgId 查询参数', commandRequests.length === 3 && commandRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer test-command-key') && commandRequests.some((entry) => entry.url.includes('orgId=org-test')), JSON.stringify(requested))
+      const commandRequests = requested.filter(isCommandCodeApiRequest)
+      check('Command Code → Bearer 请求与 orgId 查询参数', commandRequests.length === 3 && commandRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer test-command-key') && commandRequests.some((entry) => new URL(String(entry.url)).searchParams.get('orgId') === 'org-test'), JSON.stringify(requested))
     }
     {
       commandResponses.credits = { success: true, credits: { windowLimits: { fiveHour: { cap: 0, used: 0 } } } }
