@@ -76,15 +76,19 @@ Detailed instructions and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Configuration
 
-Everything is on the **plugin page** — **Plugins → bottom-info-bar** — not in DSH's global settings. Fields, colours and the billing ledger all live there, and changes save as you make them.
+Everything is on the **plugin page** — **Plugins → bottom-info-bar** — not in DSH's global settings. Field switches, colours, custom text and the billing ledger all live there, and changes save as you make them.
 
-![Plugin page: Info Bar configuration with Visible content and Billing data](assets/plugin-page.webp)
+![Plugin page: Info Bar settings — search, the two field groups, restore defaults, custom text and billing data](assets/plugin-page.webp)
 
-<sub>**Visible content** lists every field — the native ones first, then the bar's own — and shows how many are enabled. **Billing data** exports CSV/JSON or clears the ledger.</sub>
+<sub>**Info Bar** holds the search box, the two field groups, **Restore defaults** and **Custom text**; typing in the search box expands both groups. **Billing data** exports CSV/JSON or clears the ledger.</sub>
 
-![Field configuration: one switch and one colour per field](assets/field-config.webp)
+![Native information expanded: one switch and one colour per field](assets/field-config.webp)
 
-<sub>Each field has its own switch and colour; the defaults match DSH.</sub>
+<sub>**Native information** — the six fields DSH's own stats row already showed. Each row keeps its own switch and colour; the defaults match DSH.</sub>
+
+![Plugin information expanded: the fields this plugin adds](assets/field-config-plugin.webp)
+
+<sub>**Plugin information** — everything the bar adds: provider and model, subscriptions, spend, balance, peak/off-peak prices and quota. Switch a field off and the bar drops it.</sub>
 
 ## What it does not do
 

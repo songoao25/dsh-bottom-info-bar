@@ -18,6 +18,14 @@
 
 ## 2026-09-23
 
+### README 设置页展示图换成 v1.14.4 新版（纯 docs，不触发发版）
+
+- 起因：用户给出 3 张 v1.14.4 设置页截图（中文界面）要求替换展示图。旧的 `assets/plugin-page.webp` / `field-config.webp` 仍是 v1.14.3 的「Visible content + Billing data」旧结构，与折叠分组改版已不符。
+- 做法：先用 `magick` 灰度阈值逐行/逐列扫描，按**卡片边框线的真实像素坐标**裁切（不靠肉眼估），三张图统一「卡片左右各留 40px」→ 1999px 宽、`-quality 90` webp：`plugin-page.webp`（页头 + 信息栏 + 搜索 + 两个折叠分组 + 恢复默认 + 自定义文字）、`field-config.webp`（原生信息展开）、新增 `field-config-plugin.webp`（插件信息展开）。文案同步改成新版结构。
+- 可复用坐标（源图宽 2302/2292/2250，卡片左右边界 194/2113 与 190/2109，三张同缩放）：s1 `-crop 1999x1420+154+0`、s2 `-crop 1999x890+154+200`、s3 `-crop 1999x1480+150+0`。
+- 文案坑：`已启用 N 项 / N found` 是 `.bib-set-count`（`clip: rect(0,0,0,0)`）——**只给读屏的隐藏状态文本，画面里看不到**，写截图说明时不要提「显示已开启数量」（旧 README 就是这么说错的）。
+- 已知取舍：新图是中文界面，而英文 `README.md` 其余截图是英文界面 → 英文 README 出现中英混排；若用户后续给英文界面截图，按同一坐标替换即可。
+
 ### CodeQL「不完整 URL 子串判断」两条 High 告警修复（PR #120，纯 tests 改动不触发发版）
 
 - 告警来源：Code scanning 在 main 报 `js/incomplete-url-substring-sanitization`（High）两条 —— `tests/smoke-static-host.mjs:250`、`:268`。断言「请求是否发往 Command Code 官方 API」写成了 `entry.url.includes('https://api.commandcode.ai/')`，而该写法只要求域名出现在 URL **任意位置**：`https://evil.example/?u=https://api.commandcode.ai/` 一样命中，判断实际不成立。
