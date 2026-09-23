@@ -262,3 +262,25 @@ for (const language of ['zh', 'en']) {
   }
 }
 console.log('PASS  Both dictionaries, interpolation, Settings, all three modes, both densities, and live binding')
+
+// 插件页 / 插件列表里的插件名与描述走的是 DSH 的**包级字典**（<pkg>/locale/<lang>.json），
+// 不是本插件自己的 locales.js —— 只在 src/locales.js 里写中文，宿主界面切英文时那段描述仍是中文。
+// 这条链有三个契约，缺任何一个都**静默失效**（DSH 把 ERR_PACKAGE_PATH_NOT_EXPORTED 当作"没有字典"，
+// 直接回退到 package.json 的 description，不报错）：
+//   ① locale/en.json 必须存在（DSH 以它为发现入口，再读同目录下所有 *.json）；
+//   ② package.json 的 exports 必须导出 "./locale/*.json"；
+//   ③ package.json 的 files 必须包含 "locale/*.json"（否则 npm 包里没有这两个文件）。
+{
+  const root = new URL('../plugin/', import.meta.url)
+  const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
+  const en = JSON.parse(readFileSync(new URL('locale/en.json', root), 'utf8'))
+  const zh = JSON.parse(readFileSync(new URL('locale/zh.json', root), 'utf8'))
+  assert.ok(en.meta?.description && zh.meta?.description, 'locale dictionaries carry meta.description')
+  assert.notEqual(en.meta.description, zh.meta.description, 'the two descriptions must differ')
+  assert.match(zh.meta.description, /\p{Script=Han}/u, 'zh description is Chinese')
+  assert.doesNotMatch(en.meta.description, /\p{Script=Han}/u, 'en description is not Chinese')
+  assert.equal(pkg.description, en.meta.description, 'package.json description is the English fallback DSH uses for en')
+  assert.ok(pkg.exports?.['./locale/*.json'], 'exports must expose ./locale/*.json or DSH silently finds no dictionaries')
+  assert.ok(pkg.files?.includes('locale/*.json'), 'files must ship locale/*.json in the npm tarball')
+  console.log('PASS  Plugin metadata dictionaries are discoverable (locale/en.json + exports + files)')
+}

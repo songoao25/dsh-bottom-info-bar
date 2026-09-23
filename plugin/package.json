@@ -1,7 +1,7 @@
 {
   "name": "dsh-bottom-info-bar",
   "version": "1.14.4",
-  "description": "在输入框下方显示当前模型、余额和花费。",
+  "description": "Shows the current model, balance and spend under the composer.",
   "keywords": [
     "deepseek",
     "deepseek-harness",
@@ -27,11 +27,13 @@
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
     "cordis.patch.yml",
+    "locale/*.json",
     "README.md",
     "LICENSE"
   ],
