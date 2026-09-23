@@ -60,10 +60,62 @@ const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
 let localeService;
+// 文案取值（跟随宿主界面语言）：优先 DSH 的 locale 服务；服务缺席、未授权或 bind 失效时
+// 按浏览器语言兜底，最后退英文。**整段取值都必须包在 try/catch 里**——cordis 对未在 inject
+// 里声明的服务属性会直接抛 cannot get property "locale" without inject，渲染期抛错会让
+// 整块配置区静默消失（页面上只剩宿主渲染的标题和描述）。取不到文案是小事，页面消失是大事。
+function browserDictionary() {
+  const nav = typeof navigator !== 'undefined' ? navigator
+    : (typeof window !== 'undefined' && window ? window.navigator : undefined);
+  const tags = nav && nav.languages && nav.languages.length > 0 ? nav.languages : [nav && nav.language];
+  for (let i = 0; i < tags.length; i++) {
+    if (!tags[i]) continue;
+    const base = String(tags[i]).toLowerCase().split('-')[0];
+    if (LOCALES[base]) return LOCALES[base];
+  }
+  return LOCALES.en;
+}
+function formatCopy(template, params) {
+  return String(template).replace(/\{(\w+)\}/g, function (match, name) {
+    return params && Object.hasOwn(params, name) ? String(params[name]) : match;
+  });
+}
+function createTranslator(service) {
+  let bound = null;
+  if (service && typeof service.bind === 'function') {
+    try { bound = service.bind(LOCALE_NAMESPACE); } catch (err) { bound = null; }
+  }
+  return function translate(key, params) {
+    if (bound) {
+      try {
+        const resolved = bound(key, params);
+        if (typeof resolved === 'string' && resolved !== '' && resolved !== key) return resolved;
+      } catch (err) { /* 绑定失效：继续走浏览器语言兜底 */ }
+    }
+    const dictionary = browserDictionary();
+    const template = (dictionary && dictionary[key]) || (LOCALES.en && LOCALES.en[key]) || key;
+    return params ? formatCopy(template, params) : template;
+  };
+}
+// apply() 之前也可能有渲染路径（hostText）：先给一份按浏览器语言兜底的翻译器。
+t = createTranslator(null);
 // Compatibility with existing host snapshots, whose display fields are text.
 // Known labels and messages follow the browser locale even while snapshots are cached.
 /*__HOST_TEXT__*/
 function hostText(message) { return localizeHostText(message, t, LOCALES); }
+// 宿主错误文案（v1.15）：优先按稳定 code 取中英文案（error.<code>，宿主与客户端共用同一份字典），
+// 字典里没有这个 code 时退回宿主原文（旧快照 / 宿主新错误码的兜底）。这样以后改宿主文案
+// 不会让界面串语言，也不需要靠「按文案反查」来猜。
+function errorText(error) {
+  if (!error) return '';
+  if (typeof error === 'string') return hostText(error);
+  if (error.code) {
+    const key = 'error.' + error.code;
+    const localized = t(key, error.params);
+    if (localized !== key) return localized;
+  }
+  return typeof error.message === 'string' ? hostText(error.message) : '';
+}
 
 const RPC_BASE = '/_dsh/dsh-bottom-info-bar';
 
@@ -841,8 +893,6 @@ function bibSetInstallStyles() {
            --bib-sec-inner      .X_2TxG_detailSection  { gap: 12px }
            --bib-head-gap       .X_2TxG_sectionHead    { align-items: baseline; gap: 10px }
            --bib-title-size/weight/line  .X_2TxG_sectionTitle { 14 / 500 / 20 }
-           --bib-count-*        .X_2TxG_sectionCount   { 12 / 400 / 18, label-secondary }
-           --bib-intro-*        .X_2TxG_pageIntro      { 13 / 400 / 20, label-secondary }
            --bib-desc-*         .X_2TxG_cardDesc       { 13 / 400 / 18, label-tertiary }
            --bib-row-pad        .X_2TxG_row            { padding: 12px 2px }
            --bib-row-rule       .X_2TxG_row            { border-bottom: .5px, last-child 无线 }
@@ -862,14 +912,14 @@ function bibSetInstallStyles() {
          只允许 max-inline-size: 100%。 */
       .bib-set-root {
         --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */
-        /* 页面区块 24px；同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
-        --bib-sec-gap: 24px;
+        /* 配置区只是详情页里的**一个** section：区块间距取宿主 .X_2TxG_detailSection 的 12px，
+           不取 .X_2TxG_detailSections 的 32px（那是区块之间的间距，套进来会凭空多出大段空白）。
+           同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
+        --bib-sec-gap: 12px;
         --bib-sec-inner: 16px;
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
-        --bib-count-size: 12px; --bib-count-line: 18px;
-        --bib-intro-size: 13px; --bib-intro-line: 20px;
         --bib-desc-size: 13px; --bib-desc-line: 18px;
         --bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;
         --bib-row-gap: 16px;
@@ -899,8 +949,6 @@ function bibSetInstallStyles() {
       .bib-settings, .bib-set-field-list, [data-dsh-bib-hide-scrollbars="true"] { scrollbar-width: none; -ms-overflow-style: none; }
       .bib-settings::-webkit-scrollbar, .bib-set-field-list::-webkit-scrollbar, [data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       /* 区块说明：原生 pageIntro 的 13/20 二级色（宿主 .X_2TxG_pageIntro）。 */
-      .bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-secondary); font-size: var(--bib-intro-size); line-height: var(--bib-intro-line); }
-      .bib-set-status { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-intro-size); line-height: var(--bib-intro-line); }
       /* 搜索行：左侧输入框吃满剩余宽度，右侧计数用 auto 轨道。
          计数框原来是写死的 104px + nowrap，文案一变长就会被切——改成 auto 轨道，永不裁切。 */
       .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }
@@ -929,7 +977,7 @@ function bibSetInstallStyles() {
          .X_2TxG_rowId{font-size:13.5px; font-weight:500; line-height:20px}
          注意：行**没有** margin:0 -8px，也**没有**圆角和 hover 填充——那是插件列表的
          .X_2TxG_card 那一套，不是详情页的行。 */
-      .bib-set-card { --bib-set-surface: transparent; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: visible; border: 0; background: transparent; border-radius: 0; }
+      .bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: visible; border: 0; background: transparent; border-radius: 0; }
       .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
       .bib-set-card-header:not(.bib-set-card-header--static):hover { background: transparent; }
@@ -976,9 +1024,12 @@ function bibSetInstallStyles() {
          虽然不裁了，却把整行文字推离了宿主的 323.2 左边界。现在按详情页行的真实值来，
          既对齐又不越界。 */
       .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
+      /* 列表首行去上内边距、末行去下内边距与边线（同姊妹插件 .cgpt-row:first-child/:last-child）：
+         列表与所属区块齐平，不再在顶部/底部留一段看不见的空白。 */
+      .bib-set-collapse-inner > .bib-set-row:first-child { padding-top: 0; }
+      .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }
       .bib-set-row:last-child { border-bottom: 0; }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 0; }
-      .bib-set-row--language { justify-content: flex-end; }
       /* 字段行 = 单行网格：「标签」col1、「开关」col2、「色块」col3。不再有第二行
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
          fallback（宿主无 Menu）时控件块仍按 grid-column: 1 / -1 落第二行，见 .bib-set-controls--field。 */
@@ -1055,13 +1106,14 @@ function bibSetInstallStyles() {
       .bib-set-row-main > .bib-set-switch { grid-column: 2; grid-row: 1; align-self: start; }
       .bib-set-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
       .bib-set-controls--field { grid-column: 1 / -1; justify-content: flex-start; }
-      .bib-set-controls--language { margin-left: auto; }
       /* ===== 独立参数设置区（决策 3）=====
          「时间与日期」「自定义文字」两个字段块照宿主 settings-form fields.module.css 基线：
          .field 列向 + gap 6 + padding 12px 0；相邻字段块之间 .5px 细线；label 13/500；
          输入框 34px / r8 / 0 12px；hint 12/1.5。全部度量走 --bib-* token。 */
       .bib-set-fieldblocks { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; }
       .bib-set-fieldblock { display: flex; flex-direction: column; gap: var(--bib-field-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-field-pad-block) 0; }
+      .bib-set-fieldblocks > .bib-set-fieldblock:first-child { padding-top: 0; }
+      .bib-set-fieldblocks > .bib-set-fieldblock:last-child { padding-bottom: 0; }
       .bib-set-fieldblock + .bib-set-fieldblock { border-top: var(--bib-rule); }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-field-label-size); font-weight: var(--bib-field-label-weight); line-height: var(--bib-field-label-line); color: var(--dsw-alias-label-primary); }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-field-hint-size); line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
@@ -1070,7 +1122,6 @@ function bibSetInstallStyles() {
       .bib-set-time-part-label { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-secondary); }
       .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-custom-text-count { color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); white-space: nowrap; }
       .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
       /* 色板：预设色不再描边（描边 + 虚线圈是「手绘控件」的观感），选中用宿主主文字色的双环，
@@ -1123,7 +1174,8 @@ function bibSetInstallStyles() {
       .bib-set-data-actions { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; }
       /* 账单数据行同样是原生 .X_2TxG_row 的几何（12px 2px + .5px 下边线，末行无线）。 */
       .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
-      .bib-set-data-row:last-child { border-bottom: 0; }
+      .bib-set-data-actions > .bib-set-data-row:first-child { padding-top: 0; }
+      .bib-set-data-row:last-child { padding-bottom: 0; border-bottom: 0; }
       .bib-set-data-copy { min-width: 0; }
       .bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }
       .bib-set-data-desc { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); }
@@ -1501,7 +1553,7 @@ function bibSetFieldRow(field, props) {
   const rowMain = React.createElement('div', { className: 'bib-set-row-main' },
     React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
       React.createElement('div', { className: 'bib-set-rowTitle' }, fieldLabel),
-      React.createElement('div', { className: 'bib-set-rowDesc' }, descParts.join(t('ui.sentenceSeparator')))),
+      React.createElement('div', { className: 'bib-set-rowDesc' }, descParts)),
     bibSetSwitch({
       label: t('ui.show', { label: fieldLabel }),
       checked: props.fieldOn(field.id),
@@ -1836,7 +1888,7 @@ function InfoBarSettingsSection() {
         configVersion: typeof res.configVersion === 'number' ? res.configVersion : ((prev && prev.configVersion) || 0),
       };
     });
-    if (res.persisted === false) setNotice({ text: function () { return t('ui.changesAppliedButCouldNot') + (hostText(res.warning) || t('ui.unknownReason')); } });
+    if (res.persisted === false) setNotice({ text: function () { return t('ui.changesAppliedButCouldNot') + (errorText(res.warning) || t('ui.unknownReason')); } });
   }
 
   // 乐观更新 + 失败回退（参照 density toggle）+ 版本号守卫
@@ -2163,7 +2215,8 @@ function InfoBarSettingsSection() {
 function InfoBarBundleConfig(props) {
   const view = props && props.view;
   if (view === 'summary') {
-    return React.createElement('span', { className: 'bib-bundle-summary' }, t('ui.bundleConfigSummary'));
+    // 摘要与插件描述同源（姊妹插件同款）：宿主已经渲染过标题，这里不再自造第二句描述。
+    return React.createElement('span', { className: 'bib-bundle-summary' }, t('meta.description'));
   }
   return React.createElement(InfoBarSettingsSection);
 }
@@ -2171,9 +2224,19 @@ function InfoBarBundleConfig(props) {
 module.exports = {
   inject: ['slots', 'locale'],
   async apply(ctx) {
-    ctx.effect(function () { return ctx.locale.register(LOCALE_NAMESPACE, LOCALES); }, 'info bar: dictionaries');
-    localeService = ctx.locale;
-    t = localeService.bind(LOCALE_NAMESPACE);
+    // locale 是 inject 里声明过的服务，但宿主版本差异与测试替身都可能缺席/抛错；
+    // 取值与注册全部 try/catch，失败就退回浏览器语言（见 createTranslator）。
+    try { localeService = ctx.locale; } catch (err) { localeService = null; }
+    if (!localeService && typeof ctx.get === 'function') {
+      try { localeService = ctx.get('locale'); } catch (err) { localeService = null; }
+    }
+    if (localeService && typeof localeService.register === 'function') {
+      try {
+        const disposeDictionaries = localeService.register(LOCALE_NAMESPACE, LOCALES);
+        if (typeof ctx.effect === 'function') ctx.effect(function () { return disposeDictionaries; }, 'info bar: dictionaries');
+      } catch (err) { /* 注册失败：退回浏览器语言 */ }
+    }
+    t = createTranslator(localeService);
     // slots 服务可能晚于 apply 就绪：优先 ctx.slots（inject 注入属性），回退 ctx.get('slots')；
     // 轮询等待采用渐进退避（300ms 起步，逐步增至 1s，总计约 45s），避免固定间隔在启动慢时过早放弃
     let slots = ctx.slots || ctx.get('slots');
@@ -2256,7 +2319,7 @@ module.exports = {
         // `plugins.bundle.config` is a keyed slot. DSH validates `key` (the
         // bundle package name), not the list-slot `id` field; using `id` makes
         // this entire web entry fail during boot.
-        { name: 'plugins.bundle.config', key: 'dsh-bottom-info-bar', locale: LOCALE_NAMESPACE, label: function () { return t('ui.infoBar'); } },
+        { name: 'plugins.bundle.config', key: 'dsh-bottom-info-bar', locale: LOCALE_NAMESPACE, label: function () { return t('meta.title'); } },
         InfoBarBundleConfig);
     });
 
@@ -2796,7 +2859,10 @@ module.exports = {
         // v1.6 T7：未配置提示改为按账户显示凭据名（去掉写死的 DeepSeek 文案）
         else if (bal && bal.error && bal.error.kind === 'no-key') {
           if (fieldVisible('noKeyHint')) {
-            const credName = bal.error.message ? String(hostText(bal.error.message)).replace(/(?:未配置 |Not configured: )/, '') : 'API_KEY';
+            // 凭据名优先取宿主给的结构化 params（跨语言稳定），旧快照才退回从文案里剥前缀。
+            const credName = (bal.error.params && bal.error.params.credential)
+              ? String(bal.error.params.credential)
+              : (bal.error.message ? String(hostText(bal.error.message)).replace(/(?:未配置 |Not configured: )/, '') : 'API_KEY');
             trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
               React.createElement('span', { className: 'bi-err', title: t('ui.notConfiguredConfigureItIn', { credName: credName }) },
                 t('ui.notConfiguredSettingsModels', { credName: credName }))));
@@ -2891,9 +2957,10 @@ module.exports = {
        function subscriptionFailureHint(error, source) {
          const kind = error && error.kind;
          const serviceName = subscriptionServiceName(source);
-         const message = error && typeof error.message === 'string' ? hostText(error.message) : '';
+         const message = errorText(error);
+         // HTTP 状态优先取宿主给的 params（结构化、跨语言稳定），退回从文案里解析（旧快照）。
          const statusMatch = message.match(/HTTP (\d{3})/);
-         const status = statusMatch ? statusMatch[1] : '';
+         const status = error && error.params && error.params.status != null ? String(error.params.status) : (statusMatch ? statusMatch[1] : '');
          if (kind === 'no-key') return t('ui.noSignInCredentialsFound', { serviceName: serviceName });
          if (kind === 'auth' || status === '401') return t('ui.credentialsHaveExpiredPleaseReauthorize', { serviceName: serviceName });
          if (status === '403') return t('ui.deniedAccessReauthorizeOrTry', { serviceName: serviceName });
@@ -3022,9 +3089,9 @@ module.exports = {
       //      账单服务+模型 → 本月真实花费 →（预算%）→（免费额度+重置倒计时）；余额/额度/本会话花费均不显示 ----
       function billingFailureHint(error, provider) {
         const serviceName = billingServiceName(provider);
-        const message = error && typeof error.message === 'string' ? hostText(error.message) : '';
+        const message = errorText(error);
         const statusMatch = message.match(/HTTP (\d{3})/);
-        const status = statusMatch ? statusMatch[1] : '';
+        const status = error && error.params && error.params.status != null ? String(error.params.status) : (statusMatch ? statusMatch[1] : '');
         if (error && error.kind === 'no-key') return t('ui.notConfigured') + message.replace(/(?:未配置 |Not configured: )/, '') + t('ui.configureItInSettingsModels');
         if (status === '403' || /缺少 .*权限|lack .*permission/.test(message)) return t('ui.deniedAccessTheTokenMay', { serviceName: serviceName });
         if (error && error.kind === 'parse') return t('ui.returnedAnUnrecognizedResponsePlease', { serviceName: serviceName });
@@ -3148,8 +3215,8 @@ module.exports = {
         trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {
           className: snapshotOnly ? 'bi-stale' : 'bi-err',
           title: snapshotOnly
-            ? t('ui.spendJournalSavedButThe') + (hostText(persistence.message) || t('ui.unknownReason'))
-            : t('ui.thisSpendRecordWasNot') + (hostText(persistence.message) || t('ui.unknownReason')),
+            ? t('ui.spendJournalSavedButThe') + (errorText(persistence) || t('ui.unknownReason'))
+            : t('ui.thisSpendRecordWasNot') + (errorText(persistence) || t('ui.unknownReason')),
         }, snapshotOnly ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved'))));
       }
 

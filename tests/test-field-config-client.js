@@ -95,8 +95,9 @@ check('构建注入锚点存在于客户端源码', clientSrc.includes('const FI
 // ---------- ⑤ 插件配置页（plugins.bundle.config）：唯一入口 / M2 屏显防护 / 无障碍 / 乐观更新 / CustomEvent ----------
 check('配置页仅注册 DSH plugins.bundle.config 插座（不重复注册全局设置页）', clientSrc.includes("slots.inject('plugins.bundle.config'")
   && !clientSrc.includes("slots.inject('settings.section'"), true);
-check('配置条目以包名 key 注册并保留本地化标题', clientSrc.includes("key: 'dsh-bottom-info-bar'")
-  && clientSrc.includes("label: function () { return t('ui.infoBar'); }"), true);
+// 标题取展示名（locale meta.title，与插件卡片/详情页一致），不取包名——包名是技术身份。
+check('配置条目以包名 key 注册并保留本地化展示名', clientSrc.includes("key: 'dsh-bottom-info-bar'")
+  && clientSrc.includes("label: function () { return t('meta.title'); }"), true);
 check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
   && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
 check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼接第二源码', (function () {
@@ -268,14 +269,13 @@ check('设置页布局不再依赖内联样式，卡片内容层与边界连续'
 // 而不是设置弹窗那套 .Pt1bsG_row（细分隔线）——我们的配置区渲染在详情页里。
 check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号与行几何', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
-  return install.includes('.bib-set-card { --bib-set-surface: transparent;')
+  return install.includes('.bib-set-card { box-sizing: border-box;')
     && install.includes('overflow: visible; border: 0; background: transparent; border-radius: 0;')
     // 第一层：度量层 token 定义（--bib-*，逐条标注来源规则）
     && install.includes('--bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;')
     && install.includes('--bib-row-label-size: 13.5px; --bib-row-label-weight: 500; --bib-row-label-line: 20px;')
     && install.includes('--bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;')
     && install.includes('--bib-desc-size: 13px; --bib-desc-line: 18px;')
-    && install.includes('--bib-intro-size: 13px; --bib-intro-line: 20px;')
     && install.includes('--bib-control-radius: 8px;')
     && install.includes('--bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius);')
     && install.includes('--bib-input-height: 34px; --bib-input-radius: var(--bib-control-radius);')
@@ -287,7 +287,6 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }')
     // 页头不再自成一套 15/600，与区块同级
     && install.includes('.bib-set-page-title { width: 100%; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line);')
-    && install.includes('.bib-set-intro { width: 100%; margin: 0; color: var(--dsw-alias-label-secondary); font-size: var(--bib-intro-size); line-height: var(--bib-intro-line); }')
     // 输入框取宿主 primitives 的 .input 尺寸
     && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3);')
     // 按钮：宿主没有原生 Button 时的兜底几何 = Button.module.css .sm（h28 / r14 / 12px / 0 10px）
@@ -302,19 +301,22 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-alert--warning { background: color-mix(in srgb, var(--dsw-alias-state-warning-primary')
     && install.includes('.bib-set-alert--info { color: var(--dsw-alias-label-secondary); }')
     // 不许再出现卡片视觉残留
-    && !install.includes('border: 1px solid var(--dsw-alias-border-l2); background: var(--bib-set-surface); border-radius: 12px;')
+    && !install.includes('background: var(--bib-set-surface)')
     && !install.includes('padding: 14px 16px');
 })(), true);
 // 区块节奏照同页原生区块（X_2TxG_detailSections / detailSection / sectionHead / rows / row）：
 // 区块之间 32px、区块内部 12px、区块头基线对齐 + 10px 间距；行是详情页的 .X_2TxG_row
 // —— padding 12px 2px + .5px 下边线（末行无线）、无圆角、无负外边距。
-check('区块排版使用统一的 24px/16px/12px 节奏，行保持原生 .row 几何', (function () {
+check('区块排版使用统一的 12px/16px 节奏（配置区=详情页一个 section），行保持原生 .row 几何', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   return install.includes('.bib-set-card-header-main { display: flex; align-items: baseline; justify-content: flex-start; gap: var(--bib-head-gap); width: 100%; min-width: 0;')
     && install.includes('flex-direction: column; gap: var(--bib-sec-gap);')
-    && install.includes('.bib-set-card { --bib-set-surface: transparent; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner);')
+    && install.includes('.bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner);')
     // 第一层：节奏/行几何的 token 定义
-    && install.includes('--bib-sec-gap: 24px;')
+    // 配置区只是详情页里的一个 section：区块间距取 .X_2TxG_detailSection 的 12px
+    && install.includes('--bib-sec-gap: 12px;')
+    && !install.includes('--bib-sec-gap: 24px;')
+    && !install.includes('--bib-sec-gap: 32px;')
     && install.includes('--bib-sec-inner: 16px;')
     && install.includes('--bib-group-gap: 16px;')
     && install.includes('.bib-set-field-list { gap: var(--bib-group-gap); }')
@@ -325,8 +327,13 @@ check('区块排版使用统一的 24px/16px/12px 节奏，行保持原生 .row 
     // 第二层：行必须引用 token，而不是退回裸数字
     && install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0;')
     && install.includes('.bib-set-row:last-child { border-bottom: 0; }')
+    // 列表首行去上内边距、末行去下内边距（同姊妹插件 .cgpt-row:first-child/:last-child）
+    && install.includes('.bib-set-collapse-inner > .bib-set-row:first-child { padding-top: 0; }')
+    && install.includes('.bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }')
+    && install.includes('.bib-set-data-actions > .bib-set-data-row:first-child { padding-top: 0; }')
+    && install.includes('.bib-set-fieldblocks > .bib-set-fieldblock:first-child { padding-top: 0; }')
     && install.includes('.bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0;')
-    && install.includes('.bib-set-data-row:last-child { border-bottom: 0; }')
+    && install.includes('.bib-set-data-row:last-child { padding-bottom: 0; border-bottom: 0; }')
     // 行分隔靠 .5px 下边线（原生 .X_2TxG_row 就是这么写的），列表不额外留缝
     && install.includes('.bib-set-field-list { display: flex; flex-direction: column; gap: 0;')
     // 页头不能自带横向内边距（对齐铁律见下一条用例）
@@ -412,7 +419,7 @@ check('设置页宽度固定，列表展开不会触发横向跳动', clientSrc.
   && clientSrc.includes('contain: inline-size')
   // 宽度上限交给宿主：不得再对 .bib-settings 设 px 级 max-width（那会把内容压窄、与宿主左边界错位）
   && !/\.bib-settings \{[^}]*max-width: \d+px/.test(clientSrc)
-  && clientSrc.includes('.bib-set-card { --bib-set-surface: transparent; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
+  && clientSrc.includes('.bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
   && clientSrc.includes('.bib-set-card-header-main { display: flex; align-items: baseline; justify-content: flex-start; gap: var(--bib-head-gap); width: 100%; min-width: 0;')
   && clientSrc.includes('.bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px;')
   && clientSrc.includes('.bib-set-search-row { display: block; width: 100%;')

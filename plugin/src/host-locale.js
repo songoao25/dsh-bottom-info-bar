@@ -87,7 +87,9 @@ export function localizeHostText(message, translate, dictionaries) {
     if (dictionaries.zh[key] === message || dictionaries.en[key] === message) return translate(key)
   }
   for (const key of Object.keys(dictionaries.zh)) {
-    if (!key.startsWith('host.')) continue
+    // host.* 是宿主自述文案；error.* 是「宿主错误码 → 中英文案」的同一批句子（v1.15 起错误键改名为
+    // error.<code>），两者都可能出现在旧快照的 message 里，都要能按模板反查回客户端语言。
+    if (!key.startsWith('host.') && !key.startsWith('error.')) continue
     for (const language of ['zh', 'en']) {
       const template = dictionaries[language][key]
       if (!/\{\w+\}/.test(template)) continue

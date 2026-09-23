@@ -1,6 +1,15 @@
 # dsh-bottom-info-bar bundle patch: mounts the plugin into a profile layer stack.
-# The plugin row id is 'dsh-bottom-info-bar' — users may override its behavior in
-# their profile's cordis.patch.yml with a row carrying the same id.
+# The row id is the key users override in their profile's cordis.patch.yml; the row name
+# is the module this package exports, so it must stay the package name.
+# Keep the two different: DSH's plugin card prints the row id and the module name on
+# separate lines (skipping one only when it equals the row title), so an id equal to the
+# module name renders the same string twice. Official bundles do the same, e.g.
+# 'agent-team' + '@deepseek-ai/dsh-experimental-agent-team'.
+#
+# BREAKING (1.14.6): the row id changed from 'dsh-bottom-info-bar' to 'bottom-info-bar'.
+# If your profile's cordis.patch.yml overrides this plugin with a row whose id is
+# 'dsh-bottom-info-bar', rename that id to 'bottom-info-bar' (keep name as the package
+# name 'dsh-bottom-info-bar'), otherwise the override silently stops applying.
 - insert:
-    - id: dsh-bottom-info-bar
+    - id: bottom-info-bar
       name: 'dsh-bottom-info-bar'

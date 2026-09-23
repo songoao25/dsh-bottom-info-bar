@@ -509,7 +509,7 @@ function mergeSubscriptionResult(prev, result, translate) {
     return {
       data: prev && prev.data ? prev.data : null,
       fetchedAt: prev && prev.fetchedAt ? prev.fetchedAt : null,
-      error: result ? result.error : { kind: 'exception', message: translate('host.unexpectedSubscriptionQuotaRequestFailure') },
+      error: result ? result.error : { kind: 'exception', code: 'subscription.request-failed', message: translate('error.subscription.request-failed') },
     }
   }
   return { data: result.data || null, fetchedAt: Date.now(), error: null }
@@ -1911,7 +1911,8 @@ export default {
         customText: fieldSettings.customText,
         configVersion: settingsConfigVersion,
         persisted: persistError == null,
-        warning: persistError == null ? null : String(persistError),
+        // warning 是 { code, message }（或 null）：客户端优先按 code 取文案，跨语言稳定。
+        warning: persistError,
       };
     }
     function persistSettings() {
@@ -1920,9 +1921,10 @@ export default {
         writeFileAtomic(SETTINGS_FILE, JSON.stringify(fieldSettings), t);
         return null;
       } catch (err) {
-        const message = t('host.couldNotSaveSettingsJson', { value: String((err && err.message) || err) });
-        console.warn('[dsh-bottom-info-bar] ' + message);
-        return message;
+        // 稳定 code + 文案一起回传：客户端按 code 取当前语言的文案（字典缺失才退回这里这句）。
+        const failure = { code: 'settings.save-failed', message: t('error.settings.save-failed', { value: String((err && err.message) || err) }) };
+        console.warn('[dsh-bottom-info-bar] ' + failure.message);
+        return failure;
       }
     }
     let config = {
@@ -1992,12 +1994,12 @@ export default {
           cred = await ctx.credentials.resolve(prov.credential);
         } catch (err) {
           // 与下方 http/parse/exception 分支一致：失败保留旧 data/fetchedAt，仅换 error；seq guard 防慢请求覆盖新快照
-          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'credentials', message: t('host.couldNotReadCredentials') } };
+          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'credentials', code: 'balance.credentials', message: t('error.balance.credentials') } };
           return;
         }
         if (!cred || !cred.value) {
           // no-key 同样保留旧快照：一次瞬断/未配置不把好数据清空（客户端据 error 显示配置引导/警示）
-          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'no-key', message: t('host.notConfigured', { credential: prov.credential }) } };
+          if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'no-key', code: 'balance.not-configured', params: { credential: prov.credential }, message: t('error.balance.not-configured', { credential: prov.credential }) } };
           return;
         }
         try {
@@ -2011,13 +2013,13 @@ export default {
             signal: AbortSignal.timeout(15000),
           });
           if (!res.ok) {
-            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
+            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
             return;
           }
           const body = await res.json();
           const parsed = prov.parseBalance(body);
           if (!parsed) {
-            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+            if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
             return;
           }
           if (balanceSeq[pid] === seq) balances[pid] = { data: parsed, fetchedAt: Date.now(), error: null };
@@ -2061,12 +2063,12 @@ export default {
     async function fetchCodexUsage() {
       const read = readCodexAuthFile(CODEX_AUTH_FILE);
       if (!read.ok) {
-        return { error: { kind: 'no-key', message: t('host.chatgptSubscriptionIsNotConnected') } };
+        return { error: { kind: 'no-key', code: 'subscription.not-connected', message: t('error.subscription.not-connected') } };
       }
       const tokens = read.auth && read.auth.tokens;
       const idToken = tokens && typeof tokens.id_token === 'string' && tokens.id_token.length > 0 ? tokens.id_token : null;
       if (!idToken) {
-        return { error: { kind: 'no-key', message: t('host.chatgptSubscriptionCredentialsAreMissing') } };
+        return { error: { kind: 'no-key', code: 'subscription.credentials-missing', message: t('error.subscription.credentials-missing') } };
       }
       let parsed = null;
       try { parsed = parseCodexJwt(idToken); } catch (err) { /* 解码异常 → 静默降级 */ }
@@ -2100,17 +2102,17 @@ export default {
     async function fetchOpenCodeGoUsage() {
       const key = await resolveOpenCodeGoKey();
       if (!key) {
-        return { error: { kind: 'no-key', message: t('host.opencodeGoIsNotConfigured') } };
+        return { error: { kind: 'no-key', code: 'subscription.opencode-not-configured', message: t('error.subscription.opencode-not-configured') } };
       }
       try {
         const res = await fetch('https://opencode.ai/zen/go/v1/usage', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
+        if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
         const body = await res.json();
         const parsed = parseOpenCodeGoUsage(body, windowLabels);
-        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         return { data: { provider: 'opencode-go', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
@@ -2143,16 +2145,17 @@ export default {
         if (!res.ok) {
           return { error: {
             kind: res.status === 401 ? 'auth' : 'http',
+            code: res.status === 401 ? 'subscription.commandcode-auth-failed' : 'request.http',
             message: res.status === 401
-              ? t('host.commandCodeAuthenticationFailed')
-              : t('host.requestFailedHTTP', { status: res.status }),
+              ? t('error.subscription.commandcode-auth-failed')
+              : t('error.request.http', { status: res.status }),
           } }
         }
         let body
         try {
           body = await res.json()
         } catch (err) {
-          return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } }
+          return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } }
         }
         return { body: body }
       } catch (err) {
@@ -2170,7 +2173,7 @@ export default {
 
     async function fetchCommandCodeUsage() {
       const key = await resolveCommandCodeKey()
-      if (!key) return { error: { kind: 'no-key', message: t('host.commandCodeIsNotConfigured') } }
+      if (!key) return { error: { kind: 'no-key', code: 'subscription.commandcode-not-configured', message: t('error.subscription.commandcode-not-configured') } }
       try {
         const whoami = await fetchCommandCodeJson(key, '/alpha/whoami?limits=1')
         if (whoami.error) return { error: whoami.error }
@@ -2184,7 +2187,7 @@ export default {
         const subscriptionResult = results[1]
         if (creditsResult.error) return { error: creditsResult.error }
         const parsed = parseCommandCodeUsage(creditsResult.body, subscriptionResult.error ? null : subscriptionResult.body, windowLabels)
-        if (!parsed) return { error: { kind: 'parse', message: t('host.commandCodeQuotaUnrecognized') } }
+        if (!parsed) return { error: { kind: 'parse', code: 'subscription.commandcode-unrecognized', message: t('error.subscription.commandcode-unrecognized') } }
         return { data: Object.assign({ provider: 'command-code' }, parsed) }
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } }
@@ -2240,7 +2243,7 @@ export default {
       const resolvedProvider = providerId === 'zai-coding-cn' ? 'zai-coding-cn' : 'zai';
       const key = await resolveZaiKey(resolvedProvider);
       if (!key) {
-        return { error: { kind: 'no-key', message: t('host.zhipuAPIKeyIsNot') } };
+        return { error: { kind: 'no-key', code: 'subscription.zhipu-not-configured', message: t('error.subscription.zhipu-not-configured') } };
       }
       const host = zaiHostForProvider(resolvedProvider);
 
@@ -2259,18 +2262,18 @@ export default {
             return fetchZaiBalanceFallback(host, key, resolvedProvider);
           }
           if (body.code === 401 || /过期|不正确|unauthorized|expired/i.test(msg))
-            return { error: { kind: 'auth', message: t('host.zhipuAPIAuthenticationFailedThe') } };
-          return { error: { kind: 'http', message: t('host.requestFailed', { value: body.code || '', msg: msg }) } };
+            return { error: { kind: 'auth', code: 'subscription.zhipu-auth-failed', message: t('error.subscription.zhipu-auth-failed') } };
+          return { error: { kind: 'http', code: 'request.failed', message: t('error.request.failed', { value: body.code || '', msg: msg }) } };
         }
-        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
+        if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
         const parsed = parseZaiQuota(body, windowLabels);
-        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         // 解析成功但零窗口 = 上游 schema 又漂移了（接口对订阅账号必返回 5 小时 + 周窗口，
         // 非订阅账号走上面的 success:false 分支）。此时按失败处理，让 mergeSubscriptionResult
         // 保留上一份好快照——否则空窗口会被当成"成功"覆盖旧数据，界面只剩套餐名、无窗口也无报错，
         // 正是 Issue #85 的原始症状（智谱接口已两次漂移：缺字段、TOKENS_LIMIT→CREDIT_LIMIT）。
         if (parsed.windows.length === 0)
-          return { error: { kind: 'parse', message: t('host.zhipuQuotaWindowsUnrecognized') } };
+          return { error: { kind: 'parse', code: 'subscription.zhipu-unrecognized', message: t('error.subscription.zhipu-unrecognized') } };
         return { data: { provider: 'zai', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
@@ -2290,12 +2293,12 @@ export default {
         if (body && body.success === false) {
           const msg = body.msg || body.message || '';
           if (body.code === 401 || body.code === 1000 || /过期|不正确|unauthorized|expired/i.test(msg))
-            return { error: { kind: 'auth', message: t('host.zhipuAPIAuthenticationFailedThe') } };
-          return { error: { kind: 'http', message: t('host.requestFailed', { value: body.code || '', msg: msg }) } };
+            return { error: { kind: 'auth', code: 'subscription.zhipu-auth-failed', message: t('error.subscription.zhipu-auth-failed') } };
+          return { error: { kind: 'http', code: 'request.failed', message: t('error.request.failed', { value: body.code || '', msg: msg }) } };
         }
-        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
+        if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
         const parsed = parseZaiBalance(body);
-        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         // 返回充值余额：balance 字段携带金额，windows 为空（无额度窗口）
         return { data: { provider: 'zai', plan: t('ui.prepaidBalance'), windows: [], balance: parsed.balance } };
       } catch (err) {
@@ -2338,7 +2341,7 @@ export default {
           ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
         };
         const credName = regionNames[region] || 'XIAOMI_TOKEN_PLAN_*_API_KEY';
-        return { error: { kind: 'no-key', message: t('host.xiaomiMiMoTokenPlanCredentials', { credName: credName }) } };
+        return { error: { kind: 'no-key', code: 'subscription.xiaomi-not-configured', message: t('error.subscription.xiaomi-not-configured', { credName: credName }) } };
       }
       const base = xiaomiRegionBaseUrl(region);
       const endpoints = [base + '/v1/tokenPlan/usage', base + '/v1/user/balance'];
@@ -2359,13 +2362,13 @@ export default {
           return { error: { kind: 'exception', message: String((err && err.message) || err) } };
         }
       }
-      return { error: { kind: 'http', message: t('host.requestFailedHTTP.fetchXiaomiTokenPlanUsage', { value: lastStatus || '?' }) } };
+      return { error: { kind: 'http', code: 'subscription.xiaomi-http', message: t('error.subscription.xiaomi-http', { value: lastStatus || '?' }) } };
     }
 
     // v1.7 FR-10：Together 本月真实账单（USD）。api.together.xyz 为主，api.together.ai 回退（A8 记录确认同源 API）。
     async function fetchTogetherBilling() {
       const key = await resolveCredentialValue('TOGETHER_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredTOGETHERAPIKEY') } };
+      if (!key) return { error: { kind: 'no-key', code: 'billing.together-not-configured', message: t('error.billing.together-not-configured') } };
       const hosts = ['https://api.together.xyz', 'https://api.together.ai'];
       let lastStatus = null;
       for (let i = 0; i < hosts.length; i++) {
@@ -2377,40 +2380,40 @@ export default {
           if (!res.ok) {
             lastStatus = res.status;
             if (i < hosts.length - 1) continue;
-            return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: res.status }) } };
+            return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
           }
           const body = await res.json();
           const spend = parseTogetherUsage(body);
-          if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+          if (spend == null) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
           return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: t('host.actualMonthlyBillFromThe') } };
         } catch (err) {
           if (i < hosts.length - 1) continue;
           return { error: { kind: 'exception', message: String((err && err.message) || err) } };
         }
       }
-      return { error: { kind: 'http', message: t('host.requestFailedHTTP.fetchXiaomiTokenPlanUsage', { value: lastStatus || '?' }) } };
+      return { error: { kind: 'http', code: 'subscription.xiaomi-http', message: t('error.subscription.xiaomi-http', { value: lastStatus || '?' }) } };
     }
 
     // v1.7 FR-11：Fireworks 本周期真实账单。先 GET /v1/accounts 解析 account_id，
     // 主端点 billing/summary（美元）；404 → 回退 billingUsage（token 用量，无金额时降级展示用量）。
     async function fetchFireworksBilling() {
       const key = await resolveCredentialValue('FIREWORKS_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredFIREWORKSAPIKEY') } };
+      if (!key) return { error: { kind: 'no-key', code: 'billing.fireworks-not-configured', message: t('error.billing.fireworks-not-configured') } };
       try {
         const accRes = await fetch('https://api.fireworks.ai/v1/accounts', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!accRes.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: accRes.status }) } };
+        if (!accRes.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: accRes.status }) } };
         const accountId = parseFireworksAccountId(await accRes.json());
-        if (!accountId) return { error: { kind: 'parse', message: t('host.couldNotReadAccountAccount') } };
+        if (!accountId) return { error: { kind: 'parse', code: 'billing.fireworks-account', message: t('error.billing.fireworks-account') } };
         const summaryRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billing/summary?granularity=DAILY', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
         if (summaryRes.ok) {
           const spend = parseFireworksSummary(await summaryRes.json());
-          if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+          if (spend == null) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
           return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, currency: 'USD', note: t('host.actualBillForThisPeriod') } };
         }
         if (summaryRes.status === 404) {
@@ -2421,11 +2424,11 @@ export default {
           if (usageRes.ok) {
             const usage = parseFireworksUsage(await usageRes.json());
             if (usage != null) return { data: { kind: 'billing', usage: usage, usageUnit: 'tokens', currency: 'USD', note: t('host.actualUsageForThisPeriod') } };
-            return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+            return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
           }
-          return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: usageRes.status }) } };
+          return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: usageRes.status }) } };
         }
-        return { error: { kind: 'http', message: t('host.requestFailedHTTP', { status: summaryRes.status }) } };
+        return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: summaryRes.status }) } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
       }
@@ -2465,7 +2468,7 @@ export default {
     async function fetchBedrockBilling() {
       const aws = await resolveAwsCredentials();
       if (!aws) {
-        return { error: { kind: 'no-key', message: t('host.notConfiguredAWSCredentialsAWS') } };
+        return { error: { kind: 'no-key', code: 'billing.aws-not-configured', message: t('error.billing.aws-not-configured') } };
       }
       try {
         const now = new Date();
@@ -2475,9 +2478,9 @@ export default {
           Granularity: 'MONTHLY',
           Filter: { Dimensions: { Key: 'SERVICE', Values: ['Amazon Bedrock'] } },
         }, aws);
-        if (!ce.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTPTheToken', { status: ce.status }) } };
+        if (!ce.ok) return { error: { kind: 'http', code: 'billing.aws-http', message: t('error.billing.aws-http', { status: ce.status }) } };
         const spend = parseBedrockCost(ce.json);
-        if (spend == null) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        if (spend == null) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         let budgetPercent = null;
         try { budgetPercent = await fetchBedrockBudget(aws); } catch (err) { budgetPercent = null; } // 预算失败静默
         return { data: { kind: 'billing', spend: Math.round(spend * 100) / 100, budgetPercent: budgetPercent, currency: 'USD', note: t('host.actualMonthlyBillFromAWS') } };
@@ -2508,17 +2511,17 @@ export default {
     // 免费额度仅当接口显式返回 limit/allowance 字段时展示（拿不到只显示真实用量，绝不编造）；失败静默降级。
     async function fetchCloudflareBilling() {
       const key = await resolveCredentialValue('CLOUDFLARE_API_KEY');
-      if (!key) return { error: { kind: 'no-key', message: t('host.notConfiguredCLOUDFLAREAPIKEY') } };
+      if (!key) return { error: { kind: 'no-key', code: 'billing.cloudflare-not-configured', message: t('error.billing.cloudflare-not-configured') } };
       const accountId = await resolveCredentialValue('CLOUDFLARE_ACCOUNT_ID');
-      if (!accountId) return { error: { kind: 'no-key', message: t('host.notConfiguredCLOUDFLAREACCOUNTID') } };
+      if (!accountId) return { error: { kind: 'no-key', code: 'billing.cloudflare-account', message: t('error.billing.cloudflare-account') } };
       try {
         const res = await fetch('https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(accountId) + '/billing/usage/paygo', {
           headers: { Authorization: 'Bearer ' + key },
           signal: AbortSignal.timeout(15000),
         });
-        if (!res.ok) return { error: { kind: 'http', message: t('host.requestFailedHTTPTheToken.fetchCloudflareBilling', { status: res.status }) } };
+        if (!res.ok) return { error: { kind: 'http', code: 'billing.cloudflare-http', message: t('error.billing.cloudflare-http', { status: res.status }) } };
         const parsed = parseCloudflareBilling(await res.json());
-        if (!parsed) return { error: { kind: 'parse', message: t('host.unexpectedResponseFormat') } };
+        if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         return { data: Object.assign({ kind: 'billing', currency: 'USD', note: t('host.actualMonthlyUsageFromThe') }, parsed) };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };
@@ -2589,7 +2592,7 @@ export default {
         return {
           data: prev && prev.data ? prev.data : null,
           fetchedAt: prev && prev.fetchedAt ? prev.fetchedAt : null,
-          error: result ? result.error : { kind: 'exception', message: t('host.unexpectedBillingRequestFailure') },
+          error: result ? result.error : { kind: 'exception', code: 'billing.request-failed', message: t('error.billing.request-failed') },
         };
       }
       return { data: result.data || null, fetchedAt: Date.now(), error: null };
@@ -3112,7 +3115,7 @@ export default {
       try {
         clearLedgerArtifacts();
       } catch (err) {
-        ledgerError = { kind: 'clear-failed', message: t('host.couldNotClearSpendRecords', { value: String((err && err.message) || err) }), at: Date.now() };
+        ledgerError = { kind: 'clear-failed', code: 'ledger.clear-failed', message: t('error.ledger.clear-failed', { value: String((err && err.message) || err) }), at: Date.now() };
         console.warn('[dsh-bottom-info-bar] ' + ledgerError.message);
       }
     }
@@ -3698,7 +3701,7 @@ export default {
           writeSummariesFile(summariesState.foldedUpTo, foldedSessionsDelta, foldedAccountTotals);
           summariesDirty = false;
         } catch (err) {
-          ledgerError = { kind: 'snapshot-stale', message: t('host.couldNotSaveArchivedSpend', { value: String((err && err.message) || err) }), at: Date.now() };
+          ledgerError = { kind: 'snapshot-stale', code: 'ledger.snapshot-stale', message: t('error.ledger.snapshot-stale', { value: String((err && err.message) || err) }), at: Date.now() };
           console.warn('[dsh-bottom-info-bar] 折叠汇总落盘失败（内存聚合继续，重启前重试）', ledgerError.message);
         }
       }
@@ -4252,7 +4255,7 @@ export default {
         monthSpend: monthSpend(nowMs, selection),
         last30dSpend: last30dSpend(nowMs, selection),
         totalSpend: totalSpend(selection),
-        persistence: ledgerError ? { state: ledgerError.kind, message: ledgerError.message, at: ledgerError.at } : { state: 'ok', message: null, at: null },
+        persistence: ledgerError ? { state: ledgerError.kind, code: ledgerError.code || null, message: ledgerError.message, at: ledgerError.at } : { state: 'ok', code: null, message: null, at: null },
         now: nowMs,
       };
     }
@@ -4367,7 +4370,7 @@ export default {
           // crash after this point therefore fails closed on its next start.
           writeFileAtomic(LEDGER_CLEAR_MARKER_FILE, JSON.stringify({ requestedAt: Date.now() }), t);
         } catch (err) {
-          throw new Error(t('host.couldNotClearSpendRecords', { value: String((err && err.message) || err) }));
+          throw new Error(t('error.ledger.clear-failed', { value: String((err && err.message) || err) }));
         }
         let cleanupError = null;
         try {
@@ -4377,7 +4380,7 @@ export default {
         }
         resetUsageLedgerState();
         if (cleanupError) {
-          ledgerError = { kind: 'clear-failed', message: t('host.couldNotClearSpendRecords', { value: String((cleanupError && cleanupError.message) || cleanupError) }), at: Date.now() };
+          ledgerError = { kind: 'clear-failed', code: 'ledger.clear-failed', message: t('error.ledger.clear-failed', { value: String((cleanupError && cleanupError.message) || cleanupError) }), at: Date.now() };
           console.warn('[dsh-bottom-info-bar] ' + ledgerError.message);
           return { cleared: false, recordCount: exported.records.length, warning: ledgerError.message };
         }
