@@ -18,6 +18,15 @@
 
 ## 2026-09-23
 
+### CodeQL「不完整 URL 子串判断」两条 High 告警修复（PR #120，纯 tests 改动不触发发版）
+
+- 告警来源：Code scanning 在 main 报 `js/incomplete-url-substring-sanitization`（High）两条 —— `tests/smoke-static-host.mjs:250`、`:268`。断言「请求是否发往 Command Code 官方 API」写成了 `entry.url.includes('https://api.commandcode.ai/')`，而该写法只要求域名出现在 URL **任意位置**：`https://evil.example/?u=https://api.commandcode.ai/` 一样命中，判断实际不成立。
+- 修法：新增 `isCommandCodeApiRequest()`，解析 URL 后精确比较 `protocol === 'https:'` 与 `hostname === 'api.commandcode.ai'`（解析失败视为不匹配）；同一断言的 orgId 检查同步改为 `new URL(...).searchParams.get('orgId') === 'org-test'`。**通用规则：判断请求目标一律解析后比 hostname / origin，绝不写域名字符串包含。**
+- 防复发：`tests/test-source-guards.mjs` 新增**守卫 5**，扫描 `plugin/src`、`plugin/scripts`、`tests`，拦下 `.includes/startsWith/endsWith/indexOf/lastIndexOf('https://…')` 式写法（排除注释与本文件自身）。**已双向验证**：放入探针文件 → 守卫 5 FAIL、exit 1；移除 → PASS。全量 `node tests/run-all.mjs` 通过。
+- 验证证据（不是「应该关了」，是读回来的）：PR #120 → CI pass → squash 合并 `a4df6f4` → main 上 CodeQL 重扫 run `35825985960` success → 告警 #3 / #4 状态变 **fixed**（06:17:25Z），**open 告警数 = 0**（说明守卫里那条正则本身也没引入新告警）。
+- **重要发现 —— Release Please 只认 `plugin/` 路径**：`release-please-config.json` 的 `packages` 只有 `plugin`，本次提交只动 `tests/`，Release Please 日志明确 `No commits for path: plugin, skipping`，因此**不产生发布 PR**。纯 tests / docs 改动不发版是设计使然（#118、#119 同理）；AGENTS.md 的「每次修复都要发版」针对的是 `plugin/` 内的用户可见改动。判断依据：改动路径，而不是提交类型。
+- 收尾：本地分支用 `git cherry main <分支>` 确认补丁等价（输出 `-`）且文件级 diff 为空后 `-D` 删除，远端分支随合并自动删除；本地 main 已快进到 `a4df6f4` 并重跑 `node plugin/scripts/build.mjs` 重建 `lib/`；工作区干净，全仓库只剩 main。
+
 ### 收工大扫除：删除 19 个本地旧分支，只留 main
 
 - 背景：历史 Codex / 修复分支全部走 squash 合并，提交号对不上 `git branch --merged`，导致分支越攒越多（19 个）。用户明确把「收工即合并主线 + 清分支 + 干净工作区」定为默认规矩（已写进上方使用规则）。
