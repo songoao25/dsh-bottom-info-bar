@@ -1,4 +1,4 @@
-# 信息栏插件
+# 底部信息栏
 
 <img src="assets/wechat-group.png" width="118" align="right" alt="微信群 DeepThinking —— 扫码加入">
 

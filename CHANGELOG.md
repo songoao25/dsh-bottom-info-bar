@@ -2,6 +2,20 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Fixed
+
+- **命名对齐姊妹插件 dsh-chatgpt-subscription**：`locale/{en,zh}.json` 补 `meta.title`（Bottom Info Bar / 底部信息栏），插件卡片与详情页不再回退成包名；`cordis.patch.yml` 的行 id 改为短键 `bottom-info-bar`（与模块名分离，Components 里不再重复同一串字）；README 双语 H1 统一为展示名；配置页标题改取展示名。
+- **「配置页整块消失」事故的回归修复**：client half 取 `ctx.locale` 与注册字典整段包 try/catch，locale 服务缺席、未授权（cordis 抛 `cannot get property "locale" without inject`）或绑定失效时按浏览器语言兜底、最后退英文。
+- **错误文案跨语言稳定**：宿主每个用户可见错误补稳定 `code`（28 个，如 `request.http` / `subscription.*` / `ledger.*`），字典键统一为 `error.<code>`；前端按 code 取中英文案，字典缺失才退回宿主原文（以后改宿主文案不会再让界面串语言）。
+- **文案审计**：删除空值与无引用的字典键，`credits` 中文改为「积分」，去掉「立即」与破折号式散文。
+- **视觉对齐**：配置区区块间距 24px → 宿主 `.X_2TxG_detailSection` 的 12px；列表首行去上内边距、末行去下内边距与边线；删除 5 条死 CSS 规则与 5 个无引用度量 token。
+
+### Added
+
+- `tests/test-locale-copy.mjs`：五条硬约束（locale meta 接线 / 字典键对称非空且两侧不同 / 宿主错误码中英齐备 / cordis 语义 ctx 上 client half 可跑通 / `cordis.patch.yml` 行 id ≠ 模块名）；`test-localization` 增补「英文界面不得出现中文」与 `meta.title` 断言。
+
 ## [1.14.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.4...v1.14.5) (2026-09-23)
 
 

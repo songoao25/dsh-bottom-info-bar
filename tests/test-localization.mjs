@@ -162,6 +162,8 @@ function text(tree) {
   return typeof tree === 'object' ? text(tree.props.children) : String(tree)
 }
 const rendered = nodes(render())
+// 英文界面（含配置页各状态）不允许出现任何中文：漏译一条就会在这里露出来。
+assert.doesNotMatch(text(render()), /\p{Script=Han}/u, 'the English configuration page must not fall back to Chinese')
 const descriptions = rendered.filter((node) => node.props.className === 'bib-set-rowDesc').map(text)
 assert.ok(descriptions.includes('Shows the account balance; a low balance appears in red.'))
 for (const description of descriptions) {
@@ -182,10 +184,10 @@ console.log('PASS  Failed field saves use English punctuation and preserve rollb
 
 // The same registered components and bound translator follow the LocaleFace.
 const bound = locale.bind('dsh-bottom-info-bar')
-assert.equal(navLabel(), 'Info Bar')
+assert.equal(navLabel(), 'Bottom Info Bar')
 locale.setLocale('zh')
 assert.equal(bound, locale.bind('dsh-bottom-info-bar'))
-assert.equal(navLabel(), '信息栏')
+assert.equal(navLabel(), '底部信息栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
 states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
@@ -275,7 +277,12 @@ console.log('PASS  Both dictionaries, interpolation, Settings, all three modes, 
   const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
   const en = JSON.parse(readFileSync(new URL('locale/en.json', root), 'utf8'))
   const zh = JSON.parse(readFileSync(new URL('locale/zh.json', root), 'utf8'))
+  assert.ok(en.meta?.title && zh.meta?.title, 'locale dictionaries carry meta.title (otherwise the plugin card shows the package name)')
   assert.ok(en.meta?.description && zh.meta?.description, 'locale dictionaries carry meta.description')
+  assert.notEqual(en.meta.title, zh.meta.title, 'the two titles must differ')
+  assert.notEqual(en.meta.title, pkg.name, 'the display name must not be the package name')
+  assert.equal(en.meta.title, dictionaries.en['meta.title'], 'locale/en.json must match the client dictionary')
+  assert.equal(zh.meta.title, dictionaries.zh['meta.title'], 'locale/zh.json must match the client dictionary')
   assert.notEqual(en.meta.description, zh.meta.description, 'the two descriptions must differ')
   assert.match(zh.meta.description, /\p{Script=Han}/u, 'zh description is Chinese')
   assert.doesNotMatch(en.meta.description, /\p{Script=Han}/u, 'en description is not Chinese')

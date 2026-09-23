@@ -53,6 +53,7 @@ const cases = [
   ['test-pricing-catalog（远程价目目录体系 + 官方价目校验）', ['tests/test-pricing-catalog.mjs'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.js', HOST], join(root), process.execPath],
   ['test-localization（zh/en rendering and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
+  ['test-locale-copy（locale meta.title / 字典对称 / 错误码文案 / cordis ctx / patch 行 id）', ['tests/test-locale-copy.mjs'], join(root), process.execPath],
   ['test-runtime-uninstall（插件管理页运行时装卸：卸载清空 / 停用重启不动 / 不留残留）', ['tests/test-runtime-uninstall.mjs'], join(root), process.execPath],
 ]
 
