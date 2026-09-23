@@ -18,6 +18,19 @@
 
 ## 2026-09-23
 
+### 信息栏「偶发两行间距异常扩大」：fr 轨道吸收自由空间（fix，PR #127）
+
+- 现象（用户 2026-09-23 报告 + 截图）：完整/简洁模式下，原生统计行与信息行之间**偶发**多出一段空白（文字仍贴在行首，间距明显大于一行）。
+- 根因：收合行 `.bi-density-extra` 用 `grid-template-rows: 1fr / 0fr` 做高度动画。**fr 轨道会吸收容器的自由空间**——只要祖先被拉伸/定高、或本节点被 flex 拉伸，那段自由空间就正好落在两行之间。真实浏览器实测（Chromium + WebKit 行为一致）：`.bi-root{display:flex;height:90px}` + `.bi-density-extra{flex:1}` → 空隙 **45px**；`.bi-root{display:grid;height:90px}` → **22.5px**；`.bi-density-extra{height:40px}` → **20px**。**行间间距原本不是「恒为 0」，而是「容器没有自由空间时才为 0」**——这就是「偶发」的来源（与内容、主题、会话都无关，只看宿主那一层的布局状态）。
+- 附带第二处不稳定：根节点 `width:100%` 在宿主 fit-content 的 dock（`.uV2eYG_root` 是 column flex + `align-items:center`，dock 只有 `max-width:100%`）里会被**按内容反推**——实测根节点 677.5px，而宿主内容宽度令牌是 742.4px。于是「文字变长 → 根节点变宽 → 另一行换行时机改变」，版式随内容抖动（偶发折行的另一半来源）。
+- 修法（把节奏变成「由构造保证」）：① 收合高度改成**确定值**——full = 原生行实测高度 `--bi-extra-h`（默认一行 20px），compact = `0px`，`ResizeObserver` 跟随折行/缩放（内容不裁切），彻底不用 fr；② 根节点改 column flex + `align-self:center`/`height:auto`/`gap:0` + `justify-content:flex-end`/`align-content:end`（flex 与 grid 各认一个），两行 `flex:none`——**万一祖先给出多余高度，多余部分只能落在第一行之上（栏外侧），不可能落在两行之间**；③ 宽度改用宿主内容宽度令牌（确定值）+ `max-width:100%`；④ 删掉只为 grid 收合存在的 `.bi-density-extra-inner`。
+- 防复发：新增 `tests/test-info-bar-rhythm.js`（37 条断言：无 fr 轨道 / 收合两端点都是确定长度 / 无行间 gap 与纵向 margin / 防拉伸护栏 / 实测高度写入 `--bi-extra-h` / hooks 顺序在早退之前），已注册进 `run-all.mjs`；**双向验证**：改回 fr + 给主行加 `margin-top` → 9 条 FAIL，还原后 sha256 一致、37 PASS。
+- 验证：全量 `node tests/run-all.mjs` 通过；真实 DSH（非模拟）6 档窗宽（1600/1440/1100/900/700/560）× 明暗主题 × 完整/简洁两态，行间 gap **恒为 0**、无横向溢出；注入敌意样式（祖先 `align-items:stretch` + 定高 + `flex-grow`）后 gap 仍为 0；强制原生行折行时收合高度自动 20→40px 且不裁切。
+- **可复用经验 1（布局类 bug 的取证方法）**：① 用 Playwright 连**真实** DSH（token 取 `~/.dsh/logs/dhs-web.log` 最后一条；侧栏必须先点 `[role="treeitem"]` 展开 workspace 再点会话行，会话行文本会带 `Running |` 前缀）；② 一律量 `getBoundingClientRect()`，不靠看截图猜；③ 把现场 DOM + 样式表原样抽出来做**离线对抗矩阵**（祖先拉伸 / 定高 / 改 display / zoom / 长内容各跑一遍），改动前后各跑一次即可证明「修没修好」；④ 「间距偶发」优先怀疑**会吸收自由空间的尺寸**（`fr`、`flex-grow`、百分比高度、`align-items:stretch`），而不是 margin/padding 的数字。
+- **可复用经验 2**：静态测试里写正则一定要**确认断言没有空转**（本次第一版把 `\s` 写成了 `s`，且规则枚举匹配到 0 条也「通过」）；凡是「遍历出来的集合」都要先断言集合规模（`barRules.length > 20`）。
+- **可复用经验 3**：`React.useLayoutEffect` 不是所有 React shim 都有——仓库静态测试的桩 React 就没有（`TypeError: React.useLayoutEffect is not a function`）。要用就先判类型退回 `useEffect`，别直接调。
+- 发布：修复已 squash 合入 main `9921eaa`（PR #127，CI + CodeQL 全绿）；Release Please 随后开出 release PR #128（1.14.6），等人工合并后才会打 tag 发 npm。
+
 ### v1.14.5 发布：插件元数据双语（locale 字典）
 
 - 内容（PR #124，squash 合并 `dfb80e1`）：新增 `plugin/locale/{en,zh}.json`（`{"meta":{"description":…}}`）+ `package.json` 的 `exports`/`files` 补 `./locale/*.json`，让插件页标题下与插件列表里的描述跟随宿主语言；`description` 改为英文，作为 npm 页面与 en 回退值。同时刷新两张英文 README 截图（原先在英文界面里显示中文描述）。
