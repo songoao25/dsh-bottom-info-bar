@@ -463,20 +463,31 @@ function installStyles() {
   style.dataset.plugin = 'dsh-bottom-info-bar';
   style.dataset.pluginCss = id;
   style.textContent = `
-      .bi-root { --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; text-align: center; max-width: var(--dsh-chat-content-width); box-sizing: border-box; width: 100%; padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0px; margin: 0 auto; display: block; font-size: 12px; line-height: 20px; color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+      /* 垂直节奏只有 --bi-line 一个来源：两行永远相邻，行间间距恒为 0（无 gap、无 margin）。
+         宽度取宿主的内容宽度令牌（确定值），而不是让 fit-content 的 dock 按内容反推宽度——
+         否则「文字变长 → 根节点变宽 → 另一行换行时机改变」会让版式随内容抖动。
+         本节点是 column flex + 两个 flex:none 的行：既不会被拉伸/压扁，也不会增长；
+         justify-content / align-content 双双收尾（flex 与 grid 各认一个），
+         保证「万一祖先强行给出多余高度」时，多余部分只会落在第一行之上（栏外侧），
+         绝不会落在两行之间——那正是用户看到的「间距异常扩大」。
+         align-self / height 是防拉伸护栏，让本节点高度只由内容决定。 */
+      .bi-root { --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; --bi-line: 20px; --bi-extra-h: var(--bi-line); text-align: center; box-sizing: border-box; width: var(--dsh-chat-content-width, 100%); max-width: 100%; padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0px; margin: 0 auto; display: flex; flex-direction: column; justify-content: flex-end; align-content: end; align-items: stretch; gap: 0; align-self: center; height: auto; font-size: 12px; line-height: var(--bi-line); color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
       .bi-root[data-density-saving="true"] { cursor: progress; }
       /* 以 DSH 实际外观属性切换，避免用户在 DSH 内手动选择外观时与系统偏好失配。 */
       body[data-ds-dark-theme] .bi-root { --bi-label-supporting: var(--dsw-alias-label-secondary, #cfd3d6); --bi-state-price-low: #86efac; --bi-state-alert: #ff6961; }
       /* 系统要求增强对比度时，浅色使用更深的同语义色；深色仅提高尚未达到 7:1 的警示红。 */
       @media (prefers-contrast: more) { body:not([data-ds-dark-theme]) .bi-root { --bi-state-price-low: #05603a; --bi-state-alert: #ad1717; } body[data-ds-dark-theme] .bi-root { --bi-state-alert: #ff7770; } }
       .bi-native-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
-      /* 密度切换只收合完整模式独有的原生统计行：160ms 足以表达层级变化，又不会拖慢连续操作。 */
-      .bi-density-extra { display: grid; grid-template-rows: 1fr; opacity: 1; transform: translateY(0); transition: grid-template-rows 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear, transform 160ms cubic-bezier(0.2, 0, 0, 1); }
-      .bi-density-extra-inner { min-height: 0; overflow: hidden; }
-      .bi-root[data-density="compact"] .bi-density-extra { grid-template-rows: 0fr; opacity: 0; transform: translateY(-2px); }
-      @media (prefers-reduced-motion: reduce) { .bi-density-extra { transition: none; transform: none; } }
+      /* 密度切换只收合完整模式独有的原生统计行：160ms 足以表达层级变化，又不会拖慢连续操作。
+         高度必须是「确定值」：full = 原生行实测高度（--bi-extra-h，默认一行），compact = 0px。
+         严禁改用 fr 轨道（grid-template-rows: 1fr/0fr）收合：fr 轨道会吸收容器的自由空间，
+         一旦祖先被拉伸或拿到确定高度，那段自由空间就正好落在两行之间变成凭空的空隙
+         （2026-09-23 用户报告的「偶发间距异常扩大」就是这一形态：文字仍贴在行首，下面多出一段空白）。 */
+      .bi-root > .bi-density-extra { flex: none; display: block; height: var(--bi-extra-h); overflow: hidden; opacity: 1; transition: height 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear; }
+      .bi-root[data-density="compact"] > .bi-density-extra { height: 0px; opacity: 0; }
+      @media (prefers-reduced-motion: reduce) { .bi-density-extra { transition: none; } }
       /* 整条信息栏始终作为一个居中的内容组；不会超过上方对话框的内容宽度。 */
-      .bi-row2 { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
+      .bi-root > .bi-row2 { flex: none; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
       .bi-native-row > span, .bi-row2 > span { white-space: nowrap; }
       /* 只有模型组可在窄宽度折行；服务商与模型详情仍成组，不会让圆点落在行尾。 */
       .bi-row2 > .bi-model-group { white-space: normal; }
@@ -2321,6 +2332,9 @@ module.exports = {
       // （DSH 各版本注入方式不同，任一路可用即拿到真实会话 ID，避免回退到上一会话的账）
       const propsRef = React.useRef(props);
       propsRef.current = props;
+      // 完整模式的原生统计行容器（.bi-density-extra）：它的 CSS 高度由 --bi-extra-h 决定，
+      // 而该变量在下面的 layout effect 里按「原生行自己的高度」实测写入。
+      const extraRowRef = React.useRef(null);
       const resolveSessionId = React.useCallback(function () {
         const p = propsRef.current;
         try {
@@ -3240,6 +3254,32 @@ module.exports = {
         else row1 = React.createElement('div', { id: 'dsh-bottom-info-bar-native', className: 'bi-native-row', title: nativeLine }, ...ngNodes);
       }
 
+      // 收合行的 CSS 高度 = --bi-extra-h，必须是「确定值且等于原生行自身高度」：
+      //  · 单行时就是 --bi-line（20px），与 CSS 默认值一致，首帧即正确；
+      //  · 窄宽度下原生行折成两行时同步放大，内容不被裁切；
+      //  · 绝不依赖 fr 轨道或容器自由空间，因此祖先被拉伸/定高时也不会在两行之间冒出空隙。
+      // ResizeObserver 跟随折行、字号与缩放变化；缺失该 API 的环境退回「只测一次」。
+      const row1Present = row1 !== null;
+      // 优先 layout effect（首帧前测量，折行时不会闪一下裁切）；React shim 只提供 useEffect
+      // 时退回它——功能等价，只是晚一帧对齐高度。
+      const measureEffect = typeof React.useLayoutEffect === 'function' ? React.useLayoutEffect : React.useEffect;
+      measureEffect(function () {
+        const host = extraRowRef.current;
+        const row = host && host.firstElementChild;
+        if (!host || !row) return undefined;
+        const sync = function () {
+          const measured = row.getBoundingClientRect().height;
+          // 高度取整到 0.01px：既保留分数缩放的精度，又避免无意义的亚像素抖动。
+          const next = measured > 0 ? Math.round(measured * 100) / 100 : 20;
+          host.style.setProperty('--bi-extra-h', next + 'px');
+        };
+        sync();
+        if (typeof ResizeObserver !== 'function') return undefined;
+        const observer = new ResizeObserver(sync);
+        observer.observe(row);
+        return function () { observer.disconnect(); };
+      }, [row1Present]);
+
       // D6 用户拍板：全部字段隐藏 = 底栏彻底移除——不渲染任何 DOM（无空行/占位高度/悬空分隔符），
       // density 点击因无 DOM 而天然无副作用、不报错。两条路径：①配置层面所有字段都被关闭；
       // ②渲染层面（数据条件导致）原生行/主行/圆环全空。
@@ -3247,8 +3287,7 @@ module.exports = {
         return null;
       }
 
-      const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra' },
-        React.createElement('div', { className: 'bi-density-extra-inner' }, row1));
+      const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra', ref: extraRowRef }, row1);
       const rootCls = 'bi-root';
       return React.createElement('div', {
         className: rootCls,
