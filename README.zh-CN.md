@@ -45,7 +45,7 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 安装就到这里：配好服务商的 API Key、重启，完事。重启后插件会出现在**插件**页并处于启用状态：
 
-![插件列表：bottom-info-bar 已安装并启用](assets/plugins-installed.webp)
+![插件列表：bottom-info-bar 已安装并启用](assets/plugins-installed.zh-CN.webp)
 
 <details>
 <summary>其它安装方式（以及该怎么选）</summary>
@@ -78,15 +78,15 @@ cd dsh-bottom-info-bar
 
 配置都在**插件页**（插件 → bottom-info-bar）里，不在 DSH 的全局设置里：字段开关、配色、自定义文字、账单数据都在这里，改完自动保存。
 
-![插件页：信息栏设置——搜索、两个字段分组、恢复默认、自定义文字与账单数据](assets/plugin-page.webp)
+![插件页：信息栏设置——搜索、两个字段分组、恢复默认、自定义文字与账单数据](assets/plugin-page.zh-CN.webp)
 
 <sub>**信息栏**里有搜索框、两个字段分组、**恢复默认**与**自定义文字**；在搜索框输入会自动展开两个分组。**账单数据**可导出 CSV/JSON 或清除记录。</sub>
 
-![原生信息展开：每个字段一个开关与一个颜色](assets/field-config.webp)
+![原生信息展开：每个字段一个开关与一个颜色](assets/field-config.zh-CN.webp)
 
 <sub>**原生信息**——DSH 原生统计栏本来就有的六个字段。每行都有自己的开关与颜色，默认配色跟随 DSH。</sub>
 
-![插件信息展开：信息栏自己新增的字段](assets/field-config-plugin.webp)
+![插件信息展开：信息栏自己新增的字段](assets/field-config-plugin.zh-CN.webp)
 
 <sub>**插件信息**——信息栏新增的全部内容：服务商与模型、订阅、花费、余额、高峰/空闲价格与额度。关掉哪个字段，信息栏就不再显示它。</sub>
 

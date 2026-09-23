@@ -18,13 +18,22 @@
 
 ## 2026-09-23
 
+### README 截图适配中英双语（纯 docs，不触发发版）
+
+- 约定（本次定型）：`assets/` 里**无语言后缀 = 英文界面**（`README.md` 用），**`.zh-CN.webp` = 中文界面**（`README.zh-CN.md` 用）。设置页三张 + 插件列表一张都已双语；`info-bar-full/compact.webp` 仍只有英文版。
+- 采集管线（可复用，只读用户设置）：Playwright（`/Users/songsong/code/brickindex/node_modules/playwright`）+ 本机跑着的 `dsh web`；鉴权 URL 取 `~/.dsh/logs/dhs-web.log` 里**最后一条** `?token=`（token 是机密，不打印、不落盘）。`viewport 1440x1800 / deviceScaleFactor 2 / colorScheme light`；进插件页：侧栏 `button.hHd-Xa_panelRow`（插件|Plugins）→ `button.X_2TxG_cardTitle`（hasText `dsh-bottom-info-bar`）。分组 = `.bib-set-group`（0=原生、1=插件），展开态 `.bib-set-group--expanded`，点标题用 `.bib-set-group-fallback-head`，行 = `.bib-set-row--field`；滚动容器 = `.bib-set-search` 最近的 `overflow-y: auto` 祖先。
+- **切语言的坑**：DSH 语言偏好存在 `~/.dsh/profiles/web/cordis.patch.yml` 的 `- id: locale` 块里，web 端热加载；**新浏览器不会覆盖已存偏好**（navigator 语言只在「无偏好」时生效），所以截英文图必须临时把 `preference: zh` 改成 `en`，截完立刻还原。本次用 `trap ... EXIT` + 备份 sha256 双保险，还原后 sha 一致、`<html lang>` 回 `zh-CN` 均已核验。
+- 四张图的裁剪（clip 由 DOM 实测得出，不写死坐标）：① 页首 = 从页面容器顶到「账单数据」卡顶 −16，宽 = 搜索框宽 +192；② 原生分组 = 分组矩形左右各 +20、上下各 +10；③ 插件分组 = 同 ②，但**只截前 12 行**（切在第 13 行上沿 −3）——该分组实际有 26 行，全截太长；④ 插件列表 = 「已安装/Installed」标题顶 −24 到最后一个插件行底部 +24。
+- 顺带修掉旧图失真：`plugins-installed.webp` 原图还是 4 个插件（含早已删除的 song-search / opencode-session），新图是当前 3 个。
+- 仍未双语：`info-bar-full/compact.webp` 只有英文版——信息栏只在**有使用数据的会话**里渲染（新会话/首页该 slot 根本不渲染，实测 DOM 里没有任何 `.bib-*` 节点），要截就得打开用户真实会话，故未动。
+
 ### README 设置页展示图换成 v1.14.4 新版（纯 docs，不触发发版）
 
 - 起因：用户给出 3 张 v1.14.4 设置页截图（中文界面）要求替换展示图。旧的 `assets/plugin-page.webp` / `field-config.webp` 仍是 v1.14.3 的「Visible content + Billing data」旧结构，与折叠分组改版已不符。
 - 做法：先用 `magick` 灰度阈值逐行/逐列扫描，按**卡片边框线的真实像素坐标**裁切（不靠肉眼估），三张图统一「卡片左右各留 40px」→ 1999px 宽、`-quality 90` webp：`plugin-page.webp`（页头 + 信息栏 + 搜索 + 两个折叠分组 + 恢复默认 + 自定义文字）、`field-config.webp`（原生信息展开）、新增 `field-config-plugin.webp`（插件信息展开）。文案同步改成新版结构。
 - 可复用坐标（源图宽 2302/2292/2250，卡片左右边界 194/2113 与 190/2109，三张同缩放）：s1 `-crop 1999x1420+154+0`、s2 `-crop 1999x890+154+200`、s3 `-crop 1999x1480+150+0`。
 - 文案坑：`已启用 N 项 / N found` 是 `.bib-set-count`（`clip: rect(0,0,0,0)`）——**只给读屏的隐藏状态文本，画面里看不到**，写截图说明时不要提「显示已开启数量」（旧 README 就是这么说错的）。
-- 已知取舍：新图是中文界面，而英文 `README.md` 其余截图是英文界面 → 英文 README 出现中英混排；若用户后续给英文界面截图，按同一坐标替换即可。
+- 已知取舍（同日已解决）：新图当时是中文界面，英文 `README.md` 因此中英混排 → 见上方「README 截图适配中英双语」：无后缀 = 英文界面、`.zh-CN.webp` = 中文界面。
 
 ### CodeQL「不完整 URL 子串判断」两条 High 告警修复（PR #120，纯 tests 改动不触发发版）
 
