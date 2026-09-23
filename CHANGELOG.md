@@ -2,6 +2,18 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.15.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.5...v1.15.0) (2026-09-23)
+
+
+### Features
+
+* **i18n:** 展示名/文案/视觉对齐姊妹插件，配置页不再因 locale 取值抛错而消失 [release-metadata-override] ([#130](https://github.com/songoao25/dsh-bottom-info-bar/issues/130)) ([668b029](https://github.com/songoao25/dsh-bottom-info-bar/commit/668b029a0fdd57c36a1436a98c79047bee7d8893))
+
+
+### Bug Fixes
+
+* 信息栏两行节奏改为确定高度，杜绝偶发间距异常扩大 ([#127](https://github.com/songoao25/dsh-bottom-info-bar/issues/127)) ([9921eaa](https://github.com/songoao25/dsh-bottom-info-bar/commit/9921eaa0d97f03334a75eafc7e32ecc92ed343ae))
+
 ## [Unreleased]
 
 ### Fixed
