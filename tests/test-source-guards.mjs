@@ -185,5 +185,41 @@ if (!baseRef) {
   }
 }
 
+// ---------- 守卫 5：禁止用「字符串包含」判断 URL 主机 ----------
+//
+// CodeQL js/incomplete-url-substring-sanitization（2026-09-23 两条 High 告警）：
+// `entry.url.includes('https://api.commandcode.ai/')` 只要求域名出现在 URL 的任意位置，
+// `https://evil.example/?u=https://api.commandcode.ai/` 同样会通过，等于没判断。
+// 判断请求目标必须解析 URL 后精确比较协议 / 主机名（new URL(...).hostname / .origin）。
+const URL_HOST_SUBSTRING = /\.(?:includes|startsWith|endsWith|indexOf|lastIndexOf)\(\s*['"`]https?:\/\//
+const SELF_PATH = fileURLToPath(import.meta.url)
+const urlOffenders = []
+function scanUrlHostChecks(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = join(dir, entry.name)
+    if (entry.isDirectory()) { scanUrlHostChecks(abs); continue }
+    if (!/\.(?:js|mjs|cjs)$/.test(entry.name)) continue
+    if (abs === SELF_PATH) continue // 本文件：上面的模式定义本身写在这里
+    const lines = stripComments(readFileSync(abs, 'utf8')).split('\n')
+    lines.forEach((line, index) => {
+      if (URL_HOST_SUBSTRING.test(line)) {
+        urlOffenders.push(abs.slice(root.length + 1) + ':' + (index + 1) + '\n        ' + line.trim())
+      }
+    })
+  }
+}
+for (const dir of ['plugin/src', 'plugin/scripts', 'tests']) {
+  const abs = join(root, dir)
+  if (existsSync(abs)) scanUrlHostChecks(abs)
+}
+check(
+  '守卫 5：不存在「URL 字符串包含域名」式判断（CodeQL incomplete-url-substring-sanitization）',
+  urlOffenders.length === 0,
+  urlOffenders.length === 0 ? undefined
+    : urlOffenders.join('\n      ') +
+      "\n      修法：不要写 url.includes('https://host/')，改为 new URL(url) 后比较 protocol / hostname / origin；" +
+      "\n      示例：const u = new URL(String(url)); u.protocol === 'https:' && u.hostname === 'api.commandcode.ai'"
+)
+
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
 process.exit(failures === 0 ? 0 : 1)
