@@ -18,6 +18,18 @@
 
 ## 2026-09-23
 
+### v1.15.0 发布：命名/文案/视觉对齐姊妹插件 + 配置页消失事故回归（feat，PR #130）
+
+- 内容（PR #130，squash `668b029`，14 个文件）：① **命名**——`locale/{en,zh}.json` 补 `meta.title`（Bottom Info Bar / 底部信息栏），插件卡片/详情页不再回退成包名；`cordis.patch.yml` 行 id 由包名改短键 `bottom-info-bar`（DSH 卡片会把「行 id / 模块名」各渲染一行、只在等于行标题时省略，id=name 就是重复两行）；README 双语 H1 统一为展示名；配置页标题改取展示名。② **i18n**——client half 取 `ctx.locale` 与注册字典**整段 try/catch**（cordis 对未 inject 的服务属性直接抛 cannot get property "locale" without inject，渲染期抛错会让整块配置区静默消失）；宿主 **28 个**用户可见错误补稳定 `code`，字典键统一 `error.<code>`，前端 `errorText()` 按 code 取中英文案、缺失才退回宿主原文；HTTP 状态与凭据名改走结构化 `params`。③ **文案审计**——删空键/死键、`credits` 中文改「积分」、去「立即」与破折号式散文、配置摘要与插件描述同源。④ **视觉**——区块间距 24px → 宿主 `.X_2TxG_detailSection` 的 12px、列表首行去上内边距/末行去下内边距与边线、删 5 条死 CSS + 5 个无引用 token。
+- 防复发：新增 `tests/test-locale-copy.mjs`（五条硬约束：字典键对称非空且两侧不同 / locale meta 与 package.json 接线 / 宿主每个 code 中英齐备 / **cordis 语义 Proxy ctx 上 client half 可跑通** / patch 行 id ≠ 模块名）；`test-localization` 增补「英文界面（含配置页各状态）不得出现中文」与 `meta.title` 断言；`test-field-config-client` 行节奏断言改 12px 并锁首末行规则。全量 34 个测试项全绿。
+- 验证：`readPluginMeta`（`@deepseek-ai/dsh-app-boot`，profile 的 node_modules parentURL）实读返回 `{title:{en,zh},description:{en,zh}}` 且 title ≠ 包名；真机（English 界面）设置页 gap=12px、首行 padding-top 0、末行 padding-bottom 0、零中文；信息栏完整态两行 gap=0、简洁态 extra=0、零中文。
+- 发布证据：release PR #128 合并（`5d39d0b`，**我自己的 token**，15:54:50Z）→ tag / GitHub Release `v1.15.0`（15:55:02Z）→ publish-npm run `35885050946` success（日志 `dsh-bottom-info-bar@1.15.0`）→ npm `dist-tags.latest = 1.15.0` 已轮询读回（约 3 分钟滞后）。
+- 收尾：本地 main 快进到 `5d39d0b` 并重跑 `node plugin/scripts/build.mjs` 重建 `lib/`；工作区干净、只剩 main 分支。
+- **可复用经验 1（发布链）**：owner auto-merge 用 GITHUB_TOKEN 合并**普通 PR**会抑制 push 事件 → release-please 不触发；本次 PR #130 就被抢在 `--disable-auto` 之前合掉，补救办法是 `gh workflow run release-please.yml --ref main`（该 workflow 有 `workflow_dispatch`）。**发布 PR 本身仍被 auto-merge 排除**（`enable-auto-merge` skipping），要用自己的 token `gh pr merge <n> --squash`。
+- **可复用经验 2（真读展示元信息）**：`readPluginMeta` 从 `@deepseek-ai/dsh-app-boot` 导出（plugin-manager 只 re-export 一部分，直接 import 会报 does not provide an export named）；用法 `readPluginMeta(pkgName, 'file://' + <profile>/node_modules/ + '/')`。本仓库 `plugin/lib/` 是 **.gitignore**（与姊妹仓库不同：CI 现场 `npm run build`，没有 `git diff --exit-code` 环节）。
+- **可复用经验 3（静态测试跨 realm 陷阱）**：`vm.runInNewContext` 造出来的对象与 `assert.deepStrictEqual` 比会因**原型来自不同 realm** 而误报不等；要在本 realm 用 `JSON.parse` 重建再比（本次 test-locale-copy 第一版就是这么假失败的）。
+- **可复用经验 4（改版式前先量真实 DOM）**：字段行的真实父链是 `.bib-set-group > .bib-set-collapse > .bib-set-collapse-inner > .bib-set-body > .bib-set-row`，中间那层 `.bib-set-body` 在源码里不显眼；按猜的选择器写 `:first-child` 会静默不生效（真机实测才发现 padding-top 仍是 12px）。
+
 ### 信息栏「偶发两行间距异常扩大」：fr 轨道吸收自由空间（fix，PR #127）
 
 - 现象（用户 2026-09-23 报告 + 截图）：完整/简洁模式下，原生统计行与信息行之间**偶发**多出一段空白（文字仍贴在行首，间距明显大于一行）。
@@ -29,7 +41,7 @@
 - **可复用经验 1（布局类 bug 的取证方法）**：① 用 Playwright 连**真实** DSH（token 取 `~/.dsh/logs/dhs-web.log` 最后一条；侧栏必须先点 `[role="treeitem"]` 展开 workspace 再点会话行，会话行文本会带 `Running |` 前缀）；② 一律量 `getBoundingClientRect()`，不靠看截图猜；③ 把现场 DOM + 样式表原样抽出来做**离线对抗矩阵**（祖先拉伸 / 定高 / 改 display / zoom / 长内容各跑一遍），改动前后各跑一次即可证明「修没修好」；④ 「间距偶发」优先怀疑**会吸收自由空间的尺寸**（`fr`、`flex-grow`、百分比高度、`align-items:stretch`），而不是 margin/padding 的数字。
 - **可复用经验 2**：静态测试里写正则一定要**确认断言没有空转**（本次第一版把 `\s` 写成了 `s`，且规则枚举匹配到 0 条也「通过」）；凡是「遍历出来的集合」都要先断言集合规模（`barRules.length > 20`）。
 - **可复用经验 3**：`React.useLayoutEffect` 不是所有 React shim 都有——仓库静态测试的桩 React 就没有（`TypeError: React.useLayoutEffect is not a function`）。要用就先判类型退回 `useEffect`，别直接调。
-- 发布：修复已 squash 合入 main `9921eaa`（PR #127，CI + CodeQL 全绿）；Release Please 随后开出 release PR #128（1.14.6），等人工合并后才会打 tag 发 npm。
+- 发布：修复已 squash 合入 main `9921eaa`（PR #127，CI + CodeQL 全绿）；该修复最终随 **v1.15.0** 一起发布（Release Please 起初开的是 1.14.6，feat 提交合入后升为 1.15.0；见上方 v1.15.0 复盘）。
 
 ### v1.14.5 发布：插件元数据双语（locale 字典）
 
