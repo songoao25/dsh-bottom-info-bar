@@ -31,6 +31,7 @@ const cases = [
   ['test-realtime-session-model（会话级实时模型同步）', ['tests/test-realtime-session-model.js'], join(root), process.execPath],
   ['test-display-name（host.js）', ['tests/test-display-name.js'], join(root), process.execPath],
   ['test-density-toggle（host.js + client-bundle.js）', ['tests/test-density-toggle.js'], join(root), process.execPath],
+  ['test-info-bar-rhythm（两行节奏：确定高度收合 / 无 fr 轨道 / 无行间空隙）', ['tests/test-info-bar-rhythm.js'], join(root), process.execPath],
   ['test-spend-accounting（host.js）', ['tests/test-spend-accounting.js'], join(root), process.execPath],
   ['test-weekend-pricing（host.js 周末峰谷规则）', ['tests/test-weekend-pricing.mjs'], join(root), process.execPath],
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.js'], join(root), process.execPath],
