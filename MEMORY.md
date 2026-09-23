@@ -18,6 +18,15 @@
 
 ## 2026-09-23
 
+### 插件描述不随语言切换：改用 DSH 的包级语言字典（fix）
+
+- 现象：宿主界面切英文后，插件页标题下与插件列表里的描述仍是中文。根因：那段文字来自 `plugin/package.json` 的 `description`，与插件自己的 `src/locales.js`（只管设置页/信息栏文案）无关。
+- DSH 的正确机制（0.1.7-alpha.1 实测）：包根 `locale/<lang>.json`，内容形如 `{"meta":{"title":"…","description":"…"}}`；`locale/en.json` 是**发现入口**（不存在就整个跳过），随后读取同目录全部 `*.json`；`readPluginMeta()` 生成 `{en: package.json 回退值, …各语言}`，客户端 `resolveText()` 按 `fallbackChain(active)` 取（内置语言 id 就是 `zh`/`en`，`<html lang>` 才是 zh-CN；zh 的链是 [zh, en]）。
+- **三个契约缺一个就静默失效**（DSH 把 `ERR_PACKAGE_PATH_NOT_EXPORTED` 当作「没有字典」，直接回退 package.json 描述、不报错）：① `locale/en.json` 必须存在；② `exports` 必须导出 `"./locale/*.json"`；③ `files` 必须含 `"locale/*.json"`（否则 npm 包里没有）。三条已写进 `tests/test-localization.mjs`，并做过反向验证（去掉任一条立即报错）。
+- **必须重启才生效**：改完 manifest 后，**已在运行的 DSH 进程解析不到新导出的子路径**（长跑进程内的解析结果是旧的）。验证办法：新建隔离 home（`DSH_HOME=/tmp/dsh-verify`，profile 用 `cp` + `node_modules` 软链），另起一个端口（3099）跑第二个实例，实测两种语言下列表行与插件页描述都正确；用完 kill 进程 + 删目录，全程不碰用户正在跑的 3080 实例与其语言偏好。
+- 语言偏好现状：用户已把 DSH 语言切成 `en`（`~/.dsh/profiles/web/cordis.patch.yml` 的 `- id: locale`）——别再假设它是 zh；临时改语言截图必须备份 + `trap` 还原 + sha256 核对。
+- 顺带：同 profile 里 `dsh-chatgpt-subscription` 等插件的描述仍只有中文（各自仓库的 package.json），要双语得在各自仓库加 `locale/*.json`。
+
 ### README 截图适配中英双语（纯 docs，不触发发版）
 
 - 约定（本次定型）：`assets/` 里**无语言后缀 = 英文界面**（`README.md` 用），**`.zh-CN.webp` = 中文界面**（`README.zh-CN.md` 用）。设置页三张 + 插件列表一张都已双语；`info-bar-full/compact.webp` 仍只有英文版。
