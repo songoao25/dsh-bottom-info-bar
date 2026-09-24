@@ -18,6 +18,18 @@
 
 ---
 
+## 2026-09-25（v1.16.4）
+
+### 桌面端请求认证与账本所有权（fix，PR #148）
+
+- 根因：底部栏在每个会写入设置或触发余额/订阅刷新请求的 RPC 上，自己复刻了 Web 浏览器的 `Origin`/`Host` 同源校验。DeepSeek Harness Desktop 已在壳层验证 `dsh-app://app`，随后转发到 Host 时会有意移除这些 renderer headers、注入私有认证 cookie；插件因此把合法桌面端请求误判为跨域。表象是完整/简洁模式只播放了本地动画又回退，以及 OpenCode Go 能正常对话但额度一直显示“刷新失败”。
+- 修法：所有 RPC 改走宿主 `connection.requestRejection(req)` 这一条共享认证边界；会写入或触发网络的路由仍严格要求 POST。真实桌面端验收：重启后显示插件版本 1.16.4，OpenCode Go 5 小时/周/月额度正常返回；点击信息栏由完整模式切为简洁模式，辅助功能树的 toggle 状态由 on 变 off。
+- 数据边界：删除“卸载时扫描 profile 并递归清空 `~/.dsh/dsh-bottom-info-bar/`”的逻辑。账本与设置归用户所有，升级、停用、移除与重启只会冲刷未落盘记录；唯一删除入口是插件设置页的 `clearUsageRecords` 明确操作。运行时卸载测试改为覆盖“真卸载后账本仍可在重新安装时继续使用”。
+- 验证与发布：本地 `node tests/run-all.mjs` 全绿；PR #148 CI / CodeQL 绿并合入，release PR #149 合并，GitHub Release `v1.16.4` 与 npm publish workflow 成功。npm registry 读回可能存在短暂传播延迟，不能把 publish workflow success 当作 registry 已更新的证据。
+- 可复用经验：桌面壳若承担认证和 header 正规化，插件不得自行根据浏览器头二次鉴权；要调用宿主提供的 connection 边界。插件代码更新与用户数据删除必须是两条独立动作，自动更新绝不能以卸载作为实现手段。
+
+---
+
 ## 2026-09-24（v1.16.3）
 
 ### v1.16.3：上下文圆环不再单独折行 + 面板不再透字；README 整套换图（fix，PR #145）
