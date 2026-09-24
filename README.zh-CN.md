@@ -105,7 +105,7 @@ cd dsh-bottom-info-bar
 
 **自定义文字** —— 最多 64 个字符，显示在信息栏中。
 
-![信息栏中的自定义文字](assets/bar-custom.zh-CN.webp)
+![自定义文字设置](assets/settings-custom.zh-CN.webp)
 
 **账单数据** —— 导出 CSV / JSON，或确认后清除记录。设置与登录信息不受影响。
 

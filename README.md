@@ -105,7 +105,7 @@ Everything lives on the plugin page — **Plugins → bottom-info-bar**. Changes
 
 **Custom text** — up to 64 characters, shown in the bar.
 
-![Custom text in the bar](assets/bar-custom.webp)
+![Custom text settings](assets/settings-custom.webp)
 
 **Billing data** — export the ledger as CSV or JSON, or clear it after confirmation. Settings and sign-in information stay untouched.
 
