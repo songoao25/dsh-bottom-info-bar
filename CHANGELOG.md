@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.3...v1.16.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* support desktop plugin requests and preserve ledger ([#148](https://github.com/songoao25/dsh-bottom-info-bar/issues/148)) ([64252ce](https://github.com/songoao25/dsh-bottom-info-bar/commit/64252cea59668db8f422bf901f390f7093dd1587))
+
 ## [1.16.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.2...v1.16.3) (2026-09-24)
 
 
