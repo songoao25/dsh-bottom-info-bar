@@ -45,7 +45,7 @@ Then **restart `dsh web`** — plugins are composed when the host process starts
 
 That is the whole setup: configure your provider's API key, restart, done. The plugin then shows up under **Plugins**, enabled:
 
-![Plugins list with bottom-info-bar installed and enabled](assets/plugins-installed.webp)
+![Plugins list with bottom-info-bar installed and enabled](assets/plugins-installed.en.webp)
 
 <details>
 <summary>Other ways to install (and which one to pick)</summary>
