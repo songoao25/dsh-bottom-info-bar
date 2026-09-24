@@ -22,6 +22,7 @@
 - `cordis.patch.yml` — 插件组合补丁（挂载行；行 `name` 必须是包名）
 - `src/` — 源码；`lib/` — 构建产物（**已入库**，见下）
 - `locale/` — 包级语言字典（`en.json` 是发现入口）
+- `plugin/` — **旧安装路径兼容层**：4 个软链（package.json / lib / locale / cordis.patch.yml）指向仓库根同名项，让 1.15.0 及更早用本地代码安装（`link: <仓库>/plugin`）的用户不必重装。**别删**（`tests/test-release-version.mjs` 会拦），也别往里加文件
 - `install.sh` / `uninstall.sh` — 一键安装/卸载（默认装到 web profile，可用 --profile 覆盖）
 - `tests/` — 静态/烟雾测试与多个单测（dual-mode、display-name、density-toggle、spend-accounting、static-client）
 - `docs/` — 设计、审计、QA、运维与调研文档（INSTALL、TECH-DESIGN、PRD、RELEASE、PRICING-SOURCES 等）
