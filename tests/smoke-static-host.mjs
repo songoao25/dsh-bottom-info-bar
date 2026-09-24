@@ -52,6 +52,7 @@ function makeStub(providerId, model, options) {
     inject(services, cb) {
       const webCtx = {
         effect(fn) { const dispose = fn(); return () => { if (typeof dispose === 'function') dispose() } },
+        connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' || req.headers.origin === 'https://evil.example' ? 403 : undefined } },
         webServer: {
           register(route) { captured.route = route; return () => {} },
         },

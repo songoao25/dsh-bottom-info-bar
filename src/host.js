@@ -1,6 +1,6 @@
 // Bottom Info Bar（底部信息栏插件）— host half（静态 bundle 形态）
 // 业务：余额真实 API / 峰谷定价 / llm/stream 记账 / 会话聚合 / 显示名识别 / 订阅额度显示
-// RPC：webServer HTTP 路由（GET/POST /_dsh/dsh-bottom-info-bar/<method>，JSON 进出，同源防护）
+// RPC：webServer HTTP 路由（GET/POST /_dsh/dsh-bottom-info-bar/<method>，JSON 进出，宿主认证边界）
 // 依赖：inject ['credentials', 'timer']；可选服务 webServer / sessionController（按能力读取）
 // 记账持久化：追加账本 + 可恢复快照落盘 ~/.dsh/dsh-bottom-info-bar/（可用环境变量
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
@@ -16,9 +16,6 @@ import * as hostLocale from './host-locale.js'
 const t = hostLocale.createHostTranslator()
 
 const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
-// DSH_BOTTOM_INFO_BAR_PROFILE_ROOT 仅供测试隔离（指向临时 profiles 目录），运行期不设置。
-const PROFILE_ROOT = process.env.DSH_BOTTOM_INFO_BAR_PROFILE_ROOT || join(homedir(), '.dsh', 'profiles')
-const BUNDLE_NAME = 'dsh-bottom-info-bar'
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
 const DATA_BACKUP_FILE = DATA_FILE + '.bak'
 const DATA_TEMP_FILE = DATA_FILE + '.tmp'
@@ -1629,64 +1626,10 @@ export const __settingsInternals = {
   DEFAULT_TIME_ZONES: DEFAULT_TIME_ZONES,
 }
 
-// ---------- 运行时卸载：判定「真卸载」还是「只是停用 / 重启」 ----------
-// 新版插件管理（DSH 0.1.6-alpha.2）支持运行时卸载 bundle。插件行被 dispose 时，宿主自己
-// 分不清三件事：①用户真的把插件卸掉了 ②只是在插件页把这一排停用 ③DSH 正常重启。
-// 判据：真卸载时，profile 的 package.json 里已经不再有本 bundle（`dsh.profile.bundles`
-// 与 dependencies 都查）；停用只改 cordis.patch.yml 的 disabled，重启什么都不改，两者
-// 都仍能在 package.json 里查到本 bundle。
-// 安全底线：任何读取失败 / 无法判定的情况一律返回 true（按「还在装」处理，绝不删数据）。
-function bundleStillReferenced() {
-  try {
-    // 保险①：数据与 profile 必须同属一个 DSH home。数据目录被指到别处（自定义部署）时，
-    // profile 未必在默认位置，两者对不上就判定不了——一律按「还在装」处理。
-    if (dirname(DATA_DIR) !== dirname(PROFILE_ROOT)) return true
-    if (!existsSync(PROFILE_ROOT)) return true
-    let profileDirs = 0
-    let readableManifests = 0
-    const entries = readdirSync(PROFILE_ROOT, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      profileDirs += 1
-      const manifestPath = join(PROFILE_ROOT, entry.name, 'package.json')
-      if (!existsSync(manifestPath)) continue
-      let parsed = null
-      try {
-        parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
-      } catch (err) {
-        continue
-      }
-      if (!parsed || typeof parsed !== 'object') continue
-      readableManifests += 1
-      const profile = parsed.dsh && parsed.dsh.profile
-      const bundles = profile && Array.isArray(profile.bundles) ? profile.bundles : []
-      if (bundles.indexOf(BUNDLE_NAME) !== -1) return true
-      for (const key of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-        const deps = parsed[key]
-        if (deps && typeof deps === 'object' && Object.hasOwn(deps, BUNDLE_NAME)) return true
-      }
-    }
-    // 保险②：一个 profile 目录都没有 / 一份 manifest 都没读出来 = 根本没判定成功，
-    // 按「还在装」处理，绝不删数据。
-    if (profileDirs === 0 || readableManifests === 0) return true
-  } catch (err) {
-    return true
-  }
-  return false
-}
-
-// 真卸载：连目录一起清掉（账本 + 设置 + 备份），不留残留。
-// 只在 bundleStillReferenced() 为 false 时调用；调用点必须已经确认「不再被任何 profile 引用」。
-function clearPluginData() {
-  try {
-    if (!existsSync(DATA_DIR)) return true
-    rmSync(DATA_DIR, { recursive: true, force: true })
-    return true
-  } catch (err) {
-    console.warn('[dsh-bottom-info-bar] 卸载清理数据目录失败：' + String((err && err.message) || err))
-    return false
-  }
-}
+// ---------- 卸载数据边界 ----------
+// 账本和设置属于用户，不属于可替换的插件代码。插件更新、停用、移除或宿主重启时都只冲刷
+// 尚未落盘的记录；真正清除只能由设置页的 clearUsageRecords 明确发起。这样桌面端在更新
+// bundle 时无需以卸载为代价，也不会丢失历史账单。
 
 export default {
   inject: ['credentials', 'timer'],
@@ -4812,28 +4755,13 @@ export default {
         return settingsPayload(persistError);
       },
     };
-    // 写操作与会触发宿主网络请求的方法一律要求同源（防跨站驱动宿主写文件/发请求）。
-    // 余额快照即使不带 force 也可能命中刷新路径，因此整个端点统一保护。
+    // 会写入或触发网络请求的方法必须使用 POST；浏览器和桌面端的认证/防重绑定由宿主
+    // connection 服务统一完成，插件不能根据 Origin/Host 自行判断。
     const MUTATING = { getBalanceSnapshot: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true };
     function invalidArgument(message) {
       const err = new Error(message);
       err.status = 400;
       return err;
-    }
-
-    function sameOrigin(req) {
-      const fetchSite = req.headers['sec-fetch-site'];
-      if (fetchSite === 'cross-site') return false;
-      const origin = req.headers.origin;
-      if (origin === undefined) return fetchSite === 'same-origin' || fetchSite === 'same-site';
-      const host = req.headers.host;
-      if (host === undefined) return false;
-      try {
-        const parsed = new URL(origin);
-        return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.host === host;
-      } catch {
-        return false;
-      }
     }
 
     function readBody(req, maxBytes) {
@@ -4866,7 +4794,11 @@ export default {
       res.end(body);
     }
 
-    ctx.inject(['webServer'], function (webCtx) {
+    // Desktop validates dsh-app://app before forwarding, then deliberately removes renderer
+    // Origin/Host headers and adds its private Host cookie. requestRejection() is the shared
+    // boundary for both Web and Desktop; reproducing the browser-header check here rejects
+    // legitimate desktop requests.
+    ctx.inject(['connection', 'webServer'], function (webCtx) {
       webCtx.effect(function () {
         const dispose = webCtx.webServer.register({
           kind: 'prefix',
@@ -4874,6 +4806,11 @@ export default {
           handler: async function (req, res) {
             let method = '';
             try {
+              const rejection = webCtx.connection.requestRejection(req);
+              if (rejection !== undefined) {
+                respond(res, rejection, { error: rejection === 401 ? 'authentication required' : 'request rejected' });
+                return;
+              }
               const url = new URL(req.url || '/', 'http://localhost');
               const path = url.pathname;
               if (!path.startsWith(ROUTE_PREFIX + '/')) {
@@ -4886,8 +4823,8 @@ export default {
                 respond(res, 404, { error: 'unknown method: ' + method });
                 return;
               }
-              if (Object.hasOwn(MUTATING, method) && !sameOrigin(req)) {
-                respond(res, 403, { error: 'cross-origin request rejected' });
+              if (Object.hasOwn(MUTATING, method) && req.method !== 'POST') {
+                respond(res, 405, { error: 'mutating methods require POST' });
                 return;
               }
               let args = {};
@@ -4931,14 +4868,8 @@ export default {
     ctx.interval(refreshActiveSubscriptions, 60000);
     ctx.interval(refreshActiveBilling, 60000); // v1.7
 
-    // 卸载时冲刷未落盘的记账记录
+    // 生命周期结束时只冲刷未落盘的账本；数据的删除必须经过设置页的显式操作。
     return function () {
-      // 真卸载（profile 的 package.json 里已无本 bundle）：连数据目录一起清空，不留残留。
-      // 只是停用那一排、或 DSH 正常重启时，走下面的冲刷分支，一个字都不删。
-      if (!bundleStillReferenced()) {
-        clearPluginData();
-        return;
-      }
       if (dirty || summariesDirty) flushSave();
     };
   },

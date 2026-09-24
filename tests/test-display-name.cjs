@@ -89,6 +89,7 @@ function makeStubCtx(opts) {
     inject(services, cb) {
       const webCtx = {
         effect(fn) { const dispose = fn(); return () => { if (typeof dispose === 'function') dispose(); }; },
+        connection: { requestRejection() { return undefined; } },
         webServer: { register(r) { route = r; return () => {}; } },
       };
       cb(webCtx);

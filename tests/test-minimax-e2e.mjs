@@ -216,6 +216,7 @@ function makeCtx(credentials) {
       if (deps.indexOf('webServer') >= 0) {
         const webCtx = {
           effect(fn) { const dispose = fn(); return () => { if (typeof dispose === 'function') dispose() } },
+          connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } },
           webServer: { register(route) { captured.route = route; return () => {} } },
         }
         ret = cb(webCtx)

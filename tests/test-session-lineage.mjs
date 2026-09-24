@@ -47,7 +47,7 @@ const ctx = {
   timeout() { return () => {} },
   on() { return () => {} },
   inject(services, callback) {
-    callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, webServer: { register(route) { captured.route = route; return () => {} } } })
+    callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } }, webServer: { register(route) { captured.route = route; return () => {} } } })
     return () => {}
   },
 }
