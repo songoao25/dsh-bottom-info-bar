@@ -72,6 +72,8 @@ cd dsh-bottom-info-bar
 ./install.sh
 ```
 
+If you installed from a checkout before the package moved to the repository root, your profile points at `<repo>/plugin`. That path still resolves — the repository keeps `plugin/` as symlinks to the package root — so nothing needs reinstalling. If it does not resolve (a ZIP download, for instance, delivers those symlinks as plain files), remove the plugin and install again with one of the commands above.
+
 Then **restart `dsh web`** — plugins are composed when the host starts, so a page refresh is not enough. The plugin shows up in the Plugins list, enabled:
 
 ![Plugins list with Bottom Info Bar installed](assets/plugins-list.webp)

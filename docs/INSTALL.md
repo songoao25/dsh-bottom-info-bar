@@ -47,7 +47,7 @@ node scripts/build.mjs
 dsh plugin --profile web add /path/to/dsh-bottom-info-bar
 ```
 
-> 1.15.0 及更早的版本里，插件包放在仓库的 `plugin/` 子目录，安装路径末尾要写 `/plugin`。该目录已不存在 —— 如果你当初是这样装的，先 `dsh plugin --profile web remove dsh-bottom-info-bar`，再用上面的命令装一次。
+> 1.15.0 及更早的版本里，插件包放在仓库的 `plugin/` 子目录，安装路径末尾写的是 `/plugin`。仓库里保留了 `plugin/` 软链指向仓库根，所以旧路径依然可用、不必重装；万一不生效（例如用 ZIP 下载仓库时软链会变成普通文件），先 `dsh plugin --profile web remove dsh-bottom-info-bar`，再用上面的命令装一次。
 
 ### 安装原理
 
