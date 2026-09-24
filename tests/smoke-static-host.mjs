@@ -17,7 +17,7 @@ process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH = join(tmpData, 'no-command-co
 delete process.env.COMMAND_CODE_API_KEY
 delete process.env.CMD_API_KEY
 
-const plugin = (await import('../plugin/lib/index.js')).default
+const plugin = (await import('../lib/index.js')).default
 
 let failures = 0
 function check(name, cond, detail) {

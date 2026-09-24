@@ -2,7 +2,7 @@
 // 直接提取正式源码的纯函数，覆盖生效边界、周末及跨周倒计时。
 import { readFileSync } from 'node:fs'
 
-const source = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
 const block = source.match(/const WEEKEND_OFFPEAK_EFFECTIVE_AT = [\s\S]*?(?=\n    \/\/ ---------- 当前模型识别 ----------)/)
 if (!block) throw new Error('未找到周末峰谷判定逻辑')
 const { currentPeriod, nextPeriodLabel } = eval(`(() => {${block[0]}\nreturn { currentPeriod, nextPeriodLabel }; })()`)

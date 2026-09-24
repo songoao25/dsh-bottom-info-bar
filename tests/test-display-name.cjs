@@ -18,8 +18,8 @@ process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = path.join(tmpRoot, 'data');
 process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = path.join(tmpRoot, 'no-auth.json');
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = path.join(tmpRoot, 'no-opencode.json');
 
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
-const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
+const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {
@@ -34,7 +34,7 @@ function ok(label, cond, detail) {
 
 // ---------- 桩环境（llm 可注入/可缺省；currentSelection 可动态改选） ----------
 function extractFn(name) {
-  const src = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
+  const src = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
   const start = src.indexOf('function ' + name);
   if (start < 0) throw new Error('未找到 function ' + name);
   let depth = 0, i = start, inStr = null;
@@ -135,7 +135,7 @@ function selectionBody(env) {
 
 (async function main() {
   let plugin = null;
-  plugin = (await import(pathToFileURL(path.join(__dirname, '..', 'plugin', 'lib', 'index.js')).href)).default;
+  plugin = (await import(pathToFileURL(path.join(__dirname, '..', 'lib', 'index.js')).href)).default;
 
   // ================= ① DSH 目录名优先（llm 桩提供目录） =================
   {

@@ -1,4 +1,4 @@
-// 静态 client（plugin/src/client-bundle.js）显示逻辑审计：
+// 静态 client（src/client-bundle.js）显示逻辑审计：
 // ① 本会话花费始终显示——不再以 currentSession.tokens > 0 为门槛（新会话/对话刚开始显示 ¥0.000，
 //    hover 仍可查看持久化的 今天/近一月/全部）；
 // ② 原生统计行不再以 steps > 0 为门槛——完整模式下对话刚开始即显示 "0 轮 · 0 步"；
@@ -7,7 +7,7 @@
 // 用法：node tests/test-static-client.js
 const fs = require('fs');
 
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {

@@ -14,9 +14,21 @@
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-**推荐它的实际原因**：只有这种安装方式，内置的版本更新提醒才能给你一条可直接使用的更新命令。方式二、方式三都会产生 `link:` 安装，更新走 `git pull`（见下方「更新版本」）。
+装的是已发布的版本，更新提醒给出的也是这条命令。
 
-### 方式二：一键脚本（产生 `link:` 安装）
+### 方式二：在 DSH 插件页里添加
+
+**插件 → 添加插件**，「包名或地址」填 `dsh-bottom-info-bar`。
+
+那一栏也可以直接填仓库地址 —— 包就在仓库根目录，所以填地址装的是默认分支的最新代码：
+
+```
+https://github.com/songoao25/dsh-bottom-info-bar
+```
+
+这种方式不跑构建（`lib/` 已入库），也不需要额外授权。更新就是再执行一次同样的命令。
+
+### 方式三：一键脚本（产生 `link:` 安装）
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
@@ -26,21 +38,23 @@ cd dsh-bottom-info-bar
 ./install.sh --profile <profile名>
 ```
 
-### 方式三：从本地代码安装（产生 `link:` 安装）
+### 方式四：从本地代码安装（产生 `link:` 安装）
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
-cd dsh-bottom-info-bar/plugin && node scripts/build.mjs
-cd ..
-dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
+cd dsh-bottom-info-bar
+node scripts/build.mjs
+dsh plugin --profile web add /path/to/dsh-bottom-info-bar
 ```
+
+> 1.15.0 及更早的版本里，插件包放在仓库的 `plugin/` 子目录，安装路径末尾要写 `/plugin`。该目录已不存在 —— 如果你当初是这样装的，先 `dsh plugin --profile web remove dsh-bottom-info-bar`，再用上面的命令装一次。
 
 ### 安装原理
 
 `dsh plugin add` 会：
 
 1. 用 pnpm 把插件包安装到 profile 目录（`~/.dsh/profiles/<name>/`）；
-2. 检测到包声明了 `dsh.bundle`（`plugin/cordis.patch.yml`），自动把包名加入 profile 的 bundle 层列表（`dsh.profile.bundles`）；
+2. 检测到包声明了 `dsh.bundle`（仓库根的 `cordis.patch.yml`），自动把包名加入 profile 的 bundle 层列表（`dsh.profile.bundles`）；
 3. 下次启动 `dsh` 时，插件随 profile 自动加载——host 注册 HTTP 路由、client 注入页面信息栏。
 
 **注意：安装后需要重启 `dsh web`（或重启 DSH）才会生效**——宿主进程在启动时组合插件。刷新页面不足以加载 host 端。
@@ -79,16 +93,23 @@ dsh plugin --profile web add dsh-bottom-info-bar@latest
 # 重启 dsh web
 ```
 
-如果最初使用本地代码 / symlink 安装（方式二、方式三），要**三步一起做**：拉代码 → 切到默认分支 → 重新构建：
+如果最初填的是 GitHub 地址（方式二），更新就是再执行一次同样的命令：
+
+```bash
+dsh plugin --profile web add https://github.com/songoao25/dsh-bottom-info-bar
+# 重启 dsh web
+```
+
+如果最初使用本地代码 / symlink 安装（方式三、方式四），要**三步一起做**：拉代码 → 切到默认分支 → 重新构建：
 
 ```bash
 cd dsh-bottom-info-bar
 git fetch origin && git checkout main && git merge --ff-only origin/main
-node plugin/scripts/build.mjs
+node scripts/build.mjs
 # 重启 dsh web
 ```
 
-- **别只用 `git pull`**：分支没推到远端时它会直接失败（`no such ref was fetched`）——开发分支就是这种状态；而且 `link:` 安装加载的是构建产物 `plugin/lib/`（不入 git），只拉代码不重建，重启后跑的还是旧代码。
+- **别只用 `git pull`**：分支没推到远端时它会直接失败（`no such ref was fetched`）——开发分支就是这种状态；而且 `link:` 安装加载的是构建产物 `lib/`，本地副本可能改过 `src/` 却没重建，只拉代码不重建，重启后跑的还是旧代码。
 - 停在功能分支上时，更新前要先切回默认分支：信息栏加载的就是这份副本，快进一个功能分支不会改变任何东西。
 - 三条命令都是 `--ff-only` / 非破坏性的：工作区不干净或分支上有本地提交时，git 会拒绝执行，而不是覆盖你的改动。
 
@@ -101,7 +122,7 @@ node plugin/scripts/build.mjs
 信息栏出现红色的「新版本提醒」标签时，**直接点击该标签**即可把更新命令复制到剪贴板；粘到终端执行，然后重启 `dsh web`。
 
 - 标签悬浮提示里同时给出了另一条路径：把更新交给有本机终端权限的 Agent 处理。
-- 复制出来的命令与你的安装方式匹配（npm 装 → `dsh plugin … add …@latest`；`link:` 装 → `git fetch` + 切默认分支 + `--ff-only` 快进 + 重建 `lib`），所以**不存在"用错命令把本地代码顶掉"的风险**。
+- 复制出来的命令与你的安装方式匹配（npm 装 → `dsh plugin … add …@latest`；GitHub 地址装 → 同一条地址重装；`link:` 装 → `git fetch` + 切默认分支 + `--ff-only` 快进 + 重建 `lib`），所以**不存在"用错命令把本地代码顶掉"的风险**。
 - **插件不会自动更新自己**：它只负责提示，并准备好命令；机器上的一切改动都由你运行命令后才发生。
 
 如果想让 Agent 代劳，可以把下面这句话发给它：
@@ -127,6 +148,8 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 |---|---|
 | 信息栏不出现 | ① 没重启：需重启 `dsh web`；② 装错 profile：确认启动用的 profile 与安装目标一致；③ `dsh --profile web --dump-config` 里没有 dsh-bottom-info-bar：重新执行安装 |
 | 安装报 `pnpm not found` | 安装 pnpm：`npm i -g pnpm` 或 `corepack enable` |
-| 安装报 `dsh-bottom-info-bar` 找不到 | 检查插件路径正确（`install.sh` 位于仓库根，内部自动指向 `plugin/` 子目录） |
+| 安装报 `dsh-bottom-info-bar` 找不到 | 确认包名拼写；本地目录安装时路径要指向**仓库根**（包在仓库根，不是子目录） |
+| 插件页报「这个包没有声明组合包」（英文界面：declares no bundle） | 装到的是一个「仓库根不是包」的仓库——那是包移到仓库根之前的本仓库。插件页里改填包名 `dsh-bottom-info-bar`，或用包含该修复的版本上的仓库地址 |
+| 插件页提示「待批准的构建脚本」 | 装的是 1.15.0 及更早的仓库地址（旧清单带 `prepack`）。改用包名安装，或装包含修复的版本 |
 | 余额显示未配置/刷新失败 | 见 README「常见问题」 |
 | 想彻底回到原生状态 | 卸载 + 重启，系统统计栏自动恢复 |

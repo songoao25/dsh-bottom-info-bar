@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const pluginDir = join(root, 'plugin')
+const pluginDir = root
 const pkg = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'))
 const clientSource = readFileSync(join(pluginDir, 'src', 'client-bundle.js'), 'utf8')
 const localesSource = readFileSync(join(pluginDir, 'src', 'locales.js'), 'utf8')

@@ -2,7 +2,7 @@
 // 用法：node tests/test-commandcode-quota.js
 const fs = require('fs')
 
-const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8')
+const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8')
 
 function extractFn(name) {
   const start = hostSrc.indexOf('function ' + name)

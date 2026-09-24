@@ -13,9 +13,9 @@ const { readFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const root = join(__dirname, '..')
-const hostSrc = readFileSync(join(root, 'plugin', 'src', 'host.js'), 'utf8')
-const constantsSrc = readFileSync(join(root, 'plugin', 'src', 'constants.js'), 'utf8')
-const localeSrc = readFileSync(join(root, 'plugin', 'src', 'locales.js'), 'utf8')
+const hostSrc = readFileSync(join(root, 'src', 'host.js'), 'utf8')
+const constantsSrc = readFileSync(join(root, 'src', 'constants.js'), 'utf8')
+const localeSrc = readFileSync(join(root, 'src', 'locales.js'), 'utf8')
 
 // ---- 从正式源码抽出被测函数/常量（保证测的是真身，而不是复制品） ----
 function extractFn(name) {

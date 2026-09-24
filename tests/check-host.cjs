@@ -1,7 +1,7 @@
 // 静态一致性核查（护栏）：检查 host 源码中 被调用但未定义 的标识符 + RPC handler 完整性
-// 用法：node tests/check-host.js plugin/src/host.js
+// 用法：node tests/check-host.js src/host.js
 const fs = require('fs');
-const file = process.argv[2] || __dirname + '/../plugin/src/host.js';
+const file = process.argv[2] || __dirname + '/../src/host.js';
 const src = fs.readFileSync(file, 'utf8');
 
 // 1) 收集定义：function name(...)、const/let name = ...、函数参数

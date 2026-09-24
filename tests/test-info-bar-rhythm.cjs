@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'plugin', 'src', 'client-bundle.js'), 'utf8');
+const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'client-bundle.js'), 'utf8');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {

@@ -1,7 +1,7 @@
 // 版本检查与极简信息提醒静态回归
 const fs = require('fs')
-const host = fs.readFileSync('plugin/src/host.js', 'utf8')
-const client = fs.readFileSync('plugin/src/client-bundle.js', 'utf8')
+const host = fs.readFileSync('src/host.js', 'utf8')
+const client = fs.readFileSync('src/client-bundle.js', 'utf8')
 let pass = 0
 let fail = 0
 function check(name, actual, expected = true) {

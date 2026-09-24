@@ -46,11 +46,11 @@ function injectListOf(source) {
 }
 
 const SOURCE_FILES = [
-  'plugin/src/host.js',
-  'plugin/src/client-bundle.js',
-  'plugin/src/host-locale.js',
-  'plugin/src/constants.js',
-  'plugin/src/locales.js',
+  'src/host.js',
+  'src/client-bundle.js',
+  'src/host-locale.js',
+  'src/constants.js',
+  'src/locales.js',
 ]
 
 const offenders = []
@@ -88,7 +88,7 @@ check(
 // 使用标准计时器，不能再把宿主 Context 当成定时器服务。
 check(
   '守卫 1b：账单防抖不读取 ctx.timeout',
-  !/\bctx\.timeout\s*\(/.test(readFileSync(join(root, 'plugin/src/host.js'), 'utf8')),
+  !/\bctx\.timeout\s*\(/.test(readFileSync(join(root, 'src/host.js'), 'utf8')),
   'ctx.timeout 会在当前 DSH web Cordis Context 中触发未注入服务错误'
 )
 
@@ -152,17 +152,17 @@ if (!baseRef) {
   }
   if (changed) {
     // manifest 与 CHANGELOG 整文件锁死（Release Please 只会整体重写它们）。
-    // plugin/package.json 只锁 version 字段：description / keywords 等非版本字段的
+    // package.json 只锁 version 字段：description / keywords 等非版本字段的
     // 正常改动不该被拦（守卫的意图是防手工 bump 版本号，不是冻结整个文件）。
     const GUARDED = ['.release-please-manifest.json', 'CHANGELOG.md']
     const touched = changed.filter((f) => GUARDED.includes(f))
-    if (changed.includes('plugin/package.json')) {
+    if (changed.includes('package.json')) {
       let versionTouched = null
       try {
-        const pkgDiff = git(['diff', `origin/${baseRef}...HEAD`, '--', 'plugin/package.json'])
+        const pkgDiff = git(['diff', `origin/${baseRef}...HEAD`, '--', 'package.json'])
         versionTouched = pkgDiff.split('\n').some((l) => /^[+-]\s*"version"\s*:/.test(l))
       } catch (err) { /* 取不到 diff 就当作动过版本号，宁可拦住 */ }
-      if (versionTouched !== false) touched.push('plugin/package.json（version 字段）')
+      if (versionTouched !== false) touched.push('package.json（version 字段）')
     }
     // 逃生舱：万一 Release Please 自身把元数据弄坏了，必须还有办法人工抢修。
     // 因为 main 开了 enforce_admins，没有这个标记就会被永久卡死。
@@ -208,7 +208,7 @@ function scanUrlHostChecks(dir) {
     })
   }
 }
-for (const dir of ['plugin/src', 'plugin/scripts', 'tests']) {
+for (const dir of ['src', 'scripts', 'tests']) {
   const abs = join(root, dir)
   if (existsSync(abs)) scanUrlHostChecks(abs)
 }

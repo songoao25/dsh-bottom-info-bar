@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const readJson = (relativePath) => JSON.parse(readFileSync(join(root, relativePath), 'utf8'))
 
-const packageVersion = readJson('plugin/package.json').version
-const manifestVersion = readJson('.release-please-manifest.json').plugin
+const packageVersion = readJson('package.json').version
+// 键是 Release Please 的包路径：包在仓库根，所以是 "."
+const manifestVersion = readJson('.release-please-manifest.json')['.']
 const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
 const firstChangelogVersion = changelog.match(/^## \[(\d+\.\d+\.\d+)\]/m)?.[1]
 
-assert.match(packageVersion, /^\d+\.\d+\.\d+$/, 'plugin/package.json must contain a semantic version')
+assert.match(packageVersion, /^\d+\.\d+\.\d+$/, 'package.json must contain a semantic version')
 assert.equal(manifestVersion, packageVersion, 'Release Please manifest and package version must match')
 assert.equal(firstChangelogVersion, packageVersion, 'CHANGELOG top entry must match the package version')
 

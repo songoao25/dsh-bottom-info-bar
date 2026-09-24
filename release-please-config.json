@@ -4,7 +4,7 @@
   "include-component-in-tag": false,
   "last-release-sha": "661dbad7739bd03965a03991566496b6216a8042",
   "packages": {
-    "plugin": {
+    ".": {
       "component": "dsh-bottom-info-bar",
       "package-name": "dsh-bottom-info-bar",
       "changelog-path": "/CHANGELOG.md",

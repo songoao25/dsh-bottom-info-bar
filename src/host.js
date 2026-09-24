@@ -174,8 +174,8 @@ function defaultBranchOf(layout, remote) {
   return null
 }
 
-// link: 安装的 git 同步命令：目标常是仓库内的子目录（…/dsh-bottom-info-bar/plugin），
-// 一律以探测到的仓库根为准；路径可能含空格，必须做 shell 转义。
+// link: 安装的 git 同步命令：目标就是仓库根（包在仓库根，见 README「安装」），
+// 但仍以探测到的仓库根为准——历史安装可能指向仓库内的子目录；路径可能含空格，必须做 shell 转义。
 function linkGitSyncCommandFor(target) {
   const fallback = 'git -C ' + shellQuote(target) + ' pull --ff-only'
   const layout = findGitLayout(target)
@@ -193,8 +193,9 @@ function linkGitSyncCommandFor(target) {
 }
 
 // link: 的完整更新命令 = git 同步 + 重建 lib。
-// plugin/package.json 的 main 指向 lib/index.js，而 lib/ 是构建产物、不入 git；只拉代码不重建，
-// 用户重启后加载的仍是旧 lib —— 等于「更新了但没生效」（install.sh 里同样是先 build 再 add）。
+// package.json 的 main 指向 lib/index.js；lib/ 已入库（保证直接装 GitHub 地址就能用），
+// 但本地副本可能改过 src 没重建，重建一次才保证「拉到的代码」与「加载的产物」一致
+// （install.sh 里同样是先 build 再 add）。
 function linkUpdateCommandFor(target) {
   const gitCommand = linkGitSyncCommandFor(target)
   const buildScript = join(target, 'scripts', 'build.mjs')
@@ -211,6 +212,15 @@ function shellQuote(value) {
   return "'" + text.replace(/'/g, "'\\''") + "'"
 }
 
+// 非注册表来源的安装（DSH 插件页填 GitHub 地址 / tarball 地址）：更新 = 用同一条 add 命令重装。
+// 不能给 npm 那条命令：注册表安装路径把「已安装」当拒绝理由，用户照抄只会得到一句「该插件已安装」。
+const REINSTALL_PREFIXES = ['github:', 'gitlab:', 'bitbucket:', 'gist:', 'git+', 'git@', 'http://', 'https://']
+
+function isReinstallSpec(spec) {
+  const lower = spec.toLowerCase()
+  return REINSTALL_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
+
 function updateCommandForInstall() {
   const profile = runningProfileName()
   const npmCommand = 'dsh plugin --profile ' + profile + ' add dsh-bottom-info-bar@latest'
@@ -218,9 +228,15 @@ function updateCommandForInstall() {
     const profileFile = join(dshHomeDir(), 'profiles', profile, 'package.json')
     const pkg = JSON.parse(readFileSync(profileFile, 'utf8'))
     const spec = pkg && pkg.dependencies && pkg.dependencies['dsh-bottom-info-bar']
-    if (typeof spec === 'string' && spec.startsWith('link:')) {
-      const target = spec.slice('link:'.length).trim()
-      if (target.length > 0) return { installMode: 'link', updateCommand: linkUpdateCommandFor(target) }
+    if (typeof spec === 'string') {
+      const trimmed = spec.trim()
+      if (trimmed.startsWith('link:')) {
+        const target = trimmed.slice('link:'.length).trim()
+        if (target.length > 0) return { installMode: 'link', updateCommand: linkUpdateCommandFor(target) }
+      }
+      if (isReinstallSpec(trimmed)) {
+        return { installMode: 'git', updateCommand: 'dsh plugin --profile ' + profile + ' add ' + shellQuote(trimmed) }
+      }
     }
   } catch (err) { /* 读不到就按 npm 处理 */ }
   return { installMode: 'npm', updateCommand: npmCommand }

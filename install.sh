@@ -13,16 +13,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_DIR="$ROOT/plugin"
 
 command -v dsh >/dev/null 2>&1 || { echo "错误：未找到 dsh CLI（请先安装 DeepSeek Harness）"; exit 1; }
 command -v pnpm >/dev/null 2>&1 || { echo "错误：未找到 pnpm（安装：npm i -g pnpm 或 corepack enable）"; exit 1; }
 
-echo "==> 构建插件产物（plugin/lib/ 由 build 生成，不入 git）"
-node "$PLUGIN_DIR/scripts/build.mjs" || { echo "错误：插件构建失败"; exit 1; }
+echo "==> 构建插件产物（lib/ 由 build 生成并已入库；这里重建一次，保证跑的和 src/ 一致）"
+node "$ROOT/scripts/build.mjs" || { echo "错误：插件构建失败"; exit 1; }
 
 echo "==> 安装 dsh-bottom-info-bar 到 profile '$PROFILE'"
-dsh plugin --profile "$PROFILE" add "$PLUGIN_DIR"
+dsh plugin --profile "$PROFILE" add "$ROOT"
 
 echo
 echo "✔ 安装完成。"

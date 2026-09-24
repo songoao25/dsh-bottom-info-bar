@@ -22,7 +22,7 @@ async function loadPluginFor(dataDir) {
   process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(dataDir, 'no-codex.json')
   process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(dataDir, 'no-opencode.json')
   // 唯一 query → Node 视为独立模块 → 模块顶层的 DATA_DIR/SETTINGS_FILE 按当前 env 重新固化
-  const mod = await import('../plugin/src/host.js?settings=' + encodeURIComponent(dataDir))
+  const mod = await import('../src/host.js?settings=' + encodeURIComponent(dataDir))
   return { plugin: mod.default, internals: mod.__settingsInternals }
 }
 
@@ -254,7 +254,7 @@ function copySettings(fromDir, toDir) {
   console.warn = function (...args) { warns.push(args.join(' ')) }
   let restartRoute = null
   try {
-    const mod2 = await import('../plugin/src/host.js?settings=' + encodeURIComponent(s.dir) + '&round=2')
+    const mod2 = await import('../src/host.js?settings=' + encodeURIComponent(s.dir) + '&round=2')
     const stub2 = makeStub()
     mod2.default.apply(stub2.ctx)
     restartRoute = stub2.captured.route

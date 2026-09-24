@@ -4,7 +4,7 @@
 // ③ 余额/花费币种随活跃模型服务商：OpenAI 模型激活 → USD 估算余额 + USD 花费，不再显示 DeepSeek ¥ / ¥0（审计缺陷 #6）
 // ④ llm/stream next() 失败向上传播，不吞成空流（审计缺陷 #5）
 // ⑤ 异常 usage（NaN/Infinity/负数）记账清洗：汇总保持有限、落盘为 0（审计缺陷 #2 端到端）
-// 纯函数层（sanitizeTokens / isValidUsageRecord）见 tests/test-usage-sanitize.js。
+// 纯函数层（sanitizeTokens / isValidUsageRecord）见 tests/test-usage-sanitize.cjs。
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,7 @@ process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = tmpData
 process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(tmpData, 'no-codex-auth.json')
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(tmpData, 'no-opencode-auth.json')
 
-const plugin = (await import('../plugin/src/host.js')).default
+const plugin = (await import('../src/host.js')).default
 
 let failures = 0
 function check(name, cond, detail) {

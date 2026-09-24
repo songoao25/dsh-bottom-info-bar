@@ -62,7 +62,7 @@ largeSnapshot.push(record('frozen-price', 'frozen-price', 3.14159, TS_BASE + 300
 writeFileSync(dataFile, JSON.stringify(largeSnapshot))
 writeFileSync(journalFile, JSON.stringify(largeSnapshot[0]) + '\n') // duplicate id must not double-count
 
-const plugin = (await import('../plugin/src/host.js')).default
+const plugin = (await import('../src/host.js')).default
 let first = makeStub()
 let dispose = plugin.apply(first.ctx)
 let result = await invoke(first.captured.route, 'getUsageSummary', { sessionId: 'frozen-price', selection: { provider: 'deepseek', model: 'deepseek-v4-flash' } })

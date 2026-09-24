@@ -1,5 +1,5 @@
 const { t } = require('./locale-fixture.cjs');
-// v1.7 新增适配器单测（指向正式源码 plugin/src/host.js + plugin/src/client-bundle.js）：
+// v1.7 新增适配器单测（指向正式源码 src/host.js + src/client-bundle.js）：
 // ① FR-8 本地 JWT 解码（嵌套命名空间实测形态 / 扁平兜底 / padding / 失败静默）
 // ② FR-9 小米 MiMo 解析（tokenPlan/usage、tokenPlan/balance、按量 balance；百分比 0-1 与 0-100 双形态）
 // ③ FR-10 Together 账单解析
@@ -11,9 +11,9 @@ const { t } = require('./locale-fixture.cjs');
 const fs = require('fs');
 const { createHmac, createHash } = require('node:crypto');
 
-const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
-const constantsSrc = fs.readFileSync(__dirname + '/../plugin/src/constants.js', 'utf8');
+const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
+const constantsSrc = fs.readFileSync(__dirname + '/../src/constants.js', 'utf8');
 
 function extractConst(name) {
   const re = new RegExp('const ' + name + ' = (\\[[^\\n]*?\\]|\\{[^\\n]*?\\}|[^\\n]+?)(?:\\s*//[^\\n]*)?\\n');

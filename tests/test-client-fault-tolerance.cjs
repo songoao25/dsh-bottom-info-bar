@@ -8,7 +8,7 @@ const { t } = require('./locale-fixture.cjs');
 // 用法：node tests/test-client-fault-tolerance.js
 const fs = require('fs');
 
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 
 // 提取模块级纯函数（括号计数法，与 test-dual-mode.js 同法）
 function extractFn(name) {
