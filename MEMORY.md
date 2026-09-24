@@ -20,6 +20,15 @@
 
 ## 2026-09-24
 
+### v1.16.1 + v1.16.2 发布：仓库地址可直接安装 + 更新提醒自愈（fix，PR #137 / #139）
+
+- 发布证据：1.16.1 —— 发布 PR #138 合并 → tag / GitHub Release `v1.16.1` → publish-npm success → npm `latest` 已读回；1.16.2 —— 发布 PR #140 合并 → tag `v1.16.2` → publish success → `npm view` 读回 1.16.2。两次都按新的「默认直接发布」流程由 Agent 合并发布 PR 并核验上架。
+- 1.16.2 内容：把「npm 发布版」与「本机已安装版」两个时间尺度分开 —— npm latest 按 TTL 缓存重查（默认 15 分钟，失败 1 分钟后重试），已安装版本每次 RPC 从磁盘重读；client 每 60 秒 + 页面重新可见 / 窗口获焦时重读。新增 6 条行为断言（`test-update-command`，夹具是「host 模块副本 + 可改版本号的 package.json」）+ 新契约断言（`test-update-check`）。
+- 流程变更（用户 2026-09-24 明确要求）：**默认直接发布**，不再等用户回「发」；已写进 `docs/WORKFLOW.md` / `AGENTS.md` / 本文件使用规则。
+- **血的教训 1（共享工作副本里禁止 `git add -A`）**：本机仓库可能同时有别的会话在改。本次 PR #139 的 `git add -A` 把**另一会话未提交的 README 双语重写**、以及仓库根下的 `plugin/` 兼容软链一起卷进了提交（都已随 1.16.2 发布）。**规矩：提交一律显式列文件名，禁止 `git add -A` / `git commit -a`；提交前用 `git status --short` 逐个确认是不是自己改的。**
+- **血的教训 2（切分支失败会被 `tail -1` 吃掉）**：`git checkout main` 因工作区有他人改动而失败时，命令链后面的 `git merge --ff-only` 会在**错误的分支**上执行，并给出误导性的「Not possible to fast-forward」。切分支 / 合并这类动作不要用 `| tail -1` 掩盖退出状态。
+- 兼容层（有意保留）：仓库根的 `plugin/` 是 4 条软链（package.json / lib / locale / cordis.patch.yml → 仓库根同名项），让 1.15.0 及更早 `link: <仓库>/plugin` 的老安装继续工作；已隔离实测可用，并在 `tests/test-release-version.mjs` 里钉死（软链丢失或指错会让老用户下次启动时静默加载失败）。
+- **可复用经验（提醒类 UI 的通用坑）**：只要「远端最新版」与「本机已装版」任一端只读一次，提醒就会卡在旧状态（用户看到的就是「更新完还挂着提醒」）。正确做法：远端慢变量按 TTL 重查、本机快变量每次重读，并让客户端周期性 / 在页面重新可见时重读。
 ### Issue #132：插件页填 GitHub 地址必然装不上 —— 包移到仓库根（fix，PR #137）
 
 - 现象（Issue #132，用户 xsstomy 截图）：DSH 插件页「添加插件」填 `https://github.com/songoao25/dsh-bottom-info-bar`，报「插件安装失败 / 这个包没有声明组合包，不能作为插件管理」。
