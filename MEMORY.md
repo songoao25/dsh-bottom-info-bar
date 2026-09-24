@@ -16,6 +16,22 @@
 
 ---
 
+## 2026-09-24
+
+### v1.16.0 发布：MiniMax Token Plan 适配（吸收外部 PR #115 的实测契约）+ 订阅窗口百分比方向开关（feat，PR #133）
+
+- 内容（PR #133，squash `9d2d97f`，18 个文件 +2285）：① **MiniMax 订阅额度**——provider `minimax`（Global）/ `minimax-cn`（国内）→ 订阅额度制，端点 `GET /v1/token_plan/remains`，凭据 `MINIMAX_API_KEY`/`MINIMAX_CN_API_KEY` 按站点优先、跨站回退；**双站点各自独立订阅源**（快照/退避/并发去重互不串），记账仍共用 `minimax` 账户。② **真实 schema**——额度在 `current_interval_remaining_percent`/`current_weekly_remaining_percent`（`total/usage_count` 恒为 0 的占位字段不参与计算）；多桶按**最紧剩余**聚合，`resetsAt` 取**最紧桶自己的**结束时刻。③ **错误翻译**——HTTP 401/403 与 `base_resp` 1004（按量 Key 错用订阅端点）/ 2049（跨站 Key 或已失效）一律按鉴权失败并提示改用 Subscription Key；空 `model_remains` 按解析失败保留旧快照，不显示假额度；宿主错误全部带稳定 `code` + 中英文案。④ **quotaDisplayMode**——新增可选方向开关（`'remaining'` 默认 = 历史行为 / `'used'` 可选）+ 设置页分段控件（radiogroup + roving tabindex + 方向键/Home/End）；告警语义不变，两种方向严格等价于「剩余 ≤ 20%」。⑤ **对比度修正**——填充式选中态改用同色相深档 `--bib-set-brand-strong: #4a63e8`（实测 4.95:1）；`--bib-set-brand` `#4d6bfe` 对白**实测只有 4.33:1**，AGENTS.md 铁律里「≥4.5:1」与「必须用 var(--bib-set-brand)」两条互相矛盾，历史提交 #38 写的「4.6:1」是算错的。
+- 防复发：新增 `tests/test-minimax-token-plan.js`（126 断言）、`tests/test-quota-display-mode.js`（100）、`tests/test-minimax-e2e.mjs`（288，**独立装置**：真实 `apply()` + 桩 ctx + 拦截 `fetch`）；全量 **37 项全绿**；反向验证 **6/6**（最紧聚合→取首桶、`resetsAt`→全桶最早、宿主默认→`used`、客户端默认→`used`、`usedPercent` 方向反转、非法值回退→`used`）均被预期断言抓住，证明断言不空转。
+- 发布证据：普通 PR #133 CI + CodeQL 绿 → owner auto-merge（`RELEASE_PLEASE_TOKEN` 已配置，日志确认「downstream workflow triggers are enabled」）13:47:13Z 合并 `9d2d97f` → release-please 自动触发 run `36008079967` → 发布 PR #134（1.16.0）内容核对无误后**用我自己的 token** 手动合并 → tag / GitHub Release `v1.16.0`（13:49:14Z）→ publish-npm run `36008314643` success（日志 `+ dsh-bottom-info-bar@1.16.0`，tag latest/public）→ registry `dist-tags.latest = 1.16.0` 已读回。
+- 收尾：本地 main 快进 + 重跑 `node plugin/scripts/build.mjs`；英文 README 的插件列表展示图换成全英文新图（旧图混了包名与中文描述）；MEMORY 复盘与 `docs/ANNOUNCEMENTS.md` 通知稿随 docs PR 合并；分支只留 main。
+- **可复用经验 1（跨站点订阅源必须分源）**：MiniMax 与小米同型（不同站点不同 baseUrl + 不同 Key），共用一个 source 会让 A 站点的快照/退避被 B 站点的 provider 覆写；正确做法是**每个站点独立 source**，只有记账账户键共用。
+- **可复用经验 2（倒计时必须与显示的聚合值同源）**：多桶取最紧剩余后，`resetsAt` 要取「最紧那个桶」的结束时刻 —— 聚合值只在该桶重置时才改善；取全桶最早会显示一个「数字根本不会变」的重置时间。最紧桶缺时刻才回退最早有效值，全缺为 null。
+- **可复用经验 3（测试装置的构建锚点陷阱）**：`src/host.js` 的 `SUBSCRIPTION_PROVIDERS` 是构建期锚点 `/*__SUBSCRIPTION_PROVIDERS__*/[]`，直接 import src 会拿到**空订阅表**（provider 被判成 balance）——provider 相关测试必须用 `lib/` 产物（独立验证者的第一版就因此假阴性）。同理 client 的 `FIELD_REGISTRY` 也是锚点。
+- **可复用经验 4（铁律数值要用真实计算复核）**：AGENTS.md 反色铁律里的「#4d6bfe + #fff ≥ 4.5:1」是**错的**（实测 4.33:1）。凡对比度结论必须写真实 sRGB 相对亮度计算并断言，不能用字符串断言代替；已把「填充式选中态用 `--bib-set-brand-strong: #4a63e8`（4.95:1）」写进源码注释与测试。
+- **可复用经验 5（外部 PR 的处置方式）**：不直接合并、但**吸收其真实联调出来的契约**（真实 schema / 错误码 / 聚合语义）是最省事也不浪费贡献者的路径；回复时逐条讲清「采纳了什么、没采纳什么及原因」，并明确告知默认值不变的取舍。
+
+---
+
 ## 2026-09-23
 
 ### v1.15.0 发布：命名/文案/视觉对齐姊妹插件 + 配置页消失事故回归（feat，PR #130）
