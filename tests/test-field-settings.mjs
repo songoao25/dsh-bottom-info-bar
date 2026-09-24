@@ -97,6 +97,7 @@ async function mount(section) {
   check('getFieldConfig 默认颜色全部为 null', Object.values(first.body.colors).every((v) => v === null), true)
   check('getFieldConfig 初始 configVersion=0', first.body.configVersion === 0, first.body.configVersion)
   check('getFieldConfig 带 version/persisted', first.body.version === 1 && first.body.persisted === true, first.body)
+  check('getFieldConfig 默认 quotaDisplayMode=remaining（老用户显示语义不变）', first.body.quotaDisplayMode === 'remaining', first.body.quotaDisplayMode)
 
   const patched = await invokeRoute(route, 'setFieldConfig', { fields: { balance: false }, colors: { balance: '#00ff00', period: 'red' } })
   check('setFieldConfig 应用增量 patch', patched.body.fields.balance === false && patched.body.colors.balance === '#00FF00' && patched.body.colors.period === 'red', patched.body)
@@ -223,6 +224,17 @@ function copySettings(fromDir, toDir) {
     const d = s.mod.internals.defaultFieldSettings()
     return d.version === 1 && d.infoDensity === 'full' && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeFormat && d.timeZones && typeof d.customText === 'string'
   })(), true)
+  check('默认 quotaDisplayMode=remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode === 'remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode)
+  const nq = s.mod.internals.normalizeQuotaDisplayMode
+  check('normalizeQuotaDisplayMode：used/remaining 合法', nq('used') === 'used' && nq('remaining') === 'remaining', true)
+  check('normalizeQuotaDisplayMode：非法一律 null', nq('USED') === null && nq('') === null && nq(null) === null && nq(undefined) === null && nq(1) === null && nq({}) === null, true)
+  check('QUOTA_DISPLAY_MODES 白名单', JSON.stringify(s.mod.internals.QUOTA_DISPLAY_MODES), JSON.stringify(['used', 'remaining']))
+  check('sanitize：合法 quotaDisplayMode 接受', s.mod.internals.sanitizeSettings({ version: 1, quotaDisplayMode: 'used' }).settings.quotaDisplayMode === 'used', true)
+  check('sanitize：非法 quotaDisplayMode 丢弃并回默认', (() => {
+    const r = s.mod.internals.sanitizeSettings({ version: 1, quotaDisplayMode: 'bogus' })
+    return r.settings.quotaDisplayMode === 'remaining' && r.dropped.includes('quotaDisplayMode')
+  })(), true)
+  check('sanitize：缺 quotaDisplayMode 时回默认', s.mod.internals.sanitizeSettings({ version: 1 }).settings.quotaDisplayMode === 'remaining', true)
 }
 
 // ---------- ⑧ D4：summaries 与 .bak 同时缺失且折叠已发生 → 显式 warn + 客户端可见「账单待整理」 ----------

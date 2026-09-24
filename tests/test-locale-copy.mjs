@@ -62,7 +62,7 @@ assert.ok(zhKeys.length >= 300, 'the dictionary must cover every user-visible st
 assert.deepEqual(enKeys.filter((key) => !zhKeys.includes(key)), [], 'every English key needs a Chinese one')
 assert.deepEqual(zhKeys.filter((key) => !enKeys.includes(key)), [], 'every Chinese key needs an English one')
 // 品牌名与纯格式模板在两种语言里天然同形，显式豁免（其余每条都必须真的翻译过）。
-const SAME_BY_DESIGN = new Set(['ui.commandCode', 'ui.contextFigures'])
+const SAME_BY_DESIGN = new Set(['ui.commandCode', 'ui.contextFigures', 'ui.minimax'])
 for (const key of zhKeys) {
   assert.ok(LOCALES.zh[key].trim() !== '' && LOCALES.en[key].trim() !== '', key + ' must be non-empty in both languages')
   if (!SAME_BY_DESIGN.has(key)) assert.notEqual(LOCALES.zh[key], LOCALES.en[key], key + ' must actually be translated')

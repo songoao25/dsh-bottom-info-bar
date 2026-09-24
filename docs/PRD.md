@@ -20,7 +20,7 @@ v1.6 目标：修好分账与余额跟随两个地基 bug + 四家国产/常用�
 - 描述：余额账户映射只认当前活动服务商；对未适配/未知服务商，不再回退显示 DeepSeek 余额。
 - 验收标准：
   - Given 当前服务商为 opencode-go（订阅制）；When 信息栏渲染；Then 不显示任何余额（含不显示 DeepSeek 余额）
-  - Given 当前服务商为未适配平台（如 minimax）；When 信息栏渲染；Then 显示"未适配"引导而非 DeepSeek 余额
+  - Given 当前服务商为未适配平台（如 讯飞星火）；When 信息栏渲染；Then 显示"未适配"引导而非 DeepSeek 余额
   - Given 当前服务商为 deepseek；Then 照常显示 DeepSeek 真实余额（行为不变）
 
 ### FR-3 智谱适配器（GLM Coding Plan 订阅额度，零设置）
@@ -106,7 +106,7 @@ v1.6 目标：修好分账与余额跟随两个地基 bug + 四家国产/常用�
 
 ## 长期非目标（记录理由）
 - Claude/Gemini/腾讯混元 本地花费核算、NVIDIA 角标、Groq 速率卡、Cerebras/HuggingFace 估算（用户原则：不做估算显示）
-- xAI / Mistral / MiniMax 进阶真实接口（需用户额外提供独立密钥，不符合零设置；待用户明确后 v1.8）
+- xAI / Mistral 进阶真实接口（需用户额外提供独立密钥，不符合零设置）；MiniMax Token Plan 订阅额度已落地，按量余额仍无官方接口（见 docs/research/A3-kimi-minimax.md 2.3）
 - 阿里云百炼 Token Plan（官方无 API Key 路径）
 - Azure / Vertex / Vercel 云主体计费（凭据不可复用）
 - 任何新页面、信息栏外的新入口
