@@ -24,12 +24,23 @@ The bar has two densities — click it to switch. **Full** keeps DSH's native st
 
 ## Compact mode
 
-Four real states — light and dark, balance and subscription quota:
+Four real states — light and dark, balance and subscription quota.
 
-| Light | Dark |
-|---|---|
-| ![Balance mode, light theme](assets/bar-compact-light-balance.webp) | ![Balance mode, dark theme](assets/bar-compact-dark-balance.webp) |
-| ![Subscription quota, light theme](assets/bar-compact-light-subscription.webp) | ![Subscription quota, dark theme](assets/bar-compact-dark-subscription.webp) |
+**Light · balance**
+
+![Balance mode, light theme](assets/bar-compact-light-balance.webp)
+
+**Dark · balance**
+
+![Balance mode, dark theme](assets/bar-compact-dark-balance.webp)
+
+**Light · subscription quota**
+
+![Subscription quota, light theme](assets/bar-compact-light-subscription.webp)
+
+**Dark · subscription quota**
+
+![Subscription quota, dark theme](assets/bar-compact-dark-subscription.webp)
 
 ## Three billing modes
 

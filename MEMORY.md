@@ -18,6 +18,21 @@
 
 ---
 
+## 2026-09-24（v1.16.3）
+
+### v1.16.3：上下文圆环不再单独折行 + 面板不再透字；README 整套换图（fix，PR #145）
+
+- 内容（PR #145，squash `a10806e`）：① **圆环折行**——用户报「简洁/完整模式下，行满时上下文圆环被挤到下一行并居中，很丑」。根因：圆环是主行 `.bi-row2` 的**独立 flex 子项**追加在末尾（`...nodes, contextNode`），行满换行时它自然独占一行。修法：新增 `attachContextMeter(nodes, contextNode, createElement)`，把圆环与**最后一个内容节点**包进同一个 nowrap 尾巴 `.bi-tail`（`display:inline-flex; flex:0 0 auto; white-space:nowrap`），换行时两者一起走。② **面板透字**——点开圆环的面板背景透明，字与信息栏叠在一起。根因：面板底色抄了宿主 `--dsw-specific-menu`，而它**本身带 alpha**（浅 `#f8f9fa94` / 深 `#30313680`），宿主菜单另有毛玻璃层；本面板悬在信息栏文字之上必然透字。修法：改用不透明 `var(--dsw-alias-bg-layer-3, #fff)`（浅 `#fff` / 深 `#353638`）+ 宿主阴影 + 细边框。③ README 重排：简洁模式四态大图内嵌（浅/深 × 余额/订阅），完整模式只留一张（原生行 + 插件行，共两行，**不含插件时间字段**），删掉独立「深色模式」章节与计费模式单图；修正两处与实现不符的文案（更新检查 = 启动一次 + 最多每 15 分钟 TTL 复查；Kimi 无 `KIMI_API_KEY` 回退）。④ assets 换新 13 对（26 张）。
+- 防复发：`test-info-bar-rhythm.cjs` 增 13 条断言（`.bi-tail` 规则 + `attachContextMeter` **行为断言**：桩 createElement 跑真函数，圆环必须在 tail 内、不再是顶层子项 + 面板不得引用带 alpha 的 token）；`test-static-client` / `test-field-config-client` 的 D7 断言由「圆环是 row2 末位子项」改为「与末节点同组」（**意图不变，只改字面**）。反向验证：改回裸追加 → 2 FAIL，还原后 sha256 一致、全量通过。
+- 发布证据：PR #145 CI/CodeQL 绿 → owner auto-merge 合并 `a10806e` → release PR #146（1.16.3）核对后用自己的 token 合并 → tag / GitHub Release `v1.16.3`（15:17:12Z）→ publish-npm run `36019051300` success → registry `dist-tags.latest = 1.16.3` 已读回。
+- **可复用经验 1（换行布局的「孤儿元素」）**：只要一个元素是 flex 行里的独立子项，行满时它就可能被单独挤到下一行。想让 A 永远跟着 B，就把 A、B 包进同一个 nowrap 尾巴当**一个**子项，而不是分别 append。
+- **可复用经验 2（宿主主题 token 可能带 alpha）**：DSH 的 `--dsw-specific-menu` 是半透明色 + 宿主菜单自带毛玻璃。插件自己画浮层时**不要直接抄这个 token**，否则浮在文字上必然透字；要么用不透明层级色（`--dsw-alias-bg-layer-3`），要么自己补 `backdrop-filter`。判断办法：`getComputedStyle(document.body).getPropertyValue('--dsw-specific-menu')` 看是不是 8 位 hex / rgba。
+- **可复用经验 3（断言要锁意图、别锁字面）**：两处旧断言把 `...nodes, contextNode` 这行源码字面锁死了，改结构就红。**结构变了但意图没变时，应把断言改写成表达意图的形式**（这里是「圆环仍在最右、错误标签仍在尾部」），并在注释里写清为什么改。
+- **可复用经验 4（截图流水线）**：① 用 `element.closest('.bib-set-card')` 反查卡片再裁切，比 Playwright 的 `filter({ has: locator })` 可靠（后者会命中包含该字段行的父卡片，本次就截错过 `settings-custom` 与 `settings-time.zh-CN`）；② 明暗主题用 `page.emulateMedia({ colorScheme })` 在**同一上下文**里切换，避免为换主题重开上下文、重选会话；③ 完整模式想稳定两行，视口取 1680 宽（1440 下插件行会折行）；④ 截图前先确认没有「刷新失败」这类瞬时错误态。
+- 收尾：本地 main 快进 + `npm run build` 重建 `lib/`；截图期间临时改的用户设置（时间字段开关、界面语言、临时会话）全部还原/归档。
+
+---
+
 ## 2026-09-24
 
 ### v1.16.1 + v1.16.2 发布：仓库地址可直接安装 + 更新提醒自愈（fix，PR #137 / #139）

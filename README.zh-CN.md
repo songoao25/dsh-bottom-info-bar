@@ -24,12 +24,23 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 
 ## 简洁模式
 
-四种真实状态：浅色与深色、余额制与订阅额度制：
+四种真实状态：浅色与深色、余额制与订阅额度制。
 
-| 浅色 | 深色 |
-|---|---|
-| ![余额制·浅色](assets/bar-compact-light-balance.zh-CN.webp) | ![余额制·深色](assets/bar-compact-dark-balance.zh-CN.webp) |
-| ![订阅额度制·浅色](assets/bar-compact-light-subscription.zh-CN.webp) | ![订阅额度制·深色](assets/bar-compact-dark-subscription.zh-CN.webp) |
+**浅色 · 余额制**
+
+![余额制·浅色](assets/bar-compact-light-balance.zh-CN.webp)
+
+**深色 · 余额制**
+
+![余额制·深色](assets/bar-compact-dark-balance.zh-CN.webp)
+
+**浅色 · 订阅额度制**
+
+![订阅额度制·浅色](assets/bar-compact-light-subscription.zh-CN.webp)
+
+**深色 · 订阅额度制**
+
+![订阅额度制·深色](assets/bar-compact-dark-subscription.zh-CN.webp)
 
 ## 三种计费模式
 
