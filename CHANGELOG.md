@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.2...v1.16.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* 上下文圆环不再被挤成单独一行、面板不再透字；README 换新截图并重排 ([#145](https://github.com/songoao25/dsh-bottom-info-bar/issues/145)) ([a10806e](https://github.com/songoao25/dsh-bottom-info-bar/commit/a10806e0395b2a0b0d2582e12a0b848e1e5ce4d3))
+
 ## [1.16.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.1...v1.16.2) (2026-09-24)
 
 
