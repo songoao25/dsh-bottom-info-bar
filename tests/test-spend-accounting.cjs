@@ -2,7 +2,7 @@
 // 本会话按"会话起点 + 账户聚合（含子代理）"口径区分
 // 用法：node tests/test-spend-accounting.js
 const fs = require('fs');
-const src = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
+const src = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
 
 // 提取记账相关纯函数，在桩环境验证（不执行 apply）
 function extractFn(name) {

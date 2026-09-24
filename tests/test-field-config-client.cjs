@@ -6,9 +6,9 @@ const { t } = require('./locale-fixture.cjs');
 // 用法：node tests/test-field-config-client.js
 const fs = require('fs');
 
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
-const localesSrc = fs.readFileSync(__dirname + '/../plugin/src/locales.js', 'utf8');
-const { FIELD_REGISTRY, PRESET_COLOR_NAMES, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS } = require('../plugin/src/constants.js');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
+const localesSrc = fs.readFileSync(__dirname + '/../src/locales.js', 'utf8');
+const { FIELD_REGISTRY, PRESET_COLOR_NAMES, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS } = require('../src/constants.js');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {
@@ -101,8 +101,8 @@ check('配置条目以包名 key 注册并保留本地化展示名', clientSrc.i
 check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
   && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
 check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼接第二源码', (function () {
-  const buildSrc = fs.readFileSync(__dirname + '/../plugin/scripts/build.mjs', 'utf8');
-  return !fs.existsSync(__dirname + '/../plugin/src/client-settings.js')
+  const buildSrc = fs.readFileSync(__dirname + '/../scripts/build.mjs', 'utf8');
+  return !fs.existsSync(__dirname + '/../src/client-settings.js')
     && !buildSrc.includes('client-settings.js')
     && !buildSrc.includes('baseExports')
     && !buildSrc.includes('applyInfoBarSettingsSection');
@@ -544,7 +544,7 @@ check('设置页样式复用 DSH 设计令牌（--dsw-alias-*）融入既有面�
   && clientSrc.includes('--dsw-alias-state-warning-primary'), true);
 check('设置页复用信息栏预设定色板变量（同一三套主题）', clientSrc.includes("'var(--bi-palette-' + option + ')'"), true);
 check('构建产物含被注入的字段注册表与插件配置页注册（非空锚点占位）', (function () {
-  const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+  const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
   return lib.includes("id: 'anchorGroup'")
     && lib.includes("name: 'plugins.bundle.config'")
     && lib.includes('function InfoBarSettingsSection');
@@ -620,7 +620,7 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
 // 再各用「primitives 一个图标都没有」的极端情形加载一次，确认模块体在任何
 // 宿主图标命名下都不抛错（择名逻辑必须能容忍全缺失）。
 {
-  const code = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+  const code = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
   function loadWith(primitives) {
     let captured = null;
     const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
@@ -810,13 +810,13 @@ function withFakeDocument(run) {
     && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
   check('D6：构建产物含注入的两级分组常量（设置页渲染不落空）', (function () {
-    const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+    const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
     return lib.indexOf("['native', 'plugin']") !== -1 && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"');
   })(), true);
   check('310防复发：含 React hooks 的组件 bibSetPalette 必须以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
     clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1 && clientSrc.indexOf('bibSetPalette({') === -1, true);
   check('310防复发：构建产物同样不含裸调用', (function () {
-    const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+    const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
     return lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
   })(), true);
   // ---------- 语言职责边界 ----------

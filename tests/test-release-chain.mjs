@@ -60,7 +60,7 @@ check(
 )
 
 // ---------- 契约 2：路径与包名必须对齐 ----------
-const pluginPkg = readJson('plugin/package.json')
+const pluginPkg = readJson('package.json')
 
 check(
   '契约 2a：release-please 只有一个包路径，且该路径下确实有 package.json',
@@ -73,7 +73,7 @@ check(
   'manifest: ' + JSON.stringify(Object.keys(manifest)) + ' vs 配置: ' + JSON.stringify(packageKeys)
 )
 check(
-  '契约 2c：package-name 与 plugin/package.json 的 name 一致（否则 Release Please 拒绝发布）',
+  '契约 2c：package-name 与 package.json 的 name 一致（否则 Release Please 拒绝发布）',
   perPackage['package-name'] === pluginPkg.name,
   '配置: ' + perPackage['package-name'] + ' vs package.json: ' + pluginPkg.name
 )

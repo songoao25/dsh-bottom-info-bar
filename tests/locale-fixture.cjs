@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const source = fs.readFileSync(__dirname + '/../plugin/src/locales.js', 'utf8');
+const source = fs.readFileSync(__dirname + '/../src/locales.js', 'utf8');
 const dictionaries = JSON.parse(source.slice(source.indexOf('{')));
 function format(locale, key, params) {
   assert.ok(Object.hasOwn(dictionaries[locale], key), 'Missing translation: ' + key);

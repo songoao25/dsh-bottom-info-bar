@@ -10,11 +10,11 @@ const { t } = fixture;
 //   ⑤ 对比度铁律：真实 sRGB 相对亮度计算（选中态 #4a63e8 × #fff ≥ 4.5:1、hover 不变浅、不跟随主题）
 //   ⑥ 提交路径：setFieldConfig patch 携带 quotaDisplayMode、乐观更新、失败回滚（真实 RPC 替身渲染级）
 //   ⑦ MiniMax 服务商展示名 + 构建产物接线
-// 用法：node tests/test-quota-display-mode.js（需先 node plugin/scripts/build.mjs，run-all 会自己 build）
+// 用法：node tests/test-quota-display-mode.cjs（需先 node scripts/build.mjs，run-all 会自己 build）
 const fs = require('fs');
 const vm = require('node:vm');
 
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {
@@ -448,7 +448,7 @@ async function createSettingsHarness(handle) {
     requests.push({ method: method, args: args });
     return handle(method, args);
   };
-  vm.runInNewContext(fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8'), {
+  vm.runInNewContext(fs.readFileSync(__dirname + '/../lib/client.js', 'utf8'), {
     console: console,
     AbortController: AbortController,
     fetch: fetchStub,
@@ -568,7 +568,7 @@ check('⑦ minimax / minimax-cn → t(\'ui.minimax\')（订阅服务名映射）
 check('⑦ ui.minimax 中英都有且品牌名同形（MiniMax）', t('ui.minimax'), 'MiniMax');
 check('⑦ 订阅服务名兜底未受影响（未知 provider 仍是 ui.subscription）', clientSrc.includes("return t('ui.subscription');"), true);
 {
-  const lib = fs.readFileSync(__dirname + '/../plugin/lib/client.js', 'utf8');
+  const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
   check('⑦ 构建产物含 quotaDisplayMode 归一与分段控件（lib 已重建）',
     lib.includes('function normalizeQuotaDisplayMode') && lib.includes('function bibSetQuotaMode') && lib.includes('bib-set-brand-strong'), true);
   check('⑦ 构建产物含 MiniMax 展示名映射', lib.includes("provider === 'minimax-cn'"), true);

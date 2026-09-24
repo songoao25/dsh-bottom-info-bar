@@ -4,9 +4,9 @@ const fs = require('fs')
 const path = require('path')
 
 const rootDir = path.join(__dirname, '..')
-const constantsSrc = fs.readFileSync(path.join(rootDir, 'plugin', 'src', 'constants.js'), 'utf8')
-const hostLib = fs.readFileSync(path.join(rootDir, 'plugin', 'lib', 'index.js'), 'utf8')
-const clientLib = fs.readFileSync(path.join(rootDir, 'plugin', 'lib', 'client.js'), 'utf8')
+const constantsSrc = fs.readFileSync(path.join(rootDir, 'src', 'constants.js'), 'utf8')
+const hostLib = fs.readFileSync(path.join(rootDir, 'lib', 'index.js'), 'utf8')
+const clientLib = fs.readFileSync(path.join(rootDir, 'lib', 'client.js'), 'utf8')
 
 // 从 constants.js 提取期望的数组（末尾可能有或没有分号）
 function extractExpected(name) {

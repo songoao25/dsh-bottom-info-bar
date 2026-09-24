@@ -32,7 +32,7 @@ const lineage = [
   { sessionId: 'cycle-b', parentSessionId: 'cycle-a', origin: 'subagent' },
 ]
 
-const mod = await import('../plugin/src/host.js?lineage=' + encodeURIComponent(dataDir))
+const mod = await import('../src/host.js?lineage=' + encodeURIComponent(dataDir))
 const plugin = mod.default
 let listCalls = 0
 const captured = { route: null }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import fixture from './locale-fixture.cjs'
-import { createHostTranslator, localizeHostText, readHostLocalePreference } from '../plugin/src/host-locale.js'
+import { createHostTranslator, localizeHostText, readHostLocalePreference } from '../src/host-locale.js'
 
 const { dictionaries, createLocale } = fixture
 assert.deepEqual(Object.keys(dictionaries.zh).sort(), Object.keys(dictionaries.en).sort())
@@ -89,8 +89,8 @@ assert.equal(injectedT('host.unknownProvider'), 'Unknown provider')
 assert.equal(injectedSettingsCalls, 1)
 console.log('PASS  translate uses declarative settings injection on alpha1 contexts')
 
-const checker = readFileSync(new URL('./check-host.js', import.meta.url), 'utf8')
-const host = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
+const checker = readFileSync(new URL('./check-host.cjs', import.meta.url), 'utf8')
+const host = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
 function checkSource(source) {
   const output = []
   let status
@@ -140,7 +140,7 @@ const slots = {
     return () => {}
   },
 }
-vm.runInNewContext(readFileSync(new URL('../plugin/lib/client.js', import.meta.url), 'utf8'), {
+vm.runInNewContext(readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'), {
   console, AbortController,
   window: {
     setTimeout: () => 0, clearTimeout() {},
@@ -273,7 +273,7 @@ console.log('PASS  Both dictionaries, interpolation, Settings, all three modes, 
 //   ② package.json 的 exports 必须导出 "./locale/*.json"；
 //   ③ package.json 的 files 必须包含 "locale/*.json"（否则 npm 包里没有这两个文件）。
 {
-  const root = new URL('../plugin/', import.meta.url)
+  const root = new URL('../', import.meta.url)
   const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
   const en = JSON.parse(readFileSync(new URL('locale/en.json', root), 'utf8'))
   const zh = JSON.parse(readFileSync(new URL('locale/zh.json', root), 'utf8'))

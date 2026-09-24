@@ -4,7 +4,7 @@
 // 端到端（异常 usage 流 → 记账 → 落盘）见 tests/test-host-regressions.mjs 第 ⑤ 组。
 // 用法：node tests/test-usage-sanitize.js
 const fs = require('fs');
-const src = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
+const src = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
 
 // 与 test-spend-accounting.js / test-dual-mode.js 同法：括号计数提取 + eval
 function extractFn(name) {

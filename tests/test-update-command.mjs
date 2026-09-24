@@ -3,8 +3,9 @@
 // 三件事必须锁死，否则会退化：
 //   ① 点击标签只复制，**不能顺带切换简洁/完整模式**——信息栏根节点自带 onClick，
 //      所以标签的点击处理必须 stopPropagation。这条最容易在后续重构中被删掉。
-//   ② 复制出来的命令必须与「安装形态」匹配：npm 安装用 dsh plugin add，
-//      link: 安装（一键脚本 / 本地代码）必须用 git——用错会把用户的本地代码顶掉。
+//   ② 复制出来的命令必须与「安装形态」匹配：npm 安装用 dsh plugin add …@latest，
+//      link: 安装（一键脚本 / 本地代码）必须用 git——用错会把用户的本地代码顶掉；
+//      GitHub 地址安装（DSH 插件页引导的那种）必须重跑同一条 add——npm 那条会被「已安装」挡下。
 //   ③ link: 的命令必须真的跑得通（2026-09-22 用户实测「复制了、执行了、却没有更新」）：
 //      不能依赖当前分支有可用上游（`git pull` 在分支没推到远端时直接失败），
 //      且必须指向远端默认分支（不在默认分支时先 checkout 过去再 --ff-only 快进）。
@@ -22,7 +23,7 @@ function check(name, condition, detail) {
 }
 
 // ---------- ① 客户端静态断言 ----------
-const client = readFileSync(join(root, 'plugin/src/client-bundle.js'), 'utf8')
+const client = readFileSync(join(root, 'src/client-bundle.js'), 'utf8')
 const badge = client.slice(client.indexOf("className: 'bi-update'"), client.indexOf("className: 'bi-update'") + 400)
 
 check('客户端：更新标签绑定了点击处理', /onClick:\s*copyUpdateCommand/.test(badge), badge.slice(0, 200))
@@ -47,7 +48,7 @@ check(
 )
 
 // ---------- ② 文案：必须写明「点击标签即可复制」----------
-const { LOCALES } = await import('../plugin/src/locales.js')
+const { LOCALES } = await import('../src/locales.js')
 for (const lang of ['zh', 'en']) {
   const text = LOCALES[lang]['ui.askYourAgentToUpdate'] || ''
   check(
@@ -71,7 +72,7 @@ async function getUpdateInfoWithProfile(profilePackage) {
     writeFileSync(join(home, 'profiles', 'web', 'package.json'), JSON.stringify(profilePackage))
   }
   try {
-    const mod = await import('../plugin/src/host.js?upd=' + encodeURIComponent(dataDir))
+    const mod = await import('../src/host.js?upd=' + encodeURIComponent(dataDir))
     const captured = { route: null }
     const ctx = {
       get(name) {
@@ -113,6 +114,7 @@ async function getUpdateInfoWithProfile(profilePackage) {
 
 // 夹具：用纯文件系统搭一个「像真的 clone」的 git 副本（HEAD / config / refs/remotes/origin/HEAD），
 // 不依赖机器上装没装 git。（host 的探测也全走只读文件读取，见 test-update-check 的子进程守卫。）
+// 包在仓库根（官方布局）；legacySubdir 复现 1.15.0 之前「包在 plugin/ 子目录」的历史安装。
 const fixtureDirs = []
 function makeRepoFixture(options = {}) {
   const repo = join(mkdtempSync(join(tmpdir(), 'bib-repo-')), options.name || 'repo')
@@ -128,12 +130,13 @@ function makeRepoFixture(options = {}) {
     writeFileSync(join(gitDir, 'refs', 'remotes', 'origin', 'HEAD'), 'ref: refs/remotes/origin/' + options.defaultBranch + '\n')
   }
   if (options.packedRefs) writeFileSync(join(gitDir, 'packed-refs'), options.packedRefs)
-  mkdirSync(join(repo, 'plugin'), { recursive: true })
+  const target = options.legacySubdir ? join(repo, 'plugin') : repo
+  mkdirSync(target, { recursive: true })
   if (options.withBuildScript) {
-    mkdirSync(join(repo, 'plugin', 'scripts'), { recursive: true })
-    writeFileSync(join(repo, 'plugin', 'scripts', 'build.mjs'), '// fixture\n')
+    mkdirSync(join(target, 'scripts'), { recursive: true })
+    writeFileSync(join(target, 'scripts', 'build.mjs'), '// fixture\n')
   }
-  return { repo, target: join(repo, 'plugin') }
+  return { repo, target }
 }
 
 const npmCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': '^1.10.19' } })
@@ -149,10 +152,10 @@ check(
   npmCase && { available: npmCase.available, latest: npmCase.latest }
 )
 
-const linkCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:/opt/example/dsh-bottom-info-bar/plugin' } })
+const linkCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:/opt/example/dsh-bottom-info-bar' } })
 check(
   'host：link: 安装但目标不是 git 副本 → 保守退回 git pull（不误报 npm 命令）',
-  linkCase && linkCase.installMode === 'link' && linkCase.updateCommand === 'git -C /opt/example/dsh-bottom-info-bar/plugin pull --ff-only',
+  linkCase && linkCase.installMode === 'link' && linkCase.updateCommand === 'git -C /opt/example/dsh-bottom-info-bar pull --ff-only',
   linkCase && { mode: linkCase.installMode, cmd: linkCase.updateCommand }
 )
 
@@ -164,11 +167,14 @@ check(
   mainCase && mainCase.updateCommand === 'git -C ' + onMain.repo + ' fetch origin && git -C ' + onMain.repo + ' merge --ff-only origin/main',
   mainCase && { mode: mainCase.installMode, cmd: mainCase.updateCommand }
 )
+// ③-a1 历史安装：link 目标曾是仓库内的 plugin/ 子目录（1.15.0 之前），命令仍须以探测到的仓库根为准
+const legacy = makeRepoFixture({ branch: 'main', defaultBranch: 'main', legacySubdir: true })
+const legacyCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + legacy.target } })
 check(
-  'host：命令以仓库根为准（link 目标在 plugin/ 子目录里）',
-  mainCase && (mainCase.updateCommand || '').indexOf('git -C ' + onMain.repo + ' ') === 0
-    && (mainCase.updateCommand || '').indexOf(onMain.target) === -1,
-  mainCase && mainCase.updateCommand
+  'host：历史安装的 plugin/ 子目录目标 → 命令仍指向仓库根',
+  legacyCase && (legacyCase.updateCommand || '').indexOf('git -C ' + legacy.repo + ' ') === 0
+    && (legacyCase.updateCommand || '').indexOf(legacy.target) === -1,
+  legacyCase && legacyCase.updateCommand
 )
 check(
   'host：回归——不能退回「当前分支无上游」就失败的裸 git pull',
@@ -176,7 +182,7 @@ check(
   mainCase && mainCase.updateCommand
 )
 
-// ③-a2 源码副本：plugin/lib 是构建产物（main 指向 lib/index.js，lib 不入 git），
+// ③-a2 源码副本：main 指向 lib/index.js；lib 虽已入库，本地副本可能改过 src 没重建，
 // 只拉代码不重建 = 重启后加载的还是旧 lib，等于「更新了却没生效」。
 const withBuild = makeRepoFixture({ branch: 'main', defaultBranch: 'main', withBuildScript: true })
 const buildCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + withBuild.target } })
@@ -240,17 +246,38 @@ const commonGit = join(worktreeRoot, 'common.git')
 const wtGit = join(worktreeRoot, 'wt-gitdir')
 mkdirSync(join(commonGit, 'refs', 'remotes', 'origin'), { recursive: true })
 mkdirSync(wtGit, { recursive: true })
-mkdirSync(join(worktreeRoot, 'wt', 'plugin'), { recursive: true })
+mkdirSync(join(worktreeRoot, 'wt'), { recursive: true })
 writeFileSync(join(commonGit, 'config'), '[remote "origin"]\n\turl = https://github.com/songoao25/dsh-bottom-info-bar.git\n')
 writeFileSync(join(commonGit, 'refs', 'remotes', 'origin', 'HEAD'), 'ref: refs/remotes/origin/main\n')
 writeFileSync(join(wtGit, 'HEAD'), 'ref: refs/heads/main\n')
 writeFileSync(join(wtGit, 'commondir'), '../common.git\n')
 writeFileSync(join(worktreeRoot, 'wt', '.git'), 'gitdir: ' + wtGit + '\n')
-const worktreeCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + join(worktreeRoot, 'wt', 'plugin') } })
+const worktreeCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'link:' + join(worktreeRoot, 'wt') } })
 check(
   'host：linked worktree（.git 文件 + commondir）也能读远端默认分支',
   worktreeCase && worktreeCase.updateCommand === 'git -C ' + join(worktreeRoot, 'wt') + ' fetch origin && git -C ' + join(worktreeRoot, 'wt') + ' merge --ff-only origin/main',
   worktreeCase && worktreeCase.updateCommand
+)
+
+// ③-g DSH 插件页的「GitHub 仓库地址」安装：更新 = 重跑同一条 add 命令
+const gitCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'github:songoao25/dsh-bottom-info-bar' } })
+check(
+  'host：GitHub 地址安装 → 命令重跑同一条 add（npm 那条会被「已安装」挡下）',
+  gitCase && gitCase.installMode === 'git'
+    && /^dsh plugin --profile \S+ add github:songoao25\/dsh-bottom-info-bar$/.test(gitCase.updateCommand || ''),
+  gitCase && { mode: gitCase.installMode, cmd: gitCase.updateCommand }
+)
+const pathSpecCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'github:songoao25/dsh-bottom-info-bar#path:plugin' } })
+check(
+  'host：带 #path: 的历史地址原样重跑（老用户不必换写法；# 会被引号包住，否则 shell 当注释）',
+  pathSpecCase && pathSpecCase.updateCommand === "dsh plugin --profile web add 'github:songoao25/dsh-bottom-info-bar#path:plugin'",
+  pathSpecCase && pathSpecCase.updateCommand
+)
+const sshCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': 'git+ssh://git@github.com/songoao25/dsh-bottom-info-bar.git' } })
+check(
+  'host：git+ssh 地址同样按重装处理',
+  sshCase && sshCase.updateCommand === 'dsh plugin --profile web add git+ssh://git@github.com/songoao25/dsh-bottom-info-bar.git',
+  sshCase && sshCase.updateCommand
 )
 
 const noProfile = await getUpdateInfoWithProfile(null)

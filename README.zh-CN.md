@@ -41,6 +41,8 @@ DeepSeek Harness 输入框下方那行统计栏的**直接替代品**：原生�
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
+也可以在 DSH 里直接装：**插件 → 添加插件**，填包名 `dsh-bottom-info-bar`。那一栏填仓库地址同样可以——包就在仓库根目录。
+
 然后 **重启 `dsh web`** —— 插件在宿主进程启动时组合，**刷新页面不够**。
 
 安装就到这里：配好服务商的 API Key、重启，完事。重启后插件会出现在**插件**页并处于启用状态：
@@ -50,16 +52,26 @@ dsh plugin --profile web add dsh-bottom-info-bar
 <details>
 <summary>其它安装方式（以及该怎么选）</summary>
 
-**推荐用上面的 npm 命令。** 它不需要任何构建步骤：版本更新提醒只会给你一条命令，更新完也不必重新构建——见 [更新版本](#更新版本)。
+**推荐用上面的 npm 命令。** 装的是已发布的版本，更新提醒也只给你一条命令——见 [更新版本](#更新版本)。
+
+**从 GitHub 地址安装** —— 包就在仓库根目录，所以 DSH 能直接吃仓库地址（插件页的引导让你填的正是这个）：
+
+```bash
+dsh plugin --profile web add https://github.com/songoao25/dsh-bottom-info-bar
+```
+
+它跟随默认分支而不是某个发布版本。安装时不跑构建：`lib/` 已入库。更新就是再执行一次同样的命令。
 
 **从本地代码安装**（用于开发，或想跑未发布的代码）：
 
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
-dsh plugin --profile web add /path/to/dsh-bottom-info-bar/plugin
+dsh plugin --profile web add /path/to/dsh-bottom-info-bar
 ```
 
 这会产生 `link:` 安装：它跟随你的本地代码而不是 npm，所以更新方式是 `git pull` 而不是装包——见 [更新版本](#更新版本)。
+
+如果你在「包移到仓库根」之前用本地代码装过，路径末尾是 `/plugin`。那个目录已经不存在了——先卸载，再用上面的命令装一次。
 
 **一键脚本** —— clone 与安装一步完成：
 
@@ -150,13 +162,14 @@ cd dsh-bottom-info-bar
 | 你的安装方式 | 拿到的命令 |
 |---|---|
 | npm（`dsh plugin add dsh-bottom-info-bar`） | `dsh plugin --profile <profile> add dsh-bottom-info-bar@latest` |
-| `link:`（本地代码 / 一键脚本） | `git -C <仓库> fetch origin && git -C <仓库> checkout main && git -C <仓库> merge --ff-only origin/main && node <仓库>/plugin/scripts/build.mjs` |
+| GitHub 地址 | `dsh plugin --profile <profile> add <同一个地址>` |
+| `link:`（本地代码 / 一键脚本） | `git -C <仓库> fetch origin && git -C <仓库> checkout main && git -C <仓库> merge --ff-only origin/main && node <仓库>/scripts/build.mjs` |
 
 `link:` 安装时，插件会**只读地**看一眼你这份工作副本的 git 状态，再据此拼出命令：
 
 - **对准仓库的默认分支，而不是你碰巧所在的分支。** 停在功能分支上的副本快进不到任何有用的东西，所以命令会先切到默认分支。不会丢东西：工作区不干净或分支上有本地提交时，git 自己会拒绝，而不是覆盖你的改动。
 - **不会用 `git pull`。** 分支从没推到远端时 `pull` 会直接失败（`no such ref was fetched`）——而本地开发分支本来就是这种状态。
-- **末尾会重新构建 `plugin/lib/`。** `link:` 安装加载的是构建产物 `lib/`（不入 git），只拉代码不重建，重启后跑的还是旧代码。这和 `install.sh` 里的构建步骤是同一件事。
+- **末尾会重新构建 `lib/`。** `link:` 安装加载的是构建产物 `lib/`，而你的副本可能改过 `src/` 却没重建——重建一次才保证跑起来的代码和副本一致。这和 `install.sh` 里的构建步骤是同一件事。
 
 悬浮提示里的版本号读的是**磁盘上已安装的那一份**，随页面刷新而更新，所以更新完不必等重启，提醒就会消失；宿主代码本身在下次重启 `dsh web` 时生效。
 
@@ -256,7 +269,8 @@ ChatGPT 的绑定与令牌维护属于独立插件 `dsh-chatgpt-subscription`，
 | ChatGPT 显示**未连接** | 安装配套插件 `dsh-chatgpt-subscription` 并登录 |
 | ChatGPT 的套餐或到期时间为空 | 重新登录或重新绑定。若令牌里确实没有这些字段，信息栏会留空而不是猜 |
 | 怎么更新插件？ | 点红色的**新版本提醒**标签复制命令，然后重启 `dsh web`。详见[更新版本](#更新版本) |
-| 更新完了，提醒还在 | 版本号读的是磁盘上已安装的那一份：先刷新页面。若提醒仍在，确认更新真的换掉了已安装的副本（`link:` 安装必须重新构建 `plugin/lib/`） |
+| 更新完了，提醒还在 | 版本号读的是磁盘上已安装的那一份：先刷新页面。若提醒仍在，确认更新真的换掉了已安装的副本（`link:` 安装必须重新构建 `lib/`） |
+| 安装报错「这个包没有声明组合包」 | DSH 装到的是一个「根目录不是包」的仓库——那是包移到仓库根之前的本仓库。插件页里改填包名 `dsh-bottom-info-bar`，或用包含该修复的版本上的仓库地址 |
 | 模型显示成 `V41-Flash` | 不是错字——那是 DSH 对 **V4.1 Flash** 的写法。详见[关于模型名](#关于模型名-v41-flash) |
 | 简洁模式显示的额度窗口和完整模式不同 | 这是有意的：简洁模式优先最短窗口（5 小时 > 周 > 月）。额度与倒计时仍取自同一窗口 |
 | 为什么看不到模型的思考过程？ | DSH 不在界面上渲染内部推理——这是 DSH 界面层的限制，与本插件无关 |
@@ -264,8 +278,8 @@ ChatGPT 的绑定与令牌维护属于独立插件 `dsh-chatgpt-subscription`，
 
 ## 开发
 
-- **源码** —— `plugin/src/host.js`（宿主侧）与 `plugin/src/client-bundle.js`（客户端）
-- **构建** —— `cd plugin && npm run build`（生成 `lib/`）
+- **源码** —— `src/host.js`（宿主侧）与 `src/client-bundle.js`（客户端）
+- **构建** —— `npm run build`（重新生成 `lib/`；`lib/` 已入库，所以直接装 GitHub 地址无需构建，CI 会检查它与 `src/` 一致）
 - **测试** —— `node tests/run-all.mjs`（先构建，再跑全部测试套件）
 - **版本记录** —— [CHANGELOG.md](CHANGELOG.md)
 - **参与贡献** —— [CONTRIBUTING.md](CONTRIBUTING.md)；日常流程与发布机制见 [docs/WORKFLOW.md](docs/WORKFLOW.md)

@@ -81,7 +81,7 @@ async function runScenario(label, services, options = {}) {
     webServer: { register(route) { captured.route = route; return () => {} } },
   }, services)
 
-  const mod = await import('../plugin/src/host.js?optsvc=' + encodeURIComponent(label + dataDir))
+  const mod = await import('../src/host.js?optsvc=' + encodeURIComponent(label + dataDir))
   const plugin = mod.default
   const ctx = makeHostCtx(full, options)
   const dispose = plugin.apply(ctx)

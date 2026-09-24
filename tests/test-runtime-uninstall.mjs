@@ -10,8 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const clientSrc = readFileSync(new URL('../plugin/src/client-bundle.js', import.meta.url), 'utf8')
-const hostSrc = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
+const clientSrc = readFileSync(new URL('../src/client-bundle.js', import.meta.url), 'utf8')
+const hostSrc = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
 
 let pass = 0
 let fail = 0
@@ -57,7 +57,7 @@ process.env.DSH_BOTTOM_INFO_BAR_PROFILE_ROOT = profilesRoot
 process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(tmpRoot, 'no-codex-auth.json')
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(tmpRoot, 'no-opencode-auth.json')
 
-const plugin = (await import('../plugin/lib/index.js')).default
+const plugin = (await import('../lib/index.js')).default
 
 function stubCtx() {
   return {
@@ -152,7 +152,7 @@ check('profiles 目录为空（扫不到任何 profile）→ 保守保留，绝�
       ...process.env,
       DSH_BOTTOM_INFO_BAR_DATA_DIR: splitData,
       DSH_BOTTOM_INFO_BAR_PROFILE_ROOT: splitProfiles,
-      LIB: fileURLToPath(new URL('../plugin/lib/index.js', import.meta.url)),
+      LIB: fileURLToPath(new URL('../lib/index.js', import.meta.url)),
       SENTINEL: join(splitData, 'sentinel.json'),
     },
   })

@@ -5,10 +5,10 @@ const { t } = require('./locale-fixture.cjs');
 // 用法：node tests/test-dual-mode.js
 const fs = require('fs');
 
-const hostSrc = fs.readFileSync(__dirname + '/../plugin/src/host.js', 'utf8');
-const clientSrc = fs.readFileSync(__dirname + '/../plugin/src/client-bundle.js', 'utf8');
+const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 // v1.6 整改：从 constants.js 读取单一生源的 SUBSCRIPTION_PROVIDERS
-const constantsSrc = fs.readFileSync(__dirname + '/../plugin/src/constants.js', 'utf8');
+const constantsSrc = fs.readFileSync(__dirname + '/../src/constants.js', 'utf8');
 const constantsMatch = constantsSrc.match(/export const SUBSCRIPTION_PROVIDERS = (\[[\s\S]*?\]);?/);
 if (!constantsMatch) throw new Error('无法从 constants.js 中提取 SUBSCRIPTION_PROVIDERS');
 const SUBSCRIPTION_PROVIDERS = eval('(' + constantsMatch[1] + ')');

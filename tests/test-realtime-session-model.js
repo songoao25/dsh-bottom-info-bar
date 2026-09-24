@@ -1,8 +1,8 @@
 // 会话级实时模型同步回归：不能再把进程全局默认模型显示给另一个已激活会话。
 import { readFileSync } from 'node:fs'
 
-const client = readFileSync(new URL('../plugin/src/client-bundle.js', import.meta.url), 'utf8')
-const host = readFileSync(new URL('../plugin/src/host.js', import.meta.url), 'utf8')
+const client = readFileSync(new URL('../src/client-bundle.js', import.meta.url), 'utf8')
+const host = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
 let failed = 0
 function check(name, ok) {
   console.log((ok ? 'PASS  ' : 'FAIL  ') + name)

@@ -11,7 +11,7 @@ function check(label, ok) {
   else { fail++; console.log('FAIL  ' + label) }
 }
 
-const host = readFileSync(join(root, 'plugin/src/host.js'), 'utf8')
+const host = readFileSync(join(root, 'src/host.js'), 'utf8')
 
 // 1) 框架构件齐全
 check('host 含远程价目 URL 常量', host.includes("REMOTE_PRICING_URL ="), true)

@@ -8,7 +8,7 @@ const dataDir = mkdtempSync(join(tmpdir(), 'bib-stream-ledger-'))
 process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = dataDir
 const journalFile = join(dataDir, 'usage-records.journal.jsonl')
 const snapshotFile = join(dataDir, 'usage-records.json')
-const plugin = (await import('../plugin/src/host.js')).default
+const plugin = (await import('../src/host.js')).default
 
 let failures = 0
 function check(name, condition, detail) {
@@ -116,7 +116,7 @@ const interruptedRecord = beforeFailure.find((record) => record.sessionId === 'i
 const unpricedRecord = beforeFailure.find((record) => record.model === 'unknown-model')
 check('中断账单标为 interrupted', interruptedRecord && interruptedRecord.status === 'interrupted', JSON.stringify(interruptedRecord))
 check('未知价格模型保留用量但标为 unpriced', unpricedRecord && unpricedRecord.pricingStatus === 'unpriced' && !Object.hasOwn(unpricedRecord, 'cost'), JSON.stringify(unpricedRecord))
-const clientSource = readFileSync(new URL('../plugin/src/client-bundle.js', import.meta.url), 'utf8')
+const clientSource = readFileSync(new URL('../src/client-bundle.js', import.meta.url), 'utf8')
 check('底栏为账单未保存提供明确提示', clientSource.includes("t('ui.spendNotSaved')") && clientSource.includes('persistence.state'), '')
 
 // Turn the journal pathname into a directory: appending must fail, and the

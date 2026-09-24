@@ -24,7 +24,6 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches package version
-        working-directory: plugin
         shell: bash
         run: |
           package_version="$(node -p "require('./package.json').version")"
@@ -38,8 +37,8 @@ jobs:
             echo "Manual publish: using package version $package_version"
           fi
 
+      # prepublishOnly 会先 npm run build，保证 npm 包里的 lib/ 与 src/ 一致
       - name: Publish package
-        working-directory: plugin
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

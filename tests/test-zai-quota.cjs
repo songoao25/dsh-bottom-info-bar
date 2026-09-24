@@ -14,8 +14,8 @@ const { readFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const root = join(__dirname, '..')
-const hostSrc = readFileSync(join(root, 'plugin', 'src', 'host.js'), 'utf8')
-const localeSrc = readFileSync(join(root, 'plugin', 'src', 'locales.js'), 'utf8')
+const hostSrc = readFileSync(join(root, 'src', 'host.js'), 'utf8')
+const localeSrc = readFileSync(join(root, 'src', 'locales.js'), 'utf8')
 
 // ---- 从正式源码抽出被测函数（保证测的是真身，而不是复制品） ----
 function extractFn(name) {
@@ -240,7 +240,7 @@ check('⑥ 不传 windowLabels → 回退模块兜底字典', parseZaiQuota({ da
 ok('⑦ locales：host.hour / ui.weekly / ui.monthly 三键齐备', ["host.hour", "ui.weekly", "ui.monthly"].every(function (k) { return localeSrc.indexOf('"' + k + '"') >= 0 }))
 ok('⑦ locales：空窗口错误文案中英双语齐备', localeSrc.split('"error.subscription.zhipu-unrecognized"').length === 3)
 // 客户端简洁模式兜底：resetsAt 全为 null 时必须退回按时长选最短窗口，否则额度整组静默消失
-const clientSrc = readFileSync(join(root, 'plugin', 'src', 'client-bundle.js'), 'utf8')
+const clientSrc = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
 ok('⑦ 客户端：简洁模式无重置时刻时仍选窗（不复用只认 resetsAt 的旧写法）',
   clientSrc.indexOf('windowsWithReset.length > 0 ? windowsWithReset : windows') >= 0)
 

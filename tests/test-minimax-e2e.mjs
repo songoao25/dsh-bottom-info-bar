@@ -23,7 +23,7 @@
 //   ⑪ 客户端源码：方向归一（真实切片求值）、告警与显示方向解耦、分段控件键盘可达、对比度 ≥ 4.5:1
 //   ⑫ 密钥不泄漏：错误文案与 console.warn 均不含 Key 片段
 //
-// 反向验证（证明断言不空转）：把 plugin/src 复制到临时目录做故意破坏，用环境变量指向副本即可：
+// 反向验证（证明断言不空转）：把 src 复制到临时目录做故意破坏，用环境变量指向副本即可：
 //   BIB_E2E_HOST_MODULE=/tmp/xxx/host.js  BIB_E2E_CLIENT_MODULE=/tmp/xxx/client-bundle.js
 //   node tests/test-minimax-e2e.mjs   → 必须 FAIL（exit 1）
 // 默认（不设变量）验证仓库当前源码。
@@ -47,27 +47,27 @@ process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(dataDir, 'absent-codex-auth.js
 process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(dataDir, 'absent-opencode-auth.json')
 process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH = join(dataDir, 'absent-commandcode-auth.json')
 
-// 被测代码 = 构建产物（plugin/lib/index.js 是 package.json 的 main，也是 DSH 真正加载的那份）。
-// 注意：plugin/src/host.js 第 251 行的 SUBSCRIPTION_PROVIDERS 是构建期注入锚点
+// 被测代码 = 构建产物（lib/index.js 是 package.json 的 main，也是 DSH 真正加载的那份）。
+// 注意：src/host.js 第 251 行的 SUBSCRIPTION_PROVIDERS 是构建期注入锚点
 // /*__SUBSCRIPTION_PROVIDERS__*/[]——直接 import src 会让订阅 provider 表为空，
 // minimax 被误判成 balance，那是测试装置自己的假阴性，不是实现问题。
 // 默认路径下若产物缺失/陈旧则先重建（与 run-all.mjs 同一约定）；BIB_E2E_*_MODULE 覆盖时绝不重建。
-const LIB_HOST = join(ROOT, 'plugin', 'lib', 'index.js')
-const LIB_CLIENT = join(ROOT, 'plugin', 'lib', 'client.js')
+const LIB_HOST = join(ROOT, 'lib', 'index.js')
+const LIB_CLIENT = join(ROOT, 'lib', 'client.js')
 const SRC_FILES = ['host.js', 'constants.js', 'client-bundle.js', 'locales.js', 'host-locale.js']
-  .map((f) => join(ROOT, 'plugin', 'src', f))
+  .map((f) => join(ROOT, 'src', f))
 function libIsStale() {
   if (!existsSync(LIB_HOST) || !existsSync(LIB_CLIENT)) return true
   const newestSrc = Math.max(...SRC_FILES.filter((f) => existsSync(f)).map((f) => statSync(f).mtimeMs))
   return statSync(LIB_HOST).mtimeMs < newestSrc || statSync(LIB_CLIENT).mtimeMs < newestSrc
 }
 if (!process.env.BIB_E2E_HOST_MODULE && !process.env.BIB_E2E_CLIENT_MODULE && libIsStale()) {
-  const built = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: join(ROOT, 'plugin'), encoding: 'utf8' })
+  const built = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: ROOT, encoding: 'utf8' })
   if (built.status !== 0) {
     console.error('lib/ 产物陈旧且重建失败：' + (built.stderr || built.stdout))
     process.exit(1)
   }
-  console.log('lib/ 产物陈旧 → 已重建（node plugin/scripts/build.mjs）')
+  console.log('lib/ 产物陈旧 → 已重建（node scripts/build.mjs）')
 }
 const HOST_MODULE = process.env.BIB_E2E_HOST_MODULE
   ? resolve(process.env.BIB_E2E_HOST_MODULE)
@@ -76,7 +76,7 @@ const CLIENT_SOURCE_PATH = process.env.BIB_E2E_CLIENT_MODULE
   ? resolve(process.env.BIB_E2E_CLIENT_MODULE)
   : LIB_CLIENT
 
-const LOCALES = (await import(pathToFileURL(join(ROOT, 'plugin', 'src', 'locales.js')).href)).LOCALES
+const LOCALES = (await import(pathToFileURL(join(ROOT, 'src', 'locales.js')).href)).LOCALES
 const hostModule = await import(pathToFileURL(HOST_MODULE).href)
 const plugin = hostModule.default
 const internals = hostModule.__settingsInternals

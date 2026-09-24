@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const pluginRoot = join(root, 'plugin')
+const pluginRoot = root
 const pkg = JSON.parse(readFileSync(join(pluginRoot, 'package.json'), 'utf8'))
 const patchPath = join(pluginRoot, pkg.dsh.bundle.patch)
 const source = readFileSync(join(pluginRoot, 'src', 'client-bundle.js'), 'utf8')
