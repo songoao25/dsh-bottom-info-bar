@@ -9,9 +9,12 @@
 //   ③ link: 的命令必须真的跑得通（2026-09-22 用户实测「复制了、执行了、却没有更新」）：
 //      不能依赖当前分支有可用上游（`git pull` 在分支没推到远端时直接失败），
 //      且必须指向远端默认分支（不在默认分支时先 checkout 过去再 --ff-only 快进）。
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
+//   ④ 提醒必须能自愈（2026-09-24 用户报「更新完还显示提醒」）：npm 侧按 TTL 重查、
+//      本机已安装版本每次从磁盘重读 —— 本地副本更新到同版后，提醒要自己消失。
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) })
 
@@ -109,6 +112,65 @@ async function getUpdateInfoWithProfile(profilePackage) {
     if (prevData === undefined) delete process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR; else process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = prevData
     rmSync(home, { recursive: true, force: true })
     rmSync(dataDir, { recursive: true, force: true })
+  }
+}
+
+// ④ 用的夹具：把 host 模块复制进临时目录，配一份**可改版本号**的 package.json
+// （模拟「本机已安装的那一份」），并允许覆盖 npm 查询 TTL。
+async function openUpdateInfoHost(options = {}) {
+  const home = mkdtempSync(join(tmpdir(), 'bib-upd-'))
+  const dataDir = mkdtempSync(join(tmpdir(), 'bib-upd-data-'))
+  const prevHome = process.env.DSH_HOME
+  const prevData = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR
+  const prevTtl = process.env.DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS
+  process.env.DSH_HOME = home
+  process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = dataDir
+  if (options.updateTtlMs !== undefined) process.env.DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS = String(options.updateTtlMs)
+  mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
+  writeFileSync(join(home, 'profiles', 'web', 'package.json'), JSON.stringify({ dependencies: { 'dsh-bottom-info-bar': 'link:/opt/example/dsh-bottom-info-bar' } }))
+  const mod = await import((options.moduleUrl || new URL('../src/host.js', import.meta.url).href) + '?upd=' + encodeURIComponent(dataDir))
+  const captured = { route: null }
+  const ctx = {
+    get(name) {
+      if (name === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) }
+      return undefined
+    },
+    credentials: { resolve: async () => null },
+    interval() { return () => {} },
+    timeout() { return () => {} },
+    on() { return () => {} },
+    inject(services, callback) {
+      callback({
+        effect(fn) { const d = fn(); return () => d && d() },
+        webServer: { register(route) { captured.route = route; return () => {} } },
+      })
+      return () => {}
+    },
+  }
+  const disposePlugin = mod.default.apply(ctx)
+  const call = async () => {
+    const listeners = {}
+    const req = {
+      url: '/_dsh/dsh-bottom-info-bar/getUpdateInfo', method: 'POST', headers: {},
+      on(name, listener) { (listeners[name] ||= []).push(listener); return req }, destroy() {},
+    }
+    let payload = null
+    const pending = captured.route.handler(req, { writeHead() {}, end(text) { payload = JSON.parse(text) } })
+    for (const listener of listeners.data || []) listener(Buffer.from('{}'))
+    for (const listener of listeners.end || []) listener()
+    await pending
+    return payload
+  }
+  return {
+    call,
+    dispose() {
+      disposePlugin()
+      if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome
+      if (prevData === undefined) delete process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR; else process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = prevData
+      if (prevTtl === undefined) delete process.env.DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS; else process.env.DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS = prevTtl
+      rmSync(home, { recursive: true, force: true })
+      rmSync(dataDir, { recursive: true, force: true })
+    },
   }
 }
 
@@ -279,6 +341,72 @@ check(
   sshCase && sshCase.updateCommand === 'dsh plugin --profile web add git+ssh://git@github.com/songoao25/dsh-bottom-info-bar.git',
   sshCase && sshCase.updateCommand
 )
+
+// ---------- ④ 提醒自愈：本地副本更新完，available 必须自己变 false ----------
+const pkgDir = mkdtempSync(join(tmpdir(), 'bib-pkg-'))
+mkdirSync(join(pkgDir, 'src'), { recursive: true })
+for (const file of ['host.js', 'constants.js', 'host-locale.js', 'locales.js']) {
+  copyFileSync(join(root, 'src', file), join(pkgDir, 'src', file))
+}
+const setInstalledVersion = (version) => writeFileSync(
+  join(pkgDir, 'package.json'),
+  JSON.stringify({ name: 'dsh-bottom-info-bar', version: version, type: 'module' })
+)
+setInstalledVersion('1.16.0')
+
+// 只数发往 npm registry 的请求（host 还会拉远程价目目录，别把它算进来）。
+// 判据用「解析后比 hostname」，不写域名字符串包含（守卫 5 / CodeQL 的要求）。
+let npmFetches = 0
+const isNpmRegistryRequest = (url) => {
+  try { return new URL(String(url)).hostname === 'registry.npmjs.org' } catch { return false }
+}
+globalThis.fetch = async (url) => {
+  if (isNpmRegistryRequest(url)) npmFetches += 1
+  return { ok: true, status: 200, json: async () => ({ version: '1.16.1' }) }
+}
+const versionHost = await openUpdateInfoHost({ moduleUrl: pathToFileURL(join(pkgDir, 'src', 'host.js')).href })
+const fetchesAfterStartup = npmFetches
+
+const beforeUpdate = await versionHost.call()
+check(
+  '版本提醒：npm 有新版 → available=true，且带回两端版本号',
+  beforeUpdate && beforeUpdate.available === true && beforeUpdate.current === '1.16.0' && beforeUpdate.latest === '1.16.1',
+  beforeUpdate && { available: beforeUpdate.available, current: beforeUpdate.current, latest: beforeUpdate.latest }
+)
+await versionHost.call()
+check('版本提醒：TTL 内重复读取不再请求 npm（不打扰 registry）',
+  npmFetches === fetchesAfterStartup, '启动后新增 fetch 次数 ' + (npmFetches - fetchesAfterStartup))
+
+// 用户跑完更新命令（或 npm 装上新版）之后：本地那一份的版本号变了
+setInstalledVersion('1.16.1')
+const afterUpdate = await versionHost.call()
+check(
+  '版本提醒：本地副本更新到与 npm 同版后，提醒自己消失（不必重启宿主）',
+  afterUpdate && afterUpdate.available === false && afterUpdate.current === '1.16.1' && afterUpdate.latest === '1.16.1',
+  afterUpdate && { available: afterUpdate.available, current: afterUpdate.current, latest: afterUpdate.latest }
+)
+check('版本提醒：已安装版本每次从磁盘重读（TTL 内也没多发 npm 请求）',
+  npmFetches === fetchesAfterStartup, '启动后新增 fetch 次数 ' + (npmFetches - fetchesAfterStartup))
+versionHost.dispose()
+rmSync(pkgDir, { recursive: true, force: true })
+
+// TTL 到期后重查 npm：新版本不必等宿主重启才出现
+npmFetches = 0
+const ttlHost = await openUpdateInfoHost({ updateTtlMs: 0 })
+const fetchesAfterTtlStartup = npmFetches
+await ttlHost.call()
+await ttlHost.call()
+await ttlHost.call()
+check('版本提醒：TTL 到期后重查 npm（新版本无需重启宿主即可出现）',
+  npmFetches - fetchesAfterTtlStartup >= 2, '三次读取新增 fetch 次数 ' + (npmFetches - fetchesAfterTtlStartup))
+globalThis.fetch = async () => { throw new Error('offline') }
+const flaky = await ttlHost.call()
+check(
+  '版本提醒：npm 查询失败时保留上一次已知版本（网络抖动不让提醒闪烁）',
+  flaky && flaky.latest === '1.16.1',
+  flaky && flaky.latest
+)
+ttlHost.dispose()
 
 const noProfile = await getUpdateInfoWithProfile(null)
 check(

@@ -10,7 +10,7 @@ function check(name, actual, expected = true) {
 }
 
 const logicStart = host.indexOf('function stableVersion')
-const logicEnd = host.indexOf('async function checkLatestVersion')
+const logicEnd = host.indexOf('const UPDATE_LATEST_TTL_MS')
 const { stableVersion, compareVersions } = Function(host.slice(logicStart, logicEnd) + '; return { stableVersion, compareVersions }')()
 
 check('实际识别普通稳定版本号', JSON.stringify(stableVersion('1.4.1')) === JSON.stringify([1, 4, 1]))
@@ -28,10 +28,36 @@ check('host 使用固定 NPM registry 地址', !!registryUrl
   && registryUrl.pathname === '/dsh-bottom-info-bar/latest')
 check('host 从 package.json 动态读取当前版本', host.includes("new URL('../package.json', import.meta.url)") && host.includes('packageVersion()'))
 check('host 版本检查有 5 秒超时', host.includes('UPDATE_CHECK_TIMEOUT_MS = 5000') && host.includes('controller.abort()'))
-check('host 只启动一次版本检查 Promise', host.includes('const updateInfoPromise = checkLatestVersion()'))
-check('host 暴露 getUpdateInfo RPC（复用启动时那次检查，不重复请求 NPM）',
-  host.includes('getUpdateInfo: async function ()') && host.includes('await updateInfoPromise'))
-check('client 只调用一次 getUpdateInfo', (client.match(/rpc\('getUpdateInfo'/g) || []).length === 1)
+// 2026-09-24 起：npm 最新版本按 TTL 重查（不再是进程内一次性检查），
+// 本机已安装版本每次从磁盘重读 —— 否则「更新完还显示提醒」要等刷新页面/重启宿主才消失。
+check('host 按 TTL 缓存 npm 最新版本（默认 15 分钟，失败 1 分钟后重试）',
+  host.includes('const UPDATE_LATEST_TTL_MS = 15 * 60 * 1000')
+  && host.includes('const UPDATE_LATEST_RETRY_MS = 60 * 1000')
+  && host.includes('if (now < updateLatestCache.expiresAt) return Promise.resolve(updateLatestCache.value)'))
+check('host 的 getUpdateInfo 每次重读已安装版本并重算可用性',
+  host.includes('getUpdateInfo: async function ()')
+  && host.includes('const latest = await latestVersion()')
+  && host.includes('const current = packageVersion()')
+  && host.includes('available: !!latest && compareVersions(latest, current) > 0'))
+check('host 启动时预热一次版本查询（失败不影响信息栏）',
+  host.includes('预热一次 npm 版本查询') && /\n    latestVersion\(\)\n/.test(host))
+check('host 查询失败时保留上一次已知版本（不闪提醒）',
+  host.includes('if (value !== null) updateLatestCache.value = value'))
+check('host 版本查询留了 TTL 测试覆盖口（生产不设置）',
+  host.includes('DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS') && host.includes('function updateLatestTtlMs()'))
+check('client 只保留一处 getUpdateInfo 调用点（供定期 / 可见性重读复用）',
+  (client.match(/rpc\('getUpdateInfo'/g) || []).length === 1
+  && client.includes('const readUpdateInfo = function ()'))
+check('client 每 60 秒重读版本信息（本地更新完提醒自己消失）',
+  client.includes('const UPDATE_INFO_REFRESH_MS = 60000;')
+  && client.includes('window.setInterval(readUpdateInfo, UPDATE_INFO_REFRESH_MS)'))
+check('client 在页面重新可见 / 窗口获得焦点时也重读版本信息',
+  client.includes("document.addEventListener('visibilitychange', onVisible)")
+  && client.includes("window.addEventListener('focus', onVisible)"))
+check('client 卸载时清理定时器与监听（不留悬挂副作用）',
+  client.includes('window.clearInterval(timer)')
+  && client.includes("document.removeEventListener('visibilitychange', onVisible)")
+  && client.includes("window.removeEventListener('focus', onVisible)"))
 check('client 无论是否有更新都保存当前插件版本', client.includes("typeof info.current === 'string') setUpdateInfo(info)"))
 check('余额制服务商/模型 hover 显示当前插件版本', client.includes("t('ui.pluginVersion', { current: updateInfo.current })"))
 check('余额/订阅/账单制 hover 均显示当前插件版本（≥2 处）', (client.match(/t\('ui\.pluginVersion', \{ current: updateInfo\.current \}\)/g) || []).length >= 2)
