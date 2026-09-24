@@ -1754,7 +1754,7 @@ function bibSetCustomTextSection(props) {
 // hover 仍保持该深档、不跟随主题变浅。真实色值由 tests/test-quota-display-mode.js 做真实
 // sRGB 相对亮度计算锁定（不用字符串断言代替）。
 function bibSetQuotaMode(props) {
-  const options = [
+  const options = props.options || [
     { value: 'remaining', label: t('ui.quotaDisplayRemaining') },
     { value: 'used', label: t('ui.quotaDisplayUsed') },
   ];
@@ -1787,7 +1787,7 @@ function bibSetQuotaMode(props) {
       key: option.value,
       type: 'button',
       ref: function (node) { refs.current[option.value] = node; },
-      className: 'bib-set-quota-mode-opt' + (selected ? ' bib-set-quota-mode-opt--on' : ''),
+      className: (props.optionClassName || 'bib-set-quota-mode-opt') + (selected ? ' bib-set-quota-mode-opt--on' : ''),
       role: 'radio',
       'aria-checked': selected,
       tabIndex: selected ? 0 : -1,
@@ -1815,6 +1815,30 @@ function bibSetQuotaDisplaySection(props) {
           label: t('ui.quotaDisplayModeTitle'),
           value: props.modeOf(),
           onSelect: props.onModeChange,
+        }))));
+}
+
+// 显示模式是“看多少”的总开关：用户先选信息密度，再决定完整模式中哪些细节需要出现。
+// 简洁模式不修改任何字段开关，随时可切回完整模式查看全部已启用内容。
+function bibSetDensitySection(props) {
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-density-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-density-title',
+      title: t('ui.displayModeTitle'),
+      description: t('ui.displayModeDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-fieldblocks' },
+      React.createElement('div', { className: 'bib-set-fieldblock' },
+        React.createElement(bibSetQuotaMode, {
+          label: t('ui.displayModeTitle'),
+          value: props.value,
+          options: [
+            { value: 'compact', label: t('ui.compactMode') },
+            { value: 'full', label: t('ui.fullMode') },
+          ],
+          optionClassName: 'bib-set-density-mode-opt bib-set-quota-mode-opt',
+          onSelect: props.onSelect,
         }))));
 }
 
@@ -1931,9 +1955,9 @@ function InfoBarSettingsSection() {
     });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
-  // 首屏先展示最常见的原生字段，插件字段按需展开；搜索时两组自动展开。
+  // 首屏先展示真正影响信息栏的插件内容；原生统计只在完整模式出现，按需再展开。
   // 用户随后仍可手动折叠，箭头与 aria-expanded 始终反映真实状态。
-  const [groupOpen, setGroupOpen] = React.useState({ native: true, plugin: false });
+  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
@@ -1952,7 +1976,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -2006,6 +2030,7 @@ function InfoBarSettingsSection() {
       return {
         fields: res.fields || (prev && prev.fields) || {},
         colors: res.colors || (prev && prev.colors) || {},
+        infoDensity: res.infoDensity === 'compact' ? 'compact' : ((res.infoDensity === 'full') ? 'full' : ((prev && prev.infoDensity) || 'full')),
         timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
         timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
         customText: typeof res.customText === 'string' ? res.customText : ((prev && prev.customText) || ''),
@@ -2089,6 +2114,16 @@ function InfoBarSettingsSection() {
   function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
   function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
   function quotaDisplayModeOf() { return normalizeQuotaDisplayMode(snapshot.quotaDisplayMode); }
+  function infoDensityOf() { return snapshot.infoDensity === 'compact' ? 'compact' : 'full'; }
+  function setInfoDensityFromSettings(next) {
+    const value = next === 'compact' ? 'compact' : 'full';
+    const previous = infoDensityOf();
+    if (previous === value) return;
+    commit({ infoDensity: value },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { infoDensity: value }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { infoDensity: previous }); }); },
+      function () { return t('ui.displayModeTitle'); });
+  }
   function setTimeFormatPart(key, next) {
     const current = timeFormatOf();
     if (current[key] === next) return;
@@ -2343,6 +2378,7 @@ function InfoBarSettingsSection() {
       modeOf: quotaDisplayModeOf,
       onModeChange: setQuotaDisplayMode,
     }),
+    bibSetDensitySection({ value: infoDensityOf(), onSelect: setInfoDensityFromSettings }),
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
     resetDialog);
@@ -3018,12 +3054,12 @@ module.exports = {
         const errors = renderedState.errors || {};
         if (bal && bal.selectionPending) return;
         const alertActive = !!(bal && bal.alert && bal.alert.active);
-        pushCustomText(groups);
+        if (full) pushCustomText(groups);
         if (fieldVisible('anchorGroup')) {
           const anchor = providerGroup();
           groups.push(React.cloneElement(anchor, { 'data-field': 'anchorGroup', style: fieldStyle('anchorGroup') }));
         }
-        pushTimeGroups(groups);
+        if (full) pushTimeGroups(groups);
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
@@ -3076,7 +3112,7 @@ module.exports = {
 
         // 时段：仅峰谷价服务商显示"高峰价/空闲价"（flat/unknown 服务商不显示；hover 展示具体价格）
         const pr = visiblePricing;
-        if (pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
+        if (full && pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
           const peakNow = pr.period === 'peak';
           const p = pr.prices || {};
           const periodTitle = t('ui.beijingTime') + (peakNow ? t('ui.peakPrice') : t('ui.offPeakPrice')) + t('ui.input') + (p.inputCacheMiss != null ? p.inputCacheMiss : '?')
@@ -3087,7 +3123,7 @@ module.exports = {
         }
 
         // 倒计时：仅峰谷价服务商显示"距高峰/距空闲"（hover 展示下次切换时刻；数字加粗）
-        if (pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
+        if (full && pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
           const peakNow = pr.period === 'peak';
           const countdownTitle = t('ui.beijingTimeSwitchesTo', { atLabel: pr.nextSwitch.atLabel }) + (peakNow ? t('ui.offPeakPrice') : t('ui.peakPrice')) + t('ui.sentenceEnd');
           groups.push(fieldSpan('countdown', 'countdown', React.createElement('span', { title: countdownTitle },
@@ -3096,7 +3132,7 @@ module.exports = {
 
         // 本会话花费（公共小部件 pushSessionCost：只显示钱；hover 显示 今天/近一月/全部）
         // 始终显示：新会话/对话刚开始尚无记账时显示 ¥0.000，hover 仍可查看持久化的 今天/近一月/全部
-        pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));
+        if (full) pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));
       }
 
       // 本会话花费块（余额制 与 订阅·充值余额 形态共用的小部件）：
@@ -3148,16 +3184,16 @@ module.exports = {
        }
 
       function pushSubscriptionGroups(groups, trailingErrorGroups) {
-        pushCustomText(groups);
+        if (full) pushCustomText(groups);
         if (fieldVisible('subServiceGroup')) {
           const subAnchor = subscriptionProviderGroup();
           groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));
         }
-        pushTimeGroups(groups);
+        if (full) pushTimeGroups(groups);
         const sub = renderedState.sub;
         const errors = renderedState.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
-        if (sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
+        if (full && sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
           groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: t('ui.subscriptionExpiresLocalTime', { value: formatDate(sub.expiryAt) }) },
             metric(t('ui.expires'), formatDate(sub.expiryAt)))));
         }
@@ -3194,10 +3230,10 @@ module.exports = {
             const titleLines = [t('ui.subscriptionSource', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (hostText(sub.plan) || (isCreditsBalance ? t('ui.commandCode') : t('ui.prepaidBalance'))) + ')',
               isCreditsBalance ? t('ui.availableCredits', { value: balanceValue }) : t('ui.availableBalance', { balTxt: balanceValue })];
             groups.push(fieldSpan('subBalance', 'subbal', React.createElement('span', { title: titleLines.join('\n') },
-              metric(isCreditsBalance ? t('ui.credits') : t('ui.balance.pushBalanceGroups'), balanceValue))));
+              metric(isCreditsBalance ? t('ui.remainingCredits') : t('ui.availableBalanceLabel'), balanceValue))));
           }
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
-          if (!isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
+          if (full && !isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
           if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
@@ -3257,7 +3293,7 @@ module.exports = {
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
           // 距重置倒计时（与显示的窗口一致，确保额度与倒计时匹配）
-          if (displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
+          if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
             const cdTitle = windowMode === 'used'
               ? t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) })
               : t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) });
@@ -3282,12 +3318,12 @@ module.exports = {
       }
 
       function pushBillingGroups(groups, trailingErrorGroups) {
-        pushCustomText(groups);
+        if (full) pushCustomText(groups);
         if (fieldVisible('billingServiceGroup')) {
           const billAnchor = billingProviderGroup();
           groups.push(React.cloneElement(billAnchor, { 'data-field': 'billingServiceGroup', style: fieldStyle('billingServiceGroup') }));
         }
-        pushTimeGroups(groups);
+        if (full) pushTimeGroups(groups);
         const bill = renderedState.billing;
         const errors = renderedState.errors || {};
         if (!bill) {
@@ -3320,12 +3356,12 @@ module.exports = {
           } else if (d.usage != null && fieldVisible('billingSpend')) {
             nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
           }
-          if (d.budgetPercent != null && fieldVisible('budget')) {
+          if (full && d.budgetPercent != null && fieldVisible('budget')) {
             if (nodes.length > 0) nodes.push(' · ');
             nodes.push(fieldSpan('budget', 'billbudget', metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')));
           }
           // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
-          if (d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
+          if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
             if (nodes.length > 0) nodes.push(' · ');
             nodes.push(fieldSpan('freeQuota', 'billfree', metric(t('ui.free'), t('ui.resetsIn.pushBillingGroups', { value: fmt(d.freeRemaining, 0), value2: fmtResetCountdown(d.resetsAt - now) }))));
           }
@@ -3402,7 +3438,7 @@ module.exports = {
         }, snapshotOnly ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved'))));
       }
 
-       if (updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
+       if (full && updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
          // 该标签只在「有新版本」时出现，因此点击语义单一：复制更新命令。
          // 必须 stopPropagation —— 信息栏根节点自带 onClick（切换简洁/完整模式），
          // 不拦下冒泡的话，用户点一下复制会顺带把界面切走。
@@ -3426,7 +3462,7 @@ module.exports = {
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
        // 上下文占用圆环（DSH 原生信息，由本插件接管）：挂在主行最右端——即「简洁模式」可见的那一行里的最后一个元素。
        // 与其它字段同源：fields.contextUsage 管显隐、colors.contextUsage 管配色；数据不足时整块不渲染。
-       const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
+       const contextInfo = full && fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
        const contextNode = contextInfo === null ? null : React.createElement(ContextMeterRing, {
          key: 'ctx',
          context: contextInfo,

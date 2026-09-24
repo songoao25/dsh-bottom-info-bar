@@ -249,7 +249,12 @@ for (const language of ['zh', 'en']) {
       assert.doesNotMatch(copy, /\b(?:ui|host|field|group)\.[A-Za-z]/)
       if (language === 'en') assert.doesNotMatch(copy, /\p{Script=Han}/u)
       assert.match(copy, language === 'zh' ? /1 轮.*2 步/s : /1 turn.*2 steps/s)
-      assert.match(copy, language === 'zh' ? /新版本提醒/ : /Update available/)
+      // 简洁模式只保留服务商、模型与一项核心账户信息；更新提醒属于完整模式的辅助信息。
+      // 这个轻量 React 桩复用了同一组 hook 槽；以实际渲染出的切换说明判定密度，
+      // 避免未来调整 hook 顺序时把测试参数误当作界面状态。
+      const compactRendered = language === 'zh' ? copy.includes('切换为完整模式') : copy.includes('for full view')
+      if (!compactRendered) assert.match(copy, language === 'zh' ? /新版本提醒/ : /Update available/)
+      else assert.doesNotMatch(copy, language === 'zh' ? /新版本提醒/ : /Update available/)
       if (mode === 'balance') assert.match(copy, language === 'zh' ? /余额/ : /Balance/)
       if (mode === 'subscription') assert.match(copy, language === 'zh' ? /剩余/ : /remaining/)
       if (mode === 'billing') assert.match(copy, language === 'zh' ? /本月/ : /This month/)
