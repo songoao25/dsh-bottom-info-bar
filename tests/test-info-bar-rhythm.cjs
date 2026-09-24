@@ -109,5 +109,59 @@ check('React shim 缺 useLayoutEffect 时退回 useEffect', clientSrc.includes("
 check('测量在渲染早退之前（hooks 顺序稳定）',
   clientSrc.indexOf('const row1Present = row1 !== null;') < clientSrc.indexOf('if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible)'), true);
 
+// ---------- 6) 上下文圆环不得被单独挤到下一行（2026-09-24 用户报「圆圈单独占一行并居中」） ----------
+// 根因：圆环原本作为主行的独立 flex 子项追加在末尾，行满换行时它独占一行。
+// 修法：与「最后一个内容节点」一起包进 .bi-tail（nowrap），换行时两者一起走。
+const tailSel = '.bi-tail';
+check('尾巴规则存在（圆环与末节点同组）', declarations(tailSel) !== null, true);
+check('尾巴用 inline-flex', has(tailSel, 'display: inline-flex'), true);
+check('尾巴不参与 flex 伸缩', has(tailSel, 'flex: 0 0 auto'), true);
+check('尾巴内文本不折行', has(tailSel, 'white-space: nowrap'), true);
+check('主行组装走 attachContextMeter', clientSrc.includes('...attachContextMeter(nodes, contextNode, React.createElement)'), true);
+check('旧的裸追加写法已移除（圆环不得作为独立子项）', /\.\.\.nodes,\s*contextNode\)/.test(clientSrc), false);
+
+// 行为断言：抽取真函数 + 桩 createElement，圆环必须被包进 tail
+function extractFn(name) {
+  const start = clientSrc.indexOf('function ' + name);
+  if (start < 0) throw new Error('未找到 function ' + name);
+  let depth = 0, i = start, inStr = null;
+  while (i < clientSrc.length) {
+    const c = clientSrc[i];
+    if (inStr) { if (c === '\\') { i += 2; continue; } if (c === inStr) inStr = null; }
+    else if (c === '"' || c === "'" || c === '\u0060') inStr = c;
+    else if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) break; }
+    i++;
+  }
+  return eval('(' + clientSrc.slice(start, i + 1) + ')');
+}
+const attachContextMeter = extractFn('attachContextMeter');
+// 必须是普通函数：箭头函数没有自己的 arguments，children 会永远是空数组（仓库既有教训）
+function stubCreate(type, props) { return { type: type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }; }
+const n1 = { type: 'span', props: { key: 'g0' }, children: ['a'] };
+const n2 = { type: 'span', props: { key: 'g1' }, children: ['b'] };
+const ring = { type: 'Ring', props: { key: 'ctx' }, children: [] };
+const res = attachContextMeter([n1, n2], ring, stubCreate);
+check('节点数不变（末节点被替换成 tail，而不是新增一项）', res.length, 2);
+check('末项是 tail 包装', res[1].props.className, 'bi-tail');
+check('tail 内含原末节点', res[1].children[0], n2);
+check('tail 内含圆环', res[1].children[1], ring);
+check('圆环不再是主行顶层子项', res.indexOf(ring), -1);
+check('没有内容节点时圆环保持原样', attachContextMeter([], ring, stubCreate).length, 1);
+check('无圆环时长度不变', attachContextMeter([n1, n2], null, stubCreate).length, 2);
+check('不修改传入数组（纯函数）', n2.props.className, undefined);
+
+// ---------- 7) 上下文面板不得透字（2026-09-24 用户报「面板透明、文字叠在一起看不清」） ----------
+// 根因：面板底色抄了宿主 --dsw-specific-menu，而它是带 alpha 的色（浅 #f8f9fa94 / 深 #30313680），
+// 宿主菜单另有毛玻璃层，本面板悬在信息栏文字之上 → 必然透字。修法：不透明层级底色。
+const panelSel = '.bi-ctx-panel';
+const panelDecl = declarations(panelSel) || '';
+check('面板规则存在', panelDecl !== '', true);
+check('面板不引用带 alpha 的宿主菜单 token', panelDecl.includes('--dsw-specific-menu'), false);
+check('面板底色用不透明层级底色（带 #fff 兜底）', panelDecl.includes('background: var(--dsw-alias-bg-layer-3, #fff)'), true);
+check('面板保留宿主阴影（层级感不丢）', panelDecl.includes('box-shadow: var(--dsw-elevation-prominent'), true);
+check('面板底色声明里没有 rgba/透明关键字',
+  /background[^;]*\b(rgba|transparent)\b/.test(panelDecl), false);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
