@@ -78,6 +78,7 @@ async function runScenario(label, services, options = {}) {
 
   const captured = { route: null }
   const full = Object.assign({
+    connection: { requestRejection() { return undefined } },
     webServer: { register(route) { captured.route = route; return () => {} } },
   }, services)
 

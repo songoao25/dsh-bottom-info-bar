@@ -27,7 +27,7 @@ function makeStub() {
       timeout() { return () => {} },
       on(name, listener) { if (name === 'llm/stream') captured.listener = listener; return () => {} },
       inject(services, callback) {
-        callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, webServer: { register(route) { captured.route = route; return () => {} } } })
+        callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } }, webServer: { register(route) { captured.route = route; return () => {} } } })
         return () => {}
       },
     },

@@ -89,6 +89,7 @@ async function getUpdateInfoWithProfile(profilePackage) {
       inject(services, callback) {
         callback({
           effect(fn) { const d = fn(); return () => d && d() },
+          connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } },
           webServer: { register(route) { captured.route = route; return () => {} } },
         })
         return () => {}
@@ -142,6 +143,7 @@ async function openUpdateInfoHost(options = {}) {
     inject(services, callback) {
       callback({
         effect(fn) { const d = fn(); return () => d && d() },
+        connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } },
         webServer: { register(route) { captured.route = route; return () => {} } },
       })
       return () => {}

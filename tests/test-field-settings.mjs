@@ -46,7 +46,7 @@ function makeStub() {
     timeout() { return () => {} },
     on(event, listener) { void event; void listener; return () => {} },
     inject(services, callback) {
-      callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, webServer: { register(route) { captured.route = route; return () => {} } } })
+      callback({ effect(fn) { const dispose = fn(); return () => dispose && dispose() }, connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } }, webServer: { register(route) { captured.route = route; return () => {} } } })
       return () => {}
     },
   }
@@ -208,7 +208,7 @@ function copySettings(fromDir, toDir) {
     check('跨站拒绝（403）: ' + method, r.status === 403, r)
   }
   const readAcross = await invokeRoute(route, 'getFieldConfig', null, crossSite)
-  check('只读方法不做同源限制', readAcross.status === 200, readAcross)
+  check('所有插件 RPC 均经宿主认证边界，跨站只读请求同样拒绝', readAcross.status === 403, readAcross)
 }
 
 // ---------- ⑦ __settingsInternals 单元（颜色归一化） ----------
