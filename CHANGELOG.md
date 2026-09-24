@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.17.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.4...v1.17.0) (2026-09-24)
+
+
+### Features
+
+* add focused compact information mode ([#151](https://github.com/songoao25/dsh-bottom-info-bar/issues/151)) ([9afde89](https://github.com/songoao25/dsh-bottom-info-bar/commit/9afde89753e4b34a2360572340247836151a3440))
+
 ## [1.16.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.16.3...v1.16.4) (2026-09-24)
 
 
