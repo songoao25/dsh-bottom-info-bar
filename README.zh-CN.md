@@ -20,9 +20,16 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 | 花费 | 本会话（含子代理）、今天、近 30 天、累计 |
 | 其它 | 主时间、世界时间、自定义文字 |
 
-点击信息栏可在**完整**与**简洁**之间切换；配色跟随 DSH 的深色或浅色主题。
+信息栏有两种密度，点击即可切换：**完整**保留 DSH 原生统计行，插件信息另起一行；**简洁**把全部内容收成一行。两种密度都跟随 DSH 的深色/浅色主题，上下文圆环始终与前面的文字同一行，不会单独折行。
 
-![信息栏简洁模式](assets/bar-compact.zh-CN.webp)
+## 简洁模式
+
+四种真实状态：浅色与深色、余额制与订阅额度制：
+
+| 浅色 | 深色 |
+|---|---|
+| ![余额制·浅色](assets/bar-compact-light-balance.zh-CN.webp) | ![余额制·深色](assets/bar-compact-dark-balance.zh-CN.webp) |
+| ![订阅额度制·浅色](assets/bar-compact-light-subscription.zh-CN.webp) | ![订阅额度制·深色](assets/bar-compact-dark-subscription.zh-CN.webp) |
 
 ## 三种计费模式
 
@@ -32,8 +39,6 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 
 显示服务商官方接口返回的真实余额。信息栏打开、页面刷新或切换服务商时立即重查，之后每 60 秒轮询一次；刷新失败时保留上一次的数值。余额低于 20（按账户币种）时，金额与**低**标记转红。
 
-![余额制](assets/bar-balance.zh-CN.webp)
-
 ### 订阅额度制
 
 显示各窗口剩余额度（5 小时 / 周 / 月）与距下次重置的倒计时——两者始终取自同一个窗口，不会互相矛盾。窗口默认按**剩余**显示百分比，可在设置里切换为**已用**；低额度告警始终按剩余 ≤ 20% 判定。简洁模式优先显示时长最短的可用窗口（5 小时 → 周 → 月）。
@@ -41,12 +46,6 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 ### 云账单制
 
 显示官方账单接口返回的本月真实花费，例如 `Together | 本月 $12.34`、`AWS Bedrock | 本月 $45.60 · 预算 46%`。Cloudflare 还会在接口确实返回免费额度时，显示每日免费额度剩余与 UTC 零点重置倒计时。
-
-## 深色模式
-
-配色跟随 DSH 主题，无需单独设置。
-
-![深色模式](assets/bar-dark.zh-CN.webp)
 
 ## 安装
 
@@ -119,7 +118,7 @@ cd dsh-bottom-info-bar
 |---|---|---|
 | deepseek / deepseek-official | DeepSeek | `DEEPSEEK_API_KEY` |
 | openai | OpenAI | `OPENAI_API_KEY` —— 按消耗速度估算；官方没有公开余额接口 |
-| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY`（回退 `KIMI_API_KEY`） |
+| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY` |
 | openrouter | OpenRouter | `OPENROUTER_API_KEY` |
 | stepfun | StepFun | `STEPFUN_API_KEY` |
 | xiaomi | 小米 MiMo | `XIAOMI_API_KEY` |
@@ -152,7 +151,7 @@ cd dsh-bottom-info-bar
 
 ## 更新
 
-插件在一次完整的 DSH 启动后检查一次 npm 上的新版本。有新版时，信息栏出现红色**新版本提醒**标签：点击即可复制更新命令，到终端执行后重启 `dsh web`。
+插件在 DSH 启动时检查一次 npm 上的新版本，之后最多每 15 分钟复查一次。有新版时，信息栏出现红色**新版本提醒**标签：点击即可复制更新命令，到终端执行后重启 `dsh web`。
 
 | 安装方式 | 命令 |
 |---|---|

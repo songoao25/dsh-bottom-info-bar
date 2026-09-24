@@ -97,8 +97,11 @@ check('整条信息栏的读屏名称引用当前可见信息，切换操作作�
 check('报错标签统一延后到居中信息组的末尾', clientSrc.includes('const trailingErrorGroups = []')
   && clientSrc.includes('trailingErrorGroups.push')
   && clientSrc.includes('const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);')
-  // D7：圆环接管后仍是「居中信息组 + 尾部错误组」之后的最末一个节点——错误标签不会跑到圆环右侧。
-  && clientSrc.includes("const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes, contextNode);"), true);
+  // D7：圆环接管后仍位于「居中信息组 + 尾部错误组」之后——错误标签不会跑到圆环右侧。
+  // 2026-09-24 起圆环不再是主行的独立子项，而是与末节点同组（attachContextMeter → .bi-tail），
+  // 换行时两者一起走，圆环不会被单独挤到下一行。
+  && clientSrc.includes('...attachContextMeter(nodes, contextNode, React.createElement)')
+  && clientSrc.includes('function attachContextMeter('), true);
 check('多个刷新失败合并为一个右侧标签', clientSrc.includes('const seenRefreshFailure = { value: false };')
   && clientSrc.includes("if (text !== t('ui.refreshFailed')) return true;"), true);
 check('状态说明维持原生悬浮提示，不额外引入读屏文案', !clientSrc.includes("'aria-label': title")

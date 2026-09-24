@@ -513,6 +513,18 @@ function assembleInfoBarRow(groups, trailingErrorGroups, createElement) {
   return nodes;
 }
 
+// 上下文圆环的落位（2026-09-24 用户报「圆环被单独挤到下一行并居中」）：
+// 圆环原本作为主行的独立 flex 子项追加在末尾 —— 行满换行时它会独占一行，居中后非常难看。
+// 改为与「最后一个内容节点」一起包进同一个 nowrap 尾巴（.bi-tail）：要换行两者一起走，
+// 圆环永远不会孤零零占一行；没有内容节点时（只显示圆环）保持原样。
+function attachContextMeter(nodes, contextNode, createElement) {
+  if (!contextNode) return nodes.slice();
+  if (nodes.length === 0) return [contextNode];
+  const out = nodes.slice();
+  out[out.length - 1] = createElement('span', { key: 'tail', className: 'bi-tail' }, out[out.length - 1], contextNode);
+  return out;
+}
+
 // D6 用户拍板：全部字段隐藏 = 底栏彻底移除。此判定为纯函数供单测：
 // 注册表内没有任何可见字段，或渲染结果（原生行/主行/错误组）全空 → 信息栏整体不渲染，
 // 不留空行、占位高度或悬空分隔符；density 点击因无 DOM 而天然无副作用。
@@ -557,6 +569,8 @@ function installStyles() {
       /* 整条信息栏始终作为一个居中的内容组；不会超过上方对话框的内容宽度。 */
       .bi-root > .bi-row2 { flex: none; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; width: 100%; }
       .bi-native-row > span, .bi-row2 > span { white-space: nowrap; }
+      /* 圆环与最后一个内容节点同组：换行时一起走，绝不单独占一行（见 attachContextMeter） */
+      .bi-tail { display: inline-flex; align-items: center; flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
       /* 只有模型组可在窄宽度折行；服务商与模型详情仍成组，不会让圆点落在行尾。 */
       .bi-row2 > .bi-model-group { white-space: normal; }
       /* 组间 6px、模型内部圆点 4px：保留分组层级，同时避免 12px 信息栏被过大留白拉散。 */
@@ -608,7 +622,11 @@ function installStyles() {
       .bi-ctx-track { fill: none; stroke: var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.35)); stroke-width: 2px; }
       .bi-ctx-fill { fill: none; stroke: currentColor; stroke-width: 2px; stroke-linecap: round; }
       /* 构成明细面板：与原生 ContextMeter 面板同构（264px 宽 / 12px 内边距 / 12px 圆角 / 4px 构成条）。 */
-      .bi-ctx-panel { z-index: 1100; box-sizing: border-box; width: min(264px, calc(100vw - 24px)); padding: 12px; border: 0; border-radius: 12px; background: var(--dsw-specific-menu, #fff); color: var(--dsw-alias-label-secondary, #5a6169); box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.18)); font-size: 12px; line-height: 20px; cursor: default; position: fixed; }
+      /* 面板底色必须不透明（2026-09-24 用户报「面板透明、文字和底下的信息栏叠在一起看不清」）：
+         宿主 --dsw-specific-menu 是带 alpha 的色（浅 #f8f9fa94 / 深 #30313680），且宿主菜单另有毛玻璃层，
+         本面板悬在信息栏文字之上，直接用它必然透字。改用不透明的层级底色（浅 #fff / 深 #353638，随主题走），
+         并保留宿主阴影；不引用任何可能带 alpha 的 token。 */
+      .bi-ctx-panel { z-index: 1100; box-sizing: border-box; width: min(264px, calc(100vw - 24px)); padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128, 128, 128, 0.28)); border-radius: 12px; background: var(--dsw-alias-bg-layer-3, #fff); color: var(--dsw-alias-label-secondary, #5a6169); box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.18)); font-size: 12px; line-height: 20px; cursor: default; position: fixed; }
       .bi-ctx-panel-header { display: flex; align-items: center; gap: 6px; }
       .bi-ctx-panel-headline { color: var(--dsw-alias-label-tertiary, #8a9099); }
       .bi-ctx-panel-headline:empty { display: none; }
@@ -3414,7 +3432,7 @@ module.exports = {
          context: contextInfo,
          breakdown: breakdownProj,
        });
-       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...nodes, contextNode);
+       const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...attachContextMeter(nodes, contextNode, React.createElement));
 
       let row1 = null;
       if (statsProj) {

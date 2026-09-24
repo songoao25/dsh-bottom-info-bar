@@ -20,9 +20,16 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 | Spend | this session (including subagents), today, last 30 days, all time |
 | Extras | main time, world time, custom text |
 
-Click the bar to switch between **full** and **compact** mode; colors follow DSH's light or dark theme.
+The bar has two densities — click it to switch. **Full** keeps DSH's native stats row above the plugin row; **compact** folds everything into one line. Both follow DSH's light or dark theme, and the context ring always stays on the same line as the text before it.
 
-![Bottom Info Bar in compact mode](assets/bar-compact.webp)
+## Compact mode
+
+Four real states — light and dark, balance and subscription quota:
+
+| Light | Dark |
+|---|---|
+| ![Balance mode, light theme](assets/bar-compact-light-balance.webp) | ![Balance mode, dark theme](assets/bar-compact-dark-balance.webp) |
+| ![Subscription quota, light theme](assets/bar-compact-light-subscription.webp) | ![Subscription quota, dark theme](assets/bar-compact-dark-subscription.webp) |
 
 ## Three billing modes
 
@@ -32,8 +39,6 @@ The bar follows the active session and picks the mode from the provider. The thr
 
 Shows the real balance from the provider's own API. It refetches when the bar opens, the page refreshes or the provider changes, then polls every 60 seconds; a failed refresh keeps the last known figure on screen. Below 20 (in the account's currency) the amount and a **Low** label turn red.
 
-![Balance mode](assets/bar-balance.webp)
-
 ### Subscription quota
 
 Shows the remaining quota per window (5-hour / weekly / monthly) and a countdown to the next reset — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Compact mode prefers the shortest available window (5-hour → weekly → monthly).
@@ -41,12 +46,6 @@ Shows the remaining quota per window (5-hour / weekly / monthly) and a countdown
 ### Cloud billing
 
 Shows this month's real spend from the provider's official billing API, for example `Together | This month $12.34` or `AWS Bedrock | This month $45.60 · Budget 46%`. Cloudflare also shows the daily free-quota remainder with a UTC-midnight reset countdown when the API actually reports a free allowance.
-
-## Dark mode
-
-Colors adapt to DSH's theme — there is no separate setting.
-
-![Dark mode](assets/bar-dark.webp)
 
 ## Install
 
@@ -119,7 +118,7 @@ The bar detects the provider from DSH's current model — no configuration. Set 
 |---|---|---|
 | deepseek / deepseek-official | DeepSeek | `DEEPSEEK_API_KEY` |
 | openai | OpenAI | `OPENAI_API_KEY` — estimated from your spending rate; there is no public balance API |
-| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY` (fallback `KIMI_API_KEY`) |
+| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY` |
 | openrouter | OpenRouter | `OPENROUTER_API_KEY` |
 | stepfun | StepFun | `STEPFUN_API_KEY` |
 | xiaomi | Xiaomi MiMo | `XIAOMI_API_KEY` |
@@ -152,7 +151,7 @@ Every model response is recorded (usage × unit price) and aggregated four ways:
 
 ## Updating
 
-Once per DSH startup the plugin checks npm for a newer version. When one exists, a red **Update available** label appears in the bar: click it to copy the update command, run it in a terminal, then restart `dsh web`.
+The plugin checks npm for a newer version at startup and re-checks at most every 15 minutes. When one exists, a red **Update available** label appears in the bar: click it to copy the update command, run it in a terminal, then restart `dsh web`.
 
 | Installed via | Command |
 |---|---|

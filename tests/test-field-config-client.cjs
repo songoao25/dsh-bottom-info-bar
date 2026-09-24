@@ -841,8 +841,9 @@ function withFakeDocument(run) {
     contextOccupancy({ projectedTokens: 10, contextWindow: 0 }) === null
     && contextOccupancy({ projectedTokens: 10, contextWindow: Number.NaN }) === null, true);
   check('D7：超过容量时百分比封顶 100', contextOccupancy({ projectedTokens: 500, contextWindow: 100 }).percent, 100);
-  check('D7：圆环挂在信息栏主行最右端（row2 子节点末位）',
-    clientSrc.includes('...nodes, contextNode)')
+  check('D7：圆环挂在信息栏主行最右端（与末节点同组，不再单独折行）',
+    clientSrc.includes('...attachContextMeter(nodes, contextNode, React.createElement)')
+    && clientSrc.includes("className: 'bi-tail'")
     && clientSrc.includes("React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }"), true);
   check('D7：显隐与配色并入字段体系（fieldVisible + data-field + fieldStyle）',
     clientSrc.includes("fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null")
