@@ -110,7 +110,7 @@ Shows the **real balance** from the provider's `/user/balance` (or equivalent) A
 
 When the balance drops below ¥20, the amount and a `Low` label turn red.
 
-### Subscription mode (ChatGPT / Codex, OpenCode Go, Zhipu, Xiaomi MiMo Token Plan, Command Code)
+### Subscription mode (ChatGPT / Codex, OpenCode Go, Zhipu, Xiaomi MiMo Token Plan, Command Code, MiniMax Token Plan)
 
 Shows **quota remaining per window** (5-hour / weekly / monthly, where remaining = 100 − used) and a **countdown to the next reset**. Quota and countdown always come from the same window, so they can never disagree.
 
@@ -119,6 +119,9 @@ Shows **quota remaining per window** (5-hour / weekly / monthly, where remaining
 - **Zhipu** — GLM Coding Plan quota via `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`): plan tier plus the 5-hour and weekly windows (including the credit-based plans introduced on 2026-07-30).
 - **Xiaomi MiMo Token Plan** — monthly Credits quota via `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` per region (fallback `XIAOMI_API_KEY`): plan name plus the monthly window.
 - **Command Code** — reads the official CLI quota endpoints using `COMMAND_CODE_API_KEY` or `CMD_API_KEY` from Settings → Models, the same environment variables, or the CLI login at `~/.commandcode/auth.json`: monthly credits plus 5-hour and weekly windows. Credits are displayed as credits, never as currency; unknown plan IDs do not get an invented monthly percentage.
+- **MiniMax Token Plan** — 5-hour and weekly quota from `api.minimax.io` (Global, `MINIMAX_API_KEY`) or `api.minimaxi.com` (CN, `MINIMAX_CN_API_KEY`). Queries require a **Subscription Key**; a pay-as-you-go key is rejected by the server, and the bar says so instead of showing a number it cannot know. Several model buckets are aggregated by the tightest remaining quota.
+
+Quota windows show **remaining** percent by default; the plugin settings can switch them to **used** under *Subscription window percentage*. Either way, the low-quota warning follows the same rule: remaining 20% or less.
 
 In compact mode the bar prefers the shortest window (5-hour > weekly > monthly), because it refreshes fastest; if the 5-hour window is unavailable it falls back to weekly, then monthly.
 
@@ -183,6 +186,7 @@ The bar detects the provider from DSH's current model list — **no configuratio
 | zai / zai-coding-cn | Zhipu | `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`) |
 | xiaomi-token-plan-cn / -sgp / -ams | Xiaomi MiMo | `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` (fallback `XIAOMI_API_KEY`) |
 | command / command-code | Command Code | `COMMAND_CODE_API_KEY` or `CMD_API_KEY`, or `~/.commandcode/auth.json` |
+| minimax / minimax-cn | MiniMax | `MINIMAX_API_KEY` (Global) / `MINIMAX_CN_API_KEY` (CN) |
 
 ### Cloud-billing (real monthly bill)
 

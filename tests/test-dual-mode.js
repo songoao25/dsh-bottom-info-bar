@@ -113,13 +113,20 @@ check('账户映射：amazon-bedrock → amazon-bedrock', accountForProvider('am
 check('账户映射：cloudflare-ai-gateway → cloudflare', accountForProvider('cloudflare-ai-gateway'), 'cloudflare');
 check('账户映射：command → command-code', accountForProvider('command'), 'command-code');
 check('账户映射：未知 → null', accountForProvider('some-unknown'), null);
+// v1.15.0 续：MiniMax Token Plan 双站点（Global minimax / CN minimax-cn）
+check('provider=minimax → subscription', detectBillingMode('minimax', 'auto').mode, 'subscription');
+check('provider=minimax-cn → subscription', detectBillingMode('minimax-cn', 'auto').mode, 'subscription');
+check('订阅源映射：minimax → minimax（独立源）', subscriptionSourceFor('minimax'), 'minimax');
+check('订阅源映射：minimax-cn → minimax-cn（独立源）', subscriptionSourceFor('minimax-cn'), 'minimax-cn');
+check('账户映射：minimax → minimax', accountForProvider('minimax'), 'minimax');
+check('账户映射：minimax-cn → minimax（双站点共用一个账户）', accountForProvider('minimax-cn'), 'minimax');
 check('未知 provider → balance（兜底）', detectBillingMode('some-new-provider', 'auto').mode, 'balance');
 check('空 provider → balance（兜底）', detectBillingMode('', 'auto').mode, 'balance');
 check('自动识别忽略旧的手动覆盖参数：codex 仍为 subscription', detectBillingMode('codex', 'balance').mode, 'subscription');
 check('自动识别忽略旧的手动覆盖参数：deepseek 仍为 balance', detectBillingMode('deepseek', 'subscription').mode, 'balance');
 check('自动识别理由只含 provider', detectBillingMode('codex', 'balance').reason, 'provider:codex');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
-check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code']));
+check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn']));
 check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']));
 
 check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5 小时', seven_day: '周', monthly: '月' }));

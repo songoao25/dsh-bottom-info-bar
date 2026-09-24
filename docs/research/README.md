@@ -14,7 +14,7 @@
 | 04 | 智谱 Z.ai/GLM | zai / zai-coding-cn | coding_plan | GET {host}/api/monitor/usage/quota/limit（裸 Key） | B/C | ✅ 已实现（v1.6，待真实密钥实测） |
 | 05 | Kimi/Moonshot | moonshotai / moonshotai-cn | pay_as_you_go | /v1/users/me/balance（官方） | A | ✅ 已实现（v1.6） |
 | 06 | Kimi Coding | kimi-coding | coding_plan | /coding/v1/usages（5h+周窗口） | B | ➕ 可加（v1.7） |
-| 07 | MiniMax | minimax / minimax-cn | token_plan | /v1/token_plan/remains（**需 Subscription Key**） | B | ⏸ 条件集成（密钥性质特殊） |
+| 07 | MiniMax | minimax / minimax-cn | token_plan | /v1/token_plan/remains（**需 Subscription Key**） | B | ✅ 已落地（v1.16.0，双站点各独立源；真实 schema 修正见 A3 §2.3） |
 | 08 | 阿里百炼 Qwen TP | qwen-token-plan(-cn) | token_plan | 无 API Key 路径（仅控制台 Cookie/CLI，D） | D | ❌ 本期不集成，本地记账兜底+留档 |
 | 09 | 小米 MiMo | xiaomi / xiaomi-token-plan-* | pay_as_you_go / token_plan | /v1/user/balance + /v1/tokenPlan/usage（Bearer，半公开） | B | ✅ 集成（零设置，意外之喜） |
 | 10 | StepFun | stepfun（自定义） | pay_as_you_go | /v1/accounts（官方） | A | ✅ 已实现（v1.6，待真 Key 实测） |

@@ -103,6 +103,21 @@
 
 **billingMode 分类（MiniMax）**: `minimax` / `minimax-cn` → **token_plan**（Subscription Key 场景，5h+周窗口，B 级）；按量 API Key 场景 → pay_as_you_go 但无官方余额接口 → source=`local_calculation`（E 级）。
 
+### 2.3 真实联调修正（2026-09-24，本插件实现依据）
+
+> 2.1 / 2.2 来自二手调研，其中「额度字段」一条与真实响应不符。以下为拿到真实 Subscription Key 后的实测修正（外部贡献者 PR #115 的联调结果，本插件适配器以本节为准）。
+
+| 项 | 调研假设 | 实测结论 |
+|---|---|---|
+| 额度字段 | `current_interval_total_count` / `current_interval_usage_count`（总数 − 已用） | **恒为 0**（占位字段，尚未启用），不能据此推算百分比 |
+| 真实额度 | — | `current_interval_remaining_percent`（5 小时窗口剩余 0-100）与 `current_weekly_remaining_percent`（周窗口剩余 0-100）；已用 = 100 − 剩余 |
+| 多桶语义 | 按模型拆分（Plus/Ultra 才有） | `model_remains[]` 每个条目是一种模型配额桶（general / video / …）；信息栏按**最紧剩余**（最小 remaining）聚合。取首个桶会让未启用的桶把数字顶成 100%，与用户体感相反 |
+| 错误码 | 仅记 1004 | 1004 = "login fail"（按量 API Key 调 Subscription 端点）；**2049 = "invalid api key"**（拿国内 Key 打 Global 域名，或 Key 已失效）。两者都按鉴权失败处理，提示换用 Subscription Key |
+| 域名 | 双域名均可用 | 双域名同接口，但**Key 与域名必须同域**：国内 Subscription Key 打 `api.minimax.io` 返回 2049 |
+| 重置时刻 | `remains_time` 相对毫秒 | 直接用 `end_time` / `weekly_end_time`（毫秒时间戳）即可，无需相对值 |
+
+实现落点：provider `minimax` / `minimax-cn` 走订阅额度制，端点 `GET /v1/token_plan/remains`，凭据 `MINIMAX_API_KEY`（Global）/ `MINIMAX_CN_API_KEY`（CN）互备；错误码 1004 / 2049 翻译为「必须使用 Subscription Key」；空 `model_remains`（无活跃 Token Plan）按解析失败保留旧快照，不显示假额度。
+
 ---
 
 # 三、推荐集成清单
@@ -111,7 +126,7 @@
 |---|---|---|---|---|---|
 | P0 | `moonshotai` / `moonshotai-cn` | pay_as_you_go | 官方余额 API | A | 官方文档化，双格式解析，成本最低，先做 |
 | P1 | `kimi-coding` | coding_plan | `/coding/v1/usages` | B | 社区成熟；复用 KIMI_API_KEY 或 OAuth；标注半官方 |
-| P2 | `minimax` / `minimax-cn` | token_plan | `/v1/token_plan/remains` | B | 官方 CLI 背书；需 Subscription Key，成功率取决于用户 Key 类型，做降级 |
+| P2 | `minimax` / `minimax-cn` | token_plan | `/v1/token_plan/remains` | B | 官方 CLI 背书；需 Subscription Key，成功率取决于用户 Key 类型，做降级。**已落地**（真实 schema 修正见 2.3） |
 | 不做 | MiniMax 按量余额 | — | 无接口 | E | 仅本地记账 |
 
 **每家一句话结论**:

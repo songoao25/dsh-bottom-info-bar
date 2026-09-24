@@ -242,7 +242,19 @@ const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 const PRESET_COLOR_SET = new Set(PRESET_COLORS);
 
-let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '' };
+// v1.16：订阅窗口百分比方向（quotaDisplayMode）。'remaining' = 历史行为（默认），'used' = 显示已用。
+// 契约：宿主缺字段 / 给出非法值时一律回退 'remaining'，任何输入都不得抛错（老宿主 = 老行为）。
+const QUOTA_DISPLAY_MODES = ['used', 'remaining'];
+const DEFAULT_QUOTA_DISPLAY_MODE = 'remaining';
+function normalizeQuotaDisplayMode(value) {
+  return value === 'used' || value === 'remaining' ? value : DEFAULT_QUOTA_DISPLAY_MODE;
+}
+// 信息栏渲染期读取当前方向（模块级配置，随 fieldConfigVersion 触发重渲染）
+function activeQuotaDisplayMode() {
+  return normalizeQuotaDisplayMode(fieldConfig.quotaDisplayMode);
+}
+
+let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -256,6 +268,7 @@ function applyFieldConfigSnapshot(next) {
     timeFormat: next && next.timeFormat && typeof next.timeFormat === 'object' ? next.timeFormat : { year: true, month: true, day: true, hour: true, minute: true, second: false },
     timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
     customText: typeof (next && next.customText) === 'string' ? next.customText : '',
+    quotaDisplayMode: normalizeQuotaDisplayMode(next && next.quotaDisplayMode),
   };
   if (next && typeof next.customTextValue === 'string' && !next.customText) fieldConfig.customText = next.customTextValue;
   fieldConfigVersion += 1;
@@ -911,7 +924,10 @@ function bibSetInstallStyles() {
          整体压窄 200px，右侧控件够不到宿主右边界——这就是「被裁掉/对不齐」的真凶）。
          只允许 max-inline-size: 100%。 */
       .bib-set-root {
-        --bib-set-brand: #4d6bfe; /* 固定品牌蓝，保障與 #fff 的反色對比度，避免跟隨 --dsw-alias-brand-primary 在深色主題下變淺導致白字被吞 */
+        --bib-set-brand: #4d6bfe; /* 固定品牌蓝（focus 轮廓 / 链接等），不跟随 --dsw-alias-brand-primary 在深色主题下变浅 */
+        /* 填充式选中态专用深档：同一品牌蓝族。#4d6bfe × #fff 实测仅 4.33:1（历史提交 #38 写的「4.6:1」是算错的），
+           达不到 AGENTS.md 对比度铁律的 4.5:1 主句；#4a63e8 × #fff = 4.95:1，肉眼与 #4d6bfe 几乎无差。 */
+        --bib-set-brand-strong: #4a63e8;
         /* 配置区只是详情页里的**一个** section：区块间距取宿主 .X_2TxG_detailSection 的 12px，
            不取 .X_2TxG_detailSections 的 32px（那是区块之间的间距，套进来会凭空多出大段空白）。
            同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
@@ -1183,7 +1199,22 @@ function bibSetInstallStyles() {
       .bib-set-btn--destructive { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       .bib-set-btn--destructive:hover { background: rgba(217,45,32,0.08); border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       @media (max-width: 600px) { .bib-settings { gap: 24px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }
-      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
+      /* ===== 订阅窗口百分比方向：两段式分段控件（v1.16）=====
+         对比度铁律的**主句是可度量的阈值**（文字与背景 ≥ 4.5:1），品牌色只是当时的配方：
+         实测 #4d6bfe × #fff = 4.33:1（历史提交 #38 写的「4.6:1」是算错的），达不到 4.5:1。
+         因此填充式选中态改用同色相深档 --bib-set-brand-strong（#4a63e8 × #fff = 4.95:1）；
+         --bib-set-brand（#4d6bfe）本身保持不变，focus 轮廓等仍在用。
+         hover 仍保持该深档（绝不加 filter/brightness 提亮），浅深主题同一条规则、不跟随
+         --dsw-alias-brand-primary 变浅。以上数值由 tests/test-quota-display-mode.js 用真实
+         sRGB 相对亮度计算锁死——真实计算，不用字符串断言代替。 */
+      .bib-set-quota-mode { display: inline-flex; align-items: center; gap: 2px; width: fit-content; max-width: 100%; min-width: 0; box-sizing: border-box; padding: 2px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128,128,128,0.4)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, transparent); }
+      .bib-set-quota-mode-opt { appearance: none; font: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: var(--bib-btn-height); padding: 0 var(--bib-input-pad-inline); border: 0; border-radius: calc(var(--bib-control-radius) - 2px); background: transparent; color: var(--dsw-alias-label-primary); font-size: var(--bib-input-size); line-height: var(--bib-btn-line); transition: background-color 120ms ease, color 120ms ease; }
+      .bib-set-quota-mode-opt:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); }
+      .bib-set-quota-mode-opt:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
+      .bib-set-quota-mode-opt[aria-checked="true"] { background: var(--bib-set-brand-strong); color: #fff; font-weight: 600; }
+      .bib-set-quota-mode-opt[aria-checked="true"]:hover { background: var(--bib-set-brand-strong); color: #fff; }
+      @media (forced-colors: active) { .bib-set-quota-mode-opt[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+      @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-quota-mode-opt { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
     `;
   document.head.appendChild(style);
   return function () { style.remove(); };
@@ -1694,6 +1725,78 @@ function bibSetCustomTextSection(props) {
           t('ui.customTextCount', { value: props.customTextOf().length })))));
 }
 
+// ===== 订阅窗口百分比方向（v1.16，quotaDisplayMode）=====
+// 两段式分段控件：role=radiogroup + 子项 role=radio + aria-checked + roving tabindex，
+// 方向键 / Home / End 键盘可达（与色板圆点同一套交互约定）。
+// 选中态：background: var(--bib-set-brand-strong)（#4a63e8 同色相深档 × #fff = 4.95:1，
+// 满足 AGENTS.md 对比度铁律 4.5:1 主句；#4d6bfe 实测只有 4.33:1 达不到）+ #fff + font-weight:600，
+// hover 仍保持该深档、不跟随主题变浅。真实色值由 tests/test-quota-display-mode.js 做真实
+// sRGB 相对亮度计算锁定（不用字符串断言代替）。
+function bibSetQuotaMode(props) {
+  const options = [
+    { value: 'remaining', label: t('ui.quotaDisplayRemaining') },
+    { value: 'used', label: t('ui.quotaDisplayUsed') },
+  ];
+  const current = normalizeQuotaDisplayMode(props.value);
+  const refs = React.useRef({});
+  const select = function (value) { if (props.onSelect) props.onSelect(value); };
+  const moveTo = function (value) {
+    const node = refs.current[value];
+    if (node && typeof node.focus === 'function') node.focus();
+    select(value);
+  };
+  const step = function (value, offset) {
+    let index = 0;
+    for (let i = 0; i < options.length; i++) { if (options[i].value === value) index = i; }
+    moveTo(options[(index + offset + options.length) % options.length].value);
+  };
+  const onKey = function (event, value) {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); step(value, 1); }
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); step(value, -1); }
+    else if (event.key === 'Home') { event.preventDefault(); moveTo(options[0].value); }
+    else if (event.key === 'End') { event.preventDefault(); moveTo(options[options.length - 1].value); }
+  };
+  return React.createElement('span', {
+    className: 'bib-set-quota-mode',
+    role: 'radiogroup',
+    'aria-label': props.label || t('ui.quotaDisplayModeTitle'),
+  }, options.map(function (option) {
+    const selected = option.value === current;
+    return React.createElement('button', {
+      key: option.value,
+      type: 'button',
+      ref: function (node) { refs.current[option.value] = node; },
+      className: 'bib-set-quota-mode-opt' + (selected ? ' bib-set-quota-mode-opt--on' : ''),
+      role: 'radio',
+      'aria-checked': selected,
+      tabIndex: selected ? 0 : -1,
+      onClick: function () { select(option.value); },
+      onKeyDown: function (event) { onKey(event, option.value); },
+    }, option.label);
+  }));
+}
+
+// 「订阅窗口百分比方向」独立设置区：与「时间与日期」「自定义文字」同构（静态卡片头 + 字段块）。
+// 三个订阅窗口字段（5 小时 / 周 / 月）全关时整区隐藏，与其它设置区的显隐规则一致。
+function bibSetQuotaDisplaySection(props) {
+  const windowsOn = ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].some(function (id) { return props.fieldOn(id); });
+  if (!windowsOn) return null;
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-quota-mode-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-quota-mode-title',
+      title: t('ui.quotaDisplayModeTitle'),
+      description: t('ui.quotaDisplayModeDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-fieldblocks' },
+      React.createElement('div', { className: 'bib-set-fieldblock' },
+        React.createElement(bibSetQuotaMode, {
+          label: t('ui.quotaDisplayModeTitle'),
+          value: props.modeOf(),
+          onSelect: props.onModeChange,
+        }))));
+}
+
 const USAGE_EXPORT_COLUMNS = [
   ['timestamp', function (record) { return usageExportTimestamp(record.ts); }],
   ['provider', function (record) { return record.provider; }],
@@ -1828,7 +1931,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -1885,6 +1988,8 @@ function InfoBarSettingsSection() {
         timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
         timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
         customText: typeof res.customText === 'string' ? res.customText : ((prev && prev.customText) || ''),
+        // 旧宿主不回传该字段时保留本地值（绝不因一次保存把方向重置掉）
+        quotaDisplayMode: typeof res.quotaDisplayMode === 'string' ? normalizeQuotaDisplayMode(res.quotaDisplayMode) : normalizeQuotaDisplayMode(prev && prev.quotaDisplayMode),
         configVersion: typeof res.configVersion === 'number' ? res.configVersion : ((prev && prev.configVersion) || 0),
       };
     });
@@ -1962,6 +2067,7 @@ function InfoBarSettingsSection() {
   function timeFormatOf() { return snapshot.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }; }
   function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
   function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
+  function quotaDisplayModeOf() { return normalizeQuotaDisplayMode(snapshot.quotaDisplayMode); }
   function setTimeFormatPart(key, next) {
     const current = timeFormatOf();
     if (current[key] === next) return;
@@ -1982,6 +2088,18 @@ function InfoBarSettingsSection() {
       function () { setSnapshot(function (s) { return Object.assign({}, s, { timeZones: Object.assign({}, s.timeZones, makePair(which, prev)) }); }); },
       function () { return which === 'main' ? t('ui.mainTimeZone') : t('ui.worldTimeZone'); });
   }
+  // 订阅窗口百分比方向：复用与字段开关/颜色同一条 commit()（乐观更新 + 失败回滚 + 版本号守卫），
+  // 成功由 applyServerResult 回写快照并广播 CustomEvent，信息栏随即重拉配置。
+  function setQuotaDisplayMode(next) {
+    const value = normalizeQuotaDisplayMode(next);
+    const previous = quotaDisplayModeOf();
+    if (previous === value) return;
+    commit({ quotaDisplayMode: value },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: value }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: previous }); }); },
+      function () { return t('ui.quotaDisplayModeTitle'); });
+  }
+
   function onCustomTextChange(raw) { setCustomTextDraft(raw); }
   function committedCustomText() { return customTextOf(); }
   function commitCustomText() {
@@ -2198,6 +2316,11 @@ function InfoBarSettingsSection() {
       customTextOf: customTextOf,
       onCustomTextChange: onCustomTextChange,
       onCustomTextCommit: commitCustomText,
+    }),
+    bibSetQuotaDisplaySection({
+      fieldOn: fieldOn,
+      modeOf: quotaDisplayModeOf,
+      onModeChange: setQuotaDisplayMode,
     }),
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
@@ -2676,6 +2799,20 @@ module.exports = {
         if (key === 'monthly') return t('ui.monthly');
         return t('ui.window');
       }
+      // v1.16 订阅窗口百分比方向：remaining（默认）= 显示剩余；used = 显示已用（= 100 - 剩余，钳制 [0,100]）。
+      // 只改「显示哪个数」，不改告警语义——告警始终等价于「剩余 ≤ 20%」。
+      function quotaWindowPercent(w, mode) {
+        if (mode !== 'used') return remainingPercent(w);
+        const remaining = remainingPercent(w);
+        return Number.isFinite(remaining) ? Math.max(0, Math.min(100, 100 - remaining)) : 0;
+      }
+      // 窗口明细（hover）文案：方向决定键名，两边参数名严格一致（label/value/usedPercent），
+      // value 恒为剩余、usedPercent 恒为已用，避免两个方向下含义漂移。
+      function quotaWindowDetail(w, mode) {
+        return mode === 'used'
+          ? t('ui.windowUsedRemaining', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })
+          : t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent });
+      }
 
       // 数字统一加粗（仅数字本身）
       function num(t, extraClass) {
@@ -2750,6 +2887,8 @@ module.exports = {
         if (provider === 'opencode-go' || provider === 'opencode') return 'OpenCode Go';
         if (provider === 'zai' || provider === 'zai-coding-cn') return t('ui.zhipu');
         if (provider === 'xiaomi-token-plan-cn' || provider === 'xiaomi-token-plan-sgp' || provider === 'xiaomi-token-plan-ams') return t('ui.xiaomiMiMo');
+        // v1.16：MiniMax Token Plan（minimax = Global / minimax-cn = CN）；品牌名不翻译，走字典键保持一致来源
+        if (provider === 'minimax' || provider === 'minimax-cn') return t('ui.minimax');
         if (provider === 'command' || provider === 'command-code') return t('ui.commandCode');
         return t('ui.subscription');
       }
@@ -3048,12 +3187,15 @@ module.exports = {
           const visible = full ? windows : (displayWindow ? [displayWindow] : []);
 
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
+          // 该判定与 quotaDisplayMode 无关（used 模式下即「已用 ≥ 80%」），两种方向语义严格等价。
           const LOW_QUOTA_PERCENT = 20;
+          // v1.16 显示方向：remaining（默认，= 历史行为）/ used；缺字段或非法值在读取时已归一。
+          const windowMode = activeQuotaDisplayMode();
           const titleLines = [t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) }) + (sub.plan ? ' (' + hostText(sub.plan) + ')' : '')]
             .concat(sub.balanceUnit === 'credits' && typeof sub.balance === 'number' && isFinite(sub.balance)
               ? [t('ui.availableCredits', { value: fmt(sub.balance, 2) })] : [])
             .concat(windows.map(function (w) {
-              return t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })
+              return quotaWindowDetail(w, windowMode)
                 + (w.resetsAt ? t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) }) : '');
             }));
           const winNodes = [];
@@ -3064,7 +3206,7 @@ module.exports = {
             const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';
             // 每个窗口独立 data-field（subWindow5h/Week/Month），色变量按字段注入；「低」字标签保留
             winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,
-              metric(compactWindowLabel(w.key), remaining + '%', numberClass)));
+              metric(compactWindowLabel(w.key), quotaWindowPercent(w, windowMode) + '%', numberClass)));
             if (remaining <= LOW_QUOTA_PERCENT) winNodes.push(React.createElement('span', { key: 'low' + i, className: 'bi-low-status' }, t('ui.low')));
           }
           // 全部窗口被隐藏（或紧凑模式无候选）→ 整组不推送，分隔符由组装层正确收合
@@ -3078,7 +3220,9 @@ module.exports = {
           }
           // 距重置倒计时（与显示的窗口一致，确保额度与倒计时匹配）
           if (displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
-            const cdTitle = t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) });
+            const cdTitle = windowMode === 'used'
+              ? t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) })
+              : t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) });
             groups.push(fieldSpan('resetCountdown', 'subcd', React.createElement('span', { title: cdTitle },
               metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now)))));
           }

@@ -301,6 +301,7 @@ function accountForProvider(pid) {
   if (pid === 'xiaomi') return 'xiaomi'
   if (pid === 'xiaomi-token-plan-cn' || pid === 'xiaomi-token-plan-sgp' || pid === 'xiaomi-token-plan-ams') return 'xiaomi-token-plan'
   if (pid === 'command' || pid === 'command-code') return 'command-code'
+  if (pid === 'minimax' || pid === 'minimax-cn') return 'minimax' // 账户键 minimax（Global / CN 共用同一账户记账；订阅源按站点各自独立，见 subscriptionSourceFor）
   if (pid === 'together') return 'together'
   if (pid === 'fireworks') return 'fireworks'
   if (pid === 'amazon-bedrock') return 'amazon-bedrock'
@@ -313,8 +314,9 @@ function accountForProvider(pid) {
 // 动机：聚合商路由模型数量庞大、价目无法静态维护——官方报出的钱 > 本地任何换算。
 const PROVIDER_REPORTED_CURRENCY = { openrouter: 'USD' }
 
-// 订阅 provider → 订阅源标识（codex / opencode-go / zai / xiaomi-{cn,sgp,ams}）；非订阅 provider → null
+// 订阅 provider → 订阅源标识（codex / opencode-go / zai / xiaomi-{cn,sgp,ams} / minimax）；非订阅 provider → null
 // v1.7：小米 Token Plan 按地区分源（各地区独立 baseUrl 与凭据，避免跨地区串数据）
+// v1.16.0：MiniMax 双站点各自独立成源（对齐 xiaomi 地区隔离先例，快照/退避/并发去重互不串）
 function subscriptionSourceFor(providerId) {
   if (providerId === 'codex' || providerId === 'chatgpt' || providerId === 'openai-codex') return 'codex'
   if (providerId === 'opencode-go' || providerId === 'opencode') return 'opencode-go'
@@ -323,6 +325,8 @@ function subscriptionSourceFor(providerId) {
   if (providerId === 'xiaomi-token-plan-sgp') return 'xiaomi-sgp'
   if (providerId === 'xiaomi-token-plan-ams') return 'xiaomi-ams'
   if (providerId === 'command' || providerId === 'command-code') return 'command-code'
+  if (providerId === 'minimax') return 'minimax'
+  if (providerId === 'minimax-cn') return 'minimax-cn'
   return null
 }
 
@@ -500,6 +504,117 @@ function parseCommandCodeUsage(creditsBody, subscriptionBody, windowLabels) {
     balance: balance,
     balanceUnit: balance == null ? null : 'credits',
   }
+}
+
+// ---------- FR-15 / MiniMax Token Plan 解析（半官方 B 级端点） ----------
+// 数据源：GET /v1/token_plan/remains（官方 CLI MiniMax-AI/cli 已切换到此端点；旧端点
+// /v1/api/openplatform/coding_plan/remains 已被官方弃用）。Global api.minimax.io 与国内
+// api.minimaxi.com 双域名提供同一接口，按 providerId 路由（minimax / minimax-cn）。
+//
+// 响应形态：base_resp.{status_code,status_msg} + model_remains[]，每个条目是一种模型配额桶
+// （general / video / …），同时携带两个窗口：
+//   5 小时：current_interval_remaining_percent（剩余 0-100）+ end_time（毫秒）
+//   周    ：current_weekly_remaining_percent（剩余 0-100）+ weekly_end_time（毫秒）
+// current_interval_total_count / current_interval_usage_count 在真实响应里恒为 0（占位字段），
+// 不能据此推算百分比，因此只使用 *_remaining_percent。
+//
+// 多桶聚合：信息栏只关心「用户当前还有多少额度可用」，同一窗口类型取**剩余最低**（最紧的桶）；
+// 取首个桶会让未启用的桶把数字顶成 100%，与真实体感相反。resetsAt 取该窗口类型下最早的结束时刻。
+// 品牌名不翻译（与服务商展示名一致），套餐名走字面量常量。
+const MINIMAX_PLAN_NAME = 'MiniMax Token Plan'
+
+function minimaxBaseUrl(providerId) {
+  return providerId === 'minimax-cn' ? 'https://api.minimaxi.com' : 'https://api.minimax.io'
+}
+
+// 取条目里的数值字段（容忍数字型字符串；负数/缺失/非法一律 null）
+function minimaxNumericField(value) {
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : null
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  }
+  return null
+}
+
+// 剩余百分比 → [0,100] 整数；缺失/非法/负数 → null（该条目跳过）
+function minimaxRemainingPercent(value) {
+  const v = minimaxNumericField(value)
+  if (v == null) return null
+  return Math.round(Math.max(0, Math.min(100, v)))
+}
+
+// 聚合 model_remains[]：同一窗口类型取最小剩余（最紧的桶，并列取先出现者）。
+// resetsAt 与显示的聚合值同源：取最紧桶自己的结束时刻（聚合值只有在该桶重置时才改善）；
+// 最紧桶缺结束时刻时回退到该窗口类型下所有桶里最早的有效结束时刻，仍无 → null（窗口保留）。
+function minimaxAggregateRemainingPercents(modelRemains) {
+  if (!Array.isArray(modelRemains)) return null
+  let fiveHourRemaining = null
+  let weeklyRemaining = null
+  let fiveHourTightestEnd = null
+  let weeklyTightestEnd = null
+  let fiveHourEarliestEnd = null
+  let weeklyEarliestEnd = null
+  for (let i = 0; i < modelRemains.length; i++) {
+    const entry = modelRemains[i]
+    if (!entry || typeof entry !== 'object') continue
+    const end5 = minimaxNumericField(entry.end_time)
+    const endW = minimaxNumericField(entry.weekly_end_time)
+    const rem5 = minimaxRemainingPercent(entry.current_interval_remaining_percent)
+    if (rem5 != null && (fiveHourRemaining == null || rem5 < fiveHourRemaining)) {
+      fiveHourRemaining = rem5
+      fiveHourTightestEnd = end5
+    }
+    const remW = minimaxRemainingPercent(entry.current_weekly_remaining_percent)
+    if (remW != null && (weeklyRemaining == null || remW < weeklyRemaining)) {
+      weeklyRemaining = remW
+      weeklyTightestEnd = endW
+    }
+    if (end5 != null && (fiveHourEarliestEnd == null || end5 < fiveHourEarliestEnd)) fiveHourEarliestEnd = end5
+    if (endW != null && (weeklyEarliestEnd == null || endW < weeklyEarliestEnd)) weeklyEarliestEnd = endW
+  }
+  if (fiveHourRemaining == null && weeklyRemaining == null) return null
+  return {
+    fiveHourRemaining: fiveHourRemaining,
+    weeklyRemaining: weeklyRemaining,
+    fiveHourEnd: fiveHourTightestEnd != null ? fiveHourTightestEnd : fiveHourEarliestEnd,
+    weeklyEnd: weeklyTightestEnd != null ? weeklyTightestEnd : weeklyEarliestEnd,
+  }
+}
+
+// 解析 MiniMax /v1/token_plan/remains → 统一窗口数组（与智谱/小米同型）。
+// base_resp.status_code≠0 / model_remains 空 / 无任何窗口值 → null（调用方按 parse 错误处理并保留旧快照）。
+function parseMinimaxTokenPlanRemains(body, windowLabels) {
+  if (!body || typeof body !== 'object') return null
+  const baseResp = body.base_resp
+  if (baseResp && typeof baseResp === 'object') {
+    const statusCode = minimaxNumericField(baseResp.status_code)
+    if (statusCode != null && statusCode !== 0) return null
+  }
+  const modelRemains = body.model_remains
+  if (!Array.isArray(modelRemains) || modelRemains.length === 0) return null
+  const agg = minimaxAggregateRemainingPercents(modelRemains)
+  if (!agg) return null
+  const wl = windowLabels || WINDOW_LABELS
+  const windows = []
+  if (agg.fiveHourRemaining != null) {
+    windows.push({
+      key: 'five_hour',
+      label: wl.five_hour,
+      usedPercent: 100 - agg.fiveHourRemaining,
+      resetsAt: agg.fiveHourEnd,
+    })
+  }
+  if (agg.weeklyRemaining != null) {
+    windows.push({
+      key: 'seven_day',
+      label: wl.seven_day,
+      usedPercent: 100 - agg.weeklyRemaining,
+      resetsAt: agg.weeklyEnd,
+    })
+  }
+  if (windows.length === 0) return null
+  return { plan: MINIMAX_PLAN_NAME, windows: windows }
 }
 
 // 快照更新规则（"失败保留旧快照"的纯函数形态）：失败保留旧 data/fetchedAt 只换 error；成功换 data 并更新 fetchedAt
@@ -1295,8 +1410,14 @@ function normalizeCustomTextValue(value) {
   if (value.length > CUSTOM_TEXT_MAX_LEN) return undefined
   return value
 }
+// v1.16.0：订阅窗口百分比方向（'used' 已用 / 'remaining' 剩余）。
+// 默认 'remaining' = 历史行为，绝不改变老用户显示语义；'used' 是新增的可选方向。
+const QUOTA_DISPLAY_MODES = ['used', 'remaining']
+function normalizeQuotaDisplayMode(value) {
+  return value === 'used' || value === 'remaining' ? value : null
+}
 function defaultFieldSettings() {
-  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '' }
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'remaining' }
   for (const field of FIELD_REGISTRY) {
     const isNewField = field.id === 'mainTime' || field.id === 'worldTime' || field.id === 'customText'
     settings.fields[field.id] = isNewField ? false : true
@@ -1361,6 +1482,11 @@ function sanitizeSettings(raw) {
     const normalized = normalizeCustomTextValue(raw.customText)
     if (normalized === undefined) dropped.push('customText')
     else settings.customText = normalized
+  }
+  if ('quotaDisplayMode' in raw) {
+    const normalized = normalizeQuotaDisplayMode(raw.quotaDisplayMode)
+    if (normalized === null) dropped.push('quotaDisplayMode')
+    else settings.quotaDisplayMode = normalized
   }
   return { settings: settings, dropped: dropped }
 }
@@ -1450,6 +1576,8 @@ export const __settingsInternals = {
   sanitizeSettings: sanitizeSettings,
   normalizeColorValue: normalizeColorValue,
   defaultFieldSettings: defaultFieldSettings,
+  normalizeQuotaDisplayMode: normalizeQuotaDisplayMode,
+  QUOTA_DISPLAY_MODES: QUOTA_DISPLAY_MODES,
   settingsFile: SETTINGS_FILE,
   isValidTimeZone: isValidTimeZone,
   normalizeTimeFormatValue: normalizeTimeFormatValue,
@@ -1909,6 +2037,7 @@ export default {
         timeFormat: { ...fieldSettings.timeFormat },
         timeZones: { ...fieldSettings.timeZones },
         customText: fieldSettings.customText,
+        quotaDisplayMode: fieldSettings.quotaDisplayMode,
         configVersion: settingsConfigVersion,
         persisted: persistError == null,
         // warning 是 { code, message }（或 null）：客户端优先按 code 取文案，跨语言稳定。
@@ -2189,6 +2318,66 @@ export default {
         const parsed = parseCommandCodeUsage(creditsResult.body, subscriptionResult.error ? null : subscriptionResult.body, windowLabels)
         if (!parsed) return { error: { kind: 'parse', code: 'subscription.commandcode-unrecognized', message: t('error.subscription.commandcode-unrecognized') } }
         return { data: Object.assign({ provider: 'command-code' }, parsed) }
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } }
+      }
+    }
+
+    // ---------- FR-15 / MiniMax Token Plan 订阅额度查询 ----------
+    // 端点：GET /v1/token_plan/remains（Bearer Subscription Key + Accept: application/json）。
+    // 按 provider 路由 baseUrl：minimax → api.minimax.io；minimax-cn → api.minimaxi.com。
+    // 凭据按 provider 优先本站 Key、回退另一站 Key（用户通常只配一套）。
+    async function resolveMinimaxKey(providerId) {
+      const isCn = providerId === 'minimax-cn'
+      const primary = isCn ? 'MINIMAX_CN_API_KEY' : 'MINIMAX_API_KEY'
+      const fallback = isCn ? 'MINIMAX_API_KEY' : 'MINIMAX_CN_API_KEY'
+      const primaryValue = await resolveCredentialValue(primary)
+      if (primaryValue) return primaryValue
+      return resolveCredentialValue(fallback)
+    }
+
+    async function fetchMinimaxTokenPlanUsage(providerId) {
+      const resolvedProvider = providerId === 'minimax-cn' ? 'minimax-cn' : 'minimax'
+      const key = await resolveMinimaxKey(resolvedProvider)
+      if (!key) {
+        return { error: { kind: 'no-key', code: 'subscription.minimax-not-configured', message: t('error.subscription.minimax-not-configured') } }
+      }
+      const base = minimaxBaseUrl(resolvedProvider)
+      try {
+        const res = await fetch(base + '/v1/token_plan/remains', {
+          headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' },
+          signal: AbortSignal.timeout(15000),
+        })
+        if (res.status === 401 || res.status === 403) {
+          return { error: { kind: 'auth', code: 'subscription.minimax-auth-failed', message: t('error.subscription.minimax-auth-failed') } }
+        }
+        if (!res.ok) {
+          return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } }
+        }
+        let body
+        try {
+          body = await res.json()
+        } catch (err) {
+          return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } }
+        }
+        // base_resp 业务错误：1004 = login fail（按量 Key 错用 Subscription 端点）；
+        // 2049 = invalid api key（跨站 Key 或 Key 已失效）。两者都翻译成 auth，用户换 Key/切站点可自愈；
+        // 其他非零码归为 parse（接口形态变化），保留上一份好快照。
+        const baseResp = body && typeof body === 'object' ? body.base_resp : null
+        if (baseResp && typeof baseResp === 'object') {
+          const statusCode = minimaxNumericField(baseResp.status_code)
+          if (statusCode != null && statusCode !== 0) {
+            if (statusCode === 1004 || statusCode === 2049) {
+              return { error: { kind: 'auth', code: 'subscription.minimax-auth-failed', message: t('error.subscription.minimax-auth-failed') } }
+            }
+            return { error: { kind: 'parse', code: 'subscription.minimax-unrecognized', message: t('error.subscription.minimax-unrecognized') } }
+          }
+        }
+        const parsed = parseMinimaxTokenPlanRemains(body, windowLabels)
+        if (!parsed) {
+          return { error: { kind: 'parse', code: 'subscription.minimax-unrecognized', message: t('error.subscription.minimax-unrecognized') } }
+        }
+        return { data: { provider: resolvedProvider, plan: parsed.plan, windows: parsed.windows } }
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } }
       }
@@ -2537,6 +2726,9 @@ export default {
       'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn'); } },
       'xiaomi-sgp': { fetch: function () { return fetchXiaomiTokenPlanUsage('sgp'); } },
       'xiaomi-ams': { fetch: function () { return fetchXiaomiTokenPlanUsage('ams'); } },
+      // v1.16.0：MiniMax Token Plan 双站点各为独立源（Global / CN 地区隔离，快照互不串扰）
+      minimax: { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax'); } },
+      'minimax-cn': { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax-cn'); } },
     };
 
     // 触发一次刷新（并发去重 + seq 防旧覆盖）；返回本次刷新 Promise
@@ -2834,6 +3026,9 @@ export default {
       'amazon-bedrock': 'AWS Bedrock',
       'cloudflare-ai-gateway': 'Cloudflare',
       'cloudflare-workers-ai': 'Cloudflare',
+      // v1.16.0：MiniMax Token Plan（品牌名不翻译，与客户端 ui.minimax 文案一致）
+      minimax: 'MiniMax',
+      'minimax-cn': 'MiniMax',
     };
 
     // ---------- DSH 模型/服务商目录名与能力缓存（M5：与模型切换器完全一致） ----------
@@ -4433,7 +4628,7 @@ export default {
       },
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
-        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue'))) {
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
           throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
@@ -4443,6 +4638,8 @@ export default {
         let normalizedTimeZones = null;
         let normalizedCustomText = null;
         let hasCustomTextPatch = false;
+        let normalizedQuotaDisplayMode = null;
+        let hasQuotaDisplayModePatch = false;
         if (Object.hasOwn(patch, 'fields')) {
           const patchFields = patch.fields;
           if (!isPlainSettingsObject(patchFields)) throw invalidArgument(t('host.fieldsMustBeAnObject'));
@@ -4501,6 +4698,12 @@ export default {
           }
           normalizedCustomText = normalized
         }
+        if (Object.hasOwn(patch, 'quotaDisplayMode')) {
+          hasQuotaDisplayModePatch = true
+          const normalized = normalizeQuotaDisplayMode(patch.quotaDisplayMode)
+          if (normalized === null) throw invalidArgument(t('host.quotaDisplayModeInvalid'))
+          normalizedQuotaDisplayMode = normalized
+        }
         let changed = false;
         let persistError = null;
         for (const key of Object.keys(normalizedFields || {})) {
@@ -4533,6 +4736,12 @@ export default {
             changed = true;
           }
         }
+        if (hasQuotaDisplayModePatch) {
+          if (fieldSettings.quotaDisplayMode !== normalizedQuotaDisplayMode) {
+            fieldSettings.quotaDisplayMode = normalizedQuotaDisplayMode
+            changed = true;
+          }
+        }
         if (changed) {
           settingsConfigVersion += 1;
           persistError = persistSettings();
@@ -4540,12 +4749,13 @@ export default {
         return settingsPayload(persistError);
       },
       resetFieldConfig: function () {
-        // 只重置标签显隐 + 时间格式/时区/自定义文本；颜色保持不动（两个重置按钮彼此独立）
+        // 只重置标签显隐 + 时间格式/时区/自定义文本/订阅窗口百分比方向；颜色保持不动（两个重置按钮彼此独立）
         const defaults = defaultFieldSettings()
         fieldSettings.fields = shallowSettingsCopy(defaults.fields);
         fieldSettings.timeFormat = { ...defaults.timeFormat }
         fieldSettings.timeZones = { ...defaults.timeZones }
         fieldSettings.customText = defaults.customText
+        fieldSettings.quotaDisplayMode = defaults.quotaDisplayMode
         // 自定义文本重置后为空，开关已为 false，无需额外修正
         settingsConfigVersion += 1;
         const persistError = persistSettings();

@@ -110,7 +110,7 @@ cd dsh-bottom-info-bar
 
 余额低于 ¥20 时，金额与「低」标记转为红色。
 
-### 订阅额度制（ChatGPT / Codex、OpenCode Go、智谱、小米 MiMo Token Plan）
+### 订阅额度制（ChatGPT / Codex、OpenCode Go、智谱、小米 MiMo Token Plan、Command Code、MiniMax Token Plan）
 
 显示**各窗口剩余额度**（5 小时 / 周 / 月，剩余 = 100 − 已用）与**距下次重置的倒计时**。额度与倒计时**永远取自同一个窗口**，不会互相矛盾。
 
@@ -118,6 +118,10 @@ cd dsh-bottom-info-bar
 - **OpenCode Go** —— 通过 `OPENCODE_GO_API_KEY`（设置 → 模型）或 opencode CLI 的登录（`~/.local/share/opencode/auth.json`）读取 `opencode.ai/zen/go/v1/usage` 的额度。未配置 → 显示「未配置」提示而非报错。
 - **智谱** —— 通过 `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`）读取 GLM Coding Plan 额度：套餐档位 + 5 小时窗口 + 周窗口（含 2026-07-30 起的积分制套餐）。
 - **小米 MiMo Token Plan** —— 通过 `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` 按区域读取月度 Credits 额度（回退 `XIAOMI_API_KEY`）：套餐名 + 月度窗口。
+- **Command Code** —— 通过 `COMMAND_CODE_API_KEY` / `CMD_API_KEY`（设置 → 模型）、同名环境变量或 CLI 登录文件 `~/.commandcode/auth.json` 读取官方额度端点：月度 credits + 5 小时窗口 + 周窗口。credits 按积分显示，绝不折算成货币；未知套餐不会编造月度百分比。
+- **MiniMax Token Plan** —— 通过 `MINIMAX_API_KEY`（Global，`api.minimax.io`）或 `MINIMAX_CN_API_KEY`（国内，`api.minimaxi.com`）读取 5 小时与周窗口额度。查询必须使用 **Subscription Key**；按量 API Key 会被服务端拒绝，信息栏会直接说明原因，而不是显示一个它无从得知的数字。多个模型桶按**最紧的剩余额度**聚合。
+
+额度窗口默认显示**剩余**百分比；插件设置里的「订阅窗口百分比方向」可切换为**已用**。无论选哪种，低额度告警始终按「剩余 20%」判定。
 
 简洁模式下优先显示**时长最短的窗口**（5 小时 > 周 > 月），因为它刷新最快；5 小时窗口不可用时依次回退到周、月。
 
@@ -181,6 +185,8 @@ cd dsh-bottom-info-bar
 | opencode-go / opencode | OpenCode Go | `OPENCODE_GO_API_KEY` 或 opencode 登录文件 |
 | zai / zai-coding-cn | 智谱 | `ZAI_CODING_CN_API_KEY`（回退 `ZAI_API_KEY`） |
 | xiaomi-token-plan-cn / -sgp / -ams | 小米 MiMo | `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY`（回退 `XIAOMI_API_KEY`） |
+| command / command-code | Command Code | `COMMAND_CODE_API_KEY` / `CMD_API_KEY` 或 `~/.commandcode/auth.json` |
+| minimax / minimax-cn | MiniMax | `MINIMAX_API_KEY`（Global）/ `MINIMAX_CN_API_KEY`（国内） |
 
 ### 账单制（本月真实账单）
 
