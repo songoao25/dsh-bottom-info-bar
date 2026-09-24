@@ -232,7 +232,7 @@ check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("t
 check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
 check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) })"), true);
 check('client 订阅制显示充值余额（sub.balance）', subFn.includes('sub.balance'), true);
-check('client credits 余额不按人民币显示', subFn.includes("sub.balanceUnit === 'credits'") && subFn.includes("t('ui.availableCredits'") && subFn.includes("t('ui.credits')"), true);
+check('client credits 余额不按人民币显示，且文案明确为剩余额度', subFn.includes("sub.balanceUnit === 'credits'") && subFn.includes("t('ui.availableCredits'") && subFn.includes("t('ui.remainingCredits')"), true);
 check('client 订阅·充值余额形态追加本会话花费块（共用 pushSessionCost）', subFn.includes('pushSessionCost(groups, trailingErrorGroups, false)'), true);
 check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
 check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);

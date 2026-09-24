@@ -72,6 +72,20 @@ check('启动配置不会覆盖已发生的用户切换', clientSrc.includes('co
 check('密度订阅建立时立即回读当前值，避免首次挂载空窗', clientSrc.includes('setDisplayDensity(density);'), true);
 check('保存期间具有忙碌和禁用语义', clientSrc.includes("'aria-busy': isDensitySaving")
   && clientSrc.includes("'aria-disabled': isDensitySaving"), true);
+// 简洁模式的承诺不是只收起原生统计行：三种计费类型都只保留“身份 + 一项核心账户信息”。
+// 错误提示仍可见，避免为了极简把需要处理的问题悄悄藏掉。
+check('简洁余额制隐藏时间、峰谷、倒计时与本会话花费', clientSrc.includes('if (full) pushTimeGroups(groups);')
+  && clientSrc.includes("if (full && pr && pr.mode === 'peak-valley' && fieldVisible('period'))")
+  && clientSrc.includes("if (full) pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));"), true);
+check('简洁订阅制只保留优先额度窗口，隐藏到期与重置时间', clientSrc.includes('const visible = full ? windows : (displayWindow ? [displayWindow] : []);')
+  && clientSrc.includes("if (full && sub && sub.planType && sub.expiryAt && fieldVisible('expiry'))")
+  && clientSrc.includes("if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown'))"), true);
+check('简洁云账单只保留本周期花费或用量，隐藏预算和免费额度', clientSrc.includes("if (full && d.budgetPercent != null && fieldVisible('budget'))")
+  && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
+check('简洁模式隐藏上下文圆环和更新提醒，避免出现非核心信息', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')")
+  && clientSrc.includes('if (full && updateInfo && updateInfo.available === true'), true);
+check('设置页提供可持久化的简洁/完整选择，不要求用户记住点击手势', clientSrc.includes('function bibSetDensitySection(props)')
+  && clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes("Object.hasOwn(patch, 'infoDensity')"), true);
 // 7) 无残留的旧宽松判定
 check('client 源码不含 !== \'compact\' 宽松判定', !clientSrc.includes("props.density !== 'compact'"), true);
 

@@ -42,7 +42,7 @@ export const FIELD_REGISTRY = [
   { id: 'subWindowWeek', label: "field.subWindowWeek.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subWindowWeek.note" },
   { id: 'subWindowMonth', label: "field.subWindowMonth.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subWindowMonth.note" },
   { id: 'resetCountdown', label: "field.resetCountdown.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.resetCountdown.note" },
-  { id: 'subBalance', label: "ui.prepaidBalance", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subBalance.note" },
+  { id: 'subBalance', label: "field.subBalance.label", group: 'plugin', modes: ['subscription'], colorKind: 'inherit', note: "field.subBalance.note" },
   // 插件字段 · 账单制
   { id: 'billingSpend', label: "field.billingSpend.label", group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: "field.billingSpend.note" },
   { id: 'budget', label: "field.budget.label", group: 'plugin', modes: ['billing'], colorKind: 'inherit', note: "field.budget.note" },

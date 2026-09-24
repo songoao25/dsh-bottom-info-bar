@@ -20,7 +20,7 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 | Spend | this session (including subagents), today, last 30 days, all time |
 | Extras | main time, world time, custom text |
 
-The bar has two densities — click it to switch. **Full** keeps DSH's native stats row above the plugin row; **compact** folds everything into one line. Both follow DSH's light or dark theme, and the context ring always stays on the same line as the text before it.
+The bar has two densities — click it to switch. **Compact** shows only the provider, model, and one essential account detail: balance, the shortest useful quota window, or this billing period's spend. **Full** shows every enabled detail, including DSH's native stats row. Both follow DSH's light or dark theme.
 
 ## Compact mode
 
@@ -52,7 +52,7 @@ Shows the real balance from the provider's own API. It refetches when the bar op
 
 ### Subscription quota
 
-Shows the remaining quota per window (5-hour / weekly / monthly) and a countdown to the next reset — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Compact mode prefers the shortest available window (5-hour → weekly → monthly).
+Full mode shows each available quota window (5-hour / weekly / monthly) and a countdown to the next reset — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Compact mode keeps only the shortest available window (5-hour → weekly → monthly), without a reset countdown.
 
 ### Cloud billing
 
@@ -96,7 +96,9 @@ Everything lives on the plugin page — **Plugins → bottom-info-bar**. Changes
 
 ![Plugin settings overview](assets/settings-overview.webp)
 
-**Fields and colors** — one switch and one color per field, in two groups. Turn a field off and the bar drops it.
+**Information display** — choose **Compact** or **Full** and the choice is saved. Compact does not erase any field choices; switch back to Full whenever you need the extra detail.
+
+**Fields and colors** — one switch and one color per field, in two groups. Turn a field off and the bar drops it. The plugin information group opens first; native stats only appear in Full mode.
 
 - **Native information** — the fields DSH's own stats row already showed.
 - **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota.

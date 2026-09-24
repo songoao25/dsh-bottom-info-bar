@@ -158,12 +158,12 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
   && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
-// 原生信息默认展开，插件信息按需展开；搜索时两组自动展开。分组使用原生 button
+// 插件信息默认展开，完整模式专属的原生统计按需展开；搜索时两组自动展开。分组使用原生 button
 // 语义和 DSH 行令牌，而非紧凑流程行 DisclosureRow（它在没有图标时不显示收起态提示）。
-check('分组折叠：首屏先展示原生信息，收起组有明确箭头与键盘语义，搜索自动展开', (function () {
+check('分组折叠：首屏先展示插件信息，收起组有明确箭头与键盘语义，搜索自动展开', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   const disclosure = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: true, plugin: false });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });')
     && body.includes('groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; }')
@@ -235,9 +235,9 @@ check('折叠头部（分组）使用原生 button 语义，避免 div role=butt
     && !header.includes("role: 'button'")
     && !header.includes('tabIndex: 0');
 })(), true);
-check('折叠切换可见性：原生信息默认展开，且不触发宿主 WebView 的零高 grid 动画', (function () {
+check('折叠切换可见性：插件信息默认展开，且不触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: true, plugin: false });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")
