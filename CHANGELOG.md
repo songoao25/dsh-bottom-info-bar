@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.15.0...v1.16.0) (2026-09-24)
+
+
+### Features
+
+* 适配 MiniMax Token Plan 订阅额度，新增订阅窗口百分比方向开关 ([#133](https://github.com/songoao25/dsh-bottom-info-bar/issues/133)) ([9d2d97f](https://github.com/songoao25/dsh-bottom-info-bar/commit/9d2d97f743dfc464ed745194248a3e9b653e92b2))
+
 ## [1.15.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.14.5...v1.15.0) (2026-09-23)
 
 
