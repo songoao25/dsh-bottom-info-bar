@@ -242,24 +242,49 @@ function updateCommandForInstall() {
   return { installMode: 'npm', updateCommand: npmCommand }
 }
 
-async function checkLatestVersion() {
-  const current = packageVersion()
+// npm 上的最新版本：进程内缓存 + TTL 定期重查。
+// 两个「版本」的时间尺度必须分开，否则就会出现「本地更新完了，提醒还挂着」：
+//   · latest（npm 发布版）——变化慢，按 TTL 重查（默认 15 分钟），新版本不必等宿主重启才出现；
+//   · current（本机已安装版）——每次 RPC 都从磁盘重读，更新完本地副本后提醒会自己消失。
+// 2026-09-24 用户报的正是这里：旧实现只在进程启动时查一次 npm，客户端也只读一次结果，
+// 于是更新完本地副本后，提醒要等刷新页面（甚至重启宿主）才消失。
+const UPDATE_LATEST_TTL_MS = 15 * 60 * 1000
+const UPDATE_LATEST_RETRY_MS = 60 * 1000
+
+// TTL 可被测试覆盖（生产不设置）：0 表示每次都重查。
+function updateLatestTtlMs() {
+  const raw = Number(process.env.DSH_BOTTOM_INFO_BAR_UPDATE_TTL_MS)
+  return Number.isFinite(raw) && raw >= 0 ? raw : UPDATE_LATEST_TTL_MS
+}
+
+const updateLatestCache = { value: null, expiresAt: 0, pending: null }
+
+// 查一次 npm。任何失败都返回 null —— 提醒宁可不显示，也不误报。
+function fetchLatestVersion() {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS)
-  try {
-    const response = await fetch(UPDATE_REGISTRY_URL, {
-      headers: { accept: 'application/json' },
-      signal: controller.signal,
-    })
-    if (!response.ok) return { available: false, current: current, latest: null }
-    const body = await response.json()
-    const latest = body && typeof body.version === 'string' ? body.version : null
-    return { available: !!latest && compareVersions(latest, current) > 0, current: current, latest: latest }
-  } catch {
-    return { available: false, current: current, latest: null }
-  } finally {
-    clearTimeout(timer)
-  }
+  return fetch(UPDATE_REGISTRY_URL, {
+    headers: { accept: 'application/json' },
+    signal: controller.signal,
+  }).then((response) => (response.ok ? response.json() : null))
+    .then((body) => (body && typeof body.version === 'string' ? body.version : null))
+    .catch(() => null)
+    .finally(() => clearTimeout(timer))
+}
+
+// 读最新版本：命中缓存直接返回；过期则重查（并发调用共用同一次请求）。
+// 查失败时保留上一次的已知值（网络抖动不该让提醒闪烁），并把下次重试提前到 1 分钟。
+function latestVersion() {
+  const now = Date.now()
+  if (now < updateLatestCache.expiresAt) return Promise.resolve(updateLatestCache.value)
+  if (updateLatestCache.pending) return updateLatestCache.pending
+  const pending = fetchLatestVersion().then((value) => {
+    if (value !== null) updateLatestCache.value = value
+    updateLatestCache.expiresAt = Date.now() + (value !== null ? updateLatestTtlMs() : UPDATE_LATEST_RETRY_MS)
+    return updateLatestCache.value
+  }).finally(() => { updateLatestCache.pending = null })
+  updateLatestCache.pending = pending
+  return pending
 }
 
 // ---------- 双模式（余额制 / 订阅制）配置 ----------
@@ -1669,8 +1694,8 @@ export default {
     const t = hostLocale.createHostTranslator(ctx);
     // 窗口标签：在 apply 内部按当前语言偏好重新计算（模块顶层 WINDOW_LABELS 仅作安全兜底）。
     const windowLabels = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') };
-    // 版本检查只在 host 进程启动时发起一次；客户端后续只读取这个缓存结果。
-    const updateInfoPromise = checkLatestVersion()
+    // 预热一次 npm 版本查询（失败不影响信息栏）；此后由 latestVersion() 按 TTL 自行重查。
+    latestVersion()
     // 会话谱系列表是冷安全读取，但仍可能触发持久化查询；短暂缓存避免信息栏轮询
     // 每次都重新扫描全部会话。缓存失效时再次读取，保证新建子代理最终能被纳入。
     const SESSION_LINEAGE_CACHE_MS = 1000
@@ -4515,14 +4540,16 @@ export default {
     const ROUTE_PREFIX = '/_dsh/dsh-bottom-info-bar';
     const ROUTES = {
       getUpdateInfo: async function () {
-        // npm 的最新版本只在进程启动时查一次；但「已安装版本」每次都从磁盘重读——
-        // 用户更新完本地副本后刷新页面就能看到新版本、提醒随之消失，不必等宿主重启。
+        // latest 按 TTL 重查、current 每次从磁盘重读（见 latestVersion）：
+        // 客户端每 60 秒读一次这个接口，所以本地副本更新完后提醒会自己消失，
+        // 不必刷新页面或重启宿主。
         // 命令按安装形态区分，避免把 link: 安装的用户引导到 npm 命令而丢掉本地代码。
-        const info = await updateInfoPromise
+        const latest = await latestVersion()
         const current = packageVersion()
-        return Object.assign({}, info, updateCommandForInstall(), {
+        return Object.assign({}, updateCommandForInstall(), {
           current: current,
-          available: !!info.latest && compareVersions(info.latest, current) > 0,
+          latest: latest,
+          available: !!latest && compareVersions(latest, current) > 0,
         })
       },
       getBalanceSnapshot: async function (args) {
