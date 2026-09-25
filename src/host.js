@@ -1454,22 +1454,8 @@ const QUOTA_DISPLAY_MODES = ['used', 'remaining']
 function normalizeQuotaDisplayMode(value) {
   return value === 'used' || value === 'remaining' ? value : null
 }
-// 这两项是设置页的主要决定：普通用户不需要逐条理解轮次、倒计时或缓存。
-// 旧 fields 仍完整保留，既有自定义不会在升级时被重写；displayPreferences 只是一层
-// 更高的显示边界，用来一次控制“完整模式里的账户细节”和“对话统计”。
-const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({ accountDetails: true, conversationStats: true })
-function normalizeDisplayPreferences(value) {
-  if (!isPlainSettingsObject(value)) return undefined
-  const out = {}
-  for (const key of Object.keys(DEFAULT_DISPLAY_PREFERENCES)) {
-    if (!Object.hasOwn(value, key)) continue
-    if (typeof value[key] !== 'boolean') return undefined
-    out[key] = value[key]
-  }
-  return out
-}
 function defaultFieldSettings() {
-  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'compact', displayPreferences: { ...DEFAULT_DISPLAY_PREFERENCES }, fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'remaining' }
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'remaining' }
   for (const field of FIELD_REGISTRY) {
     const isNewField = field.id === 'mainTime' || field.id === 'worldTime' || field.id === 'customText'
     settings.fields[field.id] = isNewField ? false : true
@@ -1499,11 +1485,6 @@ function sanitizeSettings(raw) {
   if (raw.infoDensity === 'full' || raw.infoDensity === 'compact') settings.infoDensity = raw.infoDensity
   else if (Object.hasOwn(raw, 'infoDensity')) dropped.push('infoDensity')
   else settings.infoDensity = 'full'
-  if (Object.hasOwn(raw, 'displayPreferences')) {
-    const normalized = normalizeDisplayPreferences(raw.displayPreferences)
-    if (normalized === undefined) dropped.push('displayPreferences')
-    else settings.displayPreferences = { ...settings.displayPreferences, ...normalized }
-  }
   if (isPlainSettingsObject(raw.fields)) {
     for (const key of Object.keys(raw.fields)) {
       const value = raw.fields[key]
@@ -2037,7 +2018,6 @@ export default {
       return {
         version: fieldSettings.version,
         infoDensity: config.infoDensity,
-        displayPreferences: { ...fieldSettings.displayPreferences },
         fields: shallowSettingsCopy(fieldSettings.fields),
         colors: shallowSettingsCopy(fieldSettings.colors),
         timeFormat: { ...fieldSettings.timeFormat },
@@ -4636,7 +4616,7 @@ export default {
       },
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
-        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'infoDensity') && !Object.hasOwn(patch, 'displayPreferences') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'infoDensity') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
           throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
@@ -4650,18 +4630,10 @@ export default {
         let hasQuotaDisplayModePatch = false;
         let normalizedInfoDensity = null;
         let hasInfoDensityPatch = false;
-        let normalizedDisplayPreferences = null;
-        let hasDisplayPreferencesPatch = false;
         if (Object.hasOwn(patch, 'infoDensity')) {
           if (patch.infoDensity !== 'full' && patch.infoDensity !== 'compact') throw invalidArgument(t('host.infoDensityMustBeFullOrCompact'));
           normalizedInfoDensity = patch.infoDensity;
           hasInfoDensityPatch = true;
-        }
-        if (Object.hasOwn(patch, 'displayPreferences')) {
-          const normalized = normalizeDisplayPreferences(patch.displayPreferences)
-          if (normalized === undefined || Object.keys(normalized).length === 0) throw invalidArgument(t('host.displayPreferencesMustBeAnObject'))
-          normalizedDisplayPreferences = normalized
-          hasDisplayPreferencesPatch = true
         }
         if (Object.hasOwn(patch, 'fields')) {
           const patchFields = patch.fields;
@@ -4772,14 +4744,6 @@ export default {
             changed = true;
           }
         }
-        if (hasDisplayPreferencesPatch) {
-          for (const key of Object.keys(normalizedDisplayPreferences)) {
-            if (fieldSettings.displayPreferences[key] !== normalizedDisplayPreferences[key]) {
-              fieldSettings.displayPreferences[key] = normalizedDisplayPreferences[key]
-              changed = true
-            }
-          }
-        }
         if (changed) {
           settingsConfigVersion += 1;
           persistError = persistSettings();
@@ -4795,7 +4759,6 @@ export default {
         fieldSettings.customText = defaults.customText
         fieldSettings.quotaDisplayMode = defaults.quotaDisplayMode
         fieldSettings.infoDensity = defaults.infoDensity
-        fieldSettings.displayPreferences = { ...defaults.displayPreferences }
         config.infoDensity = defaults.infoDensity
         // 自定义文本重置后为空，开关已为 false，无需额外修正
         settingsConfigVersion += 1;

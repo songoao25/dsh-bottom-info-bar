@@ -34,7 +34,7 @@ check('原生统计行隐藏组不占版式（visCount 门控分隔符）', clie
   && clientSrc.includes("key: 'nsep' + i, className: 'bi-sep'"), true);
 check('本会话花费过滤在公共小部件内部（余额制/订阅制共用）', clientSrc.includes("if (fieldVisible('sessionCost')) {")
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
-check('身份、关键账户数值与故障提示不再是可误关的字段；更新提醒不进信息栏', clientSrc.includes('const CORE_FIELD_IDS = new Set')
+check('所有可见信息都由字段开关控制；更新提醒不进信息栏', !clientSrc.includes('const CORE_FIELD_IDS = new Set')
   && clientSrc.includes("fieldVisible('refreshFailure')") && clientSrc.includes("fieldVisible('persistWarning')")
   && !clientSrc.includes("fieldSpan('updateNotice'"), true);
 
@@ -81,7 +81,7 @@ check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.ancho
 check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice']
   .every((id) => FIELD_REGISTRY.find((f) => f.id === id).suggestKeep === true), true);
 check('注册表无 defaultHidden 语义（默认值全部=显示，由宿主测试锁定）', FIELD_REGISTRY.every((f) => f.defaultHidden !== true), true);
-check('每个注册字段都在信息栏渲染层被引用（id ↔ 渲染片段一一对应）', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
+check('每个会渲染的注册字段都在信息栏渲染层被引用（更新提醒只保留为兼容配置）', FIELD_REGISTRY.filter((f) => f.id !== 'updateNotice').every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
 check('D6 分组：仅「原生信息/插件信息」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
@@ -159,13 +159,13 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
   && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
-// 插件信息默认展开，完整模式专属的原生统计按需展开；搜索时两组自动展开。分组使用原生 button
+// 插件信息默认展开，原生统计按需展开；搜索时两组自动展开。分组使用原生 button
 // 语义和 DSH 行令牌，而非紧凑流程行 DisclosureRow（它在没有图标时不显示收起态提示）。
-check('高级逐项设置默认收起，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
+check('字段设置直接可见，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   const disclosure = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
-    && clientSrc.includes('const [advancedOpen, setAdvancedOpen] = React.useState(false);')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+    && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });')
     && body.includes('groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; }')
@@ -237,10 +237,10 @@ check('折叠头部（分组）使用原生 button 语义，避免 div role=butt
     && !header.includes("role: 'button'")
     && !header.includes('tabIndex: 0');
 })(), true);
-check('折叠切换可见性：高级设置默认收起，且不触发宿主 WebView 的零高 grid 动画', (function () {
+check('折叠切换可见性：字段分组按原状态展示，且不触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
-    && clientSrc.includes('const [advancedOpen, setAdvancedOpen] = React.useState(false);')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+    && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")

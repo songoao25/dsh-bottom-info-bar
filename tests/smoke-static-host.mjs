@@ -152,7 +152,7 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
 }
 {
   const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getConfig', 'GET')
-  check('getConfig → 200 + 默认 compact', r.status === 200 && r.payload.infoDensity === 'compact')
+  check('getConfig → 200 + 默认 full', r.status === 200 && r.payload.infoDensity === 'full')
   check('getConfig → 不含手动 provider/mode 配置', r.status === 200 && !Object.hasOwn(r.payload, 'activeProvider') && !Object.hasOwn(r.payload, 'billingMode'))
 }
 {
