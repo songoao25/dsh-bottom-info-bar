@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.19.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.3...v1.19.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* 显示模型定稿 —— 模式只决定原生行，字段显隐只由字段开关决定 ([#170](https://github.com/songoao25/dsh-bottom-info-bar/issues/170)) ([428c53d](https://github.com/songoao25/dsh-bottom-info-bar/commit/428c53d79abb60c2ed73f914493179cfc1090d6a))
+
 ## [1.19.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.2...v1.19.3) (2026-09-25)
 
 
