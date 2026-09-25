@@ -194,10 +194,10 @@ export function verifyPayload(files, options) {
   if (parseSemver(manifest.version) === null) throw new Error('payload version is not semver: ' + String(manifest.version))
   if (typeof integrity === 'string' && integrity.length > 0) {
     const [algorithm, expected] = integrity.split('-')
-    if (algorithm === 'sha512' && expected) {
-      const digest = createHash('sha512').update(options.tarball).digest('base64')
-      if (digest !== expected) throw new Error('payload integrity mismatch')
-    }
+    // 给了校验值就必须验得动：算法不是 sha512 一律拒绝，绝不「看不懂就跳过校验」。
+    if (algorithm !== 'sha512' || !expected) throw new Error('payload integrity uses an unsupported algorithm: ' + String(algorithm))
+    const digest = createHash('sha512').update(options.tarball).digest('base64')
+    if (digest !== expected) throw new Error('payload integrity mismatch')
   }
   for (const file of files) {
     if (!isAllowedPayloadPath(file.path)) throw new Error('payload path not allowed: ' + file.path)
@@ -367,7 +367,13 @@ export function createSelfUpdater(options) {
       if (!response.ok) return null
       const body = await response.json()
       if (!body || typeof body.version !== 'string') return null
+      // 纵深防御：版本号会被拼进下载地址、写进状态文件、并参与版本比对，只接受规范 x.y.z。
+      if (parseSemver(body.version) === null) return null
       const integrity = body.dist && typeof body.dist.integrity === 'string' ? body.dist.integrity : null
+      // 拿不到校验值就不更新：宁可停在当前版本，也不去装一个无法验证的包 ——
+      // 本模块会替换自己的全部文件，校验链上不允许有"静默跳过"的分支。
+      // npm 对已发布版本始终提供 dist.integrity，缺失只可能是应答被动了手脚。
+      if (!integrity) return null
       return { version: body.version, integrity }
     } catch {
       return null
