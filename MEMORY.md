@@ -19,6 +19,46 @@
 
 ---
 
+## 2026-09-25（v1.19.4）
+
+### 显示模型定稿：模式只有一个职责（fix，PR #170）
+
+**用户报的现象**：「已经打开了自定义文字，但在简洁模式下看不到，只有在完整模式才能看到，还是没有做到分离。」
+
+**根因不是某一个字段的 bug，而是三套规则同时在裁决同一个字段的显隐**：① 分组；② 字段开关；③ 一层隐藏的「现在是不是完整模式」。第三层以 **11 处散落的 `if (full)` / `full && fieldVisible(...)`** 的形式存在，覆盖了自定义文字、主时间、世界时间、订阅窗口、重置倒计时、本会话花费、余额周期、峰谷倒计时、预算、免费额度、上下文圆环。所以逐个字段去修，永远只是把混乱挪个位置 —— 用户第二次因为同一件事回来，正是这个原因。（第一次是 2026-09-25 v1.19.2 的上下文圆环，当时只修了圆环一处，没有去清那层隐藏规则。**教训：同一个 bug 第二次出现时，不要再修症状，先问「是不是有一套没被写下来的规则」。**）
+
+**定稿的唯一一套逻辑**（用户逐项拍板，原文照录在 `docs/DECISIONS-SETTINGS-REDESIGN.md` 第 6 节）：
+
+| 层 | 唯一职责 |
+| --- | --- |
+| 分组 `FIELD_REGISTRY[].group` | 字段**住在哪一行**（`native` 原生统计行 / `plugin` 主行 / `notice` 主行右端）。**不是显隐栅栏。** |
+| 字段开关 | 字段**显不显示**。唯一裁判。 |
+| 模式 `infoDensity` | **只决定原生统计行参不参与**。与任何字段显隐无关。 |
+
+用户同批拍板的两条：设置项列表**保持现有顺序**（原生信息 → 插件信息 → 提醒信息）；**哪条都不标**它属于哪种模式（不给字段加模式角标）。
+
+**工程侧**：
+
+- 三份重复的身份区代码（余额 / 订阅 / 账单各抄一遍「自定义文字 → 服务商锚点 → 时间组」，且各带一个 `if (full)`）抽成 `pushIdentityGroups()` —— **同一个 bug 抄了三遍**，是这个仓库里最典型的重复代价。
+- `full` 只剩一个去处：`const nativeRowShown = row1Present && full`，只喂原生行渲染与 `aria-labelledby`。
+- 删掉 `FIELD_REGISTRY[].modes`：只被测试断言过、产品代码一次都没读。**这种「文档式死字段」比没有更糟 —— 它会让下一个维护者以为模式真的参与显隐。**
+- 默认值改为注册表单一生源（新增 `defaultOff`），host 不再手抄一份字段名单。
+- 订阅多窗口不再按模式裁剪：`const visible = windows`；`displayWindow` 改名 `resetWindow`（它从来只是倒计时的锚点，旧名字在暗示「模式选出来的窗口」）。
+
+**新增渲染级测试，而不是继续靠 grep 断言**：`tests/test-display-model.cjs` 在 `vm` 里加载真实 `lib/client.js`，用 React 桩 + 渲染泵驱动 dock 组件，跑订阅制（Codex）/ 余额制（DeepSeek 峰谷）/ 云账单制（Fireworks）三种形态 + 提醒场景，核心断言是「两种密度的主行字段集合逐字相同」，另有正向断言（此前只在完整模式出现的字段在简洁模式下确实渲染）与反向锁（关掉的字段两种密度都不出现）。15 PASS / 0 FAIL。`test-density-toggle.cjs` 同时升级为设计不变量：源码里不允许再出现 `if (full` 分支或 `full && fieldVisible` 门控。**这套 harness 值得复用 —— 「看一眼界面长什么样」「这个字段到底渲染了没有」都可以用它，不要靠读 JSX 想象。**
+
+**安全（同批）**：CodeQL alert #5 `js/incomplete-sanitization` 修复（`entry.replace('*', 'en')` 只替换首个匹配 → `/\*/g`）。更值得记的是顺带修掉的三处「静默跳过」—— 自更新校验链上「认不出来就当作没事」，与 fail-closed 相反：完整性算法不是 sha512 时原本放行、远端版本号非语义化版本仍拿来比较、`dist.integrity` 缺失仍下载。现在三处都改为直接放弃，并各配「反面样本 + 通过态样本」的断言（防止修过头）。修完 GitHub Security 为 **0 条 open**（3 条全部 fixed，Dependabot / secret scanning 均无告警）。
+
+**发布链条**：PR **#170** → CI / CodeQL 全绿、`enable-auto-merge` 自动合并（普通 PR）→ 发布 PR **#171**（1.19.4，`enable-auto-merge` = SKIPPED，闸门按预期只拦发布 PR）→ 用 owner token 合并 → tag `v1.19.4` → Publish NPM success → `npm view` 读回 `latest = 1.19.4`（约 100 秒传播延迟）。**注意**：本仓库用 squash 合并，所以本次四个提交在 CHANGELOG 里只落成一条（PR 标题）。若希望安全修复单独出现在更新日志里，需要拆成两个 PR 分开合并。
+
+**本机同步（硬性收尾，本次成功）**：探测结果 —— `~/.dsh/profiles/` 只有 `desktop`；`node_modules/dsh-bottom-info-bar` 是**实体目录**（pnpm 从 GitHub 拉的独立快照），同步前版本 **1.19.3**。做法：先备份到 `/tmp/bib-backup-before-1.19.4`，再 `env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar`（**`env -u NODE_OPTIONS` 仍是必需项**，WorkBuddy 注入的 brokered-fs shim 会挡 pnpm 的 store 软链）。核验：装载版本 **1.19.4**、`pnpm-lock.yaml` 钉到 `194aff9e430d18f636d3d171c3443ce8b151fa89`，并对装载副本逐条断言 8 项（`pushIdentityGroups` 存在 / `nativeRowShown` 是 `full` 的唯一去处 / 已无 `if (full` 散落门控 / `const visible = windows` / `resetWindow` 且无 `displayWindow` / `constants` 已无 `modes` / `defaultOff` 存在 / 显示模型头注释存在），全部 PASS。
+
+**文档**：README 中英去掉三处已失效描述（「简洁只保留服务商/模型/一项核心账户信息」「简洁模式只保留最短窗口、不显示重置倒计时」「字段归哪一组决定它能不能出现在简洁模式里」）；`docs/FIELDS-AUDIT-v1.9.md` 顶部加历史快照横幅（它是 v1.9 的只读审计，里面的旧结论不该被当作现行为）。
+
+**对外通知**：`docs/ANNOUNCEMENTS.md` 新增 v1.19.4 条目。**判定值得打扰用户**——这是用户能直接看见的行为变化，不是纯内部重构。
+
+---
+
 ## 2026-09-25（v1.19.3）
 
 ### 更新区重组为「状态—设置—兜底」+ 三处实现缺陷（fix，PR #167）
