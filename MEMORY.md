@@ -19,7 +19,29 @@
 
 ---
 
-## 2026-09-25（未发布：代码体系审计 + 版式修复）
+## 2026-09-26（v1.20.0）
+
+### 设置页分块 + 更新流程拆「检查/安装」两动作 + #173 内置账号余额（feat+fix，PR #176）
+
+**三件事一次发布**，全部由用户委托 AI 拍板（决策原文与理由在 `docs/DECISIONS-AUTO-UPDATE.md` §8，每行明确标「AI 决定」，未冒充用户决策）：
+
+1. **设置页「插件信息」分五块**：新增 `FIELD_SECTIONS`（identity / balance / subscription / billing / common），`section` 轴与 `group` 轴彻底分家——`group` 管住哪一行，`section` 只是设置页阅读顺序，字段开关仍是显隐唯一裁判。守卫测试 `test-field-sections.cjs`（26 断言）证明渲染输出是输入的**完整划分**：以后加新字段漏配 `section` 会立刻红，且 `host.js` 永不读 `section`（源码级断言）。
+2. **「检查更新」根因**：`runUpdateCheck` → `runOnce` → `performUpdate` 没有只查分支，"检查"就是"安装"。拆成 `checkUpdate`（只读，不落盘不备份）与 `installUpdate`（唯一写入者），`runUpdateCheck` 保留为别名防旧页面 404；host 出口统一为单一 `updateStatePayload()`（client 不再自己拼半状态）。设置页滚动跳顶没有插件侧成因（宿主在包文件变化时重建插件页），用「记录→重建→四前提恢复」补偿，测试锁死前提。
+3. **#173 内置账号余额**：余额来源（`balanceAccountForProvider` → `PLATFORM_BALANCE_PROVIDERS`）与花费归属（`accountForProvider`）是两条轴、两张表——往归属表加键会让历史花费进无主桶、账户过滤被打开，用户看到「本会话花费归零」。余额走 `ctx.get('deepseekAccount')`（可选服务，缺席降级不 500），金额按数值语法解析（`0E-16` 形态有断言），求和口径对齐官方 `total_balance = granted + topped_up`。issue 提出者的分析与实现建议全部命中，已在 issue 里逐条对齐回复并关闭。
+
+**「真实可用」的验证方式（可复用）**：`scripts/verify-self-update-live.mjs`（网络必需，刻意不进 CI）在临时目录搭一台「旧机器」，对着**真 npm registry** 验 19 条：检查逐字节只读（0 下载、包目录哈希快照不变、无备份无 pendingVersion）、安装真把磁盘版本推到 latest、坏包被拒为 `incomplete-download` 且零污染。踩坑：`Uint8Array.subarray(0,100).buffer` 返回的是**整个**底层 ArrayBuffer，截断样例必须 `new Uint8Array(buf.subarray(0,100))` 再取 `.buffer`。
+
+**发布链条**：PR #176（CI/CodeQL 全绿，auto-merge 自动合并）→ 发布 PR #177（1.20.0）→ 在发布分支临时 worktree 里跑全量测试全绿后用 owner token 合并 → tag `v1.20.0` → Publish NPM success。**坑**：合并后立刻 `npm view` 仍读回 1.19.5（本地缓存/CDN 传播延迟），直接 `curl registry.npmjs.org` 才是真值——以后核验上架一律 curl registry，不信 `npm view`。
+
+**本机同步（硬性收尾，本次成功）**：探测 —— 只有 `desktop` profile，`node_modules/dsh-bottom-info-bar` 实体目录，同步前 **1.19.5**。备份到 `/tmp/dsh-bib-backup/dsh-bottom-info-bar-1.19.5` → `env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar`（46s，`env -u` 仍必需）→ 核验装载 **1.20.0**，且 `lib/client.js` 含本批新特性（section 常量、更新文案）。
+
+**v1.19.5 的收尾缺口（本条补记）**：v1.19.5 发布时复盘标题停在「未发布」、没写通知稿、没留本机同步记录——三条都违反收尾铁律。本条已把标题改为 v1.19.5；通知稿不补发旧版（避免噪音），v1.19.5 的版式修复并入 v1.20.0 通知的「顺带修了版式」。教训：**发布 PR 合并 ≠ 收尾完成**，收尾清单（复盘/通知/本机同步）要逐条打勾才算完。
+
+**Issue 收尾**：#173 已回复修复说明并关闭（含 `version` 填插件版本号的原因与局限）；#132 已确认根因修复并关闭。
+
+---
+
+## 2026-09-25（v1.19.5：代码体系审计 A 批 + 版式修复）
 
 **用户拍板四条开发标准，即刻生效，所有功能开发必须满足**：① 两端适配（网页端 + 桌面客户端）；② 代码完美、简洁优雅；③ 长期可维护；④ 体系统一化，禁止随便乱插代码堆屎山。落地文件：`docs/DEV-STANDARDS.md`（细则 + 判定方式）、`docs/CODE-AUDIT.md`（欠账台账，只准变短）、`AGENTS.md` 顶部摘要。**判定口径已统一为一句话：加一个新东西要改几处？改 1 处合格，改 5 处以上说明还没设计完。**
 
