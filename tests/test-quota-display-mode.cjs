@@ -590,7 +590,7 @@ const failHarness = await bootHarness(function (method, args) {
     clientSrc.includes("normalize: function (value) { return value === 'manual' ? 'manual' : 'auto'; }")
     && clientSrc.includes('const normalize = typeof props.normalize === \'function\' ? props.normalize : normalizeQuotaDisplayMode;'), true);
   check('⑥b 源码里更新方式以 createElement 创建（组件含 hooks，裸调用会 React #310）',
-    clientSrc.indexOf('React.createElement(bibSetQuotaMode, {') !== -1 && clientSrc.includes('value: state.autoUpdate === false ? \'manual\' : \'auto\''), true);
+    clientSrc.indexOf('React.createElement(bibSetQuotaMode, {') !== -1 && clientSrc.includes('value: manual ? \'manual\' : \'auto\''), true);
   check('⑥b 选中手动 → 发 setUpdateAuto enabled=false（开关只表示开与关，与显示模式无关）', (function () {
     const before = okHarness.harness.requests.length;
     okHarness.harness.updateRadiosOf(okHarness.harness.render())[1].props.onClick();
