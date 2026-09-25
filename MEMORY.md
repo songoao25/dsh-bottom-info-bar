@@ -19,6 +19,37 @@
 
 ---
 
+## 2026-09-25（v1.19.3）
+
+### 更新区重组为「状态—设置—兜底」+ 三处实现缺陷（fix，PR #167）
+
+用户原话（同时问了两个问题）：
+
+> 这个版本更新的逻辑需要修改一下。目前版本更新里有一个固定的说明，下面可以切换「手动更新」和「全自动更新」，还有一个「检查更新」。你看一下怎么组织一下。现在感觉就是乱加上去的，没有成体系，很奇怪。
+> 另外，全自动更新实现了吗？更新功能实现了吗？
+
+**先回答「实现了吗」。** 两个都真的实现了，而且自更新当时正在用户机器上运行 —— 证据是 `~/.dsh/dsh-bottom-info-bar/update-state.json` 的 `lastCheckAt` 正是 DSH 当次启动后 8 秒那次检查写下的（`isLoadedAsProfilePlugin()` 在本机为真，否则这份状态文件根本不会被写）。**但光看代码说「实现了」不算回答**，所以当场做了真机端到端验证：在 `/tmp` 造一台「装着 1.19.1」的假机器（复制本机包 + 改 version + 塞一行 `// OLD-BUILD-MARKER`），把引擎指过去跑 `run({ manual: true })`，它**真的**去 npm 拉了 1.19.2、校验、替换成功（磁盘版本变 1.19.2、标记行消失、备份里是更新前内容、`update-log.jsonl` 记 `updated`、没生成 `node_modules`）；又拿真实 tarball 截断成 100 字节喂进去，确认**一个字节都不落盘**（`lastError` 记失败、`package.json` 字节未变、无 `.update-tmp` 残留）。这套验证方法已写进 `docs/DECISIONS-AUTO-UPDATE.md` §7，以后回答「这个功能到底能不能用」就照它跑。
+
+**四项拍板（原文见 `docs/DECISIONS-AUTO-UPDATE.md` 决策 5）**：5a 整体分三层「状态—设置—兜底」；5b 更新方式仍是二选一、但说明跟着选中项变；5c「检查更新」与「回滚」按需出现；5d **自动检查保持只在启动时查一次，不加周期复查**。第 5d 条特别记牢：用户看过「加周期也换不来更早生效（装好必须重启，重启本身就会触发检查）」的理由后选择不加，**别自作主张补周期任务**。
+
+**三个真 bug（都在这次体检中查出）**：
+
+1. **「回滚到上一版」一旦成功更新过就永久常驻** —— 判据 `canRollback = !!state.pendingVersion || …`，而 `pendingVersion` 为了给回滚定位备份**故意永不清除**（见 v1.19.0 条目）。用户说「最像乱加上去的」就是它。改为 `restartDirection === 'update' || !!state.lastError`：只在「新版已装好待重启」与「上次更新失败」两个真正需要逃生门的窗口出现；已回滚过（`restartDirection === 'rollback'`）不再显示，因为那时 `pendingVersion` 已清空、再点也没有对象。
+2. **手动方式下点「检查更新」会重复下载同一版本** —— 防重分支 `if (diskVersion() === latest.version && !manual)` 上的 `&& !manual` 是错的：`manual` 的语义是「自动关掉时用户授权下载」，不是「绕过防重」。去掉后连点不再反复替换、不再多留备份。
+3. **错误码映射优先级**：`describeUpdateError` 的 `['too large']` 排在 `['download failed']` 之后，`download failed: too large` 被宽模式抢先命中成 `download-failed`。**这条是新写的单测当场抓出来的**，说明「给映射表写顺序」这种容易想当然的地方必须有测试。
+
+**失败原因讲人话**：`state.lastError` 原来原样存技术报错，界面只能甩给用户（integrity 失败时显示 `unexpected end of file`）。现在引擎把它归一成稳定代号（`incomplete-download` / `integrity-mismatch` / `download-failed` / `too-large` / `payload-mismatch` / `payload-unsafe` / `check-failed` / `unknown`），界面按代号翻译中英人话，原始报错进 `update-log.jsonl`。关键设计：**归一函数同时认「代号」与「原始报错」**，所以历史 state 文件里的老值也能被正确翻译（否则老用户会看到空白或原文）。界面另加「上次检查」时间 —— 引擎一直记着它，只是页面没显示，**用户没法确认有没有在干活**正是他这次发问的由来。
+
+**订正一处对外不实描述**：README（中英）与 `docs/INSTALL.md` 原来写「启动时查一次 npm，之后最多每 15 分钟复查一次」。**15 分钟是设置页读状态的轮询间隔，不是检查或下载的触发**；自动下载只发生在启动后那一次。已改为实话，并补上「为什么这样够」的理由。
+
+**界面验证手法（可复用）**：设置页的渲染没有截图通道，但 `tests/test-quota-display-mode.cjs` 的 harness 能把真实 `lib/client.js` 在桩 React 下渲染成节点树。这次临时往该测试里插了一段 dump（把六种状态各自渲染一遍、按行打印大字/小字/按钮/选中项），跑完立即删除；六种状态（已最新 / 手动有新版本 / 失败 / 待重启 / 已重启完 / 环境不支持）的实测输出与预期完全一致，尤其是**⑤「已更新并重启完」时回滚按钮确实消失了**。以后要「看一眼界面长什么样」，用这个办法，不要靠读 JSX 想象。
+
+**发布链条**：PR **#167** → 发布 PR **#168**（1.19.3）→ tag `v1.19.3` → Publish NPM success → `npm view` 读回 `latest = 1.19.3`，GitHub Release 已发布。**npm 读回同样有延迟**：流水线成功后又读了约 2 分钟才变成 1.19.3。
+
+**本机同步（硬性收尾）**：仍是 `desktop` profile + pnpm 从 GitHub 拉的独立快照。`env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar` 一条命令生效（见 v1.19.2 条目里记的原因：WorkBuddy 注入的 `NODE_OPTIONS` brokered-fs shim 会挡住 pnpm 的 store 软链），同步前已把装载目录备份到 `/tmp/bib-backup-before-1.19.3`。核验：装载版本 **1.19.3**、lockfile 钉到 `4a5d786`、逐条断言的八处内容（三层结构三处、回滚新判据、检查按钮条件、错误人话、引擎归一、中英文案）全部命中。
+
+---
+
 ## 2026-09-25（v1.19.2）
 
 ### 用户看真机后报的三件事（fix，PR #164）
