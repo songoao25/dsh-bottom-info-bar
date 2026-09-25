@@ -82,8 +82,8 @@ check('简洁订阅制只保留优先额度窗口，隐藏到期与重置时间'
   && clientSrc.includes("if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown'))"), true);
 check('简洁云账单只保留本周期花费或用量，隐藏预算和免费额度', clientSrc.includes("if (full && d.budgetPercent != null && fieldVisible('budget'))")
   && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
-check('简洁模式隐藏上下文圆环和更新提醒，避免出现非核心信息', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')")
-  && clientSrc.includes('if (full && updateInfo && updateInfo.available === true'), true);
+check('简洁模式隐藏上下文圆环；新版本提醒不再进入信息栏', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')")
+  && !clientSrc.includes("fieldSpan('updateNotice'"), true);
 check('设置页提供可持久化的简洁/完整选择，不要求用户记住点击手势', clientSrc.includes('function bibSetDensitySection(props)')
   && clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes("Object.hasOwn(patch, 'infoDensity')"), true);
 // 7) 无残留的旧宽松判定

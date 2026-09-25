@@ -1,16 +1,6 @@
-// 版本更新提醒：点击标签复制更新命令（2026-09-11 需求）
-//
-// 三件事必须锁死，否则会退化：
-//   ① 点击标签只复制，**不能顺带切换简洁/完整模式**——信息栏根节点自带 onClick，
-//      所以标签的点击处理必须 stopPropagation。这条最容易在后续重构中被删掉。
-//   ② 复制出来的命令必须与「安装形态」匹配：npm 安装用 dsh plugin add …@latest，
-//      link: 安装（一键脚本 / 本地代码）必须用 git——用错会把用户的本地代码顶掉；
-//      GitHub 地址安装（DSH 插件页引导的那种）必须重跑同一条 add——npm 那条会被「已安装」挡下。
-//   ③ link: 的命令必须真的跑得通（2026-09-22 用户实测「复制了、执行了、却没有更新」）：
-//      不能依赖当前分支有可用上游（`git pull` 在分支没推到远端时直接失败），
-//      且必须指向远端默认分支（不在默认分支时先 checkout 过去再 --ff-only 快进）。
-//   ④ 提醒必须能自愈（2026-09-24 用户报「更新完还显示提醒」）：npm 侧按 TTL 重查、
-//      本机已安装版本每次从磁盘重读 —— 本地副本更新到同版后，提醒要自己消失。
+// 版本信息仍由 host 读取（用于版本诊断和未来宿主更新能力），但不能挤进聊天信息栏。
+// 桌面客户端并不保证终端命令能更新一个已安装插件，故 UI 不再显示更新标签、复制命令或
+// “已复制”反馈。下方保留安装来源命令的 host 单测，确保未来宿主提供真正更新入口时有可信数据。
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,39 +17,18 @@ function check(name, condition, detail) {
 
 // ---------- ① 客户端静态断言 ----------
 const client = readFileSync(join(root, 'src/client-bundle.js'), 'utf8')
-const badge = client.slice(client.indexOf("className: 'bi-update'"), client.indexOf("className: 'bi-update'") + 400)
+check('客户端不把更新作为信息栏标签', !client.includes("fieldSpan('updateNotice'"))
+check('客户端不复制可能失效的更新命令', !client.includes('copyTextToClipboard') && !client.includes('setUpdateCopied'))
 
-check('客户端：更新标签绑定了点击处理', /onClick:\s*copyUpdateCommand/.test(badge), badge.slice(0, 200))
-check(
-  '客户端：点击处理调用 stopPropagation（否则点复制会切换简洁/完整模式）',
-  /copyUpdateCommand\s*=\s*function[\s\S]{0,120}stopPropagation\(\)/.test(client),
-  '未找到 stopPropagation：信息栏根节点的 onClick 会把这次点击当成「切换密度」'
-)
-check(
-  '客户端：复制走 copyTextToClipboard（含非安全上下文的兜底路径）',
-  /copyTextToClipboard\(updateCommand\)/.test(client) && /document\.execCommand\('copy'\)/.test(client),
-  '缺少兜底：从局域网 IP 访问时 navigator.clipboard 不存在，点了会毫无反应'
-)
-check(
-  '客户端：复制成功后标签文字临时切换（updateCommandCopied 状态被使用）',
-  /setUpdateCopied\(true\)/.test(client) && /ui\.updateCommandCopied/.test(client)
-)
-check(
-  '客户端：更新标签有可点击暗示（cursor: pointer）',
-  /\.bi-update\{[^}]*cursor:\s*pointer/.test(client),
-  '无可点击暗示，用户不会知道能点'
-)
-
-// ---------- ② 文案：必须写明「点击标签即可复制」----------
+// ---------- ② 文案：不再引导用户点击标签复制命令 ----------
 const { LOCALES } = await import('../src/locales.js')
 for (const lang of ['zh', 'en']) {
   const text = LOCALES[lang]['ui.askYourAgentToUpdate'] || ''
   check(
-    `文案(${lang})：hover 提示同时给出「找 Agent」与「点击标签复制」两条路径`,
-    /Agent|agent/.test(text) && /点击|click/i.test(text),
+    `文案(${lang})：遗留更新文案不会要求点击标签复制命令`,
+    !/点击.*复制|click.*copy/i.test(text),
     text
   )
-  check(`文案(${lang})：提供「已复制」反馈文案`, typeof LOCALES[lang]['ui.updateCommandCopied'] === 'string' && LOCALES[lang]['ui.updateCommandCopied'].length > 0)
 }
 
 // ---------- ③ host 运行时：命令必须匹配安装形态，且 link: 的命令真的能跑 ----------
