@@ -84,8 +84,8 @@ check('简洁云账单只保留本周期花费或用量，隐藏预算和免费�
   && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
 check('简洁模式隐藏上下文圆环；新版本提醒不再进入信息栏', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')")
   && !clientSrc.includes("fieldSpan('updateNotice'"), true);
-check('设置页提供可持久化的简洁/完整选择，不要求用户记住点击手势', clientSrc.includes('function bibSetDensitySection(props)')
-  && clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes("Object.hasOwn(patch, 'infoDensity')"), true);
+check('设置页不再重复提供简洁/完整选择；点击底栏仍由宿主接口持久化', !clientSrc.includes('function bibSetDensitySection(props)')
+  && !clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes('setInfoDensity: function'), true);
 // 7) 无残留的旧宽松判定
 check('client 源码不含 !== \'compact\' 宽松判定', !clientSrc.includes("props.density !== 'compact'"), true);
 

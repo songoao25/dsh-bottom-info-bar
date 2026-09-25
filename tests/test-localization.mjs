@@ -165,18 +165,18 @@ const rendered = nodes(render())
 // 英文界面（含配置页各状态）不允许出现任何中文：漏译一条就会在这里露出来。
 assert.doesNotMatch(text(render()), /\p{Script=Han}/u, 'the English configuration page must not fall back to Chinese')
 const descriptions = rendered.filter((node) => node.props.className === 'bib-set-rowDesc').map(text)
-assert.ok(descriptions.includes('Show reset times, subscription expiry, session spend, budgets, and free quota.'))
+assert.ok(descriptions.includes('Shows the account balance; a low balance appears in red.'))
 for (const description of descriptions) {
   assert.doesNotMatch(description, /\.[A-Z]| {2}/, description)
 }
 console.log('PASS  Rendered settings descriptions have sentence spacing without double spaces')
-const toggle = rendered.find((node) => node.props.role === 'switch' && node.props['aria-label'] === 'Show Account details')
-assert.ok(toggle, 'Account details switch must be rendered')
+const toggle = rendered.find((node) => node.props.role === 'switch' && node.props['aria-label'] === 'Show Balance')
+assert.ok(toggle, 'Balance switch must be rendered')
 toggle.props.onClick()
 await new Promise((resolve) => setImmediate(resolve))
 const alerts = nodes(render()).filter((node) => node.props.role === 'alert').map(text)
-assert.ok(alerts.includes('Account detailsCould not save: Offline'), JSON.stringify(alerts))
-assert.equal(states[0].displayPreferences.accountDetails, true, 'A failed save must restore the display preference')
+assert.ok(alerts.includes('"Balance": Could not save: Offline'), JSON.stringify(alerts))
+assert.notEqual(states[0].fields.balance, false, 'A failed save must restore the field choice')
 // The plugin configuration page follows DSH's shared locale service and does not duplicate
 // a plugin-only language switcher.
 assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
@@ -189,11 +189,11 @@ locale.setLocale('zh')
 assert.equal(bound, locale.bind('dsh-bottom-info-bar'))
 assert.equal(navLabel(), '底部信息栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
-assert.ok(switchedAlerts.includes('账户详情保存失败：Offline'), JSON.stringify(switchedAlerts))
+assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
 states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 assert.match(text(render()), /信息栏/)
 assert.doesNotMatch(text(render()), /原生统计行字段/)
-assert.match(text(render()), /账户详情/)
+assert.match(text(render()), /余额/)
 locale.setLocale('en')
 assert.match(text(render()), /Info Bar/)
 
