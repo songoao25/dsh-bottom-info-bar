@@ -19,6 +19,25 @@
 
 ---
 
+## 2026-09-25（未发布：代码体系审计 + 版式修复）
+
+**用户拍板四条开发标准，即刻生效，所有功能开发必须满足**：① 两端适配（网页端 + 桌面客户端）；② 代码完美、简洁优雅；③ 长期可维护；④ 体系统一化，禁止随便乱插代码堆屎山。落地文件：`docs/DEV-STANDARDS.md`（细则 + 判定方式）、`docs/CODE-AUDIT.md`（欠账台账，只准变短）、`AGENTS.md` 顶部摘要。**判定口径已统一为一句话：加一个新东西要改几处？改 1 处合格，改 5 处以上说明还没设计完。**
+
+**审计结论（两路独立只读审计，逐条带行号，全部记进 `docs/CODE-AUDIT.md`）**：第 4 条是最大缺口，且已经产出过用户可见 bug。典型量化：最大单函数 3356 行（`host.js` 的 `apply`）、超 200 行的函数 4 个、同一逻辑多份实现 8 组（semver 2 份、原子写 **5 套**、订阅/账单两套同构快照引擎约 200 行）、provider 身份散落 **9 处**（一半是表一半是 if-else 链，最坏状态）、死 RPC 3 个 + 无消费方配置字段 2 个、孤儿语言 key 16 个。P0 三条：智谱套餐名在英文宿主恒中文（模块级 `t` 无 ctx）、`AbortSignal.timeout` 14 处裸用（仅 1 处有守卫）、`DATA_DIR` 不认 `DSH_HOME` 而 profile 探测认（**两端数据可能落到两个地方**）。
+
+**整改分 A–E 五批**（A 已随本次发布；B 纯修复、C/D 重构、E 涉数据落点需拍板），批次划分见 `docs/CODE-AUDIT.md` 第五节。未拍板前不擅自动 C/D/E。
+
+**本次已落地的版式修复（用户报的两处）**
+- **信息栏「能一行却换行」**：真因是宽度令牌与内边距**重复扣除**。宿主侧 `--dsh-composer-card-max-width = 内容宽度 + 32px`，卡片自身左右各有 `--dsh-composer-side-clearance`(16px) 内边距，两者相抵 → **卡片的文字区宽度恰好等于 `--dsh-chat-content-width`**；而 `.bi-root` 宽度已经取了这个令牌，却又补了 `clearance + 16px = 32px` 内边距，可用宽度平白少 64px（616 vs 680）。改为 `padding: 4px 0px 0px`，与输入框文本左右边缘精确对齐。
+- **信息栏字号不跟宿主**：`.bi-root` 写死 `font-size: 12px`，而上下文圆环早已用 `--dsh-content-font-size-secondary` —— 同一行两种字号。改为整条跟随宿主次级字号，行高改成 `calc(20px + var(--dsh-content-font-delta-secondary, 0px))`，`--bi-line` 成为唯一节奏令牌（`.bi-model-group` / `.bi-ctx-trigger` / `.bi-ctx-panel` 三处写死的 20px 一并收口）。
+- **设置页「按钮一个上一个下」**：真因不在分组行（它已有 `align-items: center`），而在**分组内部**——`.bib-set-data-button-group` 是 flex 却没写 `align-items`，默认 `stretch` 对「有确定高度」的子项退化为**顶边对齐**，于是 33px 两段式与 28px 按钮顶边齐平、整体错位 2.5px。补 `align-items: center`，并在测试里锁死。
+
+**宿主令牌的取证方法（可复用）**：`--dsh-*` 令牌定义在 `/Applications/DeepSeek Harness.app/Contents/Resources/app.asar` 里，用 `grep -a -o -E ".{110}--dsh-xxx:[^;}]{0,90}" app.asar` 直接抓上下文。已确认：`--dsh-content-font-size-secondary: min(size-1, max(13px, size-2))`、`--dsh-content-font-delta-secondary: calc(secondary - 13px)`、`--dsh-composer-side-clearance: 16px`（内嵌态 8px）；`--dsh-content-font-size` 本身**不写死在 CSS 里**（由宿主按设置注入，默认 14px），所以只能通过 `var(--dsh-content-font-size-secondary, 13px)` 读取。
+
+**踩坑提醒**：本机 Bash 里的 `grep` 不可靠（多次返回空），检索一律用专用 Grep 工具。
+
+---
+
 ## 2026-09-25（v1.19.4）
 
 ### 显示模型定稿：模式只有一个职责（fix，PR #170）

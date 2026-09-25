@@ -111,7 +111,7 @@ check('状态说明维持原生悬浮提示，不额外引入读屏文案', !cli
 
 // 7) 视觉模型：仅 host 明确识别后展示，复刻参考图的实色靛蓝椭圆
 check('视觉标识只接受 host 的显式 true，不通过名称猜测', clientSrc.includes("pr.acceptsImageInput !== true"), true);
-check('服务商、圆点与视觉模型使用同一 flex 中心线，窄宽度下可作为完整单元换行', clientSrc.includes('.bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: 20px; vertical-align: top; }')
+check('服务商、圆点与视觉模型使用同一 flex 中心线，窄宽度下可作为完整单元换行', clientSrc.includes('.bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: var(--bi-line); vertical-align: top; }')
   && clientSrc.includes('.bi-model-provider, .bi-model-dot { display: inline-flex; align-items: center; height: 16px; line-height: 14px; }')
   && clientSrc.includes("function modelDetail(pr, modelName)")
   && clientSrc.includes("className: 'bi-model-dot'"), true);
