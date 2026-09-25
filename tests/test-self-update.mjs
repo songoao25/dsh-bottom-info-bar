@@ -751,6 +751,21 @@ ok('client 接线：设置页有版本与更新区，信息栏只在待重启 / 
   assert.doesNotMatch(client, /bi-update-badge[\s\S]{0,200}navigator\.clipboard/, '短标记不该再复制命令')
 })
 
+ok('版本与更新区在读不到状态时也不消失（2026-09-25 血案：桌面端没重启时整块不见了）', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  // 场景：包文件已被替换成新版，但 DSH 进程仍是启动时载入的旧 host —— 此时 getUpdateState
+  // 这个 RPC 在旧 host 里不存在，读状态必然失败。旧写法 `if (!state) return null` 会让整块消失，
+  // 用户只能得出「还是得卸载重装」的结论，于是来报「设置页里还是没有更新相关的内容」。
+  assert.doesNotMatch(client, /function bibSetVersionSection\(props\) \{\s*const state = props\.state;\s*if \(!state\) return null;/,
+    '读不到状态时不得直接返回 null：整块消失等于用户看不到任何更新入口')
+  assert.match(client, /const \[updateError, setUpdateError\] = React\.useState\(null\)/, '必须记录读不到状态的原因')
+  assert.match(client, /setUpdateError\(String\(\(err && err\.message\) \|\| err \|\| 'unknown'\)\)/, '失败时必须留下原因')
+  assert.match(client, /error: updateError,/, '原因必须传给版本区')
+  assert.match(client, /t\('ui\.versionUnavailable'\)/, '必须有一句说明「重启 DSH 后就会出现」')
+  // 成功读到一次即清除；此后的偶发失败不得把已经显示出来的版本信息换掉
+  assert.match(client, /setUpdateError\(null\);/, '成功读取必须清除错误状态')
+})
+
 ok('文案齐备：新增的版本与更新键中英双语、无 AI 腔、无长破折号', () => {
   const source = readFileSync(join(root, 'src', 'locales.js'), 'utf8')
   const block = source.match(/export const LOCALES = \{[\s\S]*\n\}/)

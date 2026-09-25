@@ -92,11 +92,15 @@ check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAME
 check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定（提醒信息在最后）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin', 'notice'])
   && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息'
   && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
-check('分组：原生组恰 6 个 DeepSeek 原生标签（含接管过来的上下文圆环）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
-  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO,contextUsage', true);
+check('分组：原生组恰 5 个 DeepSeek 原生标签（只在完整模式出现）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
+  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
+// 2026-09-25 用户拍板：上下文圆环原型虽来自原生底栏，但已被本插件接管、且始终渲染在主行
+// （简洁模式可见的那一行最右端），所以按插件组对待 —— 归原生组会让它在简洁模式下消失。
+check('分组：上下文圆环归入插件组（简洁模式也必须显示）',
+  FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
 check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
   === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);
-check('分组：插件组 19 条（原 26 条减去迁出的 7 条提醒），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 19
+check('分组：插件组 20 条（19 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 20
   && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
 check('分组：三组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
   ['group.native.desc', 'group.plugin.desc', 'group.notice.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
@@ -171,12 +175,13 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
   && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
-// 插件信息与提醒信息默认展开，原生统计按需展开；搜索时三组自动展开。分组使用原生 button
+// 三个分组默认全部收起（2026-09-25 用户拍板）：全展开会让设置页一次铺满几十行。
+// 搜索时三组自动展开。分组使用原生 button
 // 语义和 DSH 行令牌，而非紧凑流程行 DisclosureRow（它在没有图标时不显示收起态提示）。
-check('字段设置直接可见，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
+check('字段设置三个分组默认全部收起，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   const disclosure = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false, notice: false });')
     && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true, notice: true });')
@@ -251,7 +256,7 @@ check('折叠头部（分组）使用原生 button 语义，避免 div role=butt
 })(), true);
 check('折叠切换可见性：字段分组按原状态展示，且不触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false, notice: false });')
     && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
