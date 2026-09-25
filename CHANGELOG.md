@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.19.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.18.1...v1.19.0) (2026-09-25)
+
+
+### Features
+
+* add in-place self-update and a three-group settings page ([#159](https://github.com/songoao25/dsh-bottom-info-bar/issues/159)) ([0773c4f](https://github.com/songoao25/dsh-bottom-info-bar/commit/0773c4f7b8d22b5b3df4e36a6c43754a3a500aca))
+
 ## [1.18.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.18.0...v1.18.1) (2026-09-25)
 
 
