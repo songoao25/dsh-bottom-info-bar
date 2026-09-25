@@ -436,7 +436,7 @@ function buildFieldColorCss() {
   return rules.join('\n');
 }
 const FIELD_COLOR_CSS = buildFieldColorCss();
-// 订阅窗口 key → 字段 id（简洁模式只显示优先窗口的既有逻辑保持不变，只叠加显隐过滤）
+// 订阅窗口 key → 字段 id：三个窗口是三个独立字段，各自开关、各自着色，两种模式一视同仁
 const WINDOW_FIELD_IDS = { five_hour: 'subWindow5h', seven_day: 'subWindowWeek', monthly: 'subWindowMonth' };
 function windowFieldVisible(key) {
   const id = WINDOW_FIELD_IDS[key];
@@ -556,12 +556,12 @@ function installStyles() {
       .bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }
       .bi-root b.bi-alert-num, .bi-root b.bi-quota-low { color: var(--bi-state-alert); font-weight: 700; }
       /* 新版本需要用户处理：与其它提醒统一用鲜红警示色，不伪装成链接。
-         该标签可点击（点击即复制更新命令），但只用手型光标作提示——不加下划线、不改颜色，
-         保持「告警」而非「链接」的语义（test-update-check 有「无下划线」的专项断言）。 */
+         只用手型光标作提示——不加下划线、不改颜色，保持「告警」而非「链接」的语义
+         （test-update-check 有「无下划线」的专项断言）。 */
       .bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }
       /* 自更新状态短标记：只在「已下载待重启」或「上次自动更新失败」时出现，重启/修复后自动消失。
-         与 .bi-update（新版可用、点击复制更新命令）区分：它不需要用户点击，所以用默认光标 +
-         1px currentColor 描边成胶囊，明确「这是状态标签，不是可点链接」。
+         与 .bi-update 区分：它不需要用户点击，所以用默认光标 + 1px currentColor 描边成胶囊，
+         明确「这是状态标签，不是可点链接」。
          反色铁律：只描边、不加背景色，文字仍落在信息栏自身底色上（与 .bi-err 同色同底），
          不引入任何新的前景/背景配对，明暗主题都沿用既有已验证的对比度。 */
       .bi-update-badge{ margin-left: 6px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-weight: 600; color: var(--bi-state-alert); cursor: default; }
@@ -3224,6 +3224,17 @@ module.exports = {
         }
       }
 
+      // 主行开头的「身份区」：自定义文字 → 服务锚点 → 主/世界时间。三种计费形态完全同型，
+      // 共用这一个入口 —— 以前三处各抄一遍，还各带一个 `if (full)` 门控，同一个 bug 抄了三遍。
+      // 门控只有「锚点字段是否存在」一条；自定义文字与时间各自在自己的函数里判开关，与模式无关。
+      function pushIdentityGroups(groups, anchorId, buildAnchor) {
+        pushCustomText(groups);
+        if (fieldVisible(anchorId)) {
+          groups.push(React.cloneElement(buildAnchor(), { 'data-field': anchorId, style: fieldStyle(anchorId) }));
+        }
+        pushTimeGroups(groups);
+      }
+
       // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       // v1.9.0 PR2：每个渲染片段按设置过滤（fieldVisible）；隐藏不占位，组间分隔符由组装层自动收合
       function pushBalanceGroups(groups, trailingErrorGroups) {
@@ -3231,12 +3242,7 @@ module.exports = {
         const errors = renderedState.errors || {};
         if (bal && bal.selectionPending) return;
         const alertActive = !!(bal && bal.alert && bal.alert.active);
-        if (full) pushCustomText(groups);
-        if (fieldVisible('anchorGroup')) {
-          const anchor = providerGroup();
-          groups.push(React.cloneElement(anchor, { 'data-field': 'anchorGroup', style: fieldStyle('anchorGroup') }));
-        }
-        if (full) pushTimeGroups(groups);
+        pushIdentityGroups(groups, 'anchorGroup', providerGroup);
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
@@ -3289,7 +3295,7 @@ module.exports = {
 
         // 时段：仅峰谷价服务商显示"高峰价/空闲价"（flat/unknown 服务商不显示；hover 展示具体价格）
         const pr = visiblePricing;
-        if (full && pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
+        if (pr && pr.mode === 'peak-valley' && fieldVisible('period')) {
           const peakNow = pr.period === 'peak';
           const p = pr.prices || {};
           const periodTitle = t('ui.beijingTime') + (peakNow ? t('ui.peakPrice') : t('ui.offPeakPrice')) + t('ui.input') + (p.inputCacheMiss != null ? p.inputCacheMiss : '?')
@@ -3300,7 +3306,7 @@ module.exports = {
         }
 
         // 倒计时：仅峰谷价服务商显示"距高峰/距空闲"（hover 展示下次切换时刻；数字加粗）
-        if (full && pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
+        if (pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) {
           const peakNow = pr.period === 'peak';
           const countdownTitle = t('ui.beijingTimeSwitchesTo', { atLabel: pr.nextSwitch.atLabel }) + (peakNow ? t('ui.offPeakPrice') : t('ui.peakPrice')) + t('ui.sentenceEnd');
           groups.push(fieldSpan('countdown', 'countdown', React.createElement('span', { title: countdownTitle },
@@ -3309,7 +3315,7 @@ module.exports = {
 
         // 本会话花费（公共小部件 pushSessionCost：只显示钱；hover 显示 今天/近一月/全部）
         // 始终显示：新会话/对话刚开始尚无记账时显示 ¥0.000，hover 仍可查看持久化的 今天/近一月/全部
-        if (full) pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));
+        pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));
       }
 
       // 本会话花费块（余额制 与 订阅·充值余额 形态共用的小部件）：
@@ -3361,16 +3367,11 @@ module.exports = {
        }
 
       function pushSubscriptionGroups(groups, trailingErrorGroups) {
-        if (full) pushCustomText(groups);
-        if (fieldVisible('subServiceGroup')) {
-          const subAnchor = subscriptionProviderGroup();
-          groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));
-        }
-        if (full) pushTimeGroups(groups);
+        pushIdentityGroups(groups, 'subServiceGroup', subscriptionProviderGroup);
         const sub = renderedState.sub;
         const errors = renderedState.errors || {};
         // v1.7 FR-8：JWT 订阅卡——真实套餐到期日（纯本地解码；无登录态/解析失败不显示此处）
-        if (full && sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
+        if (sub && sub.planType && sub.expiryAt && fieldVisible('expiry')) {
           groups.push(fieldSpan('expiry', 'subexp', React.createElement('span', { title: t('ui.subscriptionExpiresLocalTime', { value: formatDate(sub.expiryAt) }) },
             metric(t('ui.expires'), formatDate(sub.expiryAt)))));
         }
@@ -3410,7 +3411,7 @@ module.exports = {
               metric(isCreditsBalance ? t('ui.remainingCredits') : t('ui.availableBalanceLabel'), balanceValue))));
           }
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
-          if (full && !isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
+          if (!isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
           if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
@@ -3420,8 +3421,9 @@ module.exports = {
         }
         // 窗口缺失（如 Codex 无 5 小时窗口）→ 跳过窗口组，不占位、不报错
         if (hasData) {
-          // 简洁模式下选择"时间最短且有重置时刻"的窗口（刷新最快，用户最需关注）：
-          // 优先级：5小时 > 周 > 月（按窗口时长排序，而非已用百分比）
+          // 重置倒计时挂在哪个窗口上？取"时间最短且有重置时刻"的那个（刷新最快，用户最需关注）：
+          // 优先级：5小时 > 周 > 月（按窗口时长排序，而非已用百分比）。
+          // 窗口组本身按各自的开关全部列出（见下），倒计时只可能挂一个窗口，故单独挑一个。
           const windowPriority = { five_hour: 1, seven_day: 2, monthly: 3 };
           const byPriority = function (a, b) {
             const pa = Object.hasOwn(windowPriority, a.key) ? windowPriority[a.key] : 99;
@@ -3429,13 +3431,13 @@ module.exports = {
             return pa - pb;
           };
           const windowsWithReset = windows.filter(function (w) { return w.resetsAt; });
-          // 有重置时刻的窗口优先（倒计时才有意义）；全都没有时退回按时长取最短窗口——
-          // 否则 resetsAt 缺失会让简洁模式整组额度静默消失（接口不返回 nextResetTime 时）
-          const displayWindow = (windowsWithReset.length > 0 ? windowsWithReset : windows)
+          // 有重置时刻的窗口优先（倒计时才有意义）；全都没有时退回按时长取最短窗口 ——
+          // 否则 resetsAt 缺失会让整组额度静默丢失倒计时（接口不返回 nextResetTime 时）
+          const resetWindow = (windowsWithReset.length > 0 ? windowsWithReset : windows)
             .slice().sort(byPriority)[0] || null;
 
-          // 完整模式显示全部窗口；简洁模式只显示选中的那个窗口
-          const visible = full ? windows : (displayWindow ? [displayWindow] : []);
+          // 窗口组：开着的窗口全部列出，简洁模式与完整模式一致（2026-09-26 用户拍板：模式不参与字段显隐）
+          const visible = windows;
 
           // 预警触发条件：已用 ≥80%（= 剩余 ≤20%）→ 鲜红色文字；正常额度使用中性文字。
           // 该判定与 quotaDisplayMode 无关（used 模式下即「已用 ≥ 80%」），两种方向语义严格等价。
@@ -3469,13 +3471,13 @@ module.exports = {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
-          // 距重置倒计时（与显示的窗口一致，确保额度与倒计时匹配）
-          if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown')) {
+          // 距重置倒计时（挂在上面挑出的那个窗口上，与它显示的额度匹配）
+          if (resetWindow && resetWindow.resetsAt && fieldVisible('resetCountdown')) {
             const cdTitle = windowMode === 'used'
-              ? t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) })
-              : t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) });
+              ? t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(resetWindow), value: remainingPercent(resetWindow), usedPercent: resetWindow.usedPercent, value4: formatDateTime(resetWindow.resetsAt) })
+              : t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(resetWindow), value: remainingPercent(resetWindow), usedPercent: resetWindow.usedPercent, value4: formatDateTime(resetWindow.resetsAt) });
             groups.push(fieldSpan('resetCountdown', 'subcd', React.createElement('span', { title: cdTitle },
-              metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now)))));
+              metric(t('ui.resetsIn'), fmtResetCountdown(resetWindow.resetsAt - now)))));
           }
         }
       }
@@ -3495,12 +3497,7 @@ module.exports = {
       }
 
       function pushBillingGroups(groups, trailingErrorGroups) {
-        if (full) pushCustomText(groups);
-        if (fieldVisible('billingServiceGroup')) {
-          const billAnchor = billingProviderGroup();
-          groups.push(React.cloneElement(billAnchor, { 'data-field': 'billingServiceGroup', style: fieldStyle('billingServiceGroup') }));
-        }
-        if (full) pushTimeGroups(groups);
+        pushIdentityGroups(groups, 'billingServiceGroup', billingProviderGroup);
         const bill = renderedState.billing;
         const errors = renderedState.errors || {};
         if (!bill) {
@@ -3533,12 +3530,12 @@ module.exports = {
           } else if (d.usage != null && fieldVisible('billingSpend')) {
             nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
           }
-          if (full && d.budgetPercent != null && fieldVisible('budget')) {
+          if (d.budgetPercent != null && fieldVisible('budget')) {
             if (nodes.length > 0) nodes.push(' · ');
             nodes.push(fieldSpan('budget', 'billbudget', metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')));
           }
           // 免费额度仅当接口显式给出（freeRemaining/resetsAt 同时存在）才显示，绝不编造
-          if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
+          if (d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota')) {
             if (nodes.length > 0) nodes.push(' · ');
             nodes.push(fieldSpan('freeQuota', 'billfree', metric(t('ui.free'), t('ui.resetsIn.pushBillingGroups', { value: fmt(d.freeRemaining, 0), value2: fmtResetCountdown(d.resetsAt - now) }))));
           }
@@ -3571,7 +3568,10 @@ module.exports = {
       const groups = [];
       // 报错不打断主要信息的阅读顺序：统一延后到整行最右侧。
       const trailingErrorGroups = [];
-      // 两态严格判定：density 只能是 'full' 或 'compact'（host 校验 + 本地防抖保证）
+      // 两态严格判定：density 只能是 'full' 或 'compact'（host 校验 + 本地防抖保证）。
+      // 注意：这个变量唯一的语义是「原生统计行是否参与」——它的全部读取点只有下面构造 row1 之后的
+      // nativeRowShown 与 aria（pressed / 无障碍说明）。字段显隐一律不读它，读它就是设计被破坏
+      // （见 constants.js 的「显示模型」；tests/test-density-toggle.cjs 有硬断言）。
       const full = displayDensity === 'full';
       // 模式互斥：订阅制渲染订阅版 row2，账单制渲染账单版 row2，余额制渲染 v1.0.0 现状——三态绝不叠加（FR-14）
       const isSub = !!(visibleBillingMode && visibleBillingMode.mode === 'subscription');
@@ -3647,10 +3647,9 @@ module.exports = {
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
-       // 上下文占用圆环（原型是 DSH 原生信息，已由本插件接管）：挂在主行最右端——即「简洁模式」可见的那一行里的最后一个元素。
+       // 上下文占用圆环（原型是 DSH 原生信息，已由本插件接管）：挂在主行最右端。
        // 与其它字段同源：fields.contextUsage 管显隐、colors.contextUsage 管配色；数据不足时整块不渲染。
-       // 【2026-09-25 用户拍板】按「插件信息」对待：门控只有 fieldVisible 一条，**不得再叠加 full** ——
-       // 之前写成 full && fieldVisible(...)，结果是简洁模式下圆环整块消失，而它恰恰属于主行。
+       // 归 plugin 组、门控只有 fieldVisible 一条 —— 它住在主行，而主行两种模式都可见（见 constants.js 显示模型）。
        const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
        const contextNode = contextInfo === null ? null : React.createElement(ContextMeterRing, {
          key: 'ctx',
@@ -3734,6 +3733,8 @@ module.exports = {
       //  · 绝不依赖 fr 轨道或容器自由空间，因此祖先被拉伸/定高时也不会在两行之间冒出空隙。
       // ResizeObserver 跟随折行、字号与缩放变化；缺失该 API 的环境退回「只测一次」。
       const row1Present = row1 !== null;
+      // `full` 的唯一去处：原生统计行是否参与（可见 + 无障碍名称）。字段显隐与它无关。
+      const nativeRowShown = row1Present && full;
       // 优先 layout effect（首帧前测量，折行时不会闪一下裁切）；React shim 只提供 useEffect
       // 时退回它——功能等价，只是晚一帧对齐高度。
       const measureEffect = typeof React.useLayoutEffect === 'function' ? React.useLayoutEffect : React.useEffect;
@@ -3774,7 +3775,7 @@ module.exports = {
         },
         role: 'button',
         tabIndex: 0,
-        'aria-labelledby': full && row1 !== null ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
+        'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
         'aria-describedby': 'dsh-bottom-info-bar-action',
         'aria-pressed': full,
         'aria-busy': isDensitySaving,
