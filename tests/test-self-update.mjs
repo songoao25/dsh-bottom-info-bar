@@ -295,7 +295,9 @@ ok('白名单覆盖 package.json 的 files 全部分发内容（新增分发根�
     // 一条分发声明可能是文件（LICENSE）、带通配（locale/*.json）或目录（lib）；
     // 只要「原样 / 通配展开后 / 当作目录」任一形态被白名单覆盖，就算这条分发内容可被自更新。
     const candidates = [entry]
-    if (entry.includes('*')) candidates.push(entry.replace('*', 'en'))
+    // 通配条目（如 locale/*.json）展开成一个真实路径再验白名单；用 /g 全局替换：
+    // 只替换首个星号是 CodeQL js/incomplete-sanitization 抓到的写法（一个条目里可能有多个 *）。
+    if (entry.includes('*')) candidates.push(entry.replace(/\*/g, 'en'))
     candidates.push(entry + '/sample.js')
     assert.ok(
       candidates.some((candidate) => isAllowedPayloadPath(candidate)),
@@ -437,6 +439,49 @@ await okAsync('远端版本低于运行中版本 → 同样跳过（防误回退
     assert.equal(state.lastError, null)
     assert.equal(readFileSync(join(fx.packageDir, 'lib', 'index.js'), 'utf8'), '// old host\n')
   } finally { fx.cleanup() }
+})
+
+// =====================================================================================
+// 6b. 校验链上不允许「静默跳过」（安全纵深：fail closed）
+// =====================================================================================
+// 背景：本模块会替换自己的全部文件，所以任何"看不懂就放过去"的分支都是缺口。
+// 两条曾经的真实缺口：① 远端版本号未校验就被拼进下载地址；② 校验值缺失/算法不认识时静默跳过校验。
+await okAsync('远端版本不是规范 semver → 视为没有新版本，绝不把它拼进下载地址', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.2.0')
+    const { updater, requests } = makeUpdater(fx, { payload, latestVersion: '1.2.0-rc.1' })
+    const state = await updater.run({ manual: true })
+    assert.equal(requests.length, 1, '只查 /latest，不去下载')
+    assert.equal(state.pendingVersion, null)
+    assert.equal(state.lastError, 'check-failed')
+  } finally { fx.cleanup() }
+})
+
+await okAsync('远端没给校验值 → 放弃更新（宁可不升，也不装一个无法验证的包）', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.2.0')
+    const { updater, requests } = makeUpdater(fx, {
+      payload,
+      onFetch: async (url) => (url.endsWith('/latest') ? jsonResponse({ version: '1.2.0', dist: {} }) : null),
+    })
+    const state = await updater.run({ manual: true })
+    assert.equal(requests.length, 1, '只查 /latest，不去下载')
+    assert.equal(state.pendingVersion, null)
+    assert.equal(state.lastError, 'check-failed')
+  } finally { fx.cleanup() }
+})
+
+ok('verifyPayload 拒绝看不懂的校验算法（给了校验值就必须验得动）', () => {
+  const payload = makePayload('1.2.0')
+  const files = extractPackageFiles(payload.tarball)
+  assert.throws(
+    () => verifyPayload(files, { integrity: 'sha1-deadbeef', version: '1.2.0', tarball: payload.tarball }),
+    /unsupported algorithm/,
+  )
+  // 对照组：正确的 sha512 校验值照常通过（拒绝的是"看不懂"，不是"校验"本身）
+  assert.equal(verifyPayload(files, { integrity: payload.integrity, version: '1.2.0', tarball: payload.tarball }).version, '1.2.0')
 })
 
 // =====================================================================================

@@ -18,9 +18,14 @@ function check(label, actual, expected) {
 }
 
 // ---------- ① 过滤逻辑嵌在三态渲染函数内部 + 分隔符正确收合 ----------
-check('余额制过滤内嵌 pushBalanceGroups（锚点组起步）', /function pushBalanceGroups\(groups, trailingErrorGroups\) \{[\s\S]*?fieldVisible\('anchorGroup'\)/.test(clientSrc), true);
-check('订阅制过滤内嵌 pushSubscriptionGroups', /function pushSubscriptionGroups\(groups, trailingErrorGroups\) \{[\s\S]*?fieldVisible\('subServiceGroup'\)/.test(clientSrc), true);
-check('账单制过滤内嵌 pushBillingGroups', /function pushBillingGroups\(groups, trailingErrorGroups\) \{[\s\S]*?fieldVisible\('billingServiceGroup'\)/.test(clientSrc), true);
+check('余额制过滤内嵌 pushBalanceGroups（身份区起步，锚点按开关着色）', /function pushBalanceGroups\(groups, trailingErrorGroups\) \{[\s\S]*?pushIdentityGroups\(groups, 'anchorGroup'/.test(clientSrc), true);
+check('订阅制过滤内嵌 pushSubscriptionGroups', /function pushSubscriptionGroups\(groups, trailingErrorGroups\) \{[\s\S]*?pushIdentityGroups\(groups, 'subServiceGroup'/.test(clientSrc), true);
+check('账单制过滤内嵌 pushBillingGroups', /function pushBillingGroups\(groups, trailingErrorGroups\) \{[\s\S]*?pushIdentityGroups\(groups, 'billingServiceGroup'/.test(clientSrc), true);
+// 三种计费形态的身份区（自定义文字 → 锚点 → 时间）必须共用同一个入口：
+// 以前三处各抄一份，于是同一个 `if (full)` 门控 bugs 被抄了三遍（2026-09-25 才拆掉）。
+check('三种计费形态共用同一个身份区入口（重复实现不再各写一份）',
+  clientSrc.split('function pushIdentityGroups(groups, anchorId, buildAnchor)').length === 2
+  && clientSrc.includes("React.cloneElement(buildAnchor(), { 'data-field': anchorId, style: fieldStyle(anchorId) })"), true);
 check('锚点组仍由三态互斥分支渲染（不在互斥判定外另起渲染分支）', clientSrc.includes("} else if (isBilling) {")
   && clientSrc.includes("} else if (isSub) {"), true);
 check('订阅窗口逐窗过滤（5h/周/月各自独立）', clientSrc.includes('windowFieldVisible(w.key)')
@@ -76,16 +81,19 @@ check('文字标签保留（低/估算），颜色永不是唯一信息载体', 
 // ---------- ④ 字段注册表一致性（宿主白名单 = 客户端渲染 = 设置页） ----------
 check('注册表非空且 id 稳定唯一', Array.isArray(FIELD_REGISTRY) && FIELD_REGISTRY.length >= 25
   && new Set(FIELD_REGISTRY.map((f) => f.id)).size === FIELD_REGISTRY.length, true);
-check('每个字段含 id/label/group/modes/colorKind', FIELD_REGISTRY.every((f) => typeof f.id === 'string' && f.id.length > 0
+check('每个字段含 id/label/group/colorKind', FIELD_REGISTRY.every((f) => typeof f.id === 'string' && f.id.length > 0
   && typeof f.label === 'string' && f.label.length > 0
   && typeof f.group === 'string' && FIELD_GROUP_ORDER.includes(f.group)
-  && Array.isArray(f.modes) && f.modes.length > 0
   && ['inherit', 'alert', 'period', 'provider', 'muted', 'meter'].includes(f.colorKind)), true);
-check('modes 只用约定枚举', FIELD_REGISTRY.every((f) => f.modes.every((m) => ['balance', 'subscription', 'billing', 'native', 'common'].includes(m))), true);
 check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.anchor === true).map((f) => f.id).join(',') === 'anchorGroup,subServiceGroup,billingServiceGroup', true);
 check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure']
   .every((id) => FIELD_REGISTRY.find((f) => f.id === id).suggestKeep === true), true);
-check('注册表无 defaultHidden 语义（默认值全部=显示，由宿主测试锁定）', FIELD_REGISTRY.every((f) => f.defaultHidden !== true), true);
+// 默认开关的单一真相源是注册表的 defaultOff：宿主 defaultFieldSettings 只读它，
+// 不再手抄一份「哪些是新字段」的名单（抄一份名单＝漏改一处就静默变成默认打开，没人发现）。
+// 只有「用户不主动打开就不该出现」的三条默认关闭：自定义文字 / 主时间 / 世界时间。
+check('默认关闭的字段恰为自定义文字与主/世界时间（defaultOff 单一真相源）',
+  FIELD_REGISTRY.filter((f) => f.defaultOff === true).map((f) => f.id).join(',') === 'customText,mainTime,worldTime'
+  && FIELD_REGISTRY.every((f) => f.defaultOff === undefined || f.defaultOff === true), true);
 check('每个会渲染的注册字段都在信息栏渲染层被引用', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
@@ -94,9 +102,9 @@ check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定�
   && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
 check('分组：原生组恰 5 个 DeepSeek 原生标签（只在完整模式出现）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
-// 2026-09-25 用户拍板：上下文圆环原型虽来自原生底栏，但已被本插件接管、且始终渲染在主行
-// （简洁模式可见的那一行最右端），所以按插件组对待 —— 归原生组会让它在简洁模式下消失。
-check('分组：上下文圆环归入插件组（简洁模式也必须显示）',
+// 2026-09-25 用户拍板：上下文圆环原型虽来自原生底栏，但已被本插件接管、且始终渲染在主行，
+// 所以按插件组对待 —— 归原生组会让它在简洁模式下消失（因为原生组整组只在完整模式可见）。
+check('分组：上下文圆环归入插件组（它住在主行，两种模式都可见）',
   FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
 check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
   === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);

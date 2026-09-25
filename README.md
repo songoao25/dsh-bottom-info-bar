@@ -20,11 +20,11 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 | Spend | this session (including subagents), today, last 30 days, all time |
 | Extras | main time, world time, custom text |
 
-The bar has two densities — click it to switch. **Compact** shows only the provider, model, and one essential account detail: balance, the shortest useful quota window, or this billing period's spend, with the context ring always at its right end. **Full** shows every enabled detail, including DSH's native stats row. Both follow DSH's light or dark theme.
+The bar has two densities — click it to switch, and they differ in exactly one way: **Full** keeps DSH's native stats row above the main row, **Compact** collapses it. Both show every enabled plugin field and notice — a field's own switch is the only thing that decides whether it appears. Both follow DSH's light or dark theme.
 
 ## Compact mode
 
-Four real states — light and dark, balance and subscription quota.
+Compact mode collapses the native stats row only; the main row keeps showing your enabled plugin fields. Four real states — light and dark, balance and subscription quota.
 
 **Light · balance**
 
@@ -52,7 +52,7 @@ Shows the real balance from the provider's own API. It refetches when the bar op
 
 ### Subscription quota
 
-Full mode shows each available quota window (5-hour / weekly / monthly) and a countdown to the next reset — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Compact mode keeps only the shortest available window (5-hour → weekly → monthly), without a reset countdown.
+Every available quota window (5-hour / weekly / monthly) and its countdown to the next reset are shown together — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Turn off any window you do not want; Compact mode will not hide it for you.
 
 ### Cloud billing
 
@@ -96,15 +96,15 @@ Everything lives on the plugin page — **Plugins → bottom-info-bar**. Changes
 
 ![Plugin settings overview](assets/settings-overview.webp)
 
-**Information display** — choose **Compact** or **Full** and the choice is saved. Compact does not erase any field choices; switch back to Full whenever you need the extra detail.
+**Information display** — choose **Compact** or **Full** and the choice is saved. They differ in exactly one place: Full also keeps DSH's native stats row, Compact collapses it. No field choice is affected, so switching back and forth never loses your setup.
 
-**Fields and colors** — one switch and one color per field, in three groups. Turn a field off and the bar drops it. All three groups start collapsed; click a group to open it (typing in the search box opens all three). The group a field belongs to is what decides whether it can appear in Compact mode.
+**Fields and colors** — one switch and one color per field, in three groups. Turn a field off and the bar drops it — **identically in Compact and Full**. All three groups start collapsed; click a group to open it (typing in the search box opens all three).
 
-- **Native information** — the fields DSH's own stats row already showed. They only appear in Full mode.
-- **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota. Shown in both Compact and Full mode, the adopted context ring included.
-- **Notices** — update and failure badges, plus the "could not refresh" style warnings. Shown in both modes; each one has its own switch.
+- **Native information** — the fields DSH's own stats row already showed. They live in the native row, which only Full mode keeps.
+- **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota, the adopted context ring included. Shown in both modes.
+- **Notices** — update and failure badges, plus the "could not refresh" style warnings. Shown in both modes; each one has its own switch, and a one-off notice simply appears whenever there is really something to say, regardless of density.
 
-The context ring sits at the right end of the main row, which is the row Compact mode keeps — so it stays visible in both modes.
+The context ring sits at the right end of the main row, which exists in both modes — so it stays visible either way.
 
 ![Native information fields](assets/settings-native.webp)
 ![Plugin information fields](assets/settings-plugin.webp)

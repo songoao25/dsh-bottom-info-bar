@@ -72,28 +72,34 @@ check('启动配置不会覆盖已发生的用户切换', clientSrc.includes('co
 check('密度订阅建立时立即回读当前值，避免首次挂载空窗', clientSrc.includes('setDisplayDensity(density);'), true);
 check('保存期间具有忙碌和禁用语义', clientSrc.includes("'aria-busy': isDensitySaving")
   && clientSrc.includes("'aria-disabled': isDensitySaving"), true);
-// 简洁模式的承诺不是只收起原生统计行：三种计费类型都只保留“身份 + 一项核心账户信息”。
-// 错误提示仍可见，避免为了极简把需要处理的问题悄悄藏掉。
-check('简洁余额制隐藏时间、峰谷、倒计时与本会话花费', clientSrc.includes('if (full) pushTimeGroups(groups);')
-  && clientSrc.includes("if (full && pr && pr.mode === 'peak-valley' && fieldVisible('period'))")
-  && clientSrc.includes("if (full) pushSessionCost(groups, trailingErrorGroups, !!(bal && bal.currency === 'USD'));"), true);
-check('简洁订阅制只保留优先额度窗口，隐藏到期与重置时间', clientSrc.includes('const visible = full ? windows : (displayWindow ? [displayWindow] : []);')
-  && clientSrc.includes("if (full && sub && sub.planType && sub.expiryAt && fieldVisible('expiry'))")
-  && clientSrc.includes("if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown'))"), true);
-check('简洁云账单只保留本周期花费或用量，隐藏预算和免费额度', clientSrc.includes("if (full && d.budgetPercent != null && fieldVisible('budget'))")
-  && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
-// 2026-09-25 用户拍板：上下文圆环按「插件信息」对待 —— 它就在主行最右端，而主行两种模式都在，
-// 所以门控只有 fieldVisible 一条，**不得再叠加 full**。旧实现写成 full && fieldVisible(...)，
-// 结果是简洁模式下圆环整块消失（而用户的默认恰好就是简洁模式）。
-check('简洁模式同样显示上下文圆环（按插件信息对待，门控不叠加 full）',
-  !clientSrc.includes('const contextInfo = full && fieldVisible(')
-  && clientSrc.includes("const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;"), true);
-// 2026-09-25 用户拍板：更新短标记属于「提醒信息」组，挂在主行（两种模式都可见），
-// 只受自己的开关控制，绝不因模式切换而出现或消失 —— 门控必须只有 fieldVisible 一条。
-check('更新短标记只受开关控制、与简洁/完整模式无关', clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
+// ============ 显示模型铁律（2026-09-25 用户拍板定型，见 src/constants.js 顶部「显示模型」）============
+// 模式的职责只有一条：原生统计行显示不显示。字段显隐一律只看它自己的开关。
+// 这里不再逐条列举「某某字段在简洁模式下要隐藏」——那种期望本身就是被违反的设计的复述，
+// 而且漏一条就永远绿着（2026-09-25 的 11 处散落门控正是这样活下来的）。
+// 改为对设计本身做断言：代码里不允许再出现任何 full 门控。注释行先剥掉，
+// 免得「记录教训的注释里提到 if (full)」被误判。
+const clientCode = clientSrc.split('\n').filter(function (line) {
+  const trimmed = line.trim();
+  return !(trimmed.indexOf('//') === 0 || trimmed.indexOf('*') === 0 || trimmed.indexOf('/*') === 0);
+}).join('\n');
+check('模式不参与字段显隐：代码里没有 if (full 分支', /if \(full/.test(clientCode), false);
+check('模式不参与字段显隐：代码里没有 full && fieldVisible 门控', /full\s*&&\s*fieldVisible/.test(clientCode), false);
+check('模式不参与字段显隐：三种计费形态共用同一个身份区入口（不再各抄一份带门控的副本）',
+  ['anchorGroup', 'subServiceGroup', 'billingServiceGroup'].every(function (id) {
+    return clientCode.indexOf("pushIdentityGroups(groups, '" + id + "', ") !== -1;
+  }), true);
+// 模式的去处只剩「原生行是否参与」与 aria 语义两处。
+check('模式只用来判一件事：原生统计行是否参与', clientCode.indexOf('const nativeRowShown = row1Present && full;') !== -1, true);
+check('原生统计行随模式收合（CSS 由 data-density 驱动，而非条件渲染）',
+  clientSrc.indexOf('.bi-root[data-density="compact"] > .bi-density-extra { height: 0px') !== -1, true);
+// 插件字段与提醒字段都住在主行，而主行无条件渲染 —— 因此两种模式下都在。
+check('主行无条件渲染（插件字段与提醒字段两种模式都在）',
+  clientCode.indexOf("const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }") !== -1, true);
+check('提醒字段只受开关控制（两种模式都在，且与模式变量无任何交集）',
+  clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
   && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
   && clientSrc.includes("trailingErrorGroups.push(fieldSpan('updateNotice'")
-  && !clientSrc.includes("if (restartVersion && full)"), true);
+  && clientSrc.indexOf("if (restartVersion && full)") === -1, true);
 check('设置页不再重复提供简洁/完整选择；点击底栏仍由宿主接口持久化', !clientSrc.includes('function bibSetDensitySection(props)')
   && !clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes('setInfoDensity: function'), true);
 // 7) 无残留的旧宽松判定
