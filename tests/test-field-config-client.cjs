@@ -332,6 +332,13 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && !install.includes('background: var(--bib-set-surface)')
     && !install.includes('padding: 14px 16px');
 })(), true);
+// 分组内并排控件必须垂直居中（2026-09-25 用户报「按钮一个上一个下，很不协调」）：
+// flex 默认 align-items: stretch 对「有确定高度」的子项退化为顶边对齐，而分组行的 align-items: center
+// 只管到分组这一层、管不到分组内部 —— 于是 33px 两段式与 28px 按钮顶边齐平，整体错位 2.5px。
+check('分组内并排控件垂直居中（防确定高度子项退化为顶边对齐）', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  return install.includes('.bib-set-data-button-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }');
+})(), true);
 // 区块节奏照同页原生区块（X_2TxG_detailSections / detailSection / sectionHead / rows / row）：
 // 区块之间 32px、区块内部 12px、区块头基线对齐 + 10px 间距；行是详情页的 .X_2TxG_row
 // —— padding 12px 2px + .5px 下边线（末行无线）、无圆角、无负外边距。

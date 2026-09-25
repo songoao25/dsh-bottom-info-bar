@@ -515,8 +515,16 @@ function installStyles() {
          justify-content / align-content 双双收尾（flex 与 grid 各认一个），
          保证「万一祖先强行给出多余高度」时，多余部分只会落在第一行之上（栏外侧），
          绝不会落在两行之间——那正是用户看到的「间距异常扩大」。
-         align-self / height 是防拉伸护栏，让本节点高度只由内容决定。 */
-      .bi-root { --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; --bi-line: 20px; --bi-extra-h: var(--bi-line); text-align: center; box-sizing: border-box; width: var(--dsh-chat-content-width, 100%); max-width: 100%; padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0px; margin: 0 auto; display: flex; flex-direction: column; justify-content: flex-end; align-content: end; align-items: stretch; gap: 0; align-self: center; height: auto; font-size: 12px; line-height: var(--bi-line); color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+         align-self / height 是防拉伸护栏，让本节点高度只由内容决定。
+         宽度与字号都必须是「宿主的确定值」，且不得再叠加任何近似推导：
+         · 宽度取 --dsh-chat-content-width。宿主侧 --dsh-composer-card-max-width = 内容宽度 + 32px，
+           而卡片自身左右各有 --dsh-composer-side-clearance(16px) 内边距，两者相抵 ——
+           **卡片的文字区宽度恰好等于内容宽度**，也就是本节点的宽度。
+           所以本节点左右内边距必须是 0：再补 clearance+16px 属于把已经算过的账算第二遍，
+           可用宽度白白少 64px（2026-09-25 用户报「能一行显示却换行」的直接原因）。
+         · 字号取 --dsh-content-font-size-secondary（宿主次级字号），行高 = 基础 20px + 宿主的字号增量。
+           不得写死 px：宿主提供字号设置，写死会让信息栏在用户调大字号后仍停在旧尺寸。 */
+      .bi-root { --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; --bi-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); --bi-extra-h: var(--bi-line); text-align: center; box-sizing: border-box; width: var(--dsh-chat-content-width, 100%); max-width: 100%; padding: 4px 0px 0px; margin: 0 auto; display: flex; flex-direction: column; justify-content: flex-end; align-content: end; align-items: stretch; gap: 0; align-self: center; height: auto; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: var(--bi-line); color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
       .bi-root[data-density-saving="true"] { cursor: progress; }
       /* 以 DSH 实际外观属性切换，避免用户在 DSH 内手动选择外观时与系统偏好失配。 */
       body[data-ds-dark-theme] .bi-root { --bi-label-supporting: var(--dsw-alias-label-secondary, #cfd3d6); --bi-state-price-low: #86efac; --bi-state-alert: #ff6961; }
@@ -538,7 +546,7 @@ function installStyles() {
       .bi-tail { display: inline-flex; align-items: center; flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
       /* 只有模型组可在窄宽度折行；服务商与模型详情仍成组，不会让圆点落在行尾。 */
       .bi-row2 > .bi-model-group { white-space: normal; }
-      /* 组间 6px、模型内部圆点 4px：保留分组层级，同时避免 12px 信息栏被过大留白拉散。 */
+      /* 组间 6px、模型内部圆点 4px：保留分组层级，同时避免过大的留白把这一行文字拉散。 */
       .bi-sep { color: var(--bi-separator); margin: 0 6px; }
       /* 服务商名等一般强调：加粗 600 */
       .bi-root b { color: var(--bi-label-primary); font-weight: 600; }
@@ -569,7 +577,7 @@ function installStyles() {
       .bi-update-badge--error{ font-weight: 700; }
       /* 视觉能力是模型属性，不是告警：电光蓝实色、白字；高度收紧到字形范围内，避免压过同一行文字。 */
       /* 服务商、圆点、视觉胶囊在同一 20px flex 行内居中，避免混用文字基线造成上下漂移。 */
-      .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: 20px; vertical-align: top; }
+      .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: var(--bi-line); vertical-align: top; }
       .bi-model-provider, .bi-model-dot { display: inline-flex; align-items: center; height: 16px; line-height: 14px; }
       .bi-model-detail { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
       .bi-model-dot { margin: 0 4px; flex: 0 0 auto; }
@@ -589,7 +597,7 @@ function installStyles() {
          唯一的变化是它现在住在信息栏主行最右端，与这一行文字共用同一条基线。 */
       .bi-ctx { display: inline-flex; align-items: center; flex: 0 0 auto; margin-left: 8px; }
       /* 颜色走字段体系：容器带 data-field，描边用 currentColor，因此换色只改一处（未自定义时回退原生弱提示色）。 */
-      .bi-ctx-trigger { display: inline-flex; align-items: center; gap: 6px; flex: none; margin: 0; padding: 1px 8px; border: none; border-radius: 24px; background: 0 0; color: inherit; font-family: inherit; font-size: var(--dsh-content-font-size-secondary, 13px); font-variant-numeric: tabular-nums; line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); white-space: nowrap; cursor: pointer; }
+      .bi-ctx-trigger { display: inline-flex; align-items: center; gap: 6px; flex: none; margin: 0; padding: 1px 8px; border: none; border-radius: 24px; background: 0 0; color: inherit; font-family: inherit; font-size: var(--dsh-content-font-size-secondary, 13px); font-variant-numeric: tabular-nums; line-height: var(--bi-line); white-space: nowrap; cursor: pointer; }
       .bi-ctx-trigger:hover, .bi-ctx-trigger[aria-expanded="true"] { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14)); color: var(--bi-label-primary); }
       .bi-ctx-ring { flex: none; display: block; }
       .bi-ctx-track { fill: none; stroke: var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.35)); stroke-width: 2px; }
@@ -599,7 +607,7 @@ function installStyles() {
          宿主 --dsw-specific-menu 是带 alpha 的色（浅 #f8f9fa94 / 深 #30313680），且宿主菜单另有毛玻璃层，
          本面板悬在信息栏文字之上，直接用它必然透字。改用不透明的层级底色（浅 #fff / 深 #353638，随主题走），
          并保留宿主阴影；不引用任何可能带 alpha 的 token。 */
-      .bi-ctx-panel { z-index: 1100; box-sizing: border-box; width: min(264px, calc(100vw - 24px)); padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128, 128, 128, 0.28)); border-radius: 12px; background: var(--dsw-alias-bg-layer-3, #fff); color: var(--dsw-alias-label-secondary, #5a6169); box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.18)); font-size: 12px; line-height: 20px; cursor: default; position: fixed; }
+      .bi-ctx-panel { z-index: 1100; box-sizing: border-box; width: min(264px, calc(100vw - 24px)); padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4, rgba(128, 128, 128, 0.28)); border-radius: 12px; background: var(--dsw-alias-bg-layer-3, #fff); color: var(--dsw-alias-label-secondary, #5a6169); box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.18)); font-size: 12px; line-height: var(--bi-line); cursor: default; position: fixed; }
       .bi-ctx-panel-header { display: flex; align-items: center; gap: 6px; }
       .bi-ctx-panel-headline { color: var(--dsw-alias-label-tertiary, #8a9099); }
       .bi-ctx-panel-headline:empty { display: none; }
@@ -1196,7 +1204,11 @@ function bibSetInstallStyles() {
       .bib-set-data-copy { min-width: 0; }
       .bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }
       .bib-set-data-desc { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); }
-      .bib-set-data-button-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
+      /* align-items: center 不能省（2026-09-25 用户报「按钮一个上一个下，不协调」）：
+         这一组里放的是「有确定高度」的控件（两段式 33px / 按钮 28px），而 flex 默认 align-items: stretch
+         对确定高度的子项退化为「按顶边对齐」——分组行本身的 align-items: center 只管到分组这一层，
+         管不到分组内部的并排控件，于是两个盒子顶边齐平、整体高度差 2.5px，看上去就是错位。 */
+      .bib-set-data-button-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
       .bib-set-btn--destructive { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       .bib-set-btn--destructive:hover { background: rgba(217,45,32,0.08); border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       @media (max-width: 600px) { .bib-settings { gap: 24px; } .bib-set-rowText { min-width: 0; flex-basis: 100%; } .bib-set-data-row { grid-template-columns: 1fr; gap: 10px; } .bib-set-data-button-group { justify-content: flex-start; } }

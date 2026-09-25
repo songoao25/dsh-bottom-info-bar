@@ -66,9 +66,16 @@ check('compact 端点高度是 0px', /height:\s*0px/.test(compactDecl), true);
 
 // ---------- 2) 根节点：单一节奏令牌 + 防拉伸 + 确定宽度 ----------
 const rootDecl = declarations('.bi-root') || '';
-check('节奏单位 --bi-line: 20px 定义在根节点', rootDecl.includes('--bi-line: 20px'), true);
+check('节奏单位 --bi-line 由宿主字号增量驱动（不写死 px）', rootDecl.includes('--bi-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px))'), true);
 check('收合高度默认取一行（--bi-extra-h: var(--bi-line)）', rootDecl.includes('--bi-extra-h: var(--bi-line)'), true);
 check('行高引用同一令牌（不再散落魔法数字）', rootDecl.includes('line-height: var(--bi-line)'), true);
+// 字号必须跟随宿主设置：写死 px 的话，用户在 DSH 里调大字号后信息栏停在旧尺寸（2026-09-25 用户要求）。
+check('字号取宿主次级字号令牌（不写死 px）', rootDecl.includes('font-size: var(--dsh-content-font-size-secondary, 13px)'), true);
+// 宽度令牌本身就是宿主卡片的文字区宽度（卡片宽 = 内容宽 + 32px，卡片内边距 16px×2，两者相抵）。
+// 再往左右补内边距就是把已经算过的账算第二遍，可用宽度平白少 64px —— 2026-09-25「能一行却换行」的真因。
+check('左右不追加内边距（宽度令牌已是卡片文字区宽度）', rootDecl.includes('padding: 4px 0px 0px'), true);
+check('不再出现 composer-side-clearance 的重复扣除', rootDecl.includes('composer-side-clearance'), false);
+check('信息栏样式表里不再有写死的 line-height: 20px', /line-height:\s*20px/.test(css), false);
 check('根节点是 column flex（行序与纵向排布由容器决定）', rootDecl.includes('display: flex') && rootDecl.includes('flex-direction: column'), true);
 check('两行之间不设 gap（间距恒为 0）', rootDecl.includes('gap: 0'), true);
 check('多余高度只落到第一行之上（flex 侧）', rootDecl.includes('justify-content: flex-end'), true);
