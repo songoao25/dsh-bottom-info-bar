@@ -103,7 +103,7 @@ async function mount(section) {
   check('setFieldConfig 应用增量 patch', patched.body.fields.balance === false && patched.body.colors.balance === '#00FF00' && patched.body.colors.period === 'red', patched.body)
   check('setFieldConfig 后 configVersion=1', patched.body.configVersion === 1, patched.body.configVersion)
   const onDisk = readSettingsFile(s.dir)
-  check('settings.json 已原子落盘（含 patch 值）', onDisk.fields.balance === false && onDisk.colors.balance === '#00FF00' && onDisk.infoDensity === 'full', onDisk)
+  check('settings.json 已原子落盘（含 patch 值）', onDisk.fields.balance === false && onDisk.colors.balance === '#00FF00' && onDisk.infoDensity === 'compact', onDisk)
   check('落盘无临时残留', !settingsTmpResidue(s.dir), true)
 
   // 模拟宿主重启：另一目录放入同一份落盘文件，全新模块实例应原样恢复
@@ -169,16 +169,30 @@ function copySettings(fromDir, toDir) {
 {
   const s = await mount(newSection('density'))
   const route = s.stub.captured.route
-  const set = await invokeRoute(route, 'setInfoDensity', { density: 'compact' })
-  check('setInfoDensity 即时生效', set.body.infoDensity === 'compact', set.body)
-  check('setInfoDensity 落盘', readSettingsFile(s.dir).infoDensity === 'compact', true)
+  const set = await invokeRoute(route, 'setInfoDensity', { density: 'full' })
+  check('setInfoDensity 即时生效', set.body.infoDensity === 'full', set.body)
+  check('setInfoDensity 落盘', readSettingsFile(s.dir).infoDensity === 'full', true)
   const s2 = newSection('density-restart')
   copySettings(s.dir, s2.dir)
   await mount(s2)
   const cfg = (await invokeRoute(s2.stub.captured.route, 'getConfig')).body
-  check('重启后 density 保持 compact（修复重启即丢）', cfg.infoDensity === 'compact', cfg)
+  check('重启后 density 保持 full（修复重启即丢）', cfg.infoDensity === 'full', cfg)
   const bad = await invokeRoute(route, 'setInfoDensity', { density: 'FULL' })
-  check('density 非法值仍拒绝', bad.body.infoDensity === 'compact', bad.body)
+  check('density 非法值仍拒绝', bad.body.infoDensity === 'full', bad.body)
+}
+
+// ---------- ⑤ 双重置（彼此独立） + configVersion ----------
+// ---------- ⑤a 主要显示偏好：整包校验、落盘与重置 ----------
+{
+  const s = await mount(newSection('display-preferences'))
+  const route = s.stub.captured.route
+  const set = await invokeRoute(route, 'setFieldConfig', { displayPreferences: { accountDetails: false } })
+  check('账户详情总开关即时生效', set.status === 200 && set.body.displayPreferences.accountDetails === false && set.body.displayPreferences.conversationStats === true, set.body)
+  check('账户详情总开关落盘', readSettingsFile(s.dir).displayPreferences.accountDetails === false, true)
+  const invalid = await invokeRoute(route, 'setFieldConfig', { displayPreferences: { accountDetails: 'no' } })
+  check('非法显示偏好整包拒绝', invalid.status === 400 && (await invokeRoute(route, 'getFieldConfig')).body.displayPreferences.accountDetails === false, invalid)
+  const reset = await invokeRoute(route, 'resetFieldConfig')
+  check('恢复显示会复位主要显示偏好', reset.body.displayPreferences.accountDetails === true && reset.body.displayPreferences.conversationStats === true, reset.body)
 }
 
 // ---------- ⑤ 双重置（彼此独立） + configVersion ----------
@@ -222,7 +236,7 @@ function copySettings(fromDir, toDir) {
   check('normalize：非法返回 undefined', n('#12345') === undefined && n('nope') === undefined && n(7) === undefined, true)
   check('sanitize：默认结构含全部注册字段且颜色为 null', (() => {
     const d = s.mod.internals.defaultFieldSettings()
-    return d.version === 1 && d.infoDensity === 'full' && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeFormat && d.timeZones && typeof d.customText === 'string'
+    return d.version === 1 && d.infoDensity === 'compact' && d.displayPreferences.accountDetails === true && d.displayPreferences.conversationStats === true && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeFormat && d.timeZones && typeof d.customText === 'string'
   })(), true)
   check('默认 quotaDisplayMode=remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode === 'remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode)
   const nq = s.mod.internals.normalizeQuotaDisplayMode
@@ -278,8 +292,8 @@ function copySettings(fromDir, toDir) {
   await mount(s)
   check('L1：DATA_DIR 权限收敛为 0700', (statSync(s.dir).mode & 0o777) === 0o700, (statSync(s.dir).mode & 0o777).toString(8))
   check('L1：journal 权限收敛为 0600', (statSync(journalPath).mode & 0o777) === 0o600, (statSync(journalPath).mode & 0o777).toString(8))
-  const set = await invokeRoute(s.stub.captured.route, 'setInfoDensity', { density: 'compact' })
-  check('L1：权限收敛后设置仍可正常落盘（未影响可写性）', set.body.infoDensity === 'compact' && readSettingsFile(s.dir).infoDensity === 'compact', set.body)
+  const set = await invokeRoute(s.stub.captured.route, 'setInfoDensity', { density: 'full' })
+  check('L1：权限收敛后设置仍可正常落盘（未影响可写性）', set.body.infoDensity === 'full' && readSettingsFile(s.dir).infoDensity === 'full', set.body)
 }
 
 console.log('\n结果：' + passes + ' PASS / ' + failures + ' FAIL')

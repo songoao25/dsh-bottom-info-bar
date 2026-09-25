@@ -134,41 +134,6 @@ const FORCE_REFRESH_WINDOW_MS = 6000;
 // 60 秒一次足够让「本地副本更新完」的提醒自己消失，也不会给宿主添负担。
 const UPDATE_INFO_REFRESH_MS = 60000;
 
-// 复制文本到剪贴板。
-// 优先用异步剪贴板 API——它只在「安全上下文」可用：本 GUI 走 http://127.0.0.1 属安全上下文，
-// 但从局域网 IP（http://192.168.x.x）访问时不是，API 会直接缺席。故必须有兜底路径，
-// 否则用户点了「复制」却没反应、也看不到任何错误。
-function copyTextToClipboard(text) {
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-    return navigator.clipboard.writeText(text);
-  }
-  return new Promise(function (resolve, reject) {
-    try {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', '');
-      // 固定定位并移出视口：避免复制瞬间页面滚动或闪动
-      area.style.position = 'fixed';
-      area.style.top = '-1000px';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      let ok = false;
-      try {
-        area.select();
-        area.setSelectionRange(0, text.length);
-        ok = document.execCommand('copy');
-      } finally {
-        // 卸载自检：无论复制成功还是抛错，临时 textarea 都必须从 body 摘掉，
-        // 否则会在页面上留下一个游离节点。
-        if (area.parentNode) area.parentNode.removeChild(area);
-      }
-      if (ok) resolve(); else reject(new Error('copy rejected'));
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
 // rpc(method, args, externalSignal)：
 // - 超时：20s 未响应 → abort 并以"请求超时"失败（fetch 挂起不阻塞界面）
 // - 可中止：传入外部 AbortSignal（组件卸载时 abort）→ 立即取消并拒绝"请求已取消"
@@ -242,6 +207,12 @@ function mergeLoadResults(prev, results, selectionKey) {
 // ---------- v1.9.0 PR2：字段显隐/颜色配置（宿主落盘，设置页变更后经 CustomEvent 即时同步） ----------
 // 字段注册表/预设色板由构建从 constants.js 注入（单一来源，宿主白名单同源）
 const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
+// 不是每一条渲染片段都应该成为用户的决策。身份、关键账户数值和故障状态是
+// 信息栏的最低承诺；完整模式的“账户详情 / 对话统计”才是两个有意义的总开关。
+// 旧字段开关继续保留在高级设置中，升级不会覆盖既有个性化配置。
+const CORE_FIELD_IDS = new Set(['anchorGroup', 'subServiceGroup', 'billingServiceGroup', 'balance', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'subBalance', 'billingSpend', 'unmapped', 'noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning']);
+const ACCOUNT_DETAIL_FIELD_IDS = new Set(['period', 'countdown', 'sessionCost', 'expiry', 'resetCountdown', 'budget', 'freeQuota']);
+const CONVERSATION_STAT_FIELD_IDS = new Set(['turnsSteps', 'llmTime', 'toolTime', 'cacheHit', 'tokensIO', 'contextUsage']);
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 const PRESET_COLOR_SET = new Set(PRESET_COLORS);
 
@@ -257,7 +228,7 @@ function activeQuotaDisplayMode() {
   return normalizeQuotaDisplayMode(fieldConfig.quotaDisplayMode);
 }
 
-let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
+let fieldConfig = { fields: {}, colors: {}, displayPreferences: { accountDetails: true, conversationStats: true }, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -268,6 +239,7 @@ function applyFieldConfigSnapshot(next) {
   fieldConfig = {
     fields: next && next.fields && typeof next.fields === 'object' ? next.fields : {},
     colors: next && next.colors && typeof next.colors === 'object' ? next.colors : {},
+    displayPreferences: Object.assign({ accountDetails: true, conversationStats: true }, next && next.displayPreferences && typeof next.displayPreferences === 'object' ? next.displayPreferences : {}),
     timeFormat: next && next.timeFormat && typeof next.timeFormat === 'object' ? next.timeFormat : { year: true, month: true, day: true, hour: true, minute: true, second: false },
     timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
     customText: typeof (next && next.customText) === 'string' ? next.customText : '',
@@ -315,6 +287,9 @@ function refreshFieldConfig() {
 
 // 未知/缺省 id 一律视为显示：与历史行为一致（默认值全部=显示），前向兼容新字段
 function fieldVisible(id) {
+  if (CORE_FIELD_IDS.has(id)) return true;
+  if (ACCOUNT_DETAIL_FIELD_IDS.has(id) && fieldConfig.displayPreferences.accountDetails === false) return false;
+  if (CONVERSATION_STAT_FIELD_IDS.has(id) && fieldConfig.displayPreferences.conversationStats === false) return false;
   return fieldConfig.fields[id] !== false;
 }
 
@@ -1649,7 +1624,7 @@ function bibSetFieldGroups(props) {
   const groups = [];
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
-    const groupFields = FIELD_REGISTRY.filter(function (field) { return field.group === group; });
+    const groupFields = FIELD_REGISTRY.filter(function (field) { return field.group === group && (!props.includeField || props.includeField(field)); });
     if (groupFields.length === 0) continue;
     const visibleFields = groupFields.filter(function (field) { return props.matchesSearch(field, props.query); });
     // 搜索无命中的组整组不渲染（空状态由上层统一给出）
@@ -1842,6 +1817,34 @@ function bibSetDensitySection(props) {
         }))));
 }
 
+// 完整模式只保留两项真正需要用户判断的内容开关。其余逐条字段仍可在高级设置中调整，
+// 但不再把渲染实现细节伪装成第一次使用就必须理解的选择。
+function bibSetFullModeContentSection(props) {
+  function row(key, title, description, checked) {
+    return React.createElement('div', { key: key, className: 'bib-set-row bib-set-row--preference' },
+      React.createElement('div', { className: 'bib-set-row-main' },
+        React.createElement('div', { className: 'bib-set-rowText' },
+          React.createElement('div', { className: 'bib-set-rowTitle' }, title),
+          React.createElement('div', { className: 'bib-set-rowDesc' }, description)),
+        bibSetSwitch({
+          label: t('ui.show', { label: title }),
+          checked: checked,
+          title: checked ? t('ui.clickToHide') : t('ui.clickToShow'),
+          onToggle: function (next) { props.onToggle(key, next); },
+        })));
+  }
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-full-content-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-full-content-title',
+      title: t('ui.fullModeContentTitle'),
+      description: t('ui.fullModeContentDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-body' },
+      row('accountDetails', t('ui.accountDetailsTitle'), t('ui.accountDetailsDesc'), props.value.accountDetails !== false),
+      row('conversationStats', t('ui.conversationStatsTitle'), t('ui.conversationStatsDesc'), props.value.conversationStats !== false)));
+}
+
 const USAGE_EXPORT_COLUMNS = [
   ['timestamp', function (record) { return usageExportTimestamp(record.ts); }],
   ['provider', function (record) { return record.provider; }],
@@ -1957,7 +1960,8 @@ function InfoBarSettingsSection() {
   const [searchQuery, setSearchQuery] = React.useState('');
   // 首屏先展示真正影响信息栏的插件内容；原生统计只在完整模式出现，按需再展开。
   // 用户随后仍可手动折叠，箭头与 aria-expanded 始终反映真实状态。
-  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });
+  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
@@ -1976,7 +1980,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, displayPreferences: Object.assign({ accountDetails: true, conversationStats: true }, cfg.displayPreferences || {}), infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -2030,6 +2034,7 @@ function InfoBarSettingsSection() {
       return {
         fields: res.fields || (prev && prev.fields) || {},
         colors: res.colors || (prev && prev.colors) || {},
+        displayPreferences: Object.assign({ accountDetails: true, conversationStats: true }, (prev && prev.displayPreferences) || {}, res.displayPreferences || {}),
         infoDensity: res.infoDensity === 'compact' ? 'compact' : ((res.infoDensity === 'full') ? 'full' : ((prev && prev.infoDensity) || 'full')),
         timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
         timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
@@ -2114,6 +2119,7 @@ function InfoBarSettingsSection() {
   function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
   function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
   function quotaDisplayModeOf() { return normalizeQuotaDisplayMode(snapshot.quotaDisplayMode); }
+  function displayPreferencesOf() { return Object.assign({ accountDetails: true, conversationStats: true }, snapshot.displayPreferences || {}); }
   function infoDensityOf() { return snapshot.infoDensity === 'compact' ? 'compact' : 'full'; }
   function setInfoDensityFromSettings(next) {
     const value = next === 'compact' ? 'compact' : 'full';
@@ -2123,6 +2129,15 @@ function InfoBarSettingsSection() {
       function () { setSnapshot(function (s) { return Object.assign({}, s, { infoDensity: value }); }); },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { infoDensity: previous }); }); },
       function () { return t('ui.displayModeTitle'); });
+  }
+  function setDisplayPreference(key, next) {
+    const current = displayPreferencesOf();
+    if (current[key] === next) return;
+    const previous = current[key];
+    commit({ displayPreferences: makePair(key, next) },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { displayPreferences: Object.assign({}, displayPreferencesOf(), makePair(key, next)) }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { displayPreferences: Object.assign({}, displayPreferencesOf(), makePair(key, previous)) }); }); },
+      function () { return key === 'accountDetails' ? t('ui.accountDetailsTitle') : t('ui.conversationStatsTitle'); });
   }
   function setTimeFormatPart(key, next) {
     const current = timeFormatOf();
@@ -2256,14 +2271,16 @@ function InfoBarSettingsSection() {
   // 搜索只负责筛选；输入时两分组自动展开（决策 2），但用户随后仍可明确折叠，
   // 箭头和 aria-expanded 始终反映真实 DOM 状态。
   const searchActive = searchQuery.trim().length > 0;
-  const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
+  const advancedFields = FIELD_REGISTRY.filter(function (field) { return !CORE_FIELD_IDS.has(field.id) && field.id !== 'updateNotice'; });
+  const fieldsEnabledCount = advancedFields.filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsMatchCount = advancedFields.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const groupsChildren = bibSetFieldGroups({
     query: searchQuery,
     searchActive: searchActive,
     matchesSearch: matchesSearch,
     groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; },
     onGroupToggle: toggleGroup,
+    includeField: function (field) { return !CORE_FIELD_IDS.has(field.id) && field.id !== 'updateNotice'; },
     fieldOn: fieldOn,
     colorOf: colorOf,
     hexDraftOf: hexDraftOf,
@@ -2323,7 +2340,23 @@ function InfoBarSettingsSection() {
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
-    React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
+    bibSetDensitySection({ value: infoDensityOf(), onSelect: setInfoDensityFromSettings }),
+    bibSetFullModeContentSection({ value: displayPreferencesOf(), onToggle: setDisplayPreference }),
+    React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-advanced-title' },
+      bibSetCardHeader({
+        titleId: 'bib-set-advanced-title',
+        title: t('ui.advancedSettingsTitle'),
+        description: t('ui.advancedSettingsDesc'),
+        expanded: advancedOpen,
+        contentId: 'bib-set-advanced-content',
+        onToggle: function () { setAdvancedOpen(function (open) { return !open; }); },
+      }),
+      React.createElement('div', {
+        id: 'bib-set-advanced-content',
+        className: 'bib-set-collapse' + (advancedOpen ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed'),
+        'aria-hidden': advancedOpen ? undefined : 'true',
+        inert: advancedOpen ? undefined : true,
+      }, React.createElement('div', { className: 'bib-set-collapse-inner' },
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
           React.createElement('div', { className: 'bib-set-search-shell' },
@@ -2358,7 +2391,7 @@ function InfoBarSettingsSection() {
             disabled: saving || dataBusy,
             onClick: function () { requestReset('colors'); },
             children: t('ui.resetColors'),
-          })))),
+          })))))),
     bibSetTimeDateSection({
       fieldOn: fieldOn,
       timeFormatOf: timeFormatOf,
@@ -2378,7 +2411,6 @@ function InfoBarSettingsSection() {
       modeOf: quotaDisplayModeOf,
       onModeChange: setQuotaDisplayMode,
     }),
-    bibSetDensitySection({ value: infoDensityOf(), onSelect: setInfoDensityFromSettings }),
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
     resetDialog);
@@ -2538,8 +2570,6 @@ module.exports = {
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
       const [updateInfo, setUpdateInfo] = React.useState(null);
-      // 「更新命令已复制」的短暂反馈：复制成功后标签文字临时切换，2 秒后复原。
-      const [updateCopied, setUpdateCopied] = React.useState(false);
       const [now, setNow] = React.useState(Date.now());
       // This state is owned by DSH's per-session model selector, not by the
       // process-wide default for newly-created Agents.
@@ -3438,25 +3468,8 @@ module.exports = {
         }, snapshotOnly ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved'))));
       }
 
-       if (full && updateInfo && updateInfo.available === true && fieldVisible('updateNotice')) {
-         // 该标签只在「有新版本」时出现，因此点击语义单一：复制更新命令。
-         // 必须 stopPropagation —— 信息栏根节点自带 onClick（切换简洁/完整模式），
-         // 不拦下冒泡的话，用户点一下复制会顺带把界面切走。
-         const updateCommand = typeof updateInfo.updateCommand === 'string' ? updateInfo.updateCommand : '';
-         const copyUpdateCommand = function (event) {
-           event.stopPropagation();
-           if (updateCommand.length === 0) return;
-           copyTextToClipboard(updateCommand).then(function () {
-             setUpdateCopied(true);
-             window.setTimeout(function () { setUpdateCopied(false); }, 2000);
-           }).catch(function () { /* 复制失败不谎报成功；命令仍写在 hover 提示里可手抄 */ });
-         };
-         groups.push(fieldSpan('updateNotice', 'update', React.createElement('span', {
-           className: 'bi-update',
-           title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest }),
-           onClick: copyUpdateCommand,
-       }, updateCopied ? t('ui.updateCommandCopied') : t('ui.updateAvailable'))));
-       }
+       // 新版本是低频维护事件，不是这次对话的状态。桌面客户端也不能可靠执行
+       // Web/终端安装命令，因此这里不再塞入“更新”标签或复制命令。
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);

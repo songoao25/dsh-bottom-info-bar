@@ -34,8 +34,9 @@ check('原生统计行隐藏组不占版式（visCount 门控分隔符）', clie
   && clientSrc.includes("key: 'nsep' + i, className: 'bi-sep'"), true);
 check('本会话花费过滤在公共小部件内部（余额制/订阅制共用）', clientSrc.includes("if (fieldVisible('sessionCost')) {")
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
-check('错误/提醒类字段同样可关（用户拍板：全标签可勾选）', clientSrc.includes("fieldVisible('refreshFailure')")
-  && clientSrc.includes("fieldVisible('persistWarning')") && clientSrc.includes("fieldVisible('updateNotice')"), true);
+check('身份、关键账户数值与故障提示不再是可误关的字段；更新提醒不进信息栏', clientSrc.includes('const CORE_FIELD_IDS = new Set')
+  && clientSrc.includes("fieldVisible('refreshFailure')") && clientSrc.includes("fieldVisible('persistWarning')")
+  && !clientSrc.includes("fieldSpan('updateNotice'"), true);
 
 // ---------- ② 默认配置渲染与旧版一致（未知/缺省一律显示） ----------
 check('fieldVisible 未知/缺省 id 一律显示（!== false）', clientSrc.includes('return fieldConfig.fields[id] !== false;'), true);
@@ -160,10 +161,11 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
 // 插件信息默认展开，完整模式专属的原生统计按需展开；搜索时两组自动展开。分组使用原生 button
 // 语义和 DSH 行令牌，而非紧凑流程行 DisclosureRow（它在没有图标时不显示收起态提示）。
-check('分组折叠：首屏先展示插件信息，收起组有明确箭头与键盘语义，搜索自动展开', (function () {
+check('高级逐项设置默认收起，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   const disclosure = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
+    && clientSrc.includes('const [advancedOpen, setAdvancedOpen] = React.useState(false);')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });')
     && body.includes('groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; }')
@@ -235,9 +237,10 @@ check('折叠头部（分组）使用原生 button 语义，避免 div role=butt
     && !header.includes("role: 'button'")
     && !header.includes('tabIndex: 0');
 })(), true);
-check('折叠切换可见性：插件信息默认展开，且不触发宿主 WebView 的零高 grid 动画', (function () {
+check('折叠切换可见性：高级设置默认收起，且不触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false });')
+    && clientSrc.includes('const [advancedOpen, setAdvancedOpen] = React.useState(false);')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")

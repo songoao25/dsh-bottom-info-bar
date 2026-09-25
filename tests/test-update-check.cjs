@@ -48,7 +48,7 @@ check('host 版本查询留了 TTL 测试覆盖口（生产不设置）',
 check('client 只保留一处 getUpdateInfo 调用点（供定期 / 可见性重读复用）',
   (client.match(/rpc\('getUpdateInfo'/g) || []).length === 1
   && client.includes('const readUpdateInfo = function ()'))
-check('client 每 60 秒重读版本信息（本地更新完提醒自己消失）',
+check('client 每 60 秒重读版本信息（用于版本诊断，不占聊天信息栏）',
   client.includes('const UPDATE_INFO_REFRESH_MS = 60000;')
   && client.includes('window.setInterval(readUpdateInfo, UPDATE_INFO_REFRESH_MS)'))
 check('client 在页面重新可见 / 窗口获得焦点时也重读版本信息',
@@ -61,17 +61,8 @@ check('client 卸载时清理定时器与监听（不留悬挂副作用）',
 check('client 无论是否有更新都保存当前插件版本', client.includes("typeof info.current === 'string') setUpdateInfo(info)"))
 check('余额制服务商/模型 hover 显示当前插件版本', client.includes("t('ui.pluginVersion', { current: updateInfo.current })"))
 check('余额/订阅/账单制 hover 均显示当前插件版本（≥2 处）', (client.match(/t\('ui\.pluginVersion', \{ current: updateInfo\.current \}\)/g) || []).length >= 2)
-check('client 只在有更新时显示新版本提醒文字', client.includes("t('ui.updateAvailable')") && client.includes('updateInfo.available === true'))
-check('更新标签提示语包含动态最新版本号', client.includes("title: t('ui.askYourAgentToUpdate', { latest: updateInfo.latest })"))
-// 可点击（点击即复制更新命令）只用手型光标提示：不加下划线、不改颜色，
-// 保持「告警」而非「链接」的语义。手型光标是刻意加的，下划线仍严禁。
-check('更新标签保持鲜红告警语义、无下划线，可点击只用手型光标提示',
-  client.includes('.bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }')
-  && client.includes('--bi-state-alert: #d92d20') && !client.includes('text-decoration: underline'))
-check('更新标签不是链接或按钮', !client.includes('window.open')
-  && client.includes("fieldSpan('updateNotice', 'update', React.createElement('span'")
-  && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('a'")
-  && !client.includes("fieldSpan('updateNotice', 'update', React.createElement('button'"))
+check('client 不把新版本作为聊天信息栏标签', !client.includes("fieldSpan('updateNotice'"))
+check('client 不再引导复制更新命令', !client.includes('copyTextToClipboard') && !client.includes('updateCommandCopied'))
 // host 侧连「探测 git 仓库状态」都不许开子进程（v1.14.3）：更新命令只被复制、绝不执行，
 // 探测只读文件系统完成。锁死这条，避免以后有人图省事改成 spawnSync('git', …)。
 check(

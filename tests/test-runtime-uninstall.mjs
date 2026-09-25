@@ -28,8 +28,8 @@ check('不注册全局设置页入口（配置仅在插件详情页维护）',
 check('bundle 配置按宿主要求的两种视图渲染（summary 一行简介 / page 带保存的表单）',
   clientSrc.includes("if (view === 'summary') {")
   && clientSrc.includes("return React.createElement(InfoBarSettingsSection);"), true)
-check('复制兜底的临时 textarea 在 finally 里必被摘除（不留游离节点）',
-  /document\.body\.appendChild\(area\);[\s\S]*?\} finally \{[\s\S]*?if \(area\.parentNode\) area\.parentNode\.removeChild\(area\);/.test(clientSrc), true)
+check('桌面端不再提供会复制无效更新命令的临时剪贴板逻辑',
+  !clientSrc.includes('copyTextToClipboard') && !clientSrc.includes('document.execCommand(\'copy\')'), true)
 check('导出用的下载链接与 objectURL 均被回收',
   clientSrc.includes('if (link.parentNode) link.parentNode.removeChild(link);')
   && clientSrc.includes('window.URL.revokeObjectURL(url)'), true)
