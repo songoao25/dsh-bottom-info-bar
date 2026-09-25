@@ -19,11 +19,11 @@
 
 ---
 
-## 2026-09-25（自更新体系 · **代码完成，尚未发布**）
+## 2026-09-25（v1.19.0）
 
-### 插件自己更新自己 + 设置页拆成三组（feat，待发）
+### 插件自己更新自己 + 设置页拆成三组（feat，PR #159）
 
-> **状态：源码与 `lib/` 已改完并同步；最后一次能执行测试时全量绿。但本次会话的 shell 全部失效（见文末「阻塞」），提交 / PR / 发布 / 本机同步都还没做。接手时先跑测试再谈发布。**
+> **状态：已发布 v1.19.0。** 上一个会话只完成代码（shell 失效，提交与发布全没做）；接手会话跑完全量测试、修掉一处过期断言、放开文案漏键守卫、合并、发布、同步仓库，详见本条目末尾「接手记录与发布证据」。
 
 - 用户需求原话：「插件是没有更新入口的，没有实现更新。你都没有设计好，你要设计好体系的，我们插件怎么去更新，到底怎么做？」——宿主（DSH）插件管理**只有** install / remove / enable / disable，**没有更新动作**；桌面端也没有 `dsh` CLI；重装同一地址会被 `already-installed` 拦下。用户唯一路径是「卸载 → 重装」，而他认为「太蠢了」。完整事实核查、硬边界与验收标准见 **`docs/DECISIONS-AUTO-UPDATE.md`**（决策原文照录，务必读它，不要凭本条目复述）。
 - **引擎**：新增 `src/self-update.js`（零依赖，手写 tar/ustar + pax 解析、sha512 integrity 校验、临时文件 + rename 原子替换、失败整批回滚、`update-state.json` / `update-log.jsonl` 落盘、备份保留若干份）。宿主侧新增 4 个 RPC：`getUpdateState` / `runUpdateCheck` / `setUpdateAuto` / `rollbackUpdate`，并全部声明为变更方法（POST + 同源）。装载形态闸门 `isLoadedAsProfilePlugin()`：只在插件真被装进 `<profile>/node_modules` 时才启用自更新（仓库副本 / `link:` 安装天然关闭），测试再叠一层 `DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off` 隔离。
@@ -36,11 +36,17 @@
 - **两个真 bug（新写的单测抓出来的，别改回去）**：
   1. 引擎「远端版本不更高」分支原本会清空 `pendingVersion`。而 `pendingVersion` 同时是「刚替换的版本」和「回滚时找备份的唯一线索」——清掉后，用户重启追平版本、再想回滚时逃生门已经被焊死（`rollback()` 返回 `nothing-to-roll-back`）。现在该分支绝不抹 `pendingVersion`，「待重启」由 UI 用 disk/running 差值判定。
   2. 回滚之后重启，8 秒后的自动检查会把刚被回滚掉的版本**又装回来**。现在引入 `holdVersion`：回滚过的版本默认暂缓，只有用户在设置页点「允许更新到 X」（`runUpdateCheck` 带 `force`）才解除。
-- **两个漏键（会把键名当文案显示给用户）**：`ui.updateHeld` / `ui.updateAllowHeld` 在代码里被引用、字典里却没有。已补中英双语，并新增守卫锁住「代码引用的版本与更新族键 + 注册表每个 label/note 键 + 三组标题键」必须在字典里（`tests/test-locale-copy.mjs` 的 3b 段）。**注意：该守卫目前只覆盖版本与更新族，没有全量扫 `client-bundle.js` 的每个 `t('…')`；等能跑测试时先把全量扫描放开。**
+- **两个漏键（会把键名当文案显示给用户）**：`ui.updateHeld` / `ui.updateAllowHeld` 在代码里被引用、字典里却没有。已补中英双语，并新增守卫锁住「代码引用的文案键必须在字典里」（`tests/test-locale-copy.mjs` 的 3b 段）。**该守卫当时只覆盖版本与更新族；接手会话已放开为全量扫描**（client + host 的每个字面量 `t('…')`，262 个键），并因此揪出另外两个真漏键 `number.thousand` / `number.million`——它们是宿主 common 命名空间用来做 K/M 缩写的键，而 locale 服务 `bind()` 绑的是**本插件命名空间**，取不到就回落键名，上下文面板里会直接显示 `number.thousand`。已补同值兜底（中英同形，登记进 `SAME_BY_DESIGN`）。顺带加固 `tests/locale-fixture.cjs`：原先用「文件里第一个 `{`」提取字典，`src/locales.js` 头部注释里出现一个花括号就把七个测试同时打挂，现在改为从导出语句之后切片。
 - **分段控件复用踩坑**：更新方式复用了「订阅窗口方向」的两段式控件 `bibSetQuotaMode`，而它内部用 `normalizeQuotaDisplayMode()` 归一取值——`auto`/`manual` 会被折成 `remaining`，结果是**两项都没选中**。修法是给该组件加可注入的 `normalize`（默认仍是方向归一），并在文档与注释里写明「换用途必须显式传」。这条是 `tests/test-quota-display-mode.cjs` 的渲染级断言抓出来的。
 - **测试同步**：`test-field-config-client.cjs`（分组由两类改三类、提醒组 8 条、插件组 19 条、`groupOpen` 默认加 `notice: true`、搜索三组全展开、构建产物断言）、`test-quota-display-mode.cjs`（设置页现在有 4 个 radio：方向 2 + 更新方式 2；新增 `quotaRadiosOf` / `updateRadiosOf` 按文案分流，并新增 ⑥b 段 7 条断言）、`test-density-toggle.cjs`（原「新版本提醒不进信息栏」反转为「只受开关控制、与模式无关」）、`test-update-check.cjs` + `test-update-command.mjs`（同上反转）、`test-locale-copy.mjs`（新增 3b 漏键守卫）、`tests/run-all.mjs`（测试期关掉自更新）。
-- **阻塞（接手第一件事）**：本次会话后期 shell 全部失效——任何命令（含 `echo ok`、`true`、`git`、`node`）都返回 `sandbox-exec: data object length 66959 exceeds maximum (65535)`，`dangerouslyDisableSandbox` 与后台执行都无效；`Grep`（ripgrep）同样走沙箱，也失效，只剩 Read / Write / Edit 可用。因此以下都**未执行**：最后一次全量测试（改测试守卫之后没跑过）、`git add/commit/push`、开 PR、合并、`npm view` 核对上架、同步本机 desktop profile、写 `docs/ANNOUNCEMENTS.md` 通知稿。
-  - 恢复后的最短路径：`node scripts/build.mjs && node tests/run-all.mjs` → 全绿后以 `feat:` 提交（自更新属新功能，Release Please 会算次版本号）→ CI 绿后合并 → 合并 release PR（闸门仍会 SKIP 发布 PR 的自动合并）→ `npm view dsh-bottom-info-bar version dist-tags --json` 读回确认 → 按「发布后必须同步本机装载点」规则探测并同步本机 → 写 `docs/ANNOUNCEMENTS.md` → 把结果补写进本文件。
+- **接手记录与发布证据（2026-09-25 第二次会话，shell 已恢复）**：
+  - 上个会话后期 shell 全部失效（任何命令返回 `sandbox-exec: data object length … exceeds maximum`，`dangerouslyDisableSandbox` 与后台执行都无效，只剩 Read / Write / Edit 可用），代码写完但没测、没提交。**教训：会话结束前一定要先跑测试再谈收工，否则下一个会话接手时不知道代码是绿是红。**
+  - 接手后跑全量测试，抓到两处只有「真的跑一遍」才会暴露的问题：① `tests/test-self-update.mjs` 的 client 接线断言仍按早期合并写法 `if (restartVersion || updateFailed)` 断言，而实现已按用户拍板 4c 拆成两条**各自带 `fieldVisible` 门控**的独立判断——判定**实现正确、断言过期**，改为两条独立断言并补两条反向断言（不得合并成一个总开关、不得受简洁/完整模式门控）；② `test-self-update.mjs` 上个会话只往 `run-all.mjs` 里加了 `DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off` 环境变量，**忘了把它自己加进 cases 数组**，等于自更新单测从来没在全量里跑过。两处修完全量绿（`test-self-update` 35 条断言）。
+  - 发布链条：`feat:` 提交 → PR **#159** CI / CodeQL 绿、`enable-auto-merge` 成功（普通 PR 走自动合并）→ squash 合并 `0773c4f` → Release Please 开 PR **#160**（`chore(main): release 1.19.0`，`enable-auto-merge` = SKIPPED，闸门只拦发布 PR）→ 合并 `83a0d6f` → tag `v1.19.0` + GitHub Release → Publish NPM success → `npm view` **第 4 次才读回 1.19.0（约 60 秒传播延迟，再次印证不能拿 workflow success 当上架证据）**，`dist-tags.latest = 1.19.0`。
+  - 收尾：本地 main 快进到 `83a0d6f`，`git cherry main feat/self-update` 得 `- f0af9b3`（补丁已在主线）后删除本地分支，远端分支随 PR 自动删除，`scripts/build.mjs` 重建后工作区无 diff。仓库只余 `main`。
+  - **gh 的一个坑**：`gh pr checks` 会列出一条名为 `CodeQL` 的 fail 条目（4 秒就结束），而实际 CodeQL workflow 与 `Analyze (javascript-typescript)` job 都是 success，PR 也正常自动合并了。判断检查结果要落到 `gh api repos/<owner>/<repo>/actions/runs/<id>` 上，别只看那一行汇总。另外第一次用 `gh` 前要 `gh repo set-default <owner>/<repo>`，否则 `gh pr view` 会报 `No default remote repository`。
+  - **本机同步：未完成，需要用户动手一次。** 装载形态仍是 **`desktop` profile + pnpm 从 GitHub 拉的独立快照**（`pnpm-lock.yaml` 钉在 `51e488b` = v1.18.1，实测装载版本 1.18.1，codeload tarball，非软链）。尝试 `cd ~/.dsh/profiles/desktop && pnpm update dsh-bottom-info-bar` 时被 WorkBuddy 的 brokered-fs shim 拒绝（`[CODEBUDDY_BROKER_DENY] EEXIST: … symlink … -> ~/Library/pnpm/store/v11/projects/…`），**沙箱内外都一样被拒**，所以本机没法从会话里同步。两条可行路径：① 桌面客户端插件页点更新（推荐，官方入口，会正确重写 lock）；② 用户在自己的终端里跑上面那条 pnpm 命令（不受 WorkBuddy shim 影响）。改动前已把 profile 的 `pnpm-lock.yaml` 备份到 `/tmp/desktop-pnpm-lock.before-1.19.0.yaml`。
+  - **这一次的鸡生蛋**：自更新的能力本身就在 1.19.0 里，所以本机要先手工升到 1.19.0，往后的版本才不用再管。对外通知里必须讲清这一点，否则用户会以为「刚发完就该自动更新了」。
 
 ---
 
