@@ -162,8 +162,8 @@ check('③ 渲染期方向来自 activeQuotaDisplayMode()（模块级配置，�
 check('③ remaining 模式沿用 ui.windowRemainingUsed（参数 label/value/usedPercent 不变）', clientSrc.includes("t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })"), true);
 check('③ used 模式改用 ui.windowUsedRemaining（同一组参数名）', clientSrc.includes("t('ui.windowUsedRemaining', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })"), true);
 check('③ 倒计时明细两向都有：RemainingUsedResets / UsedRemainingResets 且都带 value4',
-  clientSrc.includes("t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) })")
-  && clientSrc.includes("t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(displayWindow), value: remainingPercent(displayWindow), usedPercent: displayWindow.usedPercent, value4: formatDateTime(displayWindow.resetsAt) })"), true);
+  clientSrc.includes("t('ui.windowUsedRemainingResets', { label: quotaWindowLabel(resetWindow), value: remainingPercent(resetWindow), usedPercent: resetWindow.usedPercent, value4: formatDateTime(resetWindow.resetsAt) })")
+  && clientSrc.includes("t('ui.windowRemainingUsedResets', { label: quotaWindowLabel(resetWindow), value: remainingPercent(resetWindow), usedPercent: resetWindow.usedPercent, value4: formatDateTime(resetWindow.resetsAt) })"), true);
 
 const quotaWindowDetail = eval('(function (t, quotaWindowLabel, remainingPercent) {\n  return ' + extractFunctionFrom(clientSrc, 'quotaWindowDetail') + ';\n})')(t, function (w) { return w.label; }, remainingPercent);
 const weekWindow = { key: 'seven_day', label: '7 天', usedPercent: 30, resetsAt: 1700000000000 };

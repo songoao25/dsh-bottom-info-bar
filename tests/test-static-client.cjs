@@ -90,7 +90,9 @@ check('超长模型名不会被根容器裁切：模型详情可整体换行，�
   && clientSrc.includes('.bi-vision-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }')
   && clientSrc.includes("React.createElement('span', { className: 'bi-vision-kind' }, t('ui.vision'))"), true);
 check('整条信息栏的读屏名称引用当前可见信息，切换操作作为独立说明而不覆盖内容', !clientSrc.includes("'aria-label': full ? '切换为简洁模式'")
-  && clientSrc.includes("'aria-labelledby': full && row1 !== null ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary'")
+  // 读屏名称在「原生行是否参与」时才带上原生行；该判据由 nativeRowShown 一个变量给出（模式变量只服务它）。
+  && clientSrc.includes("const nativeRowShown = row1Present && full;")
+  && clientSrc.includes("'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary'")
   && clientSrc.includes("'aria-describedby': 'dsh-bottom-info-bar-action'")
   && clientSrc.includes("id: 'dsh-bottom-info-bar-action'")
   && clientSrc.includes("className: 'bi-sr-only'"), true);

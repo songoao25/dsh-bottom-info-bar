@@ -209,18 +209,20 @@ check('client 按会话优先的 billingMode 分支互斥渲染', clientSrc.incl
 check('client 余额制渲染函数独立保留', clientSrc.includes('function pushBalanceGroups(groups, trailingErrorGroups)'), true);
 check('client 订阅制渲染函数存在', clientSrc.includes('function pushSubscriptionGroups(groups, trailingErrorGroups)'), true);
 check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌；v1.9 PR2 每窗口独立 data-field）', clientSrc.includes("winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,"), true);
-check('client compact 密度精简为最紧窗口', clientSrc.includes('const visible = full ? windows : (displayWindow ? [displayWindow] : []);'), true);
+check('client 窗口组不再按模式取舍（开着的窗口两种模式都列出）', clientSrc.includes('const visible = windows;')
+  && !clientSrc.includes('const visible = full ?'), true);
 check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn.includes("'订阅额度加载中…'"), false);
 check('client 窗口渲染由 hasData 门控（空窗口跳过不占位）', subFn.includes('if (hasData) {'), true);
 check('client 订阅失败原因统一通过简短悬停说明', clientSrc.includes('subscriptionFailureHint') && clientSrc.includes("t('ui.isTemporarilyUnavailableCheckYour'"), true);
 check('client 预警阈值常量 = 20（剩余 ≤20% 即告警，与 host 余额 ALERT_THRESHOLD=20 一致）', clientSrc.includes('const LOW_QUOTA_PERCENT = 20'), true);
 check('client 预警触发条件：剩余 ≤20% 时将对应额度数字标红', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''"), true);
-check('client 距重置倒计时使用同一窗口，并通过统一 metric 间距呈现', clientSrc.includes("metric(t('ui.resetsIn'), fmtResetCountdown(displayWindow.resetsAt - now))"), true);
+check('client 距重置倒计时挂在挑出的那个窗口上（resetWindow），并通过统一 metric 间距呈现', clientSrc.includes("metric(t('ui.resetsIn'), fmtResetCountdown(resetWindow.resetsAt - now))"), true);
 check('client fmtResetCountdown 天级格式（1d 21h）', clientSrc.includes("d + 'd ' + h + 'h'"), true);
 check('client hover 明细含重置时刻（formatDateTime）', clientSrc.includes("t('ui.resetsResetsIn', { value: formatDateTime(w.resetsAt), value2: fmtResetCountdown(w.resetsAt - now) })"), true);
 check('client hover 距重置用天级格式（避免与剩余%混淆）', clientSrc.includes("value2: fmtResetCountdown(w.resetsAt - now)"), true);
-check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup；v1.9 PR2 经 subServiceGroup 门控+着色）', clientSrc.includes("const subAnchor = subscriptionProviderGroup();")
-  && clientSrc.includes("groups.push(React.cloneElement(subAnchor, { 'data-field': 'subServiceGroup', style: fieldStyle('subServiceGroup') }));"), true);
+check('client 订阅制模型组显示订阅服务名（subscriptionProviderGroup；经 subServiceGroup 门控+着色）', clientSrc.includes("pushIdentityGroups(groups, 'subServiceGroup', subscriptionProviderGroup);")
+  && clientSrc.includes("pushIdentityGroups(groups, 'anchorGroup', providerGroup);")
+  && clientSrc.includes('function pushIdentityGroups(groups, anchorId, buildAnchor)'), true);
 check('client 订阅服务名映射含 OpenCode Go / Codex / ChatGPT', clientSrc.includes("return 'OpenCode Go'") && clientSrc.includes("return 'Codex'") && clientSrc.includes("return 'ChatGPT'"), true);
 check('client 订阅服务名含 Command Code', clientSrc.includes("provider === 'command' || provider === 'command-code'") && clientSrc.includes("t('ui.commandCode')"), true);
 check('client 订阅失败提示按实际订阅服务命名，不把 Codex 误称为 ChatGPT', clientSrc.includes('const serviceName = subscriptionServiceName(source);'), true);
