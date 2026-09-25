@@ -48,6 +48,12 @@
   - **本机同步：未完成，需要用户动手一次。** 装载形态仍是 **`desktop` profile + pnpm 从 GitHub 拉的独立快照**（`pnpm-lock.yaml` 钉在 `51e488b` = v1.18.1，实测装载版本 1.18.1，codeload tarball，非软链）。尝试 `cd ~/.dsh/profiles/desktop && pnpm update dsh-bottom-info-bar` 时被 WorkBuddy 的 brokered-fs shim 拒绝（`[CODEBUDDY_BROKER_DENY] EEXIST: … symlink … -> ~/Library/pnpm/store/v11/projects/…`），**沙箱内外都一样被拒**，所以本机没法从会话里同步。两条可行路径：① 桌面客户端插件页点更新（推荐，官方入口，会正确重写 lock）；② 用户在自己的终端里跑上面那条 pnpm 命令（不受 WorkBuddy shim 影响）。改动前已把 profile 的 `pnpm-lock.yaml` 备份到 `/tmp/desktop-pnpm-lock.before-1.19.0.yaml`。
   - **这一次的鸡生蛋**：自更新的能力本身就在 1.19.0 里，所以本机要先手工升到 1.19.0，往后的版本才不用再管。对外通知里必须讲清这一点，否则用户会以为「刚发完就该自动更新了」。
 
+### v1.19.1：修正过期的更新指引（fix，PR #161）
+
+- 触发：发布 v1.19.0 之后扫对外文档，发现 `README.md` / `README.zh-CN.md` / `docs/INSTALL.md` / `docs/WORKFLOW.md` 仍在教用户「点信息栏上的红色『新版本提醒』标签，复制更新命令到终端执行」——那个标签 **v1.18.0 就已移除**，v1.19.0 又改成插件自更新，等于指引指向屏幕上一个根本不存在的东西（用户照做会找不到入口）。四处全部重写：设置页二选一（全自动 / 手动）+ 检查更新 + 回滚到上一版 + 两枚短标记的含义与排障（`~/.dsh/dsh-bottom-info-bar/update-log.jsonl`），手动命令表保留作源码副本 / `link:` 安装的兜底，并写明「首次升到 1.19.0 仍要手动一次」。
+- 发布：PR #161 CI 绿 → 自动合并 → 发布 PR #162（1.19.1）合并 → tag `v1.19.1` → npm 读回 `latest = 1.19.1`（同样约 60 秒传播延迟）。本地收尾：`git cherry` 得 `- ddf11f5`，删本地分支，仓库只余 main。
+- **教训：功能改完要顺手扫一遍对外文档，别等发布后才发现。** 正确顺序是「改代码 → grep 一遍被这次改动推翻的句子（关键词：旧功能名、旧按钮文案、被移除的入口）→ 一次性提交」。本次是发完 v1.19.0 才回头补的，白多一个版本。
+
 ---
 
 ## 2026-09-25（v1.18.1）
