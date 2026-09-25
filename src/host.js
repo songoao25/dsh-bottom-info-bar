@@ -58,6 +58,19 @@ const PACKAGE_FILE = new URL('../package.json', import.meta.url)
 const PACKAGE_DIR = dirname(fileURLToPath(PACKAGE_FILE))
 const UPDATE_REGISTRY_URL = 'https://registry.npmjs.org/dsh-bottom-info-bar/latest'
 const UPDATE_CHECK_TIMEOUT_MS = 5000
+// 所有对外 HTTP 请求的统一超时。集中一处，避免每个调用点各自记一个数。
+const HTTP_TIMEOUT_MS = 15000
+
+// 超时信号的唯一入口（2026-09-25 审计 P0-2）。
+// `AbortSignal.timeout` 在部分内嵌运行时里并不存在；裸用会在**多个** fetch 上同时抛，
+// 用户看到的现象是「余额、订阅、账单一起报错」，而根因只是一个缺失的 API。
+// 守卫只能写一次 —— 写 14 次就一定会漏掉第 15 次。缺失时返回 undefined（fetch 会忽略该字段），
+// 即「没有超时」而不是「直接崩」，这是降级而不是放弃。
+function timeoutSignal(ms) {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(ms)
+    : undefined
+}
 
 function packageVersion() {
   try {
@@ -897,10 +910,13 @@ function zaiUsedPercent(limit) {
 // data.limits[] 中 TOKENS_LIMIT / CREDIT_LIMIT 的已知窗口 → {key,label,usedPercent,resetsAt}；
 // TIME_LIMIT（MCP 月度额度）→ monthly；未知类型/未知时长一律跳过，不报错（沿用「未知跳过」哲学）。
 // level/planName → 套餐名（lite/standard/pro/max → 智谱 + 首字母大写）
-function parseZaiQuota(body, windowLabels) {
+function parseZaiQuota(body, windowLabels, translate) {
   if (!body || typeof body !== 'object') return null
   const data = body.data
   if (!data || typeof data !== 'object') return null
+  // 语言必须由调用方传入（2026-09-25 审计 P0-1）：本函数是模块级，模块级 t 没有 ctx，恒为中文；
+  // 只有 apply 内部重建的 t 才认宿主语言。漏传的后果是「英文宿主下智谱套餐名仍显示中文」。
+  if (translate === undefined) translate = t
   const wl = windowLabels || WINDOW_LABELS
   const limits = Array.isArray(data.limits) ? data.limits : []
   const windows = []
@@ -930,7 +946,7 @@ function parseZaiQuota(body, windowLabels) {
     const levelMap = { lite: 'Lite', standard: 'Standard', pro: 'Pro', max: 'Max' }
     const levelKey = data.level.toLowerCase()
     const mapped = Object.hasOwn(levelMap, levelKey) ? levelMap[levelKey] : null
-    planName = mapped ? t('host.zhipu', { mapped: mapped }) : (t('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }))
+    planName = mapped ? translate('host.zhipu', { mapped: mapped }) : (translate('host.zhipu.parseZaiQuota', { value: data.level.charAt(0).toUpperCase(), value2: data.level.slice(1) }))
   } else if (typeof body.planName === 'string' && body.planName.length > 0) {
     planName = body.planName
   }
@@ -1760,9 +1776,7 @@ export default {
       if (sessionLineageCache.pending) return sessionLineageCache.pending
       sessionLineageCache.pending = (async function () {
         try {
-          const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-            ? AbortSignal.timeout(1500)
-            : undefined
+          const signal = timeoutSignal(1500)
           const result = signal === undefined ? await controller.list({}) : await controller.list({}, signal)
           const items = Array.isArray(result) ? result : (result && Array.isArray(result.items) ? result.items : null)
           if (!items) throw new Error('sessionController.list returned no items')
@@ -1921,7 +1935,7 @@ export default {
       try {
         const headers = {};
         if (remotePricingEtag) headers['If-None-Match'] = remotePricingEtag;
-        const res = await fetch(REMOTE_PRICING_URL, { headers, signal: AbortSignal.timeout(10000) });
+        const res = await fetch(REMOTE_PRICING_URL, { headers, signal: timeoutSignal(10000) });
         if (res.status === 304) return { status: 'fresh' }; // 目录未变
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const body = await res.json();
@@ -2190,7 +2204,7 @@ export default {
               'Cache-Control': 'no-cache, no-store',
               Pragma: 'no-cache',
             },
-            signal: AbortSignal.timeout(15000),
+            signal: timeoutSignal(HTTP_TIMEOUT_MS),
           });
           if (!res.ok) {
             if (balanceSeq[pid] === seq) balances[pid] = { data: balances[pid] && balances[pid].data, fetchedAt: balances[pid] && balances[pid].fetchedAt, error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
@@ -2287,7 +2301,7 @@ export default {
       try {
         const res = await fetch('https://opencode.ai/zen/go/v1/usage', {
           headers: { Authorization: 'Bearer ' + key },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
         const body = await res.json();
@@ -2320,7 +2334,7 @@ export default {
       try {
         const res = await fetch(COMMAND_CODE_API_BASE + path, {
           headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         })
         if (!res.ok) {
           return { error: {
@@ -2397,7 +2411,7 @@ export default {
       try {
         const res = await fetch(base + '/v1/token_plan/remains', {
           headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         })
         if (res.status === 401 || res.status === 403) {
           return { error: { kind: 'auth', code: 'subscription.minimax-auth-failed', message: t('error.subscription.minimax-auth-failed') } }
@@ -2491,7 +2505,7 @@ export default {
       try {
         const res = await fetch(host + '/api/monitor/usage/quota/limit', {
           headers: { Authorization: key }, // 裸 API Key，无 Bearer 前缀
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         const body = await res.json().catch(() => null);
         // 智谱 API 常在 HTTP 200 内返回业务错误（{code:401, success:false, msg:...}），需先检查
@@ -2506,7 +2520,7 @@ export default {
           return { error: { kind: 'http', code: 'request.failed', message: t('error.request.failed', { value: body.code || '', msg: msg }) } };
         }
         if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
-        const parsed = parseZaiQuota(body, windowLabels);
+        const parsed = parseZaiQuota(body, windowLabels, t);
         if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         // 解析成功但零窗口 = 上游 schema 又漂移了（接口对订阅账号必返回 5 小时 + 周窗口，
         // 非订阅账号走上面的 success:false 分支）。此时按失败处理，让 mergeSubscriptionResult
@@ -2527,7 +2541,7 @@ export default {
         const balanceHost = host === 'https://api.z.ai' ? 'https://open.bigmodel.cn' : host;
         const res = await fetch(balanceHost + '/api/biz/account/query-customer-account-report', {
           headers: { Authorization: 'Bearer ' + key }, // Bearer 认证（与裸 Key 均可）
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         const body = await res.json().catch(() => null);
         if (body && body.success === false) {
@@ -2590,7 +2604,7 @@ export default {
         try {
           const res = await fetch(endpoints[i], {
             headers: { Authorization: 'Bearer ' + key },
-            signal: AbortSignal.timeout(15000),
+            signal: timeoutSignal(HTTP_TIMEOUT_MS),
           });
           if (!res.ok) { lastStatus = res.status; continue; }
           const body = await res.json();
@@ -2615,7 +2629,7 @@ export default {
         try {
           const res = await fetch(hosts[i] + '/billing/usage', {
             headers: { Authorization: 'Bearer ' + key },
-            signal: AbortSignal.timeout(15000),
+            signal: timeoutSignal(HTTP_TIMEOUT_MS),
           });
           if (!res.ok) {
             lastStatus = res.status;
@@ -2642,14 +2656,14 @@ export default {
       try {
         const accRes = await fetch('https://api.fireworks.ai/v1/accounts', {
           headers: { Authorization: 'Bearer ' + key },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         if (!accRes.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: accRes.status }) } };
         const accountId = parseFireworksAccountId(await accRes.json());
         if (!accountId) return { error: { kind: 'parse', code: 'billing.fireworks-account', message: t('error.billing.fireworks-account') } };
         const summaryRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billing/summary?granularity=DAILY', {
           headers: { Authorization: 'Bearer ' + key },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         if (summaryRes.ok) {
           const spend = parseFireworksSummary(await summaryRes.json());
@@ -2659,7 +2673,7 @@ export default {
         if (summaryRes.status === 404) {
           const usageRes = await fetch('https://api.fireworks.ai/v1/accounts/' + encodeURIComponent(accountId) + '/billingUsage', {
             headers: { Authorization: 'Bearer ' + key },
-            signal: AbortSignal.timeout(15000),
+            signal: timeoutSignal(HTTP_TIMEOUT_MS),
           });
           if (usageRes.ok) {
             const usage = parseFireworksUsage(await usageRes.json());
@@ -2698,7 +2712,7 @@ export default {
         headers: { 'content-type': 'application/x-amz-json-1.1', 'x-amz-target': target },
       });
       const res = await fetch('https://' + host + '/', {
-        method: 'POST', headers: headers, body: body, signal: AbortSignal.timeout(15000),
+        method: 'POST', headers: headers, body: body, signal: timeoutSignal(HTTP_TIMEOUT_MS),
       });
       let json = null;
       try { json = await res.json(); } catch (err) { /* 交由解析层判定结构异常 */ }
@@ -2736,7 +2750,7 @@ export default {
         accessKeyId: aws.accessKeyId, secretAccessKey: aws.secretAccessKey, sessionToken: aws.sessionToken,
         headers: {},
       });
-      const stsRes = await fetch('https://sts.amazonaws.com/?' + query, { headers: headers, signal: AbortSignal.timeout(15000) });
+      const stsRes = await fetch('https://sts.amazonaws.com/?' + query, { headers: headers, signal: timeoutSignal(HTTP_TIMEOUT_MS) });
       if (!stsRes.ok) return null;
       const stsJson = await stsRes.json().catch(function () { return null; });
       const result = stsJson && stsJson.GetCallerIdentityResponse && stsJson.GetCallerIdentityResponse.GetCallerIdentityResult;
@@ -2757,7 +2771,7 @@ export default {
       try {
         const res = await fetch('https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(accountId) + '/billing/usage/paygo', {
           headers: { Authorization: 'Bearer ' + key },
-          signal: AbortSignal.timeout(15000),
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
         });
         if (!res.ok) return { error: { kind: 'http', code: 'billing.cloudflare-http', message: t('error.billing.cloudflare-http', { status: res.status }) } };
         const parsed = parseCloudflareBilling(await res.json());

@@ -71,6 +71,10 @@ const zhDict = LOCALES.zh
 const enDict = LOCALES.en
 const WINDOW_LABELS = eval('(' + extractBraced(hostSrc, 'const WINDOW_LABELS = ') + ')')
 const MINIMAX_PLAN_NAME = (hostSrc.match(/const MINIMAX_PLAN_NAME = '([^']+)'/) || [])[1]
+// host 侧已把 AbortSignal.timeout 收敛到唯一封装 timeoutSignal()（见 tests/test-source-guards.mjs 守卫 6），
+// 抽出来的函数体只引用 timeoutSignal + HTTP_TIMEOUT_MS。测试装置必须一并注入这两个名字，
+// 否则抽取出的函数里会出现未定义引用（表现为「请求根本没发出去」，很难看出根因）。
+const HTTP_TIMEOUT_MS = Number((hostSrc.match(/const HTTP_TIMEOUT_MS = (\d+)/) || [])[1])
 const SUBSCRIPTION_PROVIDERS = eval('(' + extractBracketed(constantsSrc, 'export const SUBSCRIPTION_PROVIDERS = ') + ')')
 
 // 顶层 t() 依赖宿主 locale 服务：单测用真实中文字典做替身（缺键直接抛错，防漏键）
@@ -117,6 +121,8 @@ function makeFetchHarness(options) {
   })
   const factory = eval(
     '(function (ctx, t, windowLabels, fetch, AbortSignal, minimaxBaseUrl, minimaxNumericField, parseMinimaxTokenPlanRemains) {'
+    + 'const HTTP_TIMEOUT_MS = ' + HTTP_TIMEOUT_MS + ';'
+    + extractFn('timeoutSignal')
     + extractFn('resolveCredentialValue')
     + extractFn('resolveMinimaxKey')
     + extractFn('fetchMinimaxTokenPlanUsage')

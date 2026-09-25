@@ -221,5 +221,64 @@ check(
       "\n      示例：const u = new URL(String(url)); u.protocol === 'https:' && u.hostname === 'api.commandcode.ai'"
 )
 
+// ---------- 守卫 6：超时信号必须走唯一入口 ----------
+//
+// 2026-09-25 审计 P0-2：`AbortSignal.timeout` 在部分内嵌运行时里不存在。修之前有 14 处裸用、
+// 只有 1 处写了守卫 —— 缺 API 的宿主上会「余额、订阅、账单一起报错」，而根因只有一个。
+// 守卫写在调用点就等于没写：写 14 次一定会漏第 15 次。所以把「只准出现一次」变成硬约束。
+const timeoutOffenders = []
+for (const rel of SOURCE_FILES) {
+  const abs = join(root, rel)
+  if (!existsSync(abs)) continue
+  let source = stripComments(readFileSync(abs, 'utf8'))
+  // 唯一被允许出现的地方就是封装本身：先把它挖掉，再要求「一处都不剩」。
+  if (rel === 'src/host.js') source = source.replace(/function timeoutSignal\([\s\S]*?\n\}/, '')
+  source.split('\n').forEach((line, index) => {
+    if (/AbortSignal\.timeout/.test(line)) timeoutOffenders.push(`${rel}:${index + 1}  ${line.trim()}`)
+  })
+}
+check(
+  '守卫 6：AbortSignal.timeout 只允许出现在统一封装 timeoutSignal() 内',
+  timeoutOffenders.length === 0,
+  timeoutOffenders.length === 0 ? undefined
+    : '封装外共 ' + timeoutOffenders.length + ' 处：\n      ' + timeoutOffenders.join('\n      ') +
+      '\n      修法：调用处一律写 timeoutSignal(ms)（src/host.js 顶部唯一封装，内部已含 API 守卫）。' +
+      '\n      调用点自己写守卫 = 守卫必然漏掉；缺失该 API 时应降级为「无超时」而不是直接抛。'
+)
+
+// ---------- 守卫 7：模块级函数不得直接用模块级 t（语言必须由调用方传入）----------
+//
+// 2026-09-25 审计 P0-1：parseZaiQuota 是模块级函数，内部用了模块级 `t` —— 而模块级 t 没有 ctx，
+// 恒为中文；只有 apply 内部重建的 t 才认宿主语言。后果：英文宿主下智谱套餐名一直显示中文。
+// 规则：顶层函数体里只要出现 t(，就必须同时出现 translate（= 接受了译法参数）。
+const localeOffenders = []
+for (const rel of ['src/host.js']) {
+  const src = stripComments(readFileSync(join(root, rel), 'utf8'))
+  const lines = src.split('\n')
+  let current = null
+  lines.forEach((line, index) => {
+    const decl = line.match(/^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/)
+    if (decl) { current = { name: decl[1], from: index, body: [] }; return }
+    if (current === null) return
+    if (line === '}') {
+      const body = current.body.join('\n')
+      if (/\bt\(/.test(body) && !/\btranslate\b/.test(body)) {
+        localeOffenders.push(`${rel}:${current.from + 1}  function ${current.name}`)
+      }
+      current = null
+      return
+    }
+    current.body.push(line)
+  })
+}
+check(
+  '守卫 7：模块级函数用 t() 时必须接收 translate 参数（否则恒为中文）',
+  localeOffenders.length === 0,
+  localeOffenders.length === 0 ? undefined
+    : '以下顶层函数调用了模块级 t：\n      ' + localeOffenders.join('\n      ') +
+      '\n      修法：加第三个参数 translate，函数内写 `if (translate === undefined) translate = t`，' +
+      '\n      调用处显式传 apply 内部那个语言感知的 t。参见 mergeSubscriptionResult 的写法。'
+)
+
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
 process.exit(failures === 0 ? 0 : 1)
