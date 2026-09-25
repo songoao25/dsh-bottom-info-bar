@@ -16,9 +16,11 @@ import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import {
   PACKAGE_NAME,
+  UPDATE_ERROR_KINDS,
   applyPayload,
   compareSemver,
   createSelfUpdater,
+  describeUpdateError,
   extractPackageFiles,
   isAllowedPayloadPath,
   parseSemver,
@@ -501,7 +503,10 @@ await okAsync('完整性问题：不落盘、状态记失败，现有安装与�
       latestIntegrity: 'sha512-' + Buffer.alloc(64).toString('base64'),
     })
     const state = await updater.run()
-    assert.match(state.lastError, /integrity mismatch/)
+    // 状态里存的是归一后的原因代号（界面据此翻译成人话，不再把英文报错甩给用户）；
+    // 原始报错必须同时进审计日志，否则排查线索断了。2026-09-25 第三轮起如此。
+    assert.equal(state.lastError, 'integrity-mismatch')
+    assert.match(readFileSync(join(fx.dataDir, 'update-log.jsonl'), 'utf8'), /integrity mismatch/)
     assert.equal(state.pendingVersion, null)
     assert.equal(JSON.parse(readFileSync(join(fx.packageDir, 'package.json'), 'utf8')).version, '1.0.0')
     assert.equal(readFileSync(join(fx.packageDir, 'lib', 'index.js'), 'utf8'), '// old host\n')
@@ -520,7 +525,8 @@ await okAsync('下载失败（HTTP 500）：状态记失败、包目录不变', 
       onFetch: async (url) => (url.endsWith('/latest') ? null : { ok: false, status: 500, json: async () => ({}), arrayBuffer: async () => Buffer.alloc(0) }),
     })
     const state = await updater.run()
-    assert.match(state.lastError, /http 500/)
+    assert.equal(state.lastError, 'download-failed')
+    assert.match(readFileSync(join(fx.dataDir, 'update-log.jsonl'), 'utf8'), /http 500/)
     assert.equal(readFileSync(join(fx.packageDir, 'lib', 'index.js'), 'utf8'), '// old host\n')
   } finally { fx.cleanup() }
 })
@@ -783,6 +789,61 @@ ok('文案齐备：新增的版本与更新键中英双语、无 AI 腔、无长
     assert.doesNotMatch(dictionary.zh[key], shared, key + ' zh must not use exclamation / long dash')
     assert.doesNotMatch(dictionary.en[key], shared, key + ' en must not use exclamation / long dash')
   }
+})
+
+await okAsync('磁盘已是新版、运行版本更旧：手动检查也不重复下载（原来手动绕过防重，连点会反复替换）', async () => {
+  const fx = makeFixture({ version: '1.1.0' })
+  try {
+    const payload = makePayload('1.1.0')
+    const { updater, requests } = makeUpdater(fx, { payload, latestVersion: '1.1.0', runningVersion: '1.0.0' })
+    const state = await updater.run({ manual: true })
+    const tarballRequests = requests.filter((url) => !url.endsWith('/latest'))
+    assert.deepEqual(tarballRequests, [], '磁盘已经是这个版本，不该再下载一次')
+    assert.equal(state.pendingVersion, '1.1.0', '但要记住「已装好待重启」')
+    assert.equal(existsSync(join(fx.dataDir, 'update-backup', '1.1.0')), false, '没下载自然也不该多留备份')
+    // 内存跑 1.0.0、磁盘已是 1.1.0：界面据此提示重启
+    assert.equal(updater.getState().runningVersion, '1.0.0')
+    assert.equal(updater.getState().diskVersion, '1.1.0')
+  } finally { fx.cleanup() }
+})
+
+// =====================================================================================
+// 14. 2026-09-25 第三轮：失败原因归一 + 设置页三层组织（用户拍板「状态—设置—兜底 / 说明随选择变 /
+//     按需出现 / 保持只在启动时检查一次」）
+// =====================================================================================
+ok('失败原因归一：技术报错 → 稳定代号，认得出历史原始值，且幂等', () => {
+  assert.equal(describeUpdateError('unexpected end of file'), 'incomplete-download')
+  assert.equal(describeUpdateError('payload integrity mismatch'), 'integrity-mismatch')
+  assert.equal(describeUpdateError('download failed: http 404'), 'download-failed')
+  assert.equal(describeUpdateError('download failed: too large (99999 bytes)'), 'too-large')
+  assert.equal(describeUpdateError('payload version mismatch: 1.0.0 != 1.1.0'), 'payload-mismatch')
+  assert.equal(describeUpdateError('refusing to write outside package: x'), 'payload-unsafe')
+  assert.equal(describeUpdateError('check-failed'), 'check-failed')
+  // 已经是代号的值必须原样返回（幂等）：否则从磁盘加载回来的状态会被二次归一，越归越歪
+  for (const kind of UPDATE_ERROR_KINDS) assert.equal(describeUpdateError(kind), kind)
+  assert.equal(describeUpdateError('something nobody has seen before'), 'unknown')
+  assert.equal(describeUpdateError(''), 'unknown')
+  assert.equal(describeUpdateError(null), 'unknown')
+})
+
+ok('设置页三层组织：状态 / 设置 / 兜底，且兜底与「检查更新」按需出现', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  // ① 状态层：结论在上（大字）、事实在下（小字含「上次检查」，用户据此确认它有没有在干活）
+  assert.match(client, /React\.createElement\('p', \{ className: 'bib-set-data-title' \}, statusText\)/)
+  assert.match(client, /facts\.push\(t\('ui\.versionLastCheck', \{ time: checkedAt \}\)\)/)
+  // ② 设置层：说明跟着选中项变，不再把两种方式的说明并排摊开
+  assert.match(client, /manual \? t\('ui\.updateModeManualDesc'\) : t\('ui\.updateModeAutoDesc'\)/)
+  // ③ 兜底层：回滚的唯一依据不再是 pendingVersion —— 它为了定位备份而永不清除，
+  //    原来那样写会让「回滚到上一版」一旦更新成功就永久常驻（用户说「像乱加上去的」）。
+  assert.match(client, /const canRollback = restartDirection === 'update' \|\| !!state\.lastError;/)
+  assert.doesNotMatch(client, /canRollback = !!state\.pendingVersion/)
+  // 「检查更新」只在手动方式下渲染；全自动时点它等于重做已经做完的事
+  assert.match(client, /manual \? bibSetButton\(\{ disabled: busy, onClick: props\.onCheck/)
+  // 当前环境不支持自更新时，第二层（更新方式）整块不渲染，不摆出用不了的控件
+  assert.match(client, /\n      disabled \? null : React\.createElement\('div', \{ className: 'bib-set-data-row' \},/)
+  // 失败原因讲人话：读代号，绝不把英文报错回显给用户
+  assert.match(client, /updateErrorText\(state\.lastErrorKind \|\| state\.lastError\)/)
+  assert.match(client, /state\.lastError && !disabled \? React\.createElement/)
 })
 
 console.log('\n自更新引擎单测：' + passed + ' PASS / ' + failed + ' FAIL')

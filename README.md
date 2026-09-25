@@ -167,14 +167,16 @@ Every model response is recorded (usage × unit price) and aggregated four ways:
 
 ## Updating
 
-The plugin checks npm for a newer version at startup and re-checks at most every 15 minutes. Pick how it should act in **Version and updates** on the plugin settings page:
+The plugin checks npm shortly after each DSH start. Pick how it should act in **Version and updates** on the plugin settings page:
 
 - **Automatic** (default): download, verify and replace the plugin's own files, then all you do is restart DSH once.
-- **Manual**: it only checks and tells you; nothing is downloaded until you press **Check for updates**.
+- **Manual**: it only checks and tells you; nothing is downloaded until you press **Check now**. That button only appears in manual mode.
 
-Every file is verified before it lands, and a failure rolls the whole batch back, so a bad download never breaks the copy you are running. **Roll back to the previous version** is one click away in the same section. Only this plugin's own files are touched — never the dependency tree or the profile manifest.
+The check happens at startup only — a new version needs a restart to take effect anyway, and the restart itself triggers the next check. So the settings page shows **last checked**, and you never have to guess whether it is doing anything.
 
-When something needs you, the bar shows two short badges: **Restart to apply** (a new version is on disk) and **Update failed** (the last automatic update did not go through). Each one has its own switch under **Notices** and takes no space otherwise.
+Every file is verified before it lands, and a failure rolls the whole batch back, so a bad download never breaks the copy you are running. If the new version misbehaves, **Roll back to the previous version** appears in the same section along with the reason; once you are satisfied it stops taking up space. Only this plugin's own files are touched — never the dependency tree or the profile manifest.
+
+When something needs you, the bar shows two short badges: **Restart to apply** (a new version is on disk) and **Update failed** (the last update did not go through). Each one has its own switch under **Notices** and takes no space otherwise. On failure the settings page explains it in plain words, and the raw error is kept in `~/.dsh/dsh-bottom-info-bar/update-log.jsonl` for troubleshooting.
 
 Updating itself only runs when the plugin is loaded from a profile (npm, GitHub address and the install script all qualify). A source checkout or a `link:` install is treated as read-only and left alone — update those by hand:
 

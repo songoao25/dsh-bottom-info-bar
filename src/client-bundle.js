@@ -1879,6 +1879,38 @@ function bibSetPollingStop(id) {
   if (id === null || typeof window === 'undefined' || typeof window.clearInterval !== 'function') return;
   window.clearInterval(id);
 }
+// 相对时间：设置页每 15 秒轮询一次更新状态，所以「刚刚 / N 分钟前」会自己往前走，不需要额外定时器。
+// 拿不到时间戳（从未检查过、或当前环境不支持自更新）时返回 null，调用方直接不显示这一段。
+function bibSetRelativeTime(stamp) {
+  if (typeof stamp !== 'number' || !Number.isFinite(stamp) || stamp <= 0) return null;
+  const diff = Date.now() - stamp;
+  if (diff < 60000) return t('ui.timeJustNow');
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return t('ui.timeMinutesAgo', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('ui.timeHoursAgo', { n: hours });
+  return t('ui.timeDaysAgo', { n: Math.floor(hours / 24) });
+}
+// 更新失败原因：引擎把技术报错归一成稳定代号（见 self-update.js 的 describeUpdateError），这里翻成人话。
+// 认不出的代号回退成「原因已记进更新日志」，绝不把 "unexpected end of file" 这种英文报错甩给用户。
+const UPDATE_ERROR_COPY = {
+  'incomplete-download': 'ui.updateErrorIncompleteDownload',
+  'integrity-mismatch': 'ui.updateErrorIntegrityMismatch',
+  'download-failed': 'ui.updateErrorDownloadFailed',
+  'too-large': 'ui.updateErrorTooLarge',
+  'payload-mismatch': 'ui.updateErrorPayloadMismatch',
+  'payload-unsafe': 'ui.updateErrorPayloadUnsafe',
+  'check-failed': 'ui.updateErrorCheckFailed',
+};
+function updateErrorText(kind) {
+  return t(UPDATE_ERROR_COPY[kind] || 'ui.updateErrorUnknown');
+}
+// 设置页「版本与更新」区。三层结构（2026-09-25 第三轮用户拍板「分三层：状态—设置—兜底」）：
+//   ① 状态：一句结论 + 一行事实（运行中 / 最新 / 上次检查）—— 只读，不掺操作；
+//   ② 设置：唯一的决策项「更新方式」二选一，说明跟着选中项变，手动方式下旁边就是「检查更新」；
+//   ③ 兜底：只在真需要处置时出现，并说明为什么会出现。
+// 为什么改成这样：三块内容性质不同（事实 / 决策 / 异常处置），原来平铺成三行掺在一起，
+// 同一套机制还在卡片说明、更新方式说明、状态行里讲了三遍 —— 用户原话「感觉就是乱加上去的」。
 function bibSetVersionSection(props) {
   const state = props.state;
   // 【2026-09-25 血案】宿主进程还没加载到这一版插件代码时（典型场景：包文件已被替换成新版，
@@ -1901,28 +1933,45 @@ function bibSetVersionSection(props) {
             React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.versionUnavailable'))))));
   }
   const busy = props.busy === true;
+  const disabled = state.disabled === true;
+  // 「手动更新」= 自动下载关掉了。方向必须按 `=== false` 判定：任何非 false 的值都算全自动。
+  const manual = state.autoUpdate === false;
   const shown = function (value) { return typeof value === 'string' && value.length > 0 ? value : t('ui.versionUnknown'); };
   // 方向由 host 判定（见 getUpdateState）：update = 磁盘已是新版待重启；rollback = 用户回滚过、
   // 磁盘比运行版本旧，同样只有重启才生效，但说法必须不同，否则用户会以为自己在跑新版。
   const restartDirection = state.restartDirection === 'update' || state.restartDirection === 'rollback'
     ? state.restartDirection : null;
-  // 回滚按钮在「刚替换完（含已重启）」或「有失败」时都给出 —— 它正是新版出问题时唯一的逃生门，
-  // 不能因为重启过一次就消失（pendingVersion 会保留到下次成功更新或回滚为止）。
-  const canRollback = !!state.pendingVersion || restartDirection !== null || !!state.lastError;
   // 回滚过的版本被暂缓：默认不再装回来，需要用户显式点「允许更新」才会覆盖。
   const held = typeof state.holdVersion === 'string' && state.holdVersion.length > 0
     && state.holdVersion === state.latest;
+  // ③ 兜底的显示条件（2026-09-25 第三轮拍板「按需出现」）：
+  // 这里**刻意不再包含 pendingVersion**。它为了在回滚时定位备份而永不清除（见 self-update.js），
+  // 于是只要成功更新过一次，「回滚到上一版」就永远挂在界面上 —— 这正是用户觉得最像「乱加」的一处。
+  // 真正需要逃生门的窗口只有两个：新版已装好但还没重启（restartDirection === 'update'，此时退回最省事），
+  // 以及上次更新失败（lastError）。已经回滚过的（restartDirection === 'rollback'）不再显示 ——
+  // 那时引擎侧的 pendingVersion 已清空，再点一次也没有可回滚的对象。
+  const canRollback = restartDirection === 'update' || !!state.lastError;
+  const showFallback = canRollback || held;
+  // ① 状态层：先给结论，再把事实摆在下面
   let statusText = t('ui.updateUpToDate');
-  if (state.disabled === true) statusText = t('ui.updateDisabled');
+  if (disabled) statusText = t('ui.updateDisabled');
   else if (restartDirection === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
   else if (restartDirection === 'rollback') statusText = t('ui.updateRolledBack', { version: shown(state.diskVersion) });
-  else if (state.lastError) statusText = t('ui.updateFailed', { error: String(state.lastError) });
+  else if (state.lastError) statusText = t('ui.updateFailed');
   else if (held) statusText = t('ui.updateHeld', { version: state.holdVersion });
   else if (state.available === true && typeof state.latest === 'string') {
-    statusText = state.autoUpdate === false
+    statusText = manual
       ? t('ui.updateAutoOffPending', { version: state.latest })
       : t('ui.updateInProgress', { version: state.latest });
   }
+  // 事实行：运行中 / 最新 / 上次检查时间。最后一项是这一轮新加的 —— 状态文件里一直记着它，
+  // 界面却不显示，用户没法确认「它到底有没有在干活」（用户第三轮的原问题就是「实现了吗」）。
+  const facts = [
+    t('ui.versionRunning', { version: shown(state.runningVersion) }),
+    t('ui.versionLatest', { version: shown(state.latest) }),
+  ];
+  const checkedAt = bibSetRelativeTime(state.lastCheckAt);
+  if (checkedAt) facts.push(t('ui.versionLastCheck', { time: checkedAt }));
   return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
     bibSetCardHeader({
       static: true,
@@ -1931,39 +1980,51 @@ function bibSetVersionSection(props) {
       description: t('ui.versionAndUpdateDesc'),
     }),
     React.createElement('div', { className: 'bib-set-data-actions' },
+      // ① 状态：结论在上（大字），事实在下（小字）。
       React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
-          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.versionRunning', { version: shown(state.runningVersion) })),
-          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.versionLatest', { version: shown(state.latest) })))),
-      React.createElement('div', { className: 'bib-set-data-row' },
+          React.createElement('p', { className: 'bib-set-data-title' }, statusText),
+          React.createElement('p', { className: 'bib-set-data-desc' }, disabled
+            ? t('ui.versionRunning', { version: shown(state.runningVersion) }) + ' · ' + t('ui.updateDisabledWhy')
+            : facts.join(' · ')))),
+      // 失败原因单独一行讲人话：代号由 host 归一（历史数据里的原始报错同样能被翻译成代号）。
+      state.lastError && !disabled ? React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-desc' }, updateErrorText(state.lastErrorKind || state.lastError)))) : null,
+      // ② 更新方式：这一块唯一的设置项。说明跟着选中项走，不再把两种方式的说明并排摊开成一段话。
+      // 当前环境不支持自更新时整块不渲染：摆出用不了的控件，只会让人以为是自己点错了地方。
+      disabled ? null : React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
           React.createElement('p', { className: 'bib-set-data-title' }, t('ui.autoUpdateTitle')),
-          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.autoUpdateDesc'))),
+          React.createElement('p', { className: 'bib-set-data-desc' }, manual ? t('ui.updateModeManualDesc') : t('ui.updateModeAutoDesc'))),
         // 更新方式用两段式选择而不是开关：用户拍板「全自动更新 / 手动更新」是二选一，不是开与关。
         // 组件复用订阅窗口方向的两段式（同一套几何与对比度），必须以 createElement 创建（内部有 hooks）。
         React.createElement('div', { className: 'bib-set-data-button-group' },
           React.createElement(bibSetQuotaMode, {
             label: t('ui.autoUpdateTitle'),
-            value: state.autoUpdate === false ? 'manual' : 'auto',
+            value: manual ? 'manual' : 'auto',
             // 取值归一必须显式给出：控件默认按「订阅窗口方向」归一，会把 auto/manual 折成 remaining，
             // 结果是两个子项都没选中（2026-09-25 由 tests/test-quota-display-mode.cjs 抓出）。
             normalize: function (value) { return value === 'manual' ? 'manual' : 'auto'; },
             onSelect: function (value) {
-              if (state.disabled === true || busy) return;
+              if (busy) return;
               props.onToggleAuto(value !== 'manual');
             },
             options: [
               { value: 'auto', label: t('ui.updateModeAuto') },
               { value: 'manual', label: t('ui.updateModeManual') },
             ],
-          }))),
-      React.createElement('div', { className: 'bib-set-data-row' },
+          }),
+          // 「检查更新」只在手动方式下出现（2026-09-25 第三轮拍板「按需出现」）：全自动时它做的是
+          // 已经做完的事，点下去反而会重新下载一遍。
+          manual ? bibSetButton({ disabled: busy, onClick: props.onCheck, children: busy ? t('ui.updateChecking') : t('ui.updateCheckNow') }) : null)),
+      // ③ 兜底：平时不占位；出现时先说清为什么会出现，再给按钮。
+      showFallback ? React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
-          React.createElement('p', { className: 'bib-set-data-desc' }, statusText)),
+          React.createElement('p', { className: 'bib-set-data-desc' }, canRollback ? t('ui.updateFallbackWhy') : t('ui.updateHoldWhy'))),
         React.createElement('div', { className: 'bib-set-data-button-group' },
-          bibSetButton({ disabled: busy, onClick: props.onCheck, children: busy ? t('ui.updateChecking') : t('ui.updateCheckNow') }),
-          held ? bibSetButton({ disabled: busy, onClick: props.onForce, children: t('ui.updateAllowHeld', { version: state.holdVersion }) }) : null,
-          canRollback ? bibSetButton({ disabled: busy, onClick: props.onRollback, children: t('ui.updateRollback') }) : null))));
+          canRollback ? bibSetButton({ disabled: busy, onClick: props.onRollback, children: t('ui.updateRollback') }) : null,
+          held ? bibSetButton({ disabled: busy, onClick: props.onForce, children: t('ui.updateAllowHeld', { version: state.holdVersion }) }) : null)) : null));
 }
 
 function bibSetDataCard(props) {
@@ -3578,7 +3639,7 @@ module.exports = {
          trailingErrorGroups.push(fieldSpan('updateFailure', 'updatefailed', React.createElement('span', {
            key: 'updateFailureBadge',
            className: 'bi-update-badge bi-update-badge--error',
-           title: t('ui.updateFailed', { error: String(updateStatus.lastError) }),
+           title: t('ui.updateFailed') + ' · ' + updateErrorText(updateStatus.lastErrorKind || updateStatus.lastError),
            onClick: function (event) { event.stopPropagation(); },
            onKeyDown: function (event) { event.stopPropagation(); },
          }, t('ui.updateFailedBadge'))));
