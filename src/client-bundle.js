@@ -559,6 +559,14 @@ function installStyles() {
          该标签可点击（点击即复制更新命令），但只用手型光标作提示——不加下划线、不改颜色，
          保持「告警」而非「链接」的语义（test-update-check 有「无下划线」的专项断言）。 */
       .bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }
+      /* 自更新状态短标记：只在「已下载待重启」或「上次自动更新失败」时出现，重启/修复后自动消失。
+         与 .bi-update（新版可用、点击复制更新命令）区分：它不需要用户点击，所以用默认光标 +
+         1px currentColor 描边成胶囊，明确「这是状态标签，不是可点链接」。
+         反色铁律：只描边、不加背景色，文字仍落在信息栏自身底色上（与 .bi-err 同色同底），
+         不引入任何新的前景/背景配对，明暗主题都沿用既有已验证的对比度。 */
+      .bi-update-badge{ margin-left: 6px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-weight: 600; color: var(--bi-state-alert); cursor: default; }
+      /* 失败态比「待重启」（可预期的正常流程）更需要被看见：同色加到 700，靠字重分层而非换颜色。 */
+      .bi-update-badge--error{ font-weight: 700; }
       /* 视觉能力是模型属性，不是告警：电光蓝实色、白字；高度收紧到字形范围内，避免压过同一行文字。 */
       /* 服务商、圆点、视觉胶囊在同一 20px flex 行内居中，避免混用文字基线造成上下漂移。 */
       .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: 20px; vertical-align: top; }
@@ -655,7 +663,8 @@ function contextOccupancy(pressure) {
   return { percent: percent, usedTokens: usedTokens, contextWindow: contextWindow };
 }
 
-// 与原生的 formatTokens 同规则；K/M 缩写交给 common 命名空间的本地化模板（插件字典缺失时自然回落英文）。
+// 与原生的 formatTokens 同规则；K/M 缩写走 number.thousand / number.million，
+// 字典里带了一份与宿主 common 命名空间同值的兜底（缺键时界面会直接显示键名）。
 function contextTokenText(value) {
   const scaled = function (candidate) { return candidate >= 100 ? String(Math.round(candidate)) : String(Math.round(candidate * 10) / 10); };
   if (value < 1e3) return String(value);
@@ -824,6 +833,10 @@ const BIB_SET_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 // 字段分组由 constants.js 注入，保持宿主白名单、信息栏和设置页一致。
 const FIELD_GROUP_ORDER = /*__FIELD_GROUP_ORDER__*/[];
 const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
+// 三组的分工说明（2026-09-25 用户拍板新增第三组「提醒信息」）：只在这里给「整组一句」，
+// 不在每个字段上重复解释 —— 字段行的小字继续只讲「什么条件下会出现」。
+// 这一句也是唯一说明「开关与显示模式的关系」的地方，不另设模式开关。
+const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' };
 function bibSetDispatchChanged() {
   // 设置页保存成功后广播：信息栏监听并立即重拉配置（宿主内存缓存，即回）
   try { document.dispatchEvent(new CustomEvent(BIB_SET_EVENT)); } catch (err) { /* 事件总线不可用时静默：30s 周期校准兜底 */ }
@@ -1010,8 +1023,10 @@ function bibSetInstallStyles() {
       .bib-set-field-list { gap: var(--bib-group-gap); }
       .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }
       .bib-set-group--expanded { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.03)); }
-      .bib-set-group-head { display: block; min-width: 0; }
-      .bib-set-group-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
+      .bib-set-group-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
+      /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
+      .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-field-hint-size); font-weight: 400; line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); }
       .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 48px; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
       .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
       .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
@@ -1620,9 +1635,11 @@ function bibSetFieldGroups(props) {
     // 搜索无命中的组整组不渲染（空状态由上层统一给出）
     if (props.searchActive && visibleFields.length === 0) continue;
     const groupLabel = FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group;
-    // 组卡只保留名称与明确的动作；状态数字和分类说明会增加阅读负担。
+    // 组卡只保留名称、分工说明与明确的动作；状态数字会增加阅读负担。
+    const descKey = FIELD_GROUP_DESC_KEYS[group];
     const title = React.createElement('span', { className: 'bib-set-group-head' },
-      React.createElement('span', { className: 'bib-set-group-label' }, groupLabel));
+      React.createElement('span', { className: 'bib-set-group-label' }, groupLabel),
+      descKey ? React.createElement('span', { className: 'bib-set-group-desc' }, t(descKey)) : null);
     groups.push(React.createElement(bibSetDisclosure, {
       key: 'g-' + group,
       title: title,
@@ -1711,8 +1728,11 @@ function bibSetCustomTextSection(props) {
           t('ui.customTextCount', { value: props.customTextOf().length })))));
 }
 
-// ===== 订阅窗口百分比方向（v1.16，quotaDisplayMode）=====
-// 两段式分段控件：role=radiogroup + 子项 role=radio + aria-checked + roving tabindex，
+// ===== 插件设置页的通用两段式分段控件 =====
+// 最初只服务「订阅窗口百分比方向」（quotaDisplayMode），2026-09-25 起也服务「更新方式」
+// （全自动更新 / 手动更新），因此取值归一改为可注入：默认仍是 normalizeQuotaDisplayMode，
+// 别的用途必须显式传 normalize —— 否则非余额方向的值会被归一成 remaining，出现「两项都没选中」。
+// role=radiogroup + 子项 role=radio + aria-checked + roving tabindex，
 // 方向键 / Home / End 键盘可达（与色板圆点同一套交互约定）。
 // 选中态：background: var(--bib-set-brand-strong)（#4a63e8 同色相深档 × #fff = 4.95:1，
 // 满足 AGENTS.md 对比度铁律 4.5:1 主句；#4d6bfe 实测只有 4.33:1 达不到）+ #fff + font-weight:600，
@@ -1723,7 +1743,8 @@ function bibSetQuotaMode(props) {
     { value: 'remaining', label: t('ui.quotaDisplayRemaining') },
     { value: 'used', label: t('ui.quotaDisplayUsed') },
   ];
-  const current = normalizeQuotaDisplayMode(props.value);
+  const normalize = typeof props.normalize === 'function' ? props.normalize : normalizeQuotaDisplayMode;
+  const current = normalize(props.value);
   const refs = React.useRef({});
   const select = function (value) { if (props.onSelect) props.onSelect(value); };
   const moveTo = function (value) {
@@ -1843,6 +1864,90 @@ function downloadUsageExport(format, payload) {
   }
 }
 
+// ---------- 版本与更新（2026-09-25 自更新体系）----------
+// 宿主插件管理没有「更新」动作，插件自己把新版替到包内（见 src/self-update.js 与
+// docs/DECISIONS-AUTO-UPDATE.md）。这里只把进度讲清楚，并在失败时给人工兜底。
+// 「运行中版本」与「磁盘版本」是两个概念：替换完成后磁盘已是新版、内存里仍跑旧代码，
+// 所以要明确提示重启，而不是把版本号一改了事。
+// 轮询定时器：极简宿主 / 测试桩可能不提供 window 定时器。缺了就退化为「不轮询」——
+// 设置页仍能手动点「检查更新」，绝不因为缺一个定时器把整页打崩（与上面 document 的守卫同源）。
+function bibSetPollingStart(fn, ms) {
+  if (typeof window === 'undefined' || typeof window.setInterval !== 'function') return null;
+  return window.setInterval(fn, ms);
+}
+function bibSetPollingStop(id) {
+  if (id === null || typeof window === 'undefined' || typeof window.clearInterval !== 'function') return;
+  window.clearInterval(id);
+}
+function bibSetVersionSection(props) {
+  const state = props.state;
+  if (!state) return null;
+  const busy = props.busy === true;
+  const shown = function (value) { return typeof value === 'string' && value.length > 0 ? value : t('ui.versionUnknown'); };
+  // 方向由 host 判定（见 getUpdateState）：update = 磁盘已是新版待重启；rollback = 用户回滚过、
+  // 磁盘比运行版本旧，同样只有重启才生效，但说法必须不同，否则用户会以为自己在跑新版。
+  const restartDirection = state.restartDirection === 'update' || state.restartDirection === 'rollback'
+    ? state.restartDirection : null;
+  // 回滚按钮在「刚替换完（含已重启）」或「有失败」时都给出 —— 它正是新版出问题时唯一的逃生门，
+  // 不能因为重启过一次就消失（pendingVersion 会保留到下次成功更新或回滚为止）。
+  const canRollback = !!state.pendingVersion || restartDirection !== null || !!state.lastError;
+  // 回滚过的版本被暂缓：默认不再装回来，需要用户显式点「允许更新」才会覆盖。
+  const held = typeof state.holdVersion === 'string' && state.holdVersion.length > 0
+    && state.holdVersion === state.latest;
+  let statusText = t('ui.updateUpToDate');
+  if (state.disabled === true) statusText = t('ui.updateDisabled');
+  else if (restartDirection === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
+  else if (restartDirection === 'rollback') statusText = t('ui.updateRolledBack', { version: shown(state.diskVersion) });
+  else if (state.lastError) statusText = t('ui.updateFailed', { error: String(state.lastError) });
+  else if (held) statusText = t('ui.updateHeld', { version: state.holdVersion });
+  else if (state.available === true && typeof state.latest === 'string') {
+    statusText = state.autoUpdate === false
+      ? t('ui.updateAutoOffPending', { version: state.latest })
+      : t('ui.updateInProgress', { version: state.latest });
+  }
+  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-version-title',
+      title: t('ui.versionAndUpdateTitle'),
+      description: t('ui.versionAndUpdateDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-data-actions' },
+      React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.versionRunning', { version: shown(state.runningVersion) })),
+          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.versionLatest', { version: shown(state.latest) })))),
+      React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-title' }, t('ui.autoUpdateTitle')),
+          React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.autoUpdateDesc'))),
+        // 更新方式用两段式选择而不是开关：用户拍板「全自动更新 / 手动更新」是二选一，不是开与关。
+        // 组件复用订阅窗口方向的两段式（同一套几何与对比度），必须以 createElement 创建（内部有 hooks）。
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          React.createElement(bibSetQuotaMode, {
+            label: t('ui.autoUpdateTitle'),
+            value: state.autoUpdate === false ? 'manual' : 'auto',
+            // 取值归一必须显式给出：控件默认按「订阅窗口方向」归一，会把 auto/manual 折成 remaining，
+            // 结果是两个子项都没选中（2026-09-25 由 tests/test-quota-display-mode.cjs 抓出）。
+            normalize: function (value) { return value === 'manual' ? 'manual' : 'auto'; },
+            onSelect: function (value) {
+              if (state.disabled === true || busy) return;
+              props.onToggleAuto(value !== 'manual');
+            },
+            options: [
+              { value: 'auto', label: t('ui.updateModeAuto') },
+              { value: 'manual', label: t('ui.updateModeManual') },
+            ],
+          }))),
+      React.createElement('div', { className: 'bib-set-data-row' },
+        React.createElement('div', { className: 'bib-set-data-copy' },
+          React.createElement('p', { className: 'bib-set-data-desc' }, statusText)),
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          bibSetButton({ disabled: busy, onClick: props.onCheck, children: busy ? t('ui.updateChecking') : t('ui.updateCheckNow') }),
+          held ? bibSetButton({ disabled: busy, onClick: props.onForce, children: t('ui.updateAllowHeld', { version: state.holdVersion }) }) : null,
+          canRollback ? bibSetButton({ disabled: busy, onClick: props.onRollback, children: t('ui.updateRollback') }) : null))));
+}
+
 function bibSetDataCard(props) {
   const disabled = props.busy === true;
   return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-data-title' },
@@ -1896,7 +2001,9 @@ function InfoBarSettingsSection() {
     });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });
+  // 三个分组各自独立折叠。默认展开「插件信息」与「提醒信息」：提醒是用户要单独掌控的一组，
+  // 藏在折叠里等于没有入口；「原生信息」默认折叠（多数人只在完整模式才需要看它）。
+  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
@@ -1926,6 +2033,51 @@ function InfoBarSettingsSection() {
     });
     return function () { active = false; };
   }, []);
+
+  // ---------- 版本与更新（自更新体系）----------
+  // 与设置快照分开维护：后台自动更新是异步发生的（启动后延迟触发），状态会自己变，
+  // 所以单独拉取并定期跟随，用户不必手动刷新页面。
+  const [updateState, setUpdateState] = React.useState(null);
+  const [updateBusy, setUpdateBusy] = React.useState(false);
+  React.useEffect(function () {
+    let active = true;
+    function load() {
+      rpc('getUpdateState').then(function (res) {
+        if (!active) return;
+        if (res && typeof res === 'object') setUpdateState(res);
+      }).catch(function () { /* 读不到更新状态不影响设置页其余部分 */ });
+    }
+    load();
+    const timer = bibSetPollingStart(load, 15000);
+    return function () { active = false; bibSetPollingStop(timer); };
+  }, []);
+  function runUpdateAction(factory) {
+    setUpdateBusy(true);
+    return factory().then(function (res) {
+      setUpdateBusy(false);
+      if (res && typeof res === 'object') setUpdateState(function (prev) { return Object.assign({}, prev || {}, res); });
+      return res;
+    }).catch(function (err) {
+      setUpdateBusy(false);
+      setOpError({ text: function () { return t('ui.couldNotSave', { errorPrefix: t('ui.versionAndUpdateTitle'), value: hostText(bibSetOperationMessage(err)) }); } });
+    });
+  }
+  function onToggleUpdateAuto(next) {
+    const enabled = next !== false;
+    setUpdateState(function (prev) { return prev ? Object.assign({}, prev, { autoUpdate: enabled }) : prev; });
+    runUpdateAction(function () { return rpc('setUpdateAuto', { enabled: enabled }); });
+  }
+  function onCheckUpdate() {
+    runUpdateAction(function () { return rpc('runUpdateCheck'); });
+  }
+  // 「允许更新到 X」：用户回滚过的版本默认不再装回来（引擎侧 holdVersion），
+  // 只有这个显式动作才解除暂缓 —— 逃生门不能被自动流程悄悄重新打开。
+  function onForceUpdate() {
+    runUpdateAction(function () { return rpc('runUpdateCheck', { force: true }); });
+  }
+  function onRollbackUpdate() {
+    runUpdateAction(function () { return rpc('rollbackUpdate'); });
+  }
 
   const beginOp = React.useCallback(function () {
     savingCountRef.current += 1;
@@ -2265,7 +2417,7 @@ function InfoBarSettingsSection() {
               onChange: function (e) {
                 const value = e && e.target ? e.target.value : '';
                 setSearchQuery(value);
-                if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });
+                if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true, notice: true });
               },
               'aria-label': t('ui.searchFieldsLabel') || 'Search visible content'
             })),
@@ -2309,6 +2461,14 @@ function InfoBarSettingsSection() {
       onModeChange: setQuotaDisplayMode,
     }),
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
+    bibSetVersionSection({
+      state: updateState,
+      busy: updateBusy,
+      onToggleAuto: onToggleUpdateAuto,
+      onCheck: onCheckUpdate,
+      onForce: onForceUpdate,
+      onRollback: onRollbackUpdate,
+    }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
     resetDialog);
   } catch (err) {
@@ -3365,8 +3525,35 @@ module.exports = {
         }, snapshotOnly ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved'))));
       }
 
-       // 新版本是低频维护事件，不是这次对话的状态。桌面客户端也不能可靠执行
-       // Web/终端安装命令，因此这里不再塞入“更新”标签或复制命令。
+       // 新版本是低频维护事件，不是这次对话的状态。桌面客户端也不能可靠执行 Web/终端安装命令，
+       // 因此这里不塞更新命令，只在两种真正需要用户动作的情况下给一个短标记：
+       // ① 新版已下载、等重启激活；② 上次自动更新失败。升级重启后标记自动消失，平时不占位。
+       // 插件没有「打开设置页」的能力（client 仅 inject slots / locale），所以标记只作提示，
+       // 点击一律拦在本地 —— 否则会冒泡到根节点，把简洁/完整模式切走。
+       // 两条标记各自挂在「提醒信息」组里的独立开关上（2026-09-25 用户拍板）：
+       // updateNotice = 有新版本 / 待重启；updateFailure = 自动更新失败。
+       // 开关只管「出现还是不出现」，与当前是简洁模式还是完整模式无关 —— 主行两种模式都可见。
+       const updateStatus = updateInfo && updateInfo.updateStatus ? updateInfo.updateStatus : null;
+       const restartVersion = updateInfo && updateInfo.pendingRestart === true ? updateInfo.diskVersion : null;
+       const updateFailed = !!(updateStatus && updateStatus.lastError);
+       if (restartVersion && fieldVisible('updateNotice')) {
+         trailingErrorGroups.push(fieldSpan('updateNotice', 'updatebadge', React.createElement('span', {
+           key: 'updateBadge',
+           className: 'bi-update-badge',
+           title: t('ui.updatePendingRestart', { version: restartVersion }),
+           onClick: function (event) { event.stopPropagation(); },
+           onKeyDown: function (event) { event.stopPropagation(); },
+         }, t('ui.updateRestartBadge'))));
+       }
+       if (updateFailed && fieldVisible('updateFailure')) {
+         trailingErrorGroups.push(fieldSpan('updateFailure', 'updatefailed', React.createElement('span', {
+           key: 'updateFailureBadge',
+           className: 'bi-update-badge bi-update-badge--error',
+           title: t('ui.updateFailed', { error: String(updateStatus.lastError) }),
+           onClick: function (event) { event.stopPropagation(); },
+           onKeyDown: function (event) { event.stopPropagation(); },
+         }, t('ui.updateFailedBadge'))));
+       }
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);

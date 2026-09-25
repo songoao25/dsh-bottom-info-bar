@@ -34,9 +34,14 @@ check('原生统计行隐藏组不占版式（visCount 门控分隔符）', clie
   && clientSrc.includes("key: 'nsep' + i, className: 'bi-sep'"), true);
 check('本会话花费过滤在公共小部件内部（余额制/订阅制共用）', clientSrc.includes("if (fieldVisible('sessionCost')) {")
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
-check('所有可见信息都由字段开关控制；更新提醒不进信息栏', !clientSrc.includes('const CORE_FIELD_IDS = new Set')
+check('所有可见信息都由字段开关控制（含更新两枚短标记，没有任何绕过开关的节点）',
+  !clientSrc.includes('const CORE_FIELD_IDS = new Set')
   && clientSrc.includes("fieldVisible('refreshFailure')") && clientSrc.includes("fieldVisible('persistWarning')")
-  && !clientSrc.includes("fieldSpan('updateNotice'"), true);
+  // 2026-09-25：更新提醒 / 更新失败提醒进入信息栏，但各自挂在「提醒信息」组的独立开关上，
+  // 且必须走 fieldSpan（着色体系）而不是裸节点 —— 否则关掉开关也藏不住。断言钉死两条门控。
+  && clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
+  && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  && clientSrc.includes("fieldSpan('updateNotice',"), true);
 
 // ---------- ② 默认配置渲染与旧版一致（未知/缺省一律显示） ----------
 check('fieldVisible 未知/缺省 id 一律显示（!== false）', clientSrc.includes('return fieldConfig.fields[id] !== false;'), true);
@@ -78,18 +83,25 @@ check('每个字段含 id/label/group/modes/colorKind', FIELD_REGISTRY.every((f)
   && ['inherit', 'alert', 'period', 'provider', 'muted', 'meter'].includes(f.colorKind)), true);
 check('modes 只用约定枚举', FIELD_REGISTRY.every((f) => f.modes.every((m) => ['balance', 'subscription', 'billing', 'native', 'common'].includes(m))), true);
 check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.anchor === true).map((f) => f.id).join(',') === 'anchorGroup,subServiceGroup,billingServiceGroup', true);
-check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice']
+check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure']
   .every((id) => FIELD_REGISTRY.find((f) => f.id === id).suggestKeep === true), true);
 check('注册表无 defaultHidden 语义（默认值全部=显示，由宿主测试锁定）', FIELD_REGISTRY.every((f) => f.defaultHidden !== true), true);
-check('每个会渲染的注册字段都在信息栏渲染层被引用（更新提醒只保留为兼容配置）', FIELD_REGISTRY.filter((f) => f.id !== 'updateNotice').every((f) => clientSrc.includes("'" + f.id + "'")), true);
+check('每个会渲染的注册字段都在信息栏渲染层被引用', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
-check('D6 分组：仅「原生信息/插件信息」两类且原生在前', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
-  && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息', true);
-check('D6 分组：原生组恰 6 个 DeepSeek 原生标签（含接管过来的上下文圆环）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
+check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定（提醒信息在最后）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin', 'notice'])
+  && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息'
+  && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
+check('分组：原生组恰 6 个 DeepSeek 原生标签（含接管过来的上下文圆环）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO,contextUsage', true);
-check('D6 分组：其余 26 个全部归入插件组', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 26
-  && FIELD_REGISTRY.every((f) => f.group === 'native' || f.group === 'plugin'), true);
+check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
+  === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);
+check('分组：插件组 19 条（原 26 条减去迁出的 7 条提醒），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 19
+  && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
+check('分组：三组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
+  ['group.native.desc', 'group.plugin.desc', 'group.notice.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
+  && t('group.native.desc').includes('完整模式')
+  && clientSrc.includes('const FIELD_GROUP_DESC_KEYS = { native: '), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
@@ -159,15 +171,15 @@ check('图标两边都取不到时退回 CSS 箭头（.bib-set-chevron-glyph，�
   clientSrc.includes(": React.createElement('span', { className: 'bib-set-chevron-glyph' });")
   && clientSrc.includes('.bib-set-chevron-glyph { display: block; width: 6px; height: 6px;')
   && clientSrc.includes('.bib-set-chevron[data-expanded="true"] .bib-set-chevron-glyph { transform: rotate(225deg); }'), true);
-// 插件信息默认展开，原生统计按需展开；搜索时两组自动展开。分组使用原生 button
+// 插件信息与提醒信息默认展开，原生统计按需展开；搜索时三组自动展开。分组使用原生 button
 // 语义和 DSH 行令牌，而非紧凑流程行 DisclosureRow（它在没有图标时不显示收起态提示）。
 check('字段设置直接可见，组内仍有明确箭头与键盘语义，搜索自动展开', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
   const disclosure = extractFunctionFrom(clientSrc, 'bibSetDisclosure');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });')
     && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
-    && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true });')
+    && clientSrc.includes('if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true, notice: true });')
     && body.includes('groupOpenOf: function (group) { return groupOpen && groupOpen[group] === true; }')
     && clientSrc.includes('React.createElement(bibSetDisclosure, {')
     && clientSrc.includes('open: props.groupOpenOf(group),')
@@ -239,7 +251,7 @@ check('折叠头部（分组）使用原生 button 语义，避免 div role=butt
 })(), true);
 check('折叠切换可见性：字段分组按原状态展示，且不触发宿主 WebView 的零高 grid 动画', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
-  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true });')
+  return clientSrc.includes('const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });')
     && !clientSrc.includes('const [advancedOpen, setAdvancedOpen]')
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
@@ -812,9 +824,10 @@ function withFakeDocument(run) {
     clientSrc.indexOf('infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible)') !== -1
     && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
-  check('D6：构建产物含注入的两级分组常量（设置页渲染不落空）', (function () {
+  check('D6：构建产物含注入的三组分组常量（设置页渲染不落空）', (function () {
     const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
-    return lib.indexOf("['native', 'plugin']") !== -1 && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"');
+    return lib.indexOf("['native', 'plugin', 'notice']") !== -1
+      && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"') && lib.includes('notice: "group.notice"');
   })(), true);
   check('310防复发：含 React hooks 的组件 bibSetPalette 必须以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
     clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1 && clientSrc.indexOf('bibSetPalette({') === -1, true);

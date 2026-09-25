@@ -17,7 +17,14 @@ function check(name, condition, detail) {
 
 // ---------- ① 客户端静态断言 ----------
 const client = readFileSync(join(root, 'src/client-bundle.js'), 'utf8')
-check('客户端不把更新作为信息栏标签', !client.includes("fieldSpan('updateNotice'"))
+// 2026-09-25：标记改为两枚（待重启 / 更新失败），各自受「提醒信息」组开关约束；
+// 「有新版本可复制命令」的旧标签仍然不许回来 —— 桌面端执行不了那些命令。
+check(
+  '客户端只在待重启 / 更新失败时给短标记，不回到「有新版就挂标签」',
+  client.includes("if (restartVersion && fieldVisible('updateNotice'))")
+  && client.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  && !client.includes('updateInfo.available && fieldVisible')
+)
 check('客户端不复制可能失效的更新命令', !client.includes('copyTextToClipboard') && !client.includes('setUpdateCopied'))
 
 // ---------- ② 文案：不再引导用户点击标签复制命令 ----------
@@ -316,7 +323,7 @@ check(
 // ---------- ④ 提醒自愈：本地副本更新完，available 必须自己变 false ----------
 const pkgDir = mkdtempSync(join(tmpdir(), 'bib-pkg-'))
 mkdirSync(join(pkgDir, 'src'), { recursive: true })
-for (const file of ['host.js', 'constants.js', 'host-locale.js', 'locales.js']) {
+for (const file of ['host.js', 'constants.js', 'host-locale.js', 'locales.js', 'self-update.js']) {
   copyFileSync(join(root, 'src', file), join(pkgDir, 'src', file))
 }
 const setInstalledVersion = (version) => writeFileSync(

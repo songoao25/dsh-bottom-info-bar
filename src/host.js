@@ -6,12 +6,15 @@
 // DSH_BOTTOM_INFO_BAR_DATA_DIR 覆盖目录），重启/中断后真实累计花费不丢失。
 // 订阅额度：本插件只读令牌（~/.codex/auth.json / opencode auth.json）查询额度、仅作显示；
 // 令牌的绑定/续期/写回由独立插件 dsh-chatgpt-subscription 维护，本插件不写回、不续期、不注入凭据。
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 // v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
 import { FIELD_REGISTRY, PRESET_COLOR_NAMES } from './constants.js'
+// 自更新引擎（宿主没有「更新」动作，插件自己更新自己；见 docs/DECISIONS-AUTO-UPDATE.md）
+import { createSelfUpdater } from './self-update.js'
 import * as hostLocale from './host-locale.js'
 const t = hostLocale.createHostTranslator()
 
@@ -51,6 +54,8 @@ const BEIJING_OFFSET_MS = 8 * 3600 * 1000
 // recordAccount 为 null 的“无主记录”在桶/会话索引里的键（accountForProvider 永不返回空串，无碰撞）
 const NULL_ACCOUNT_KEY = ''
 const PACKAGE_FILE = new URL('../package.json', import.meta.url)
+// 包根目录：自更新的目标边界（写文件一律经 resolveSafePath 限定在它之内）
+const PACKAGE_DIR = dirname(fileURLToPath(PACKAGE_FILE))
 const UPDATE_REGISTRY_URL = 'https://registry.npmjs.org/dsh-bottom-info-bar/latest'
 const UPDATE_CHECK_TIMEOUT_MS = 5000
 
@@ -66,6 +71,19 @@ function packageVersion() {
 function stableVersion(value) {
   const match = typeof value === 'string' && value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/)
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+
+// 自更新只在「本包确实被当作 profile 插件装载」时启用：
+//   · 真实安装 → <DSH_HOME>/profiles/<profile>/node_modules/<包名>（实体目录）；
+//   · link: 安装 → 该路径是软链，解析后落在用户自己的代码仓库里 —— 自更新会改写用户的工作副本，
+//     必须跳过（那类安装的更新方式是 git pull / 一键脚本，见 linkUpdateCommandFor）。
+// 这条判定同时挡住开发与测试环境（直接在仓库里跑），是比环境变量更根本的一道安全阀。
+function isLoadedAsProfilePlugin() {
+  try {
+    const real = realpathSync(PACKAGE_DIR)
+    const profilesRoot = join(dshHomeDir(), 'profiles') + sep
+    return real.startsWith(profilesRoot)
+  } catch { return false }
 }
 
 function compareVersions(left, right) {
@@ -1641,6 +1659,52 @@ export default {
     const windowLabels = { five_hour: t('host.hour'), seven_day: t('ui.weekly'), monthly: t('ui.monthly') };
     // 预热一次 npm 版本查询（失败不影响信息栏）；此后由 latestVersion() 按 TTL 自行重查。
     latestVersion()
+
+    // ---------- 自更新（2026-09-25 用户拍板：一键自更新 + 全自动，除重启）----------
+    // 宿主插件管理只有「安装 / 卸载 / 启用 / 停用」，没有「更新」，对已安装的包再填同一地址会被
+    // inspect 以 already-installed 拦下 —— 用户侧原本唯一路径是「卸载 → 重装」。本插件零运行时依赖，
+    // 因此「更新」只需替换包内自己的文件。五条硬边界见 src/self-update.js 顶部与决策文档。
+    // 启动后延迟触发，避开宿主启动高峰；任何失败只记状态，绝不打断信息栏。
+    // 环境变量 DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off 可整体禁用（测试隔离用，见 tests/run-all.mjs）；
+    // 另外只有「确实被当作 profile 插件装载」时才启用（见 isLoadedAsProfilePlugin：开发副本与
+    // link: 安装天然排除，后者自更新会改写用户的工作副本）。
+    const SELF_UPDATE_ENABLED = process.env.DSH_BOTTOM_INFO_BAR_SELF_UPDATE !== 'off' && isLoadedAsProfilePlugin()
+    const SELF_UPDATE_DELAY_MS = 8000
+    let selfUpdater = null
+    if (SELF_UPDATE_ENABLED) {
+      selfUpdater = createSelfUpdater({
+        packageDir: PACKAGE_DIR,
+        dataDir: DATA_DIR,
+        runningVersion: packageVersion(),
+        log: function (message) { try { console.warn('[dsh-bottom-info-bar] ' + message) } catch (err) { /* 日志失败无害 */ } },
+      })
+      selfUpdater.loadState()
+      // 定时器随插件生命周期清理：宿主 ctx 提供 effect；桩 ctx / 老宿主没有时退回直接挂定时器
+      // （unref 保证不会拖住进程退出）。读 ctx.effect 一律包在 try 里 —— cordis 4 的 Context 是
+      // Proxy，某些形态下读未声明的属性会抛 "without inject"，这一点本仓库已踩过三次。
+      const scheduleSelfUpdate = function () {
+        const timer = setTimeout(function () {
+          selfUpdater.run().catch(function () { /* 状态已落盘，无需上抛 */ })
+        }, SELF_UPDATE_DELAY_MS)
+        if (timer && typeof timer.unref === 'function') timer.unref()
+        return function () { clearTimeout(timer) }
+      }
+      try {
+        if (typeof ctx.effect === 'function') ctx.effect(scheduleSelfUpdate, 'dsh-bottom-info-bar: self update')
+        else scheduleSelfUpdate()
+      } catch (err) {
+        try { scheduleSelfUpdate() } catch (err2) { /* 定时器都挂不上就放弃自动更新，信息栏照常 */ }
+      }
+    }
+    // 自更新被禁用（测试隔离或用户显式关闭）时，RPC 仍要给出结构完整的只读状态，绝不让 UI 崩。
+    function selfUpdateState() {
+      if (selfUpdater) return selfUpdater.getState()
+      const current = packageVersion()
+      return {
+        autoUpdate: false, pendingVersion: null, updatedAt: null, lastError: null, lastCheckAt: null,
+        runningVersion: current, diskVersion: current, updated: false, disabled: true,
+      }
+    }
     // 会话谱系列表是冷安全读取，但仍可能触发持久化查询；短暂缓存避免信息栏轮询
     // 每次都重新扫描全部会话。缓存失效时再次读取，保证新建子代理最终能被纳入。
     const SESSION_LINEAGE_CACHE_MS = 1000
@@ -4491,11 +4555,64 @@ export default {
         // 命令按安装形态区分，避免把 link: 安装的用户引导到 npm 命令而丢掉本地代码。
         const latest = await latestVersion()
         const current = packageVersion()
+        const state = selfUpdateState()
         return Object.assign({}, updateCommandForInstall(), {
           current: current,
           latest: latest,
           available: !!latest && compareVersions(latest, current) > 0,
+          // 自更新（2026-09-25）：disk 已被替换成新版、而内存里仍跑旧代码时，UI 要提示重启。
+          // running 与 current(disk) 必须分开，否则「已更新待重启」的提示会自己消失。
+          // 判据是「两者不等」而不是「disk 更高」：回滚之后 disk 低于 running，同样只有重启才生效。
+          // 任一侧解析不出数字时 compareVersions 返回 0 → 不提示（安全方向）。
+          running: state.runningVersion,
+          diskVersion: current,
+          pendingRestart: compareVersions(current, state.runningVersion) !== 0,
+          autoUpdate: state.autoUpdate,
+          holdVersion: state.holdVersion || null,
+          updateStatus: state,
         })
+      },
+      // 设置页「版本与更新」区读的完整状态：运行中版本 / 磁盘版本 / 最新版本 / 更新进度 / 开关
+      getUpdateState: async function () {
+        const latest = await latestVersion()
+        const current = packageVersion()
+        const state = selfUpdateState()
+        // 方向由 host 判定（客户端不做版本比较）：'update' 说明磁盘已是新版、'rollback' 说明用户
+        // 回滚过、磁盘比运行版本旧，两者都只有重启才生效，但文案要分开。
+        const delta = compareVersions(current, state.runningVersion)
+        return Object.assign({}, state, {
+          latest: latest,
+          diskVersion: current,
+          available: !!latest && compareVersions(latest, current) > 0,
+          pendingRestart: delta !== 0,
+          restartDirection: delta > 0 ? 'update' : (delta < 0 ? 'rollback' : null),
+        })
+      },
+      // 手动检查：自动流程失败或用户想立刻确认时用。会真正执行下载与替换。
+      // force=true 表示「我明确要装这个版本」——用于解除回滚后的暂缓（holdVersion）。
+      runUpdateCheck: async function (args) {
+        if (!selfUpdater) return selfUpdateState()
+        const force = !!(args && typeof args === 'object' && args.force === true)
+        const state = await selfUpdater.run({ manual: true, force: force })
+        if (state && typeof state.latest === 'string') {
+          updateLatestCache.value = state.latest
+          updateLatestCache.expiresAt = Date.now() + updateLatestTtlMs()
+        }
+        return Object.assign({}, state, {
+          diskVersion: packageVersion(),
+          available: !!state.latest && compareVersions(state.latest, packageVersion()) > 0,
+        })
+      },
+      // 自动更新开关（默认开）。关闭后只检查不下载，保护不愿让插件自动改文件的用户。
+      setUpdateAuto: async function (args) {
+        if (!selfUpdater) return selfUpdateState()
+        const enabled = !(args && args.enabled === false)
+        return selfUpdater.setAutoUpdate(enabled)
+      },
+      // 回滚到最近一次更新的备份（新版启动异常时的人工兜底）
+      rollbackUpdate: async function () {
+        if (!selfUpdater) return { restored: false, reason: 'disabled' }
+        return selfUpdater.rollback()
       },
       getBalanceSnapshot: async function (args) {
         const sel = selectionFromArgs(args);
@@ -4775,7 +4892,8 @@ export default {
     };
     // 会写入或触发网络请求的方法必须使用 POST；浏览器和桌面端的认证/防重绑定由宿主
     // connection 服务统一完成，插件不能根据 Origin/Host 自行判断。
-    const MUTATING = { getBalanceSnapshot: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true };
+    // runUpdateCheck / setUpdateAuto / rollbackUpdate 会下载并替换包内文件，必须 POST
+    const MUTATING = { getBalanceSnapshot: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true, runUpdateCheck: true, setUpdateAuto: true, rollbackUpdate: true };
     function invalidArgument(message) {
       const err = new Error(message);
       err.status = 400;

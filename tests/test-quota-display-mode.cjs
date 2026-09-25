@@ -484,12 +484,23 @@ async function createSettingsHarness(handle) {
   const radiosOf = function (tree) {
     return nodes(tree).filter(function (n) { return n.props && n.props.role === 'radio' && String(n.props.className).indexOf('bib-set-quota-mode-opt') === 0; });
   };
+  // 2026-09-25：设置页出现第二个同款两段式控件（更新方式：全自动 / 手动），
+  // 两者共用 .bib-set-quota-mode-opt 类名，所以按文案把「方向」这一个单独取出来断言，
+  // 否则 radiosOf 会同时数到另一组，direction 的序号断言全部错位。
+  const quotaRadiosOf = function (tree) {
+    const labels = [t('ui.quotaDisplayRemaining'), t('ui.quotaDisplayUsed')];
+    return radiosOf(tree).filter(function (n) { return labels.indexOf(textOf(n.props.children)) !== -1; });
+  };
+  const updateRadiosOf = function (tree) {
+    const labels = [t('ui.updateModeAuto'), t('ui.updateModeManual')];
+    return radiosOf(tree).filter(function (n) { return labels.indexOf(textOf(n.props.children)) !== -1; });
+  };
   const textOf = function (tree) {
     if (Array.isArray(tree)) return tree.map(textOf).join('');
     if (tree === null || tree === undefined || typeof tree === 'boolean') return '';
     return typeof tree === 'object' ? textOf(tree.props.children) : String(tree);
   };
-  return { render: render, runEffects: runEffects, requests: requests, radiosOf: radiosOf, nodes: nodes, textOf: textOf };
+  return { render: render, runEffects: runEffects, requests: requests, radiosOf: radiosOf, quotaRadiosOf: quotaRadiosOf, updateRadiosOf: updateRadiosOf, nodes: nodes, textOf: textOf };
 }
 
 async function bootHarness(handle) {
@@ -508,8 +519,9 @@ const okHarness = await bootHarness(function (method, args) {
   if (method === 'setFieldConfig') return jsonOk(Object.assign({}, CONFIG_FIXTURE, { quotaDisplayMode: args.quotaDisplayMode, configVersion: 2, persisted: true }));
   return jsonOk({});
 });
-check('⑥ 设置页加载后渲染出分段控件（两个 radio）', okHarness.harness.radiosOf(okHarness.tree).length, 2);
-check('⑥ 初始方向 remaining（缺字段回退）→ 第一项选中', okHarness.harness.radiosOf(okHarness.tree)[0].props['aria-checked'], true);
+check('⑥ 设置页加载后渲染出分段控件（方向 2 项 + 更新方式 2 项 = 4 个 radio）', okHarness.harness.radiosOf(okHarness.tree).length, 4);
+check('⑥ 方向控件恰 2 项（不受同款更新方式控件干扰）', okHarness.harness.quotaRadiosOf(okHarness.tree).length, 2);
+check('⑥ 初始方向 remaining（缺字段回退）→ 第一项选中', okHarness.harness.quotaRadiosOf(okHarness.tree)[0].props['aria-checked'], true);
 check('⑥ getFieldConfig 读取时归一（响应里的方向字段被 normalize）', clientSrc.includes('quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode)'), true);
 check('⑥ 提交复用既有 commit()：只有一个 setFieldConfig 调用点（不新写一套）', (clientSrc.match(/rpc\('setFieldConfig'/g) || []).length, 1);
 check('⑥ patch 形状固定为 { quotaDisplayMode }（不夹带其它字段）', (function () {
@@ -528,16 +540,16 @@ check('⑥ 保存成功后由 applyServerResult 回写快照并保留旧宿主�
 })(), true);
 {
   const before = okHarness.harness.requests.length;
-  okHarness.harness.radiosOf(okHarness.tree)[1].props.onClick(); // 选「已用」
-  const optimistic = okHarness.harness.radiosOf(okHarness.harness.render());
+  okHarness.harness.quotaRadiosOf(okHarness.tree)[1].props.onClick(); // 选「已用」
+  const optimistic = okHarness.harness.quotaRadiosOf(okHarness.harness.render());
   check('⑥ 乐观更新：点击后未等响应即切换选中态', optimistic[1].props['aria-checked'] === true && optimistic[0].props['aria-checked'] === false, true);
   const writes = okHarness.harness.requests.slice(before).filter(function (r) { return r.method === 'setFieldConfig'; });
   check('⑥ patch 携带 quotaDisplayMode=used（RPC 真实收到）', JSON.stringify(writes.map(function (r) { return r.args; })), '[{"quotaDisplayMode":"used"}]');
   await flush();
-  const settled = okHarness.harness.radiosOf(okHarness.harness.render());
+  const settled = okHarness.harness.quotaRadiosOf(okHarness.harness.render());
   check('⑥ 成功后保持 used（服务端回写 configVersion 生效）', settled[1].props['aria-checked'], true);
   const countAfterSuccess = okHarness.harness.requests.filter(function (r) { return r.method === 'setFieldConfig'; }).length;
-  okHarness.harness.radiosOf(okHarness.harness.render())[1].props.onClick(); // 再点已选中项
+  okHarness.harness.quotaRadiosOf(okHarness.harness.render())[1].props.onClick(); // 再点已选中项
   await flush();
   check('⑥ 点击已选中项不重复发请求（幂等短路）', okHarness.harness.requests.filter(function (r) { return r.method === 'setFieldConfig'; }).length, countAfterSuccess);
 }
@@ -549,17 +561,54 @@ const failHarness = await bootHarness(function (method, args) {
 });
 {
   const before = failHarness.harness.requests.length;
-  failHarness.harness.radiosOf(failHarness.tree)[1].props.onClick();
-  const optimistic = failHarness.harness.radiosOf(failHarness.harness.render());
+  failHarness.harness.quotaRadiosOf(failHarness.tree)[1].props.onClick();
+  const optimistic = failHarness.harness.quotaRadiosOf(failHarness.harness.render());
   check('⑥ 失败路径：先乐观切到 used', optimistic[1].props['aria-checked'], true);
   await flush();
   const reverted = failHarness.harness.render();
-  const radios = failHarness.harness.radiosOf(reverted);
+  const radios = failHarness.harness.quotaRadiosOf(reverted);
   check('⑥ 失败回滚：方向退回 remaining（不留下未保存状态）', radios[0].props['aria-checked'] === true && radios[1].props['aria-checked'] === false, true);
   check('⑥ 失败路径确实发出了请求（回滚不是「压根没提交」的假象）', failHarness.harness.requests.slice(before).filter(function (r) { return r.method === 'setFieldConfig'; }).length, 1);
   const alerts = failHarness.harness.nodes(reverted).filter(function (n) { return n.props && n.props.role === 'alert'; }).map(failHarness.harness.textOf);
   check('⑥ 失败提示可见：含字段名与错误原因（' + JSON.stringify(alerts) + '）',
     alerts.some(function (text) { return text.indexOf(t('ui.quotaDisplayModeTitle')) !== -1 && text.indexOf('Offline') !== -1; }), true);
+}
+
+// ---------- ⑥b 更新方式：同款两段式（全自动 / 手动）+ 检查更新按钮（2026-09-25 用户拍板） ----------
+{
+  const tree = okHarness.tree;
+  const updateRadios = okHarness.harness.updateRadiosOf(tree);
+  check('⑥b 更新方式恰 2 项：全自动更新 / 手动更新', updateRadios.map(okHarness.harness.textOf).join('|'),
+    [t('ui.updateModeAuto'), t('ui.updateModeManual')].join('|'));
+  check('⑥b 默认全自动（autoUpdate 缺省即视为开）→ 第一项选中', updateRadios[0].props['aria-checked'], true);
+  check('⑥b 两个子项都是原生 button（不是裸 div role=radio）', updateRadios.every(function (n) { return n.type === 'button'; }), true);
+  check('⑥b 复用同一套分段控件几何（bib-set-quota-mode 容器）', okHarness.harness.nodes(tree).some(function (n) {
+    return n.props && typeof n.props.className === 'string' && n.props.className.indexOf('bib-set-quota-mode') === 0
+      && n.props.role === 'radiogroup' && n.props['aria-label'] === t('ui.autoUpdateTitle');
+  }), true);
+  check('⑥b 取值归一显式注入（否则 auto/manual 被方向归一折成 remaining，两项都选不中）',
+    clientSrc.includes("normalize: function (value) { return value === 'manual' ? 'manual' : 'auto'; }")
+    && clientSrc.includes('const normalize = typeof props.normalize === \'function\' ? props.normalize : normalizeQuotaDisplayMode;'), true);
+  check('⑥b 源码里更新方式以 createElement 创建（组件含 hooks，裸调用会 React #310）',
+    clientSrc.indexOf('React.createElement(bibSetQuotaMode, {') !== -1 && clientSrc.includes('value: state.autoUpdate === false ? \'manual\' : \'auto\''), true);
+  check('⑥b 选中手动 → 发 setUpdateAuto enabled=false（开关只表示开与关，与显示模式无关）', (function () {
+    const before = okHarness.harness.requests.length;
+    okHarness.harness.updateRadiosOf(okHarness.harness.render())[1].props.onClick();
+    const writes = okHarness.harness.requests.slice(before).filter(function (r) { return r.method === 'setUpdateAuto'; });
+    return JSON.stringify(writes.map(function (r) { return r.args; })) === '[{"enabled":false}]';
+  })(), true);
+  await flush(); // 等 setUpdateAuto 的响应落地：忙碌态解除后「检查更新」才会恢复成可点文案
+  check('⑥b 检查更新按钮存在且走 runUpdateCheck（不是复制命令、不执行子进程）', (function () {
+    const before = okHarness.harness.requests.length;
+    const node = okHarness.harness.nodes(okHarness.harness.render()).filter(function (n) {
+      return n.type === 'button' && okHarness.harness.textOf(n) === t('ui.updateCheckNow');
+    })[0];
+    if (!node) return false;
+    node.props.onClick();
+    const sent = okHarness.harness.requests.slice(before).filter(function (r) { return r.method === 'runUpdateCheck'; });
+    // 不带 force：手动检查不等于「解除回滚暂缓」，否则用户点一次检查就会把回滚过的版本装回来。
+    return sent.length === 1 && !sent[0].args.force;
+  })(), true);
 }
 
 // ---------- ⑦ MiniMax 展示名 + 构建产物接线 ----------

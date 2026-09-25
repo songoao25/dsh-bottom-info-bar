@@ -54,7 +54,7 @@ process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH = join(dataDir, 'absent-comman
 // 默认路径下若产物缺失/陈旧则先重建（与 run-all.mjs 同一约定）；BIB_E2E_*_MODULE 覆盖时绝不重建。
 const LIB_HOST = join(ROOT, 'lib', 'index.js')
 const LIB_CLIENT = join(ROOT, 'lib', 'client.js')
-const SRC_FILES = ['host.js', 'constants.js', 'client-bundle.js', 'locales.js', 'host-locale.js']
+const SRC_FILES = ['host.js', 'constants.js', 'client-bundle.js', 'locales.js', 'host-locale.js', 'self-update.js']
   .map((f) => join(ROOT, 'src', f))
 function libIsStale() {
   if (!existsSync(LIB_HOST) || !existsSync(LIB_CLIENT)) return true

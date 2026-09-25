@@ -61,7 +61,12 @@ check('client 卸载时清理定时器与监听（不留悬挂副作用）',
 check('client 无论是否有更新都保存当前插件版本', client.includes("typeof info.current === 'string') setUpdateInfo(info)"))
 check('余额制服务商/模型 hover 显示当前插件版本', client.includes("t('ui.pluginVersion', { current: updateInfo.current })"))
 check('余额/订阅/账单制 hover 均显示当前插件版本（≥2 处）', (client.match(/t\('ui\.pluginVersion', \{ current: updateInfo\.current \}\)/g) || []).length >= 2)
-check('client 不把新版本作为聊天信息栏标签', !client.includes("fieldSpan('updateNotice'"))
+// 2026-09-25 用户拍板：信息栏只保留两枚「需要用户动作」的短标记（待重启 / 更新失败），
+// 且各自挂在「提醒信息」组自己的开关上。仍然不许出现「有新版就常驻红字」式的版本标签。
+check('client 只给待重启 / 更新失败两枚短标记，且都受独立开关约束', client.includes("if (restartVersion && fieldVisible('updateNotice'))")
+  && client.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  && client.includes("fieldSpan('updateNotice',") && client.includes("fieldSpan('updateFailure',")
+  && !client.includes("updateInfo.available && fieldVisible"))
 check('client 不再引导复制更新命令', !client.includes('copyTextToClipboard') && !client.includes('updateCommandCopied'))
 // host 侧连「探测 git 仓库状态」都不许开子进程（v1.14.3）：更新命令只被复制、绝不执行，
 // 探测只读文件系统完成。锁死这条，避免以后有人图省事改成 spawnSync('git', …)。

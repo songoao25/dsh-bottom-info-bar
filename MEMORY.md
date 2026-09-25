@@ -14,7 +14,50 @@
 - **对外回复一律「真诚、克制、简约、去 AI 味儿」**（用户 2026-09-24 明确要求）：issue 回复、社区通知、给用户的说明都适用。不镜像用户的话——禁止「你说得对」「确实如此」「你怎么怎么样」这类附和；不连续肯定或赞美用户，不堆感谢与客套。写法参照业界开发者：先把事实和结论说清，再给可执行的动作，其余不写。
 - **默认直接发布（用户 2026-09-24 明确要求）**：修好即发布，不再等用户回一句「发」。Agent 在测试与真机验证全绿后，用自己的 token 合并发布 PR，并核验 npm 上架（`npm view <包名> version` + `dist-tags`）；发布 PR 仍被 auto-merge 排除（防止静默自动合并 —— v2.0.0 事故的成因），这道闸门只是技术性保留，不再需要人确认。
 - **每次收工默认动作（2026-09-23 用户明确要求）**：把工作分支经 PR 流水线合并进 main；删除全部本地与远端功能分支（squash 合并导致提交号对不上时，用 `git cherry main <分支>` 核对补丁等价性，对不上的抽查文件级内容确认已被主线覆盖再删）；本地 main 快进到最新；工作区不留未提交改动。全仓库只保留 main 一个分支。
+- **发布后必须同步本机装载点，并把这次同步留档（2026-09-25 用户明确要求，硬性）**：每次发布完成后，除了同步仓库，**必须**确认本机 DSH 实际加载的插件已经是新版本，并把「查到了什么、装在哪、是哪个版本、怎么同步的」写进本次发布复盘（见下方 2026-09-25 v1.18.1 条目）。**关键前提：本机安装形态会变，禁止凭历史记忆假设。** 历史上先后出现过两种形态 —— ① `web` profile + `link:` 软链到本仓库（此时重建 `lib/` 即生效，无需重装）；② `desktop` profile + `pnpm` 从 GitHub 拉取的**独立快照**（此时仓库更新**完全不影响**本机，必须重新安装）。每次都必须重新探测：`~/.dsh/profiles/` 下有哪些 profile、`<profile>/node_modules/<包名>` 是软链还是实体目录、其 `package.json` 版本号是多少。**只更新仓库而不同步本机 = 本机跑的是旧代码**，用户会看到「刚发布完，自己这里却没变」。
 - 本文件的规则本身只能由**用户**决定修改，Agent 不得自行放宽或绕过。
+
+---
+
+## 2026-09-25（自更新体系 · **代码完成，尚未发布**）
+
+### 插件自己更新自己 + 设置页拆成三组（feat，待发）
+
+> **状态：源码与 `lib/` 已改完并同步；最后一次能执行测试时全量绿。但本次会话的 shell 全部失效（见文末「阻塞」），提交 / PR / 发布 / 本机同步都还没做。接手时先跑测试再谈发布。**
+
+- 用户需求原话：「插件是没有更新入口的，没有实现更新。你都没有设计好，你要设计好体系的，我们插件怎么去更新，到底怎么做？」——宿主（DSH）插件管理**只有** install / remove / enable / disable，**没有更新动作**；桌面端也没有 `dsh` CLI；重装同一地址会被 `already-installed` 拦下。用户唯一路径是「卸载 → 重装」，而他认为「太蠢了」。完整事实核查、硬边界与验收标准见 **`docs/DECISIONS-AUTO-UPDATE.md`**（决策原文照录，务必读它，不要凭本条目复述）。
+- **引擎**：新增 `src/self-update.js`（零依赖，手写 tar/ustar + pax 解析、sha512 integrity 校验、临时文件 + rename 原子替换、失败整批回滚、`update-state.json` / `update-log.jsonl` 落盘、备份保留若干份）。宿主侧新增 4 个 RPC：`getUpdateState` / `runUpdateCheck` / `setUpdateAuto` / `rollbackUpdate`，并全部声明为变更方法（POST + 同源）。装载形态闸门 `isLoadedAsProfilePlugin()`：只在插件真被装进 `<profile>/node_modules` 时才启用自更新（仓库副本 / `link:` 安装天然关闭），测试再叠一层 `DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off` 隔离。
+- **用户第二轮拍板（2026-09-25，设置页结构）**：
+  1. 更新方式改成**二选一**——「全自动更新」/「手动更新」，另配「检查更新」按钮（不再是一个开关）；
+  2. **明确否决**在设置页新增「简洁模式 / 完整模式」开关（模式仍只由点击信息栏底行切换，设置页只在字段小字与分组说明里讲清模式归属）；
+  3. 新增**第三个列表「提醒信息」**，与「原生信息」「插件信息」同款折叠组件，收录全部 8 条提醒类字段，每条独立开关。
+- **设置页结构改动**：`FIELD_GROUP_ORDER` 由 `['native','plugin']` 变 `['native','plugin','notice']`；7 条提醒字段（`unmapped` / `noKeyHint` / `balanceError` / `usageError` / `refreshFailure` / `persistWarning` / `updateNotice`）从 `plugin` 组迁出，并新增 `updateFailure`，`plugin` 组剩 19 条、`notice` 组 8 条、`native` 组 6 条（共 33）。三组各有一条分工说明（`group.*.desc`，客户端 `FIELD_GROUP_DESC_KEYS` 渲染）；原生组 6 条字段的 note 统一补「只在完整模式出现」。
+- **信息栏**：两枚短标记（`重启生效` / `更新失败`）挂在信息栏主行，**只受 `fieldVisible('updateNotice')` / `fieldVisible('updateFailure')` 门控**——与简洁/完整模式完全无关（用户拍板「开关与模式不冲突」）。标记只作提示，客户端插件只 `inject: ['slots','locale']`，**没有打开设置页的能力**，所以点击一律 `stopPropagation`；早期决策稿里「点击可跳设置页」是错的，已在 `docs/DECISIONS-AUTO-UPDATE.md` 更正。
+- **两个真 bug（新写的单测抓出来的，别改回去）**：
+  1. 引擎「远端版本不更高」分支原本会清空 `pendingVersion`。而 `pendingVersion` 同时是「刚替换的版本」和「回滚时找备份的唯一线索」——清掉后，用户重启追平版本、再想回滚时逃生门已经被焊死（`rollback()` 返回 `nothing-to-roll-back`）。现在该分支绝不抹 `pendingVersion`，「待重启」由 UI 用 disk/running 差值判定。
+  2. 回滚之后重启，8 秒后的自动检查会把刚被回滚掉的版本**又装回来**。现在引入 `holdVersion`：回滚过的版本默认暂缓，只有用户在设置页点「允许更新到 X」（`runUpdateCheck` 带 `force`）才解除。
+- **两个漏键（会把键名当文案显示给用户）**：`ui.updateHeld` / `ui.updateAllowHeld` 在代码里被引用、字典里却没有。已补中英双语，并新增守卫锁住「代码引用的版本与更新族键 + 注册表每个 label/note 键 + 三组标题键」必须在字典里（`tests/test-locale-copy.mjs` 的 3b 段）。**注意：该守卫目前只覆盖版本与更新族，没有全量扫 `client-bundle.js` 的每个 `t('…')`；等能跑测试时先把全量扫描放开。**
+- **分段控件复用踩坑**：更新方式复用了「订阅窗口方向」的两段式控件 `bibSetQuotaMode`，而它内部用 `normalizeQuotaDisplayMode()` 归一取值——`auto`/`manual` 会被折成 `remaining`，结果是**两项都没选中**。修法是给该组件加可注入的 `normalize`（默认仍是方向归一），并在文档与注释里写明「换用途必须显式传」。这条是 `tests/test-quota-display-mode.cjs` 的渲染级断言抓出来的。
+- **测试同步**：`test-field-config-client.cjs`（分组由两类改三类、提醒组 8 条、插件组 19 条、`groupOpen` 默认加 `notice: true`、搜索三组全展开、构建产物断言）、`test-quota-display-mode.cjs`（设置页现在有 4 个 radio：方向 2 + 更新方式 2；新增 `quotaRadiosOf` / `updateRadiosOf` 按文案分流，并新增 ⑥b 段 7 条断言）、`test-density-toggle.cjs`（原「新版本提醒不进信息栏」反转为「只受开关控制、与模式无关」）、`test-update-check.cjs` + `test-update-command.mjs`（同上反转）、`test-locale-copy.mjs`（新增 3b 漏键守卫）、`tests/run-all.mjs`（测试期关掉自更新）。
+- **阻塞（接手第一件事）**：本次会话后期 shell 全部失效——任何命令（含 `echo ok`、`true`、`git`、`node`）都返回 `sandbox-exec: data object length 66959 exceeds maximum (65535)`，`dangerouslyDisableSandbox` 与后台执行都无效；`Grep`（ripgrep）同样走沙箱，也失效，只剩 Read / Write / Edit 可用。因此以下都**未执行**：最后一次全量测试（改测试守卫之后没跑过）、`git add/commit/push`、开 PR、合并、`npm view` 核对上架、同步本机 desktop profile、写 `docs/ANNOUNCEMENTS.md` 通知稿。
+  - 恢复后的最短路径：`node scripts/build.mjs && node tests/run-all.mjs` → 全绿后以 `feat:` 提交（自更新属新功能，Release Please 会算次版本号）→ CI 绿后合并 → 合并 release PR（闸门仍会 SKIP 发布 PR 的自动合并）→ `npm view dsh-bottom-info-bar version dist-tags --json` 读回确认 → 按「发布后必须同步本机装载点」规则探测并同步本机 → 写 `docs/ANNOUNCEMENTS.md` → 把结果补写进本文件。
+
+---
+
+## 2026-09-25（v1.18.1）
+
+### 设置页回到字段式，撤销 v1.18.0 的密度选择器与显示偏好层（fix，PR #157）
+
+- 背景：v1.18.0（PR #154）把设置页改成「首屏选简洁/完整 + 完整模式里两个总内容开关」，同日决定改回原生风格的逐字段设置页，故以 `fix:` 提交回退（Release Please 因此算出 1.18.1）。**同一天出现方向相反的两个版本，对外通知务必说清当前真实样子，不要让用户以为两版能叠加。**
+- 回退内容（squash `cbb6cb2`）：① 删除设置页的「简洁 / 完整」分段选择器与 `bibSetFullModeContentSection`（accountDetails / conversationStats 两个总开关）；② host 侧删除 `displayPreferences` 整层（`DEFAULT_DISPLAY_PREFERENCES` / `normalizeDisplayPreferences` / `setFieldConfig` 的该字段白名单与校验）；③ `defaultFieldSettings()` 的 `infoDensity` 由 `'compact'` 改回 `'full'`（**新安装默认回到完整模式**）；④ `fieldVisible()` 恢复为只认 `fields[id] !== false`；字段分组过滤恢复为不过滤，插件信息分组首屏默认展开；⑤ 字段设置文案精简。测试同步 5 个文件（`test-field-settings` / `test-field-config-client` / `test-density-toggle` / `test-localization` / `smoke-static-host`），全量 600+ 断言绿。
+- **有意保留（未被回退）**：① 点击信息栏本身切换简洁 / 完整，`infoDensity` 仍持久化；② v1.18.0 的「新版本提醒与复制更新命令从信息栏移除」保留（`test-update-check` 的「client 不再引导复制更新命令」仍 PASS）。
+- 兼容性：旧 `settings.json` 里的 `displayPreferences` 键会被 `sanitizeSettings` 丢弃（不再读取），用户既有的逐字段开关不受影响、升级不会被改写。
+- 发布证据：本地全量测试全绿 + `scripts/build.mjs` 重建后 `git status` 无 diff（产物已同步）→ 发布 PR **#158** CI / CodeQL 绿、`enable-auto-merge` = **SKIPPED**（闸门只拦发布 PR，预期行为）→ 用 owner token 合并 → tag `v1.18.1` → Publish NPM success → 首次读回仍是 1.18.0，约 1 分钟后 `npm view` 读回 `latest = 1.18.1`（**registry 传播延迟是常态，不能拿 workflow success 当上架证据**）。
+- 收尾：本地 main 快进到发布提交 `51e488b`，`scripts/build.mjs` 重建 `lib/`（无改动）；删除本地 `fix/restore-field-settings`（`git branch -d` 报 not fully merged 属 squash 合并的必然现象 → 用 `git cherry main <分支>` 得 `- 22fc2ba` 证明补丁已在主线，SHA `22fc2ba4a56518a4b2ae2608a64ac30aa5071aa6` 留档后 `-D` 删除）；远端分支随 PR 合并已删。仓库只余 `main`，工作区干净。
+- **本机装载点实测（用户报「本地为什么没有更新到最新」后查证，2026-09-25 14:15）**：本机形态**已经变了**——2026-09-24 23:50 前后用户整体切到 **DSH 桌面客户端**，`~/.dsh/profiles/` 下**只剩 `desktop`**（历史文档里的 `web` profile 已不存在），插件不再是 `link:` 软链，而是 pnpm 按 `github:songoao25/dsh-bottom-info-bar` 拉下来的**独立快照**，`pnpm-lock.yaml` 把 commit 钉在 `a07433b`（= v1.18.0），实测装载版本 **1.18.0**，目录时间戳 13:01（桌面端自己更新过，并留有 `~/.dsh/desktop-plugin-update-backup.vjlBN6` 备份）。`~/code/deepseek-harness` 与 `dsh` CLI 均已不在本机 PATH。
+  - **结论**：旧铁律「重建 `lib/` 就同步了」**已失效**。仓库里的 git 操作对本机快照零影响，本机必须走桌面端插件更新入口（或对 profile 重跑 pnpm）才会变。这就是「仓库已是 1.18.1、本机仍是 1.18.0」的全部原因——**不是本地没同步，是本机另一份副本没重装**。
+  - **待办**：本机 desktop profile 需更新到 1.18.1（方式待用户确认：桌面端插件页点更新，或命令行对 profile 重跑 pnpm）。
+- **可复用经验（收尾判据）**：squash 合并项目里 `git branch -d` 的成功与否**不能**用来判断分支是否已合并；唯一可靠判据是 `git cherry` 的 `-` 前缀 + 文件级 diff 只余版本元数据。
 
 ---
 
