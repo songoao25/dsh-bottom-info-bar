@@ -100,4 +100,8 @@
 
   ⚠️ ③ 的前提**会变，禁止凭记忆假设**。历史上出现过两种形态：**`web` profile + `link:` 软链到本仓库**（此时 `git checkout main && git merge --ff-only origin/main` + `node scripts/build.mjs` 重建 `lib/` 即可生效）；**`desktop` profile + pnpm 从 GitHub 拉取的独立快照**（2026-09-24 起本机是这种，此时仓库里做什么都**不影响**本机，必须走桌面端插件更新入口重装）。每次发布后必须重新探测：`ls ~/.dsh/profiles/`（有哪些 profile）、`ls -ld ~/.dsh/profiles/*/node_modules/<包名>`（软链还是实体目录）、`node -p "require('<装载路径>/package.json').version"`（实际版本）。**只更新仓库而不同步本机 = 本机跑旧代码**，用户会看到「刚发布完，自己这里却没变」——2026-09-22 与 2026-09-25 用户两次报的都是这个。探测与同步结果一律写进本次发布复盘。
 
+  **同步 `desktop` 快照的正确命令（2026-09-25 实测可用）**：`cd ~/.dsh/profiles/desktop && env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar`。WorkBuddy 会通过 `NODE_OPTIONS=--require=…/node-language-shim.cjs` 注入 brokered-fs shim，pnpm 往 `~/Library/pnpm/store/v11/projects/` 建项目软链时会被 `EEXIST` 拒掉 —— **去掉 NODE_OPTIONS 即可**，不需要 `dangerouslyDisableSandbox`。改动前先 `cp -R node_modules/<包名> /tmp/<包名>-backup`，改完核对装载版本、lock 钉的提交、以及装载副本里是否真的含本次改动。
+
+  ⚠️ **发布 ≠ 本机生效，还差一次重启**：插件在宿主启动时组合，`lib/` 换了新内容但 DSH 进程仍在跑启动时载入的旧 host。此时 client bundle（从磁盘读）是新版、host（内存里）是旧版，会出现「设置页看着是新的、但新加的 RPC 全部 404」这种新旧混跑。判断运行中 host 是哪个版本的快速办法：看 `~/.dsh/dsh-bottom-info-bar/settings.json` 的字段集合——它由**运行中**的 `FIELD_REGISTRY` 生成，缺哪个新字段就说明 host 还是缺该字段的那一版。每次发布后都要提醒用户/自己重启 DSH。
+
 - **通知只给正文**（2026-09-13 用户明确要求）：把通知发给用户时，直接给那段可以粘贴的纯文本，**不要**加「以下可直接复制发群」「需要我调整语气吗」之类的包装说明、推荐或追问，也不要用 Markdown 加粗 / 标题 / 代码块（微信群不渲染 Markdown，用户要的是选中即贴的纯文本）。复盘与发版说明另起段落，不要混进通知正文。
