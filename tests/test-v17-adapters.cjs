@@ -305,7 +305,7 @@ check('client：账单型显示本月 $X', clientSrc.includes("metric(t('ui.this
 check('client：账单型显示预算 Y%', clientSrc.includes("metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')"), true);
 check('client：账单型不显示余额类字段（本会话也不显示）', !billFn.includes('余额 ') && !billFn.includes('本会话 '), true);
 check('client：JWT 到期卡片（到期 YYYY-MM-DD）', clientSrc.includes("metric(t('ui.expires'), formatDate(sub.expiryAt))"), true);
-check('client：JWT 套餐档位短名', clientSrc.includes('subscriptionPlanShort('), true);
+check('client：JWT 套餐档位只进 hover（模型位显示模型，不再被档位顶掉）', !clientSrc.includes('subscriptionPlanShort(') && clientSrc.includes('planLine'), true);
 check('client：BILLING_PROVIDERS 兜底注入', clientSrc.includes('BILLING_PROVIDERS.indexOf(activeSessionModel.provider)'), true);
 check('client：账单服务名映射', clientSrc.includes("return 'AWS Bedrock'") && clientSrc.includes("return 'Cloudflare'") && clientSrc.includes("return 'Together'"), true);
 check('client：订阅服务名含小米 MiMo', clientSrc.includes("return t('ui.xiaomiMiMo')"), true);

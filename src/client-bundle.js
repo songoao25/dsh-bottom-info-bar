@@ -845,6 +845,9 @@ const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
 // 不在每个字段上重复解释 —— 字段行的小字继续只讲「什么条件下会出现」。
 // 这一句也是唯一说明「开关与显示模式的关系」的地方，不另设模式开关。
 const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' };
+// 设置页小节（顺序 + 标题 + 一句话说明），构建时从 src/constants.js 注入。
+// 只有「插件信息」这一组有 section；native / notice 两个组本来就只有一块，不设小节。
+const FIELD_SECTIONS = /*__FIELD_SECTIONS__*/[];
 function bibSetDispatchChanged() {
   // 设置页保存成功后广播：信息栏监听并立即重拉配置（宿主内存缓存，即回）
   try { document.dispatchEvent(new CustomEvent(BIB_SET_EVENT)); } catch (err) { /* 事件总线不可用时静默：30s 周期校准兜底 */ }
@@ -857,6 +860,13 @@ function bibSetDispatchLedgerChanged() {
 
 function bibSetOperationMessage(err) {
   return String((err && err.message) || err || t('ui.pleaseTryAgainLater'));
+}
+
+// 「宿主还是旧版」的辨认（2026-09-26）：插件刚更新完、DSH 还没重启时，页面已经换上新版界面，
+// 而进程里跑的仍是旧 host —— 新增的动作接口在它那里不存在，路由回 404 unknown method。
+// 这个窗口真实存在（用户恰恰最爱在更新后立刻打开设置页），必须给一句人话而不是英文报错。
+function bibSetMissingMethod(err) {
+  return String((err && err.message) || err || '').indexOf('unknown method') >= 0;
 }
 
 // 设置页不需要显示滚动条轨道，但仍要保留滚轮、触控板和键盘滚动。
@@ -889,6 +899,48 @@ function bibSetHideHostScrollbars(root) {
       else entry.host.setAttribute(attr, entry.value);
     });
   };
+}
+
+// ---------- 更新动作的滚动位置保护（2026-09-26） ----------
+// 更新是一次「替换插件自己的包文件」的动作，宿主有可能因为包变了而重建插件页 ——
+// 用户看到的现象是「点完更新，插件的设置页直接滑到了屏幕最上端，没有停留在原地」（用户原报）。
+// 插件拦不住宿主重建页面，但可以在动作前记住偏移、动作完成后察觉「它被重置为 0」再还原。
+// 三条自我约束，防止变成抢用户的滚动条：
+//   ① 只在动作那一刻偏移确实 > 0 时才记（用户本来就在顶部就什么都不用做）；
+//   ② 只在 2 秒窗口内、且当前确实被重置为 0 时才还原（用户自己滑到顶部时目标值本来就是 0）；
+//   ③ 节点已脱离文档（页面真被重建过）时不再猜，直接放弃 —— 猜错会把用户弹到莫名其妙的位置。
+const BIB_SET_SCROLL_RESTORE_MS = 2000;
+let bibSetScrollRestore = null;
+
+// 与 bibSetHideHostScrollbars 同一套判定：设置页自身不滚动，真正的滚动层是宿主的某个祖先。
+function bibSetScrollHost(node) {
+  if (!node || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return null;
+  let parent = node;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    let computed = null;
+    try { computed = window.getComputedStyle(parent); } catch (err) { computed = null; }
+    const overflowY = computed && computed.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return parent;
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+function bibSetRememberScroll(root) {
+  bibSetScrollRestore = null;
+  const host = bibSetScrollHost(root);
+  if (!host || !(host.scrollTop > 0)) return;
+  bibSetScrollRestore = { host: host, top: host.scrollTop, expiresAt: Date.now() + BIB_SET_SCROLL_RESTORE_MS };
+}
+
+function bibSetRestoreScroll() {
+  const pending = bibSetScrollRestore;
+  if (!pending) return;
+  bibSetScrollRestore = null;
+  if (Date.now() > pending.expiresAt) return;
+  if (!pending.host.isConnected) return;
+  if (pending.host.scrollTop !== 0) return;
+  pending.host.scrollTop = pending.top;
 }
 
 // ---------- 插件配置页样式（融入 DSH 面板：卡片/行布局/控件全部走 --dsw-alias-* 令牌） ----------
@@ -1035,6 +1087,13 @@ function bibSetInstallStyles() {
       .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
       .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-field-hint-size); font-weight: 400; line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); }
+      /* 设置页小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
+         节标题比字段名重一级、比分组标题轻一级（14/500 → 13/600 → 13/400），节与节之间一条细线。 */
+      .bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+      .bib-set-subsection + .bib-set-subsection { border-top: var(--bib-rule); }
+      .bib-set-subsection-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 0 0; }
+      .bib-set-subsection-label { display: block; min-width: 0; font-size: 13px; font-weight: 600; line-height: 20px; color: var(--dsw-alias-label-primary); }
+      .bib-set-subsection-desc { display: block; min-width: 0; font-size: var(--bib-field-hint-size); font-weight: 400; line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); }
       .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 48px; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
       .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
       .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
@@ -1637,6 +1696,29 @@ function bibSetDisclosure(props) {
     }, React.createElement('div', { className: 'bib-set-collapse-inner' }, props.children)));
 }
 
+// 「插件信息」内部的小节分块：同一计费形态的字段放在一块，各自带标题与一句话说明。
+// 只做阅读分组 —— 不改变任何字段的显隐、顺序语义或信息栏位置（section 与 group 互不读写）。
+// 没有声明 section 的组（native / notice）原样返回，一个字节都不用改。
+function bibSetFieldBlocks(visibleFields, props) {
+  const rowsOf = function (fields) { return fields.map(function (field) { return bibSetFieldRow(field, props); }); };
+  if (!visibleFields.some(function (field) { return !!field.section; })) return rowsOf(visibleFields);
+  const known = FIELD_SECTIONS.map(function (section) { return section.id; });
+  const blocks = [];
+  for (const section of FIELD_SECTIONS) {
+    const sectionFields = visibleFields.filter(function (field) { return field.section === section.id; });
+    if (sectionFields.length === 0) continue;
+    blocks.push(React.createElement('div', { key: 's-' + section.id, className: 'bib-set-subsection' },
+      React.createElement('span', { className: 'bib-set-subsection-head' },
+        React.createElement('span', { className: 'bib-set-subsection-label' }, t(section.label)),
+        React.createElement('span', { className: 'bib-set-subsection-desc' }, t(section.desc))),
+      rowsOf(sectionFields)));
+  }
+  // 认不出小节的字段不能被悄悄丢掉（漏标由守卫测试拦，这里保证渲染不丢行），排在最后。
+  const orphans = visibleFields.filter(function (field) { return known.indexOf(field.section) === -1; });
+  if (orphans.length > 0) blocks.push(React.createElement('div', { key: 's-orphan', className: 'bib-set-subsection' }, rowsOf(orphans)));
+  return blocks;
+}
+
 function bibSetFieldGroups(props) {
   const groups = [];
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
@@ -1658,8 +1740,7 @@ function bibSetFieldGroups(props) {
       contentId: 'bib-set-group-' + group,
       open: props.groupOpenOf(group),
       onToggle: function () { props.onGroupToggle(group); },
-    }, React.createElement('div', { className: 'bib-set-body' },
-      visibleFields.map(function (field) { return bibSetFieldRow(field, props); }))));
+    }, React.createElement('div', { className: 'bib-set-body' }, bibSetFieldBlocks(visibleFields, props))));
   }
   return groups;
 }
@@ -1918,11 +1999,17 @@ function updateErrorText(kind) {
   return t(UPDATE_ERROR_COPY[kind] || 'ui.updateErrorUnknown');
 }
 // 设置页「版本与更新」区。三层结构（2026-09-25 第三轮用户拍板「分三层：状态—设置—兜底」）：
-//   ① 状态：一句结论 + 一行事实（运行中 / 最新 / 上次检查）—— 只读，不掺操作；
-//   ② 设置：唯一的决策项「更新方式」二选一，说明跟着选中项变，手动方式下旁边就是「检查更新」；
+//   ① 状态：一句结论 + 一行事实（运行中 / 最新 / 上次检查）+ 动作按钮（只看 / 只装）；
+//   ② 设置：唯一的决策项「更新方式」二选一，说明跟着选中项变；
 //   ③ 兜底：只在真需要处置时出现，并说明为什么会出现。
 // 为什么改成这样：三块内容性质不同（事实 / 决策 / 异常处置），原来平铺成三行掺在一起，
 // 同一套机制还在卡片说明、更新方式说明、状态行里讲了三遍 —— 用户原话「感觉就是乱加上去的」。
+//
+// 2026-09-26：按钮从「更新方式」行挪到状态行（结论旁边），并拆成两个语义 ——
+//   检查更新（只读：问一次 npm，绝不下载 / 不替换）与 更新到 X（唯一的写动作）。
+//   以前只有一个按钮，它落到引擎里走的是「检查 + 下载 + 替换」同一条流水线，于是点「检查更新」
+//   等于立即安装、设置页还会被弹回顶部（用户原话：「我刚刚的测试发现，点了一下检查更新，
+//   它就直接装好了」）。语义拆开之后，检查是纯读动作，按钮放在哪里都无害，也就不必再按方式隐藏。
 function bibSetVersionSection(props) {
   const state = props.state;
   // 【2026-09-25 血案】宿主进程还没加载到这一版插件代码时（典型场景：包文件已被替换成新版，
@@ -1945,6 +2032,9 @@ function bibSetVersionSection(props) {
             React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.versionUnavailable'))))));
   }
   const busy = props.busy === true;
+  // 进行中的动作（本地态）：只有它能让结论行说「正在更新到 X」。装的过程有好几秒，
+  // 不写清楚用户会以为按钮点漏了。
+  const phase = props.phase === 'check' || props.phase === 'install' ? props.phase : null;
   const disabled = state.disabled === true;
   // 「手动更新」= 自动下载关掉了。方向必须按 `=== false` 判定：任何非 false 的值都算全自动。
   const manual = state.autoUpdate === false;
@@ -1953,7 +2043,12 @@ function bibSetVersionSection(props) {
   // 磁盘比运行版本旧，同样只有重启才生效，但说法必须不同，否则用户会以为自己在跑新版。
   const restartDirection = state.restartDirection === 'update' || state.restartDirection === 'rollback'
     ? state.restartDirection : null;
-  // 回滚过的版本被暂缓：默认不再装回来，需要用户显式点「允许更新」才会覆盖。
+  const latest = typeof state.latest === 'string' && state.latest.length > 0 ? state.latest : null;
+  // 「有新版可装」由 host 判定（latest 严格高于磁盘版本）。没有确切版本号就不摆出装按钮 ——
+  // 文案里带不出版本号的按钮，等于让用户闭着眼睛点。
+  const available = state.available === true && latest !== null;
+  // 回滚过的版本被暂缓：默认不再装回来，需要用户显式点「允许更新到 X」才会覆盖。
+  // 此时不能再摆「更新到 X」（那次点击会被引擎的暂缓分支吃掉，界面看起来像没反应）。
   const held = typeof state.holdVersion === 'string' && state.holdVersion.length > 0
     && state.holdVersion === state.latest;
   // ③ 兜底的显示条件（2026-09-25 第三轮拍板「按需出现」）：
@@ -1963,19 +2058,17 @@ function bibSetVersionSection(props) {
   // 以及上次更新失败（lastError）。已经回滚过的（restartDirection === 'rollback'）不再显示 ——
   // 那时引擎侧的 pendingVersion 已清空，再点一次也没有可回滚的对象。
   const canRollback = restartDirection === 'update' || !!state.lastError;
-  const showFallback = canRollback || held;
+  const showFallback = !disabled && (canRollback || held);
+  const showInstall = !disabled && available && !held;
   // ① 状态层：先给结论，再把事实摆在下面
   let statusText = t('ui.updateUpToDate');
   if (disabled) statusText = t('ui.updateDisabled');
+  else if (busy && phase === 'install' && latest) statusText = t('ui.updateInstalling', { version: latest });
   else if (restartDirection === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
   else if (restartDirection === 'rollback') statusText = t('ui.updateRolledBack', { version: shown(state.diskVersion) });
   else if (state.lastError) statusText = t('ui.updateFailed');
   else if (held) statusText = t('ui.updateHeld', { version: state.holdVersion });
-  else if (state.available === true && typeof state.latest === 'string') {
-    statusText = manual
-      ? t('ui.updateAutoOffPending', { version: state.latest })
-      : t('ui.updateInProgress', { version: state.latest });
-  }
+  else if (available) statusText = t('ui.updateAvailableNow', { version: latest });
   // 事实行：运行中 / 最新 / 上次检查时间。最后一项是这一轮新加的 —— 状态文件里一直记着它，
   // 界面却不显示，用户没法确认「它到底有没有在干活」（用户第三轮的原问题就是「实现了吗」）。
   const facts = [
@@ -1984,6 +2077,22 @@ function bibSetVersionSection(props) {
   ];
   const checkedAt = bibSetRelativeTime(state.lastCheckAt);
   if (checkedAt) facts.push(t('ui.versionLastCheck', { time: checkedAt }));
+  // 动作按钮：两个动词分开就是这一轮的全部要点 ——
+  // 「检查更新」只问不装（纯读），「更新到 X」才装。全自动模式下同样给出「检查更新」：
+  // 它现在是无害的，而用户想立刻确认有没有新版时不必为此切换更新方式。
+  const actions = disabled ? null : React.createElement('div', { className: 'bib-set-data-button-group' },
+    bibSetButton({
+      disabled: busy,
+      onClick: props.onCheck,
+      children: busy && phase === 'check' ? t('ui.updateChecking') : t('ui.updateCheckNow'),
+    }),
+    showInstall ? bibSetButton({
+      disabled: busy,
+      onClick: props.onInstall,
+      children: busy && phase === 'install'
+        ? t('ui.updateInstalling', { version: latest })
+        : t('ui.updateInstallNow', { version: latest }),
+    }) : null);
   return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
     bibSetCardHeader({
       static: true,
@@ -1992,13 +2101,15 @@ function bibSetVersionSection(props) {
       description: t('ui.versionAndUpdateDesc'),
     }),
     React.createElement('div', { className: 'bib-set-data-actions' },
-      // ① 状态：结论在上（大字），事实在下（小字）。
+      // ① 状态：结论在上（大字），事实在下（小字）；按钮就贴在结论右侧 —— 结论与处置同一处，
+      // 不再让用户去「更新方式」那一行找按钮（那里是设置，不是动作）。
       React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
           React.createElement('p', { className: 'bib-set-data-title' }, statusText),
           React.createElement('p', { className: 'bib-set-data-desc' }, disabled
             ? t('ui.versionRunning', { version: shown(state.runningVersion) }) + ' · ' + t('ui.updateDisabledWhy')
-            : facts.join(' · ')))),
+            : facts.join(' · '))),
+        actions),
       // 失败原因单独一行讲人话：代号由 host 归一（历史数据里的原始报错同样能被翻译成代号）。
       state.lastError && !disabled ? React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
@@ -2026,10 +2137,7 @@ function bibSetVersionSection(props) {
               { value: 'auto', label: t('ui.updateModeAuto') },
               { value: 'manual', label: t('ui.updateModeManual') },
             ],
-          }),
-          // 「检查更新」只在手动方式下出现（2026-09-25 第三轮拍板「按需出现」）：全自动时它做的是
-          // 已经做完的事，点下去反而会重新下载一遍。
-          manual ? bibSetButton({ disabled: busy, onClick: props.onCheck, children: busy ? t('ui.updateChecking') : t('ui.updateCheckNow') }) : null)),
+          }))),
       // ③ 兜底：平时不占位；出现时先说清为什么会出现，再给按钮。
       showFallback ? React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
@@ -2080,6 +2188,8 @@ function InfoBarSettingsSection() {
   // 宿主滚动祖先只加“隐藏轨道”的标记，不改变其尺寸或 overflow，避免再次引入布局抖动。
   const useLayoutEffect = React.useLayoutEffect || React.useEffect;
   useLayoutEffect(function () {
+    // 页面若因更新被重建，这里是唯一能补回滚动位置的地方（记录存在模块作用域，跨重建存活）。
+    bibSetRestoreScroll();
     return bibSetHideHostScrollbars(settingsRootRef.current);
   }, []);
 
@@ -2132,52 +2242,87 @@ function InfoBarSettingsSection() {
   // 所以单独拉取并定期跟随，用户不必手动刷新页面。
   const [updateState, setUpdateState] = React.useState(null);
   const [updateBusy, setUpdateBusy] = React.useState(false);
+  // 正在跑的是哪个动作（'check' / 'install' / 'mode'）。结论行据此说「正在更新到 X」——
+  // 安装要好几秒，不写清楚用户会以为按钮点漏了。
+  const [updatePhase, setUpdatePhase] = React.useState(null);
   // 读不到更新状态时保留原因：不能只是静默不显示（见 bibSetVersionSection 顶部）。
   // 一旦成功读到过一次就清掉；此后的偶发失败沿用上一次的好状态，不打断已显示的版本信息。
   const [updateError, setUpdateError] = React.useState(null);
+  // 更新状态只有一个读入口（轮询与动作之后共用同一条），所以不存在「动作返回值 vs 轮询结果」
+  // 拼出来的半状态 —— 那种半状态会让结论行说谎：点完检查更新，界面还说「已是最新」，
+  // 要等最多 15 秒的下一次轮询才对上（2026-09-26 用户报的问题之一）。
+  function loadUpdateState() {
+    return rpc('getUpdateState').then(function (res) {
+      setUpdateError(null);
+      if (res && typeof res === 'object') setUpdateState(res);
+      return res;
+    }).catch(function (err) {
+      // 读不到更新状态不影响设置页其余部分
+      setUpdateError(String((err && err.message) || err || 'unknown'));
+      return null;
+    });
+  }
   React.useEffect(function () {
     let active = true;
-    function load() {
-      rpc('getUpdateState').then(function (res) {
-        if (!active) return;
-        setUpdateError(null);
-        if (res && typeof res === 'object') setUpdateState(res);
-      }).catch(function (err) {
-        if (!active) return;
-        // 读不到更新状态不影响设置页其余部分
-        setUpdateError(String((err && err.message) || err || 'unknown'));
-      });
-    }
+    function load() { if (active) loadUpdateState(); }
     load();
     const timer = bibSetPollingStart(load, 15000);
     return function () { active = false; bibSetPollingStop(timer); };
   }, []);
-  function runUpdateAction(factory) {
+  // 所有更新动作的统一通道：忙碌态 + 动作名 → 执行 → 重新读一次状态。
+  // 「重新读一次」是刻意的：动作的返回值可能与轮询到的状态形状不同，而界面只认一个形状。
+  function runUpdateAction(phase, factory) {
+    bibSetRememberScroll(settingsRootRef.current);
     setUpdateBusy(true);
+    setUpdatePhase(phase);
+    const settle = function () {
+      setUpdateBusy(false);
+      setUpdatePhase(null);
+    };
     return factory().then(function (res) {
-      setUpdateBusy(false);
-      if (res && typeof res === 'object') setUpdateState(function (prev) { return Object.assign({}, prev || {}, res); });
-      return res;
+      settle();
+      return loadUpdateState().then(function () {
+        bibSetRestoreScroll();
+        return res;
+      });
     }).catch(function (err) {
-      setUpdateBusy(false);
+      settle();
+      bibSetRestoreScroll();
+      // 新版界面 + 旧版宿主（更新后还没重启）：给一句能解释得通的话，而不是 unknown method: xxx。
+      if (bibSetMissingMethod(err)) {
+        setOpError({ text: function () { return t('ui.updateHostOutdated'); } });
+        return;
+      }
       setOpError({ text: function () { return t('ui.couldNotSave', { errorPrefix: t('ui.versionAndUpdateTitle'), value: hostText(bibSetOperationMessage(err)) }); } });
     });
   }
   function onToggleUpdateAuto(next) {
     const enabled = next !== false;
     setUpdateState(function (prev) { return prev ? Object.assign({}, prev, { autoUpdate: enabled }) : prev; });
-    runUpdateAction(function () { return rpc('setUpdateAuto', { enabled: enabled }); });
+    runUpdateAction('mode', function () { return rpc('setUpdateAuto', { enabled: enabled }); });
   }
+  // 「检查更新」= 只问不装。走 checkUpdate（宿主侧是纯读接口），绝不碰包文件。
   function onCheckUpdate() {
-    runUpdateAction(function () { return rpc('runUpdateCheck'); });
+    return runUpdateAction('check', function () { return rpc('checkUpdate'); });
+  }
+  // 「更新到 X」= 唯一的安装动作，只在真有可装的新版时出现。
+  function onInstallUpdate() {
+    return runUpdateAction('install', function () { return rpc('installUpdate'); });
   }
   // 「允许更新到 X」：用户回滚过的版本默认不再装回来（引擎侧 holdVersion），
   // 只有这个显式动作才解除暂缓 —— 逃生门不能被自动流程悄悄重新打开。
   function onForceUpdate() {
-    runUpdateAction(function () { return rpc('runUpdateCheck', { force: true }); });
+    return runUpdateAction('install', function () { return rpc('installUpdate', { force: true }); });
   }
   function onRollbackUpdate() {
-    runUpdateAction(function () { return rpc('rollbackUpdate'); });
+    // 回滚也是「替换包文件」，但结论行不能借用安装的文案（那会说成「正在更新到 X」）。
+    // 它的阶段名独立，结论行沿用回滚前的那句，动作完成后再由重读到的状态改写。
+    return runUpdateAction('rollback', function () { return rpc('rollbackUpdate'); }).then(function (res) {
+      // 回滚失败（没有备份 / 没有可回滚版本）必须说出来：点一下什么都没发生，用户只会以为坏了。
+      if (res && res.rollback && res.rollback.restored !== true) {
+        setOpError({ text: function () { return t('ui.updateRollbackFailed'); } });
+      }
+    });
   }
 
   const beginOp = React.useCallback(function () {
@@ -2566,8 +2711,10 @@ function InfoBarSettingsSection() {
       state: updateState,
       error: updateError,
       busy: updateBusy,
+      phase: updatePhase,
       onToggleAuto: onToggleUpdateAuto,
       onCheck: onCheckUpdate,
+      onInstall: onInstallUpdate,
       onForce: onForceUpdate,
       onRollback: onRollbackUpdate,
     }),
@@ -3165,14 +3312,6 @@ module.exports = {
         return t('ui.cloudBilling');
       }
 
-      // 套餐档位短名（JWT 订阅卡：plus/pro/team/enterprise → Plus/Pro/Team/Enterprise；未知返回 null 显示模型名）
-      function subscriptionPlanShort(planType) {
-        if (typeof planType !== 'string' || planType.length === 0) return null;
-        const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
-        const key = planType.toLowerCase();
-        return Object.hasOwn(map, key) ? map[key] : null;
-      }
-
       // 本地时区 YYYY-MM-DD（订阅到期日）
       function formatDate(ms) {
         if (ms == null || isNaN(ms)) return '—';
@@ -3181,22 +3320,23 @@ module.exports = {
         return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
       }
 
-      // 订阅制模型组：订阅服务名 · 具体模型（如 `OpenCode Go · V4 Flash`、`Codex · GPT 5 Codex`）
-      // v1.7 FR-8：codex 源有 JWT 套餐档位时，模型位显示套餐档位（如 `ChatGPT · Plus`），真实信息来自 id_token claims
+      // 订阅制模型组：订阅服务名 · 具体模型（如 `OpenCode Go · V4 Flash`、`ChatGPT · GPT 5.6 Codex`）
+      // 模型位永远显示模型。2026-09-26 修正了 v1.7 FR-8 留下的一个错位：当年只要 id_token 里有
+      // 已识别的套餐档位，模型位就被档位顶掉（`ChatGPT · Plus`）—— 于是用户换了模型，信息栏
+      // 纹丝不动，看起来像「不显示模型」。档位不是模型，两件事不共用同一个位置；
+      // 档位继续留在 hover 里（planLine）。用户报的就是这一条。
       function subscriptionProviderGroup() {
         const pr = visiblePricing;
         const serviceName = subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider);
         const subSnapshot = renderedState.sub;
-        const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;
-        const rawModelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
+        const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay
           : (pr && pr.model ? pr.model : t('ui.unknownModel'));
-        const modelLabel = planShort ? planShort : rawModelLabel;
         const modelName = modelLabelWithoutProvider(modelLabel, serviceName);
         const versionLine = updateInfo && typeof updateInfo.current === 'string'
           ? t('ui.pluginVersion', { current: updateInfo.current }) : '';
         const planLine = subSnapshot && subSnapshot.plan ? t('ui.plan', { plan: hostText(subSnapshot.plan) }) : '';
         const expiryLine = subSnapshot && subSnapshot.expiryAt ? t('ui.expiresLocalTime', { value: formatDate(subSnapshot.expiryAt) }) : '';
-        const title = t('ui.subscriptionServiceModel', { serviceName: serviceName, rawModelLabel: rawModelLabel, planLine: planLine, expiryLine: expiryLine, versionLine: versionLine });
+        const title = t('ui.subscriptionServiceModel', { serviceName: serviceName, rawModelLabel: modelLabel, planLine: planLine, expiryLine: expiryLine, versionLine: versionLine });
         return React.createElement('span', { key: 'subprov', className: 'bi-model-group', title: title },
           React.createElement('b', { className: 'bi-model-provider' }, serviceName),
           modelDetail(pr, modelName),
@@ -3247,6 +3387,25 @@ module.exports = {
         pushTimeGroups(groups);
       }
 
+      // 「需要你去设置里做点什么」这一类提示：API Key 未配置、内置账号未登录。
+      // 两者共用 noKeyHint 这个配置引导槽位，但文案按 error.code 选 —— 靠 kind 猜会把
+      // 「账号没登录」说成「未配置 API_KEY」，那是错误的指引。
+      function configHintFor(error) {
+        if (!error) return null;
+        if (error.code === 'balance.account-signed-out') {
+          return { title: t('ui.accountSignedOutHow'), text: t('ui.accountSignedOut') };
+        }
+        if (error.kind !== 'no-key') return null;
+        // 凭据名优先取宿主给的结构化 params（跨语言稳定），旧快照才退回从文案里剥前缀。
+        const credName = (error.params && error.params.credential)
+          ? String(error.params.credential)
+          : (error.message ? String(hostText(error.message)).replace(/(?:未配置 |Not configured: )/, '') : 'API_KEY');
+        return {
+          title: t('ui.notConfiguredConfigureItIn', { credName: credName }),
+          text: t('ui.notConfiguredSettingsModels', { credName: credName }),
+        };
+      }
+
       // ---- 余额制模式（v1.0.0 现状，完全不动）：服务商+模型 → 余额 → 时段 → 倒计时 → 本会话花费 ----
       // v1.9.0 PR2：每个渲染片段按设置过滤（fieldVisible）；隐藏不占位，组间分隔符由组装层自动收合
       function pushBalanceGroups(groups, trailingErrorGroups) {
@@ -3254,6 +3413,7 @@ module.exports = {
         const errors = renderedState.errors || {};
         if (bal && bal.selectionPending) return;
         const alertActive = !!(bal && bal.alert && bal.alert.active);
+        const configHint = configHintFor(bal && bal.error);
         pushIdentityGroups(groups, 'anchorGroup', providerGroup);
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
@@ -3263,17 +3423,11 @@ module.exports = {
               React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
           }
         }
-        // 余额（纯金额；hover 仅展示余额，不显示充值/赠金）
-        // v1.6 T7：未配置提示改为按账户显示凭据名（去掉写死的 DeepSeek 文案）
-        else if (bal && bal.error && bal.error.kind === 'no-key') {
+        // 配置引导（未配置 API Key / 内置账号未登录）：与数据展示互斥，占 noKeyHint 槽位
+        else if (configHint) {
           if (fieldVisible('noKeyHint')) {
-            // 凭据名优先取宿主给的结构化 params（跨语言稳定），旧快照才退回从文案里剥前缀。
-            const credName = (bal.error.params && bal.error.params.credential)
-              ? String(bal.error.params.credential)
-              : (bal.error.message ? String(hostText(bal.error.message)).replace(/(?:未配置 |Not configured: )/, '') : 'API_KEY');
             trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
-              React.createElement('span', { className: 'bi-err', title: t('ui.notConfiguredConfigureItIn', { credName: credName }) },
-                t('ui.notConfiguredSettingsModels', { credName: credName }))));
+              React.createElement('span', { className: 'bi-err', title: configHint.title }, configHint.text)));
           }
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';

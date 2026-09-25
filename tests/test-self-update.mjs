@@ -765,20 +765,31 @@ await okAsync('备份只保留最近 keepBackups 份，不无限占用户空间'
 // =====================================================================================
 // 13. host / client 接线（验收 7 的接线侧）
 // =====================================================================================
-ok('host 接线：装载形态闸门 + 测试隔离开关 + 4 个 RPC 与变更方法声明齐备', () => {
+ok('host 接线：装载形态闸门 + 测试隔离开关 + 全部更新 RPC 与变更方法声明齐备', () => {
   const host = readFileSync(join(root, 'src', 'host.js'), 'utf8')
   assert.match(host, /function isLoadedAsProfilePlugin\(\)/, '必须只在被当作 profile 插件装载时启用自更新')
   assert.match(host, /DSH_BOTTOM_INFO_BAR_SELF_UPDATE/, '必须保留测试隔离开关')
   assert.match(host, /from '\.\/self-update\.js'/, 'host 必须复用同一份引擎')
-  for (const rpc of ['getUpdateState', 'runUpdateCheck', 'setUpdateAuto', 'rollbackUpdate']) {
+  // 2026-09-26：检查与安装拆成两个接口，老名字 runUpdateCheck 只留给旧页面。
+  for (const rpc of ['getUpdateState', 'checkUpdate', 'installUpdate', 'runUpdateCheck', 'setUpdateAuto', 'rollbackUpdate']) {
     assert.match(host, new RegExp(rpc + ': async function'), 'host 缺少 RPC ' + rpc)
   }
-  // 只有真正会下载 / 改文件 / 写开关的三个才是变更方法（走 POST + 同源防护）；
+  // 只有真正会下载 / 改文件 / 写开关的才是变更方法（走 POST + 同源防护）；checkUpdate 虽然只读磁盘，
+  // 但它会写「上次检查时间」并触发一次网络查询，同样必须 POST。
   // getUpdateState 是纯读，必须是 GET，否则客户端轮询会被同源防护挡下。
-  for (const rpc of ['runUpdateCheck', 'setUpdateAuto', 'rollbackUpdate']) {
+  for (const rpc of ['checkUpdate', 'installUpdate', 'runUpdateCheck', 'setUpdateAuto', 'rollbackUpdate']) {
     assert.match(host, new RegExp(rpc + ': true'), rpc + ' 必须声明为变更方法（POST + 同源防护）')
   }
   assert.doesNotMatch(host, /getUpdateState: true/, 'getUpdateState 是只读 RPC，不得声明为变更方法')
+  // 检查走引擎的只读分支、安装走写分支 —— 写死了这两个 mode 才谈得上「检查不会装」
+  assert.match(host, /run\(\{ mode: 'check', manual: true \}\)/, 'checkUpdate 必须走只读的检查分支')
+  assert.match(host, /run\(\{ mode: 'install', manual: true, force: force \}\)/, 'installUpdate 必须走安装分支')
+  assert.match(host, /runUpdateCheck: async function \(args\) \{\s*return ROUTES\.installUpdate\(args\)/,
+    '老接口 runUpdateCheck 只能当作 installUpdate 的别名（旧页面的语义就是「检查并安装」）')
+  // 状态只有一个出口：所有更新 RPC 都返回同一份 payload，客户端不必把两种形状拼起来
+  assert.match(host, /async function updateStatePayload\(\)/)
+  const payloadUses = (host.match(/updateStatePayload\(\)/g) || []).length
+  assert.ok(payloadUses >= 6, '6 个更新 RPC 都应从同一个出口取状态（实得 ' + payloadUses + ' 处）')
   // 老宿主 / 缺 effect 的桩 ctx 不许把 apply 打崩（本仓库已踩过 ctx Proxy 的坑）
   assert.match(host, /typeof ctx\.effect === 'function'/, 'ctx.effect 必须做能力检测')
 })
@@ -871,7 +882,7 @@ ok('失败原因归一：技术报错 → 稳定代号，认得出历史原始�
   assert.equal(describeUpdateError(null), 'unknown')
 })
 
-ok('设置页三层组织：状态 / 设置 / 兜底，且兜底与「检查更新」按需出现', () => {
+ok('设置页三层组织：状态 / 设置 / 兜底，动作按钮与设置分开，且两个动词不混用', () => {
   const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
   // ① 状态层：结论在上（大字）、事实在下（小字含「上次检查」，用户据此确认它有没有在干活）
   assert.match(client, /React\.createElement\('p', \{ className: 'bib-set-data-title' \}, statusText\)/)
@@ -882,13 +893,136 @@ ok('设置页三层组织：状态 / 设置 / 兜底，且兜底与「检查更�
   //    原来那样写会让「回滚到上一版」一旦更新成功就永久常驻（用户说「像乱加上去的」）。
   assert.match(client, /const canRollback = restartDirection === 'update' \|\| !!state\.lastError;/)
   assert.doesNotMatch(client, /canRollback = !!state\.pendingVersion/)
-  // 「检查更新」只在手动方式下渲染；全自动时点它等于重做已经做完的事
-  assert.match(client, /manual \? bibSetButton\(\{ disabled: busy, onClick: props\.onCheck/)
-  // 当前环境不支持自更新时，第二层（更新方式）整块不渲染，不摆出用不了的控件
-  assert.match(client, /\n      disabled \? null : React\.createElement\('div', \{ className: 'bib-set-data-row' \},/)
   // 失败原因讲人话：读代号，绝不把英文报错回显给用户
   assert.match(client, /updateErrorText\(state\.lastErrorKind \|\| state\.lastError\)/)
   assert.match(client, /state\.lastError && !disabled \? React\.createElement/)
+})
+
+ok('2026-09-26：检查与安装拆成两个按钮，检查按钮不再藏进「更新方式」行', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  // 两个动词：检查 = checkUpdate（纯读），安装 = installUpdate（唯一的写动作）
+  assert.match(client, /rpc\('checkUpdate'\)/)
+  assert.match(client, /rpc\('installUpdate'\)/)
+  assert.match(client, /rpc\('installUpdate', \{ force: true \}\)/)
+  assert.doesNotMatch(client, /rpc\('runUpdateCheck'/, '新界面不得再调用「检查即安装」的老接口')
+  // 按钮标签：检查中 → 检查中…；安装中 → 正在更新到 X；有新版才出现「更新到 X」
+  assert.match(client, /children: busy && phase === 'check' \? t\('ui\.updateChecking'\) : t\('ui\.updateCheckNow'\)/)
+  assert.match(client, /const showInstall = !disabled && available && !held;/)
+  assert.match(client, /\? t\('ui\.updateInstalling', \{ version: latest \}\)\s*\n\s*: t\('ui\.updateInstallNow', \{ version: latest \}\)/)
+  // 被暂缓的版本不能再摆「更新到 X」：那一下会被引擎的暂缓分支吃掉，界面看起来像没反应。
+  assert.doesNotMatch(client, /showInstall = .*holdVersion/, '暂缓判定必须参与 install 按钮的显隐')
+  // 结论行：安装中要如实说「正在更新到 X」（装的过程好几秒，否则用户以为点漏了）
+  assert.match(client, /else if \(busy && phase === 'install' && latest\) statusText = t\('ui\.updateInstalling', \{ version: latest \}\);/)
+  // 「宿主还是旧版」这个真实窗口必须有人话（新版界面 + 未重启的旧 host → 404 unknown method）
+  assert.match(client, /function bibSetMissingMethod\(err\)/)
+  assert.match(client, /t\('ui\.updateHostOutdated'\)/)
+})
+
+ok('2026-09-26：动作完成后重新读状态（半状态会让结论说说谎最多 15 秒）', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  // 读状态只有一个入口：轮询与动作后共用它
+  assert.match(client, /function loadUpdateState\(\)/)
+  assert.match(client, /return loadUpdateState\(\)\.then\(function \(\) \{/)
+  // 旧写法：把动作返回值 merge 进旧状态 —— 动作结果少几个字段，结论行就会短暂说假话
+  assert.doesNotMatch(client, /setUpdateState\(function \(prev\) \{ return Object\.assign\(\{\}, prev \|\| \{\}, res\); \}\)/)
+  // 四个动作全部走同一条通道（忙碌态 + 动作名 + 重读）
+  for (const call of ["runUpdateAction('mode'", "runUpdateAction('check'", "runUpdateAction('install'"]) {
+    assert.ok(client.includes(call), '更新动作必须统一走 runUpdateAction：' + call)
+  }
+  assert.equal((client.match(/runUpdateAction\('install'/g) || []).length, 2, '安装与强制安装都走 install 通道')
+})
+
+ok('2026-09-26：更新动作前后保护滚动位置（用户报「点完更新，设置页滑到最上端」）', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  assert.match(client, /const BIB_SET_SCROLL_RESTORE_MS = 2000;/)
+  assert.match(client, /function bibSetScrollHost\(node\)/)
+  assert.match(client, /function bibSetRememberScroll\(root\)/)
+  assert.match(client, /function bibSetRestoreScroll\(\)/)
+  assert.match(client, /bibSetRememberScroll\(settingsRootRef\.current\);/)
+  // 三条自我约束：只在原本不为 0 时记、只在被重置为 0 且未过期时还原、节点已脱离文档就放弃
+  assert.match(client, /if \(!host \|\| !\(host\.scrollTop > 0\)\) return;/)
+  assert.match(client, /if \(Date\.now\(\) > pending\.expiresAt\) return;/)
+  assert.match(client, /if \(!pending\.host\.isConnected\) return;/)
+  assert.match(client, /if \(pending\.host\.scrollTop !== 0\) return;/)
+  // 页面被重建时（React 重挂载）靠 layout effect 补回：记录存在模块作用域，跨重建存活
+  assert.match(client, /bibSetRestoreScroll\(\);\s*\n\s*return bibSetHideHostScrollbars/)
+})
+
+// =====================================================================================
+// 15. 2026-09-26：检查与安装拆开（用户报「点了一下检查更新，它就直接装好了」）
+// =====================================================================================
+await okAsync('检查模式：确认有新版后立刻返回 —— 不下载、不替换、不记待重启、不留备份', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.1.0')
+    const { updater, requests } = makeUpdater(fx, { payload, latestVersion: '1.1.0' })
+    const state = await updater.run({ mode: 'check', manual: true })
+    assert.deepEqual(requests.filter((url) => !url.endsWith('/latest')), [], '检查不该下载 tarball')
+    assert.equal(state.checkedOnly, true, '返回值必须自报「这只是一次检查」')
+    assert.equal(state.pendingVersion, null, '检查不得记「已装好待重启」')
+    assert.equal(updater.getState().diskVersion, '1.0.0', '磁盘版本必须原封不动')
+    assert.equal(existsSync(join(fx.dataDir, 'update-backup')), false, '检查不得留下备份目录')
+    // 但「上次检查时间」必须更新：用户据此确认按钮真的去问了（否则按钮看起来像没反应）
+    assert.equal(
+      JSON.parse(readFileSync(join(fx.dataDir, 'update-state.json'), 'utf8')).lastCheckAt,
+      1758800000000,
+    )
+  } finally { fx.cleanup() }
+})
+
+await okAsync('检查模式：连不上版本服务时记 check-failed，成功时只清这一条，绝不抹掉「上次更新失败」', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.1.0')
+    const offline = makeUpdater(fx, { payload, latestError: true })
+    await offline.updater.run({ mode: 'check', manual: true })
+    assert.equal(offline.updater.getState().lastErrorKind, 'check-failed', '检查失败也要让用户看得见')
+    // 网络恢复：这一条被清掉
+    writeFileSync(join(fx.dataDir, 'update-state.json'), JSON.stringify({ lastError: 'check-failed' }))
+    const online = makeUpdater(fx, { payload, latestVersion: '1.1.0' })
+    online.updater.loadState()
+    await online.updater.run({ mode: 'check', manual: true })
+    assert.equal(online.updater.getState().lastError, null)
+    // 但「上次更新失败」是逃生门（回滚）的依据，检查顺利不能顺手抹掉它
+    writeFileSync(join(fx.dataDir, 'update-state.json'), JSON.stringify({ lastError: 'integrity-mismatch' }))
+    const afterFailure = makeUpdater(fx, { payload, latestVersion: '1.1.0' })
+    afterFailure.updater.loadState()
+    await afterFailure.updater.run({ mode: 'check', manual: true })
+    assert.equal(afterFailure.updater.getState().lastErrorKind, 'integrity-mismatch')
+  } finally { fx.cleanup() }
+})
+
+await okAsync('检查与安装各占一个在途槽位：检查在跑时来的安装请求照样会装（不被空转吞掉）', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.1.0')
+    const { updater } = makeUpdater(fx, { payload, latestVersion: '1.1.0' })
+    const [check, install] = await Promise.all([
+      updater.run({ mode: 'check', manual: true }),
+      updater.run({ mode: 'install', manual: true }),
+    ])
+    assert.equal(check.checkedOnly, true)
+    assert.equal(install.pendingVersion, '1.1.0')
+    assert.equal(updater.getState().diskVersion, '1.1.0', '安装请求不能被检查的去重吞掉')
+  } finally { fx.cleanup() }
+})
+
+await okAsync('手动安装仍受「只升不降」与「暂缓」约束（检查拆开没有放松任何一条硬边界）', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    const payload = makePayload('1.1.0')
+    // 磁盘已是新版：手动安装也不重复下载
+    const current = makeUpdater(fx, { payload, latestVersion: '1.1.0' })
+    writeFileSync(join(fx.packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '1.1.0' }, null, 2) + '\n')
+    const state = await current.updater.run({ mode: 'install', manual: true })
+    assert.deepEqual(current.requests.filter((url) => !url.endsWith('/latest')), [], '磁盘已是这个版本就不该再下载')
+    assert.equal(state.pendingVersion, '1.1.0')
+    // 远端比运行版本低：一律不装
+    const lower = makeUpdater(fx, { payload: makePayload('0.9.0'), latestVersion: '0.9.0' })
+    const held = await lower.updater.run({ mode: 'install', manual: true })
+    assert.deepEqual(lower.requests.filter((url) => !url.endsWith('/latest')), [], '只升不降')
+    assert.equal(held.latest, '0.9.0')
+  } finally { fx.cleanup() }
 })
 
 console.log('\n自更新引擎单测：' + passed + ' PASS / ' + failed + ' FAIL')

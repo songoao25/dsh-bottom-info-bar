@@ -598,17 +598,22 @@ const failHarness = await bootHarness(function (method, args) {
     return JSON.stringify(writes.map(function (r) { return r.args; })) === '[{"enabled":false}]';
   })(), true);
   await flush(); // 等 setUpdateAuto 的响应落地：忙碌态解除后「检查更新」才会恢复成可点文案
-  check('⑥b 检查更新按钮存在且走 runUpdateCheck（不是复制命令、不执行子进程）', (function () {
+  check('⑥b 检查更新按钮存在且只走 checkUpdate（只查不装：绝不出现安装类调用）', (function () {
     const before = okHarness.harness.requests.length;
     const node = okHarness.harness.nodes(okHarness.harness.render()).filter(function (n) {
       return n.type === 'button' && okHarness.harness.textOf(n) === t('ui.updateCheckNow');
     })[0];
     if (!node) return false;
     node.props.onClick();
-    const sent = okHarness.harness.requests.slice(before).filter(function (r) { return r.method === 'runUpdateCheck'; });
-    // 不带 force：手动检查不等于「解除回滚暂缓」，否则用户点一次检查就会把回滚过的版本装回来。
-    return sent.length === 1 && !sent[0].args.force;
+    const sent = okHarness.harness.requests.slice(before).map(function (r) { return r.method; });
+    // 2026-09-26 用户报「点了一下检查更新，它就直接装好了」：检查必须是纯读动作。
+    // 老接口 runUpdateCheck 的语义是「检查并安装」，新界面一律不许再调它。
+    return sent.indexOf('checkUpdate') !== -1
+      && sent.indexOf('installUpdate') === -1
+      && sent.indexOf('runUpdateCheck') === -1;
   })(), true);
+  check('⑥b 新界面不再引用 runUpdateCheck（只保留给旧页面）',
+    clientSrc.indexOf("rpc('runUpdateCheck'") === -1 && clientSrc.indexOf("rpc('checkUpdate'") !== -1, true);
 }
 
 // ---------- ⑦ MiniMax 展示名 + 构建产物接线 ----------

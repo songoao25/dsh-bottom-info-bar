@@ -251,9 +251,9 @@ check('client 账单型免费额度仅在接口给出免费字段时显示（绝
 check('client 账单型无金额时按真实用量展示', clientSrc.includes("metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2)"), true);
 check('client 账单服务名映射：Together/Fireworks/AWS Bedrock/Cloudflare', clientSrc.includes("return 'Together'") && clientSrc.includes("return 'Fireworks'") && clientSrc.includes("return 'AWS Bedrock'") && clientSrc.includes("return 'Cloudflare'"), true);
 check('client 订阅服务名含小米 MiMo', clientSrc.includes("return t('ui.xiaomiMiMo')"), true);
-check('client JWT 订阅卡：套餐档位短名映射（plus→Plus 等）', clientSrc.includes("const map = { plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };"), true);
+check('client JWT 订阅卡：模型位取 DSH 目录模型名，不再被套餐档位顶掉', clientSrc.includes('const modelLabel = (pr && pr.modelDisplay) ? pr.modelDisplay') && !clientSrc.includes('planShort'), true);
 check('client JWT 订阅卡：到期日期渲染（到期 YYYY-MM-DD）', clientSrc.includes("metric(t('ui.expires'), formatDate(sub.expiryAt))"), true);
-check('client JWT 订阅卡：模型位显示套餐档位（ChatGPT · Plus）', clientSrc.includes('const planShort = subSnapshot && subSnapshot.planType ? subscriptionPlanShort(subSnapshot.planType) : null;'), true);
+check('client JWT 订阅卡：套餐档位改到 hover（planLine 仍传给订阅服务标题）', clientSrc.includes("const planLine = subSnapshot && subSnapshot.plan ? t('ui.plan'"), true);
 check('client 账单型失败保留旧快照提示（bill.error || errors.billing）', billFn.includes('bill.error || errors.billing'), true);
 check('client load 含 getBillingStatus 端点', clientSrc.includes("rpc('getBillingStatus'"), true);
 check('client mergeLoadResults 含 billing 键', clientSrc.includes("keys = ['balance', 'pricing', 'usage', 'billingMode', 'sub', 'billing']"), true);
