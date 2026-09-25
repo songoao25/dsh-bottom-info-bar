@@ -19,6 +19,28 @@
 
 ---
 
+## 2026-09-25（v1.19.2）
+
+### 用户看真机后报的三件事（fix，PR #164）
+
+用户原话三条：
+
+> 1. 更新与安装：设置页里还是没有加上更新相关的内容，目前还是需要卸载然后重新手动安装。
+> 2. 列表默认状态：这三个列表默认都是关闭的，不要默认打开。应该让用户安装好之后，手动点击才是展开的状态。现在默认好像全都是展开状态，导致整个页面太长了。
+> 3. 逻辑区分：我说的那个逻辑区分还是没有做到。比如插件信息里有「自定义文本」，它就属于插件信息。(a) 简洁模式：默认只显示插件信息。(b) 完整模式：展示原生信息和插件信息。然后通过我们的设置项去开关这个字段。只不过有一个例外：原生信息里面有上下文的圆圈图标，实际上把它当做一个插件信息，始终跟插件信息保持同一行显示。
+
+**三条的真假：② ③ 是真 bug，① 不是插件的问题，是「运行中的 DSH 还是旧代码」。**
+
+- **③ 是真 bug，而且用户一眼就看见了**：上下文圆环渲染门控写成了 `full && fieldVisible('contextUsage')`，而圆环挂在 `row2`（主行）——恰恰是简洁模式保留的那一行。用户 `settings.json` 里 `infoDensity = "compact"`，所以他的圆环**一直是消失的**。修法：门控只留 `fieldVisible('contextUsage')`；同时把 `contextUsage` 从 `native` 组迁到 `plugin` 组——**组别就是「属于谁」，直接决定它在简洁模式下能不能出现**，圆环属于主行，就该按插件组算。`native` 组因此从 6 条回到 5 条，`plugin` 组 19 → 20 条。用户那句「把它当做一个插件信息，始终跟插件信息保持同一行显示」就是这个意思。
+- **② 是真 bug，而且是在推翻一次实现层的自作主张**：`docs/DECISIONS-SETTINGS-REDESIGN.md` 决策 2 原文写的就是「默认折叠」，实现时被改成了「插件信息 / 提醒信息默认展开」，理由写进了注释（「藏在折叠里等于没有入口」）。用户否掉了这个理由：全展开让设置页一次铺几十行，**反而找不到想看的那一组**。改回三组默认全收起；搜索框有输入仍自动全展开，「找字段」路径不受影响。**教训：实现层不要用「我觉得这样更好」去覆盖已经拍板的决策，尤其当理由只写在注释里——那等于把决策偷偷改了，而注释没人会去核对。**
+- **① 的根因：本机装的是 1.19.1，但**跑着的 DSH 进程仍是启动时载入的 1.18.1**。** 证据链（这套排查方法以后可以直接复用）：宿主的 `sanitizeSettings()` 从**当前运行中** `FIELD_REGISTRY` 出发生成设置，再落盘；实测 `~/.dsh/dsh-bottom-info-bar/settings.json`（mtime 16:57，晚于 16:56 的包替换）**含 `updateNotice` 但不含 `updateFailure`**，而 `updateNotice` 是 1.18.1 就有的字段、`updateFailure` 是 1.19.0 才加的 → 写这份文件的宿主是 1.18.1。同时 client bundle 是从磁盘读的（已是 1.19.1，所以用户能看到三个列表），host 是启动时载入的（还是 1.18.1，所以 `getUpdateState` 这个 RPC 根本不存在）——**新旧混跑**。
+- **由此暴露一个真缺陷（本次一并修掉）**：`bibSetVersionSection` 原来写的是 `if (!state) return null`，读状态失败就把「版本与更新」整块藏掉。而读失败最常见的场景恰好就是上面这种「包已换新、host 还是旧的」——**用户看到的是一张完全没有更新入口的设置页，于是得出「还是得卸载重装」的结论**，报上来的就是第 ① 条。现在失败时保留板块，并显示 `ui.versionUnavailable`：「当前运行的 DSH 还没载入这一版插件的更新功能，重启 DSH 后这里就会出现」。**教训：能读到的状态为空时，宁可显示「还不知道」也不要让入口消失——消失会被理解成「这个功能不存在」。**
+- 测试同步：`test-density-toggle.cjs` 把「简洁模式隐藏上下文圆环」反转为「圆环门控不叠加 full」；`test-field-config-client.cjs` 原生组 5 条 / 插件组 20 条 / 新增「圆环归插件组」断言 / 两处 `groupOpen` 默认值改全 false；`test-self-update.mjs` 新增「版本与更新区在读不到状态时也不消失」一段（反向锁 `return null`、锁 `updateError` 三处接线）。
+- 发布链条：PR **#164** → 发布 PR **#165**（1.19.2）→ tag `v1.19.2` → Publish NPM success → `npm view` 读回 `latest = 1.19.2`。文档：README 中英改为「三组、默认收起、圆环位置」，`docs/DECISIONS-SETTINGS-REDESIGN.md` 新增「§5 补记」把四条结论原文留档。
+- **本机同步（硬性收尾，本次成功）**：仍是 `desktop` profile + pnpm 从 GitHub 拉的独立快照，`pnpm-lock.yaml` 原先钉在 `550d15a`（v1.19.1）。这次 `pnpm update dsh-bottom-info-bar` **成功了**，关键在于 `env -u NODE_OPTIONS` —— WorkBuddy 通过 `NODE_OPTIONS=--require=…/node-language-shim.cjs` 注入 brokered-fs shim，pnpm 往 `~/Library/pnpm/store/v11/projects/` 建项目软链时被 `EEXIST` 拒掉；**去掉 NODE_OPTIONS 就能正常跑**（不需要 dangerouslyDisableSandbox）。改动前已把装载目录备份到 `/tmp/bib-backup-1.19.1`。核验结果：装载版本 **1.19.2**，lock 钉到 `ca7c975`，且逐个断言了装载副本的 `lib/client.js` / `lib/constants.js` 已含本次五处改动（三组默认收起、旧默认展开已无、圆环不再受模式门控、版本区失败兜底、圆环归插件组）。**这条命令记牢：以后同步本机先试 `env -u NODE_OPTIONS pnpm update <包名>`。**
+
+---
+
 ## 2026-09-25（v1.19.0）
 
 ### 插件自己更新自己 + 设置页拆成三组（feat，PR #159）
