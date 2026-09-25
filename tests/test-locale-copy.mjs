@@ -21,6 +21,7 @@ const pluginDir = root
 const pkg = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'))
 const clientSource = readFileSync(join(pluginDir, 'src', 'client-bundle.js'), 'utf8')
 const localesSource = readFileSync(join(pluginDir, 'src', 'locales.js'), 'utf8')
+const { FIELD_REGISTRY, FIELD_GROUP_LABELS } = await import('../src/constants.js')
 const hostSource = readFileSync(join(pluginDir, 'src', 'host.js'), 'utf8')
 const patchSource = readFileSync(join(pluginDir, 'cordis.patch.yml'), 'utf8')
 const artifact = readFileSync(join(pluginDir, 'lib', 'client.js'), 'utf8')
@@ -62,7 +63,10 @@ assert.ok(zhKeys.length >= 300, 'the dictionary must cover every user-visible st
 assert.deepEqual(enKeys.filter((key) => !zhKeys.includes(key)), [], 'every English key needs a Chinese one')
 assert.deepEqual(zhKeys.filter((key) => !enKeys.includes(key)), [], 'every Chinese key needs an English one')
 // 品牌名与纯格式模板在两种语言里天然同形，显式豁免（其余每条都必须真的翻译过）。
-const SAME_BY_DESIGN = new Set(['ui.commandCode', 'ui.contextFigures', 'ui.minimax'])
+// number.* 复刻宿主 common 命名空间的 K/M 缩写，中文界面与宿主一致，故同形。
+const SAME_BY_DESIGN = new Set([
+  'ui.commandCode', 'ui.contextFigures', 'ui.minimax', 'number.thousand', 'number.million',
+])
 for (const key of zhKeys) {
   assert.ok(LOCALES.zh[key].trim() !== '' && LOCALES.en[key].trim() !== '', key + ' must be non-empty in both languages')
   if (!SAME_BY_DESIGN.has(key)) assert.notEqual(LOCALES.zh[key], LOCALES.en[key], key + ' must actually be translated')
@@ -74,6 +78,36 @@ assert.equal(LOCALES.en['meta.title'], en.meta.title, 'the English title must ma
 assert.equal(LOCALES.zh['meta.title'], zh.meta.title, 'the Chinese title must match locale/zh.json')
 assert.equal(LOCALES.en['meta.description'], en.meta.description, 'the English description must match locale/en.json')
 assert.equal(LOCALES.zh['meta.description'], zh.meta.description, 'the Chinese description must match locale/zh.json')
+
+// ---------- 3b. 代码里引用的文案键必须真的在字典里 ----------
+// 漏键的后果很隐蔽：界面不报错，直接把键名当文案显示给用户（界面上出现 "ui.updateHeld" 这种字）。
+// 2026-09-25 自更新接线时真漏过两个（ui.updateHeld / ui.updateAllowHeld），故升级为硬约束。
+// 2026-09-25 补齐：全量扫描 client / host 里每一个字面量 t('…')，不再只锁「版本与更新」一族
+// （正是这次把上下文面板的 number.thousand / number.million 揪出来 —— 宿主命名空间的键，
+//  插件字典缺兜底值，宿主词典一旦取不到就会把键名当文案。已补中英同值并在下方登记同形豁免）。
+// 说明：动态拼接的键（如 t('error.' + code)）不走这条扫描，由第 5 段的错误码断言单独覆盖。
+const referencedKeys = new Set()
+for (const match of clientSource.matchAll(/\bt\(\s*'([A-Za-z0-9._]+)'/g)) referencedKeys.add(match[1])
+for (const match of clientSource.matchAll(/\bt\(\s*"([A-Za-z0-9._]+)"/g)) referencedKeys.add(match[1])
+for (const match of hostSource.matchAll(/\bt\(\s*'([A-Za-z0-9._]+)'/g)) referencedKeys.add(match[1])
+for (const match of hostSource.matchAll(/\bt\(\s*"([A-Za-z0-9._]+)"/g)) referencedKeys.add(match[1])
+assert.ok(referencedKeys.size >= 250, 'the guard must actually see the copy keys (got ' + referencedKeys.size + ')')
+const updateFamily = [...referencedKeys].filter((key) => /^ui\.(version|autoUpdate|update)/.test(key)).sort()
+assert.ok(updateFamily.length >= 18, 'the guard must actually see the update copy keys (got ' + updateFamily.length + ')')
+const missingCopy = [...referencedKeys].filter((key) => !zhKeys.includes(key) || !enKeys.includes(key)).sort()
+assert.deepEqual(missingCopy, [], 'used in code but missing from the dictionary: ' + missingCopy.join(', '))
+// 注册表里的 label / note 键也要在字典里（否则设置页一行行显示英文键名）
+const missingFieldCopy = []
+for (const field of FIELD_REGISTRY) {
+  for (const key of [field.label, field.note]) {
+    if (typeof key !== 'string' || key.length === 0) continue
+    if (!zhKeys.includes(key) || !enKeys.includes(key)) missingFieldCopy.push(key)
+  }
+}
+for (const key of Object.values(FIELD_GROUP_LABELS)) {
+  if (!zhKeys.includes(key) || !enKeys.includes(key)) missingFieldCopy.push(key)
+}
+assert.deepEqual(missingFieldCopy, [], 'registry / group copy keys missing from the dictionary: ' + missingFieldCopy.join(', '))
 
 // ---------- 4. 文案去 AI 腔 ----------
 const AI_SMELL_ZH = /一键|轻松|极致|丝滑|强大|完美|立即|马上|告别/

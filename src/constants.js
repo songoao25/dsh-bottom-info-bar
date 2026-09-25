@@ -11,8 +11,10 @@ export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cl
 // - id：settings.json fields/colors 的键（稳定英文 id，宿主白名单校验来源）
 // - label：设置页显示的中文短名
 // - modes：字段可能出现的模式：balance 余额制 | subscription 订阅制 | billing 账单制 | native 原生统计行 | common 通用（多模式共用）
-// - group：设置页「显示字段」的两级分组（D6 用户拍板）：native 原生字段（DeepSeek 原生底部栏原有）| plugin 插件字段（本插件新增）；
-//   排序原生组在前、插件组在后；组内每行说明仍标注出现条件（余额制/订阅制/账单制）
+// - group：设置页「显示字段」的分组（三组，组内每行说明仍标注出现条件）：
+//   native 原生字段（DeepSeek 原生底部栏原有，只在完整模式出现）| plugin 插件字段（本插件新增，两种模式都显示）
+//   | notice 提醒字段（更新与失败等一次性提醒；2026-09-25 用户拍板从 plugin 组独立成第三个列表）
+//   排序：原生信息 → 插件信息 → 提醒信息，与设置页三张折叠卡的顺序一致
 // - note：出现条件说明（设置页每行的小字说明）
 // - suggestKeep：错误/提醒类字段，页面标注「建议保留」（用户拍板：允许关闭但劝留）
 // - anchor：身份锚点语义标记（服务商/模型标识）。D6 用户拍板：锚点与其他字段同等可隐藏（无恒开/禁用逻辑），
@@ -57,21 +59,30 @@ export const FIELD_REGISTRY = [
   // 外观、几何与交互面板与原生一致，但显隐/配色并入本插件字段体系；
   // 始终渲染在本插件信息栏的主行（即「简洁模式」可见的那一行）最右端，原生那一份由样式隐藏。
   { id: 'contextUsage', label: "field.contextUsage.label", group: 'native', modes: ['common'], colorKind: 'meter', note: "field.contextUsage.note" },
-  // 插件字段 · 状态与提醒（建议保留）
-  { id: 'unmapped', label: "field.unmapped.label", group: 'plugin', modes: ['balance'], colorKind: 'muted', note: "field.unmapped.note" },
-  { id: 'noKeyHint', label: "field.noKeyHint.label", group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.noKeyHint.note" },
-  { id: 'balanceError', label: "field.balanceError.label", group: 'plugin', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.balanceError.note" },
-  { id: 'usageError', label: "field.usageError.label", group: 'plugin', modes: ['balance', 'subscription'], suggestKeep: true, colorKind: 'alert', note: "field.usageError.note" },
-  { id: 'refreshFailure', label: "field.refreshFailure.label", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.refreshFailure.note" },
-  { id: 'persistWarning', label: "field.persistWarning.label", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.persistWarning.note" },
-  { id: 'updateNotice', label: "ui.updateAvailable", group: 'plugin', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.updateNotice.note" },
+  // ---------- 提醒字段（第三个列表「提醒信息」，2026-09-25 用户拍板从插件组独立） ----------
+  // 独立成组的理由：提醒是「一次性事件」而不是「常驻信息」，诉求与插件信息相反 ——
+  // 想看花费但不想被红字打扰的人，必须能只关提醒而不动信息。
+  // 三组的开关一律只表示「开 / 关」，不代表字段此刻是否可见（native 组只在完整模式出现）；
+  // 开关与显示模式互不读写，关掉开关也不会去改模式 —— 这是 2026-09-25 用户明确要求的解耦。
+  // 更新提醒 / 更新失败提醒（自更新体系，见 docs/DECISIONS-AUTO-UPDATE.md）
+  { id: 'updateNotice', label: "field.updateNotice.label", group: 'notice', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.updateNotice.note" },
+  { id: 'updateFailure', label: "field.updateFailure.label", group: 'notice', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.updateFailure.note" },
+  // 数据类提醒
+  { id: 'balanceError', label: "field.balanceError.label", group: 'notice', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.balanceError.note" },
+  { id: 'usageError', label: "field.usageError.label", group: 'notice', modes: ['balance', 'subscription'], suggestKeep: true, colorKind: 'alert', note: "field.usageError.note" },
+  { id: 'refreshFailure', label: "field.refreshFailure.label", group: 'notice', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.refreshFailure.note" },
+  { id: 'persistWarning', label: "field.persistWarning.label", group: 'notice', modes: ['balance', 'subscription', 'billing'], suggestKeep: true, colorKind: 'alert', note: "field.persistWarning.note" },
+  // 配置类提醒
+  { id: 'noKeyHint', label: "field.noKeyHint.label", group: 'notice', modes: ['balance'], suggestKeep: true, colorKind: 'alert', note: "field.noKeyHint.note" },
+  { id: 'unmapped', label: "field.unmapped.label", group: 'notice', modes: ['balance'], colorKind: 'muted', note: "field.unmapped.note" },
 ]
 
-// 字段分组在设置页的展示顺序与中文标题（D6 用户拍板两类：原生在前、插件在后；经构建注入客户端）
-export const FIELD_GROUP_ORDER = ['native', 'plugin']
+// 字段分组在设置页的展示顺序与中文标题（经构建注入客户端）
+export const FIELD_GROUP_ORDER = ['native', 'plugin', 'notice']
 export const FIELD_GROUP_LABELS = {
   native: "group.native",
   plugin: "group.plugin",
+  notice: "group.notice",
 }
 
 // ---------- v1.9.0 PR2：预设色板（语义色名） ----------

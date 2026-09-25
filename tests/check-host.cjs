@@ -43,7 +43,9 @@ const builtins = new Set([
   'apply', // 插件入口（对象形式 apply(ctx)）
   'next',  // waterfall 事件回调参数（llm/stream 的 next()）
   // Node 标准库导入与全局（静态形态）
-  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename', 'resolve', 'isAbsolute',
+  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'realpathSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename', 'resolve', 'isAbsolute',
+  // 自更新（src/self-update.js 的导入）走同一套静态白名单
+  'fileURLToPath', 'createSelfUpdater', 'compareSemver',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',

@@ -1,7 +1,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const source = fs.readFileSync(__dirname + '/../src/locales.js', 'utf8');
-const dictionaries = JSON.parse(source.slice(source.indexOf('{')));
+const MARKER = 'export const LOCALES =';
+const marker = source.indexOf(MARKER);
+if (marker < 0) throw new Error('src/locales.js 缺少 ' + MARKER);
+// 从「导出语句之后」而不是「文件里第一个花括号」开始切片：文件头注释里出现 { 会把字典切坏
+// （2026-09-25 加注释时就踩过一次，七个测试同时报 JSON.parse 语法错）。
+const dictionaries = JSON.parse(source.slice(marker + MARKER.length));
 function format(locale, key, params) {
   assert.ok(Object.hasOwn(dictionaries[locale], key), 'Missing translation: ' + key);
   return dictionaries[locale][key].replace(/\{(\w+)\}/g, (match, name) =>

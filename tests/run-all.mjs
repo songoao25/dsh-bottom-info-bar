@@ -53,6 +53,7 @@ const cases = [
   ['test-v17-adapters（v1.7 解析器：JWT/小米/Together/Fireworks/SigV4/Cloudflare/normalize）', ['tests/test-v17-adapters.cjs'], join(root), process.execPath],
   ['test-update-check（启动版本检查与红色提醒）', ['tests/test-update-check.cjs'], join(root), process.execPath],
   ['test-update-command（点击更新标签复制命令 + 命令随安装形态区分）', ['tests/test-update-command.mjs'], join(root), process.execPath],
+  ['test-self-update（自更新引擎：版本比较/完整性校验/原子替换/回滚/开关/审计日志 + host/client 接线）', ['tests/test-self-update.mjs'], join(root), process.execPath],
   ['test-pricing-catalog（远程价目目录体系 + 官方价目校验）', ['tests/test-pricing-catalog.mjs'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.cjs', HOST], join(root), process.execPath],
   ['test-localization（zh/en rendering and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
@@ -61,8 +62,11 @@ const cases = [
 ]
 
 let failed = 0
+// 自更新在整个测试套件里一律关闭：它会真的下载 tarball 并替换包内文件，绝不能让测试触发。
+// （自更新引擎本身由 tests/test-self-update.mjs 用桩依赖直接单测，不经 host。）
+const testEnv = Object.assign({}, process.env, { DSH_BOTTOM_INFO_BAR_SELF_UPDATE: 'off' })
 for (const [name, args, cwd, cmd = process.execPath] of cases) {
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' })
+  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', env: testEnv })
   const ok = r.status === 0
   const output = (r.stdout || r.stderr || '').split('\n').filter(Boolean)
   const summary = ok ? output.slice(-3).join(' | ') : output.slice(-60).join(' | ')

@@ -82,8 +82,13 @@ check('简洁订阅制只保留优先额度窗口，隐藏到期与重置时间'
   && clientSrc.includes("if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown'))"), true);
 check('简洁云账单只保留本周期花费或用量，隐藏预算和免费额度', clientSrc.includes("if (full && d.budgetPercent != null && fieldVisible('budget'))")
   && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
-check('简洁模式隐藏上下文圆环；新版本提醒不再进入信息栏', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')")
-  && !clientSrc.includes("fieldSpan('updateNotice'"), true);
+check('简洁模式隐藏上下文圆环（原生字段随模式收合）', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')"), true);
+// 2026-09-25 用户拍板：更新短标记属于「提醒信息」组，挂在主行（两种模式都可见），
+// 只受自己的开关控制，绝不因模式切换而出现或消失 —— 门控必须只有 fieldVisible 一条。
+check('更新短标记只受开关控制、与简洁/完整模式无关', clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
+  && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  && clientSrc.includes("trailingErrorGroups.push(fieldSpan('updateNotice'")
+  && !clientSrc.includes("if (restartVersion && full)"), true);
 check('设置页不再重复提供简洁/完整选择；点击底栏仍由宿主接口持久化', !clientSrc.includes('function bibSetDensitySection(props)')
   && !clientSrc.includes('commit({ infoDensity: value }') && hostSrc.includes('setInfoDensity: function'), true);
 // 7) 无残留的旧宽松判定
