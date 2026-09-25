@@ -162,11 +162,23 @@ async function createBarHarness(options) {
     }
     return tree;
   };
+  // 节点树 → 可见文字（不含 title 等属性：只有真正显示出来的字才算数）
+  const textOf = function (node) {
+    if (node === null || node === undefined || typeof node === 'boolean') return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(textOf).join('');
+    return textOf(node.props.children);
+  };
   return {
     pump: pump,
     densityOf: function (tree) {
       const root = nodes(tree).filter(function (n) { return n.props && n.props.className === 'bi-root'; })[0];
       return root ? root.props['data-density'] : null;
+    },
+    // 某一行（主行 / 原生行）真正显示出来的文字
+    textIn: function (tree, rowId) {
+      const host = nodes(tree).filter(function (n) { return n.props && n.props.id === rowId; })[0];
+      return host ? textOf(host) : '';
     },
     // 某一行（主行 / 原生行）里实际出现的字段 id，按渲染顺序
     fieldsIn: function (tree, rowId) {
@@ -308,6 +320,35 @@ try {
     noticeSeen.push(rendered.harness.fieldsIn(rendered.tree, ROW_MAIN).indexOf('updateFailure') !== -1);
   }
   check('提醒字段两种密度都出现（更新失败短标记）', noticeSeen.join(',') === 'true,true', true);
+
+  // 订阅制模型位：用户报「选了 5.6 sol，信息栏还是老样子」—— 根因是只要 id_token 里有已识别的
+  // 套餐档位，模型位就被档位顶掉（ChatGPT · Plus）。模型位现在只放模型，档位留在 hover 里。
+  {
+    const sub = await renderOnce(SCENARIOS[0], allFieldsOn(), 'compact');
+    const mainText = sub.harness.textIn(sub.tree, ROW_MAIN);
+    check('订阅制：模型位显示模型本身（GPT 5 Codex）而不是套餐档位 Plus；实渲染 → ' + mainText,
+      mainText.indexOf('GPT 5 Codex') !== -1 && mainText.indexOf('Plus') === -1, true);
+  }
+
+  // 内置账号未登录：走「账号未登录」引导，而不是套用 API Key 的「未配置 DEEPSEEK_API_KEY」
+  {
+    const accountScenario = {
+      name: '余额制 · 内置账号未登录',
+      provider: 'deepseek-account', model: 'deepseek-flash', modelName: 'DeepSeek V4 Flash',
+      reply: function (method) {
+        if (method === 'getPricing') return jsonOk({ provider: 'deepseek-account', model: 'deepseek-flash', providerDisplay: 'DeepSeek', modelDisplay: 'DeepSeek V4 Flash', mode: 'flat', period: 'offpeak', prices: {}, nextSwitch: null });
+        if (method === 'getBillingMode') return jsonOk({ provider: 'deepseek-account', model: 'deepseek-flash', mode: 'balance' });
+        if (method === 'getBalanceSnapshot') {
+          return jsonOk({ provider: 'deepseek-account', displayName: 'DeepSeek', currency: 'CNY', data: null, error: { kind: 'no-key', code: 'balance.account-signed-out', message: '内置账号未登录' } });
+        }
+        return null;
+      },
+    };
+    const rendered = await renderOnce(accountScenario, allFieldsOn(), 'compact');
+    const text = rendered.harness.textIn(rendered.tree, ROW_MAIN);
+    check('内置账号未登录：出现「账号未登录」，不套用 API Key 的未配置文案；实渲染 → ' + text,
+      text.indexOf('账号未登录') !== -1 && text.indexOf('API_KEY') === -1, true);
+  }
 
   // 反向锁：开关仍是唯一裁判 —— 关掉的字段两种密度都不许出现
   const offFields = allFieldsOn({ customText: false, mainTime: false, worldTime: false, expiry: false, subWindowWeek: false });
