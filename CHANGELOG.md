@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.18.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.18.0...v1.18.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* restore field-based information settings ([#157](https://github.com/songoao25/dsh-bottom-info-bar/issues/157)) ([cbb6cb2](https://github.com/songoao25/dsh-bottom-info-bar/commit/cbb6cb241ec58916d2e15deb60bd238e7e8cb76e))
+
 ## [1.18.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.17.0...v1.18.0) (2026-09-25)
 
 
