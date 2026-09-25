@@ -82,7 +82,12 @@ check('简洁订阅制只保留优先额度窗口，隐藏到期与重置时间'
   && clientSrc.includes("if (full && displayWindow && displayWindow.resetsAt && fieldVisible('resetCountdown'))"), true);
 check('简洁云账单只保留本周期花费或用量，隐藏预算和免费额度', clientSrc.includes("if (full && d.budgetPercent != null && fieldVisible('budget'))")
   && clientSrc.includes("if (full && d.freeRemaining != null && d.resetsAt && fieldVisible('freeQuota'))"), true);
-check('简洁模式隐藏上下文圆环（原生字段随模式收合）', clientSrc.includes("const contextInfo = full && fieldVisible('contextUsage')"), true);
+// 2026-09-25 用户拍板：上下文圆环按「插件信息」对待 —— 它就在主行最右端，而主行两种模式都在，
+// 所以门控只有 fieldVisible 一条，**不得再叠加 full**。旧实现写成 full && fieldVisible(...)，
+// 结果是简洁模式下圆环整块消失（而用户的默认恰好就是简洁模式）。
+check('简洁模式同样显示上下文圆环（按插件信息对待，门控不叠加 full）',
+  !clientSrc.includes('const contextInfo = full && fieldVisible(')
+  && clientSrc.includes("const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;"), true);
 // 2026-09-25 用户拍板：更新短标记属于「提醒信息」组，挂在主行（两种模式都可见），
 // 只受自己的开关控制，绝不因模式切换而出现或消失 —— 门控必须只有 fieldVisible 一条。
 check('更新短标记只受开关控制、与简洁/完整模式无关', clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")

@@ -20,7 +20,7 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 | Spend | this session (including subagents), today, last 30 days, all time |
 | Extras | main time, world time, custom text |
 
-The bar has two densities — click it to switch. **Compact** shows only the provider, model, and one essential account detail: balance, the shortest useful quota window, or this billing period's spend. **Full** shows every enabled detail, including DSH's native stats row. Both follow DSH's light or dark theme.
+The bar has two densities — click it to switch. **Compact** shows only the provider, model, and one essential account detail: balance, the shortest useful quota window, or this billing period's spend, with the context ring always at its right end. **Full** shows every enabled detail, including DSH's native stats row. Both follow DSH's light or dark theme.
 
 ## Compact mode
 
@@ -98,10 +98,13 @@ Everything lives on the plugin page — **Plugins → bottom-info-bar**. Changes
 
 **Information display** — choose **Compact** or **Full** and the choice is saved. Compact does not erase any field choices; switch back to Full whenever you need the extra detail.
 
-**Fields and colors** — one switch and one color per field, in two groups. Turn a field off and the bar drops it. The plugin information group opens first; native stats only appear in Full mode.
+**Fields and colors** — one switch and one color per field, in three groups. Turn a field off and the bar drops it. All three groups start collapsed; click a group to open it (typing in the search box opens all three). The group a field belongs to is what decides whether it can appear in Compact mode.
 
-- **Native information** — the fields DSH's own stats row already showed.
-- **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota.
+- **Native information** — the fields DSH's own stats row already showed. They only appear in Full mode.
+- **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota. Shown in both Compact and Full mode, the adopted context ring included.
+- **Notices** — update and failure badges, plus the "could not refresh" style warnings. Shown in both modes; each one has its own switch.
+
+The context ring sits at the right end of the main row, which is the row Compact mode keeps — so it stays visible in both modes.
 
 ![Native information fields](assets/settings-native.webp)
 ![Plugin information fields](assets/settings-plugin.webp)

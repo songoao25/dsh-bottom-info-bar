@@ -1881,7 +1881,25 @@ function bibSetPollingStop(id) {
 }
 function bibSetVersionSection(props) {
   const state = props.state;
-  if (!state) return null;
+  // 【2026-09-25 血案】宿主进程还没加载到这一版插件代码时（典型场景：包文件已被替换成新版，
+  // 但 DSH 还跑着启动时载入的旧 host —— 桌面端更新插件后没重启就是这个样子），
+  // getUpdateState 这个接口在旧 host 里根本不存在，读状态必然失败。
+  // 旧写法是 `if (!state) return null` —— 整块连同标题一起消失。用户看到一个「完全没有更新入口」
+  // 的设置页，只能得出「还是得卸载重装」的结论。所以失败时**必须保留板块**并讲清原因。
+  if (!state) {
+    if (!props.error) return null;
+    return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
+      bibSetCardHeader({
+        static: true,
+        titleId: 'bib-set-version-title',
+        title: t('ui.versionAndUpdateTitle'),
+        description: t('ui.versionAndUpdateDesc'),
+      }),
+      React.createElement('div', { className: 'bib-set-data-actions' },
+        React.createElement('div', { className: 'bib-set-data-row' },
+          React.createElement('div', { className: 'bib-set-data-copy' },
+            React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.versionUnavailable'))))));
+  }
   const busy = props.busy === true;
   const shown = function (value) { return typeof value === 'string' && value.length > 0 ? value : t('ui.versionUnknown'); };
   // 方向由 host 判定（见 getUpdateState）：update = 磁盘已是新版待重启；rollback = 用户回滚过、
@@ -2001,9 +2019,11 @@ function InfoBarSettingsSection() {
     });
   }, []);
   const [searchQuery, setSearchQuery] = React.useState('');
-  // 三个分组各自独立折叠。默认展开「插件信息」与「提醒信息」：提醒是用户要单独掌控的一组，
-  // 藏在折叠里等于没有入口；「原生信息」默认折叠（多数人只在完整模式才需要看它）。
-  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: true, notice: true });
+  // 三个分组各自独立折叠，**默认全部收起**（2026-09-25 用户拍板）：
+  // 全展开会让设置页一次性铺满几十行，用户找不到想看的那一组；先给三行标题，
+  // 想看哪组点哪组。搜索框一有输入就自动全展开（见下方搜索框的 onChange），
+  // 所以「找字段」这条路径不会因为默认收起而变慢。
+  const [groupOpen, setGroupOpen] = React.useState({ native: false, plugin: false, notice: false });
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
@@ -2039,13 +2059,21 @@ function InfoBarSettingsSection() {
   // 所以单独拉取并定期跟随，用户不必手动刷新页面。
   const [updateState, setUpdateState] = React.useState(null);
   const [updateBusy, setUpdateBusy] = React.useState(false);
+  // 读不到更新状态时保留原因：不能只是静默不显示（见 bibSetVersionSection 顶部）。
+  // 一旦成功读到过一次就清掉；此后的偶发失败沿用上一次的好状态，不打断已显示的版本信息。
+  const [updateError, setUpdateError] = React.useState(null);
   React.useEffect(function () {
     let active = true;
     function load() {
       rpc('getUpdateState').then(function (res) {
         if (!active) return;
+        setUpdateError(null);
         if (res && typeof res === 'object') setUpdateState(res);
-      }).catch(function () { /* 读不到更新状态不影响设置页其余部分 */ });
+      }).catch(function (err) {
+        if (!active) return;
+        // 读不到更新状态不影响设置页其余部分
+        setUpdateError(String((err && err.message) || err || 'unknown'));
+      });
     }
     load();
     const timer = bibSetPollingStart(load, 15000);
@@ -2463,6 +2491,7 @@ function InfoBarSettingsSection() {
     bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
     bibSetVersionSection({
       state: updateState,
+      error: updateError,
       busy: updateBusy,
       onToggleAuto: onToggleUpdateAuto,
       onCheck: onCheckUpdate,
@@ -3557,9 +3586,11 @@ module.exports = {
 
        // ---- 组装（分隔符收合与「刷新失败」去重见模块级 assembleInfoBarRow） ----
        const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);
-       // 上下文占用圆环（DSH 原生信息，由本插件接管）：挂在主行最右端——即「简洁模式」可见的那一行里的最后一个元素。
+       // 上下文占用圆环（原型是 DSH 原生信息，已由本插件接管）：挂在主行最右端——即「简洁模式」可见的那一行里的最后一个元素。
        // 与其它字段同源：fields.contextUsage 管显隐、colors.contextUsage 管配色；数据不足时整块不渲染。
-       const contextInfo = full && fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
+       // 【2026-09-25 用户拍板】按「插件信息」对待：门控只有 fieldVisible 一条，**不得再叠加 full** ——
+       // 之前写成 full && fieldVisible(...)，结果是简洁模式下圆环整块消失，而它恰恰属于主行。
+       const contextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
        const contextNode = contextInfo === null ? null : React.createElement(ContextMeterRing, {
          key: 'ctx',
          context: contextInfo,
