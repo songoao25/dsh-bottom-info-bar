@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.5...v1.20.0) (2026-09-25)
+
+
+### Features
+
+* 设置页按计费形态分块 + 更新流程拆成「检查」与「安装」两个动作 ([#176](https://github.com/songoao25/dsh-bottom-info-bar/issues/176)) ([a942df2](https://github.com/songoao25/dsh-bottom-info-bar/commit/a942df247385dd998d738e18203a0785e656a268))
+
 ## [1.19.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.4...v1.19.5) (2026-09-25)
 
 
