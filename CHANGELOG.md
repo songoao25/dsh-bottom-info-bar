@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.19.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.0...v1.19.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* correct the update instructions in the user-facing docs ([#161](https://github.com/songoao25/dsh-bottom-info-bar/issues/161)) ([4f9877f](https://github.com/songoao25/dsh-bottom-info-bar/commit/4f9877ff5056bd6580e6a02cec2d4df8eb0ab0df))
+
 ## [1.19.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.18.1...v1.19.0) (2026-09-25)
 
 
