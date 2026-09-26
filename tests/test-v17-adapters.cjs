@@ -94,6 +94,7 @@ const awsSigV4Headers = extractFn('awsSigV4Headers');
 const parseBedrockCost = extractFn('parseBedrockCost');
 const parseBedrockBudget = extractFn('parseBedrockBudget');
 const parseCloudflareBilling = extractFn('parseCloudflareBilling');
+const parseHuggingFaceBilling = extractFn('parseHuggingFaceBilling');
 const nextUtcMidnightMs = extractFn('nextUtcMidnightMs');
 const normalizeAccountStatus = extractFn('normalizeAccountStatus');
 const detectBillingMode = extractFn('detectBillingMode');
@@ -296,6 +297,22 @@ check('Cloudflare：无 cost 时 spend=null（只显示用量）', cfFreeParsed.
 check('Cloudflare：success=false → null', parseCloudflareBilling({ success: false, result: [] }), null);
 check('Cloudflare：空 result → null', parseCloudflareBilling({ success: true, result: [] }), null);
 check('Cloudflare：无数值字段 → null', parseCloudflareBilling({ success: true, result: [{ product: 'x' }] }), null);
+
+// ================= ⑥b：Hugging Face 账单 =================
+check('HuggingFace：净账单 = (used-included)/1e9', parseHuggingFaceBilling({ usedNanoUsd: 1500000000, includedNanoUsd: 1000000000 }), 0.5);
+check('HuggingFace：included 大于 used → 0（不出现负账单）', parseHuggingFaceBilling({ usedNanoUsd: 100, includedNanoUsd: 200 }), 0);
+check('HuggingFace：缺 included → null（不拿毛金额当净账单）', parseHuggingFaceBilling({ usedNanoUsd: 1500000000 }), null);
+check('HuggingFace：缺 used → null', parseHuggingFaceBilling({ includedNanoUsd: 1000000000 }), null);
+check('HuggingFace：字符串数字同样接受', parseHuggingFaceBilling({ usedNanoUsd: '2000000000', includedNanoUsd: '1000000000' }), 1);
+check('HuggingFace：坏值 → null', parseHuggingFaceBilling({ usedNanoUsd: '12oops', includedNanoUsd: 0 }), null);
+check('HuggingFace：空对象 → null', parseHuggingFaceBilling({}), null);
+check('HuggingFace：null → null', parseHuggingFaceBilling(null), null);
+check('HuggingFace：数组 → null', parseHuggingFaceBilling([]), null);
+check('三态：huggingface → billing', detectBillingMode('huggingface', 'auto').mode, 'billing');
+ok('IDENTITY：huggingface 归账单源 huggingface', constantsSrc.indexOf("'huggingface': { account: 'huggingface', subscription: null, billing: 'huggingface' }") >= 0);
+ok('BILLING_PROVIDERS 含 huggingface', BILLING_PROVIDERS.indexOf('huggingface') >= 0);
+ok('BILLING_SOURCES 含 huggingface 接线', hostSrc.indexOf('huggingface: { fetch: fetchHuggingFaceBilling }') >= 0);
+check('client：账单服务名含 Hugging Face', clientSrc.indexOf("return 'Hugging Face'") >= 0, true);
 
 // ================= ⑦ FR-14：normalizeAccountStatus =================
 const norm = normalizeAccountStatus('billing', { kind: 'billing', spend: 12.34, budgetPercent: 45, currency: 'USD', note: '测试' });

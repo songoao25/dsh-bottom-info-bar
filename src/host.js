@@ -1282,6 +1282,15 @@ function parseCloudflareBilling(body) {
   if (!sawAny) return null
   return { spend: spend, usage: usage, usageUnit: usageUnit, freeRemaining: freeRemaining, resetsAt: resetsAt }
 }
+// Hugging Face 本月 Inference 账单：usage-v2 返回 nano USD 计费（usedNanoUsd/includedNanoUsd）。
+// 只认扁平形态；字段缺任一个即解析失败（不拿毛金额当净账单，不臆测 envelope）。
+function parseHuggingFaceBilling(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const used = parseFiniteNonNegativeAmount(body.usedNanoUsd)
+  const included = parseFiniteNonNegativeAmount(body.includedNanoUsd)
+  if (used == null || included == null) return null
+  return Math.round(Math.max(0, used - included) / 1e7) / 100
+}
 // 每日免费额度零点重置时刻（UTC 午夜；Cloudflare 免费额度按 UTC 日重置）
 function nextUtcMidnightMs(nowMs) {
   const d = new Date(typeof nowMs === 'number' ? nowMs : Date.now())
@@ -2973,6 +2982,25 @@ export default {
       }
     }
 
+    // Hugging Face 本月 Inference 账单：Bearer HF_TOKEN（细粒度 token 需 Billing 读权限，否则 403）。
+    // 凭据顺序 HF_TOKEN > HUGGING_FACE_HUB_TOKEN（与官方文档及社区实现一致）。
+    async function fetchHuggingFaceBilling() {
+      const key = await resolveWithFallback(['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN']);
+      if (!key) return { error: { kind: 'no-key', code: 'billing.huggingface-not-configured', message: t('error.billing.huggingface-not-configured') } };
+      try {
+        const res = await fetch('https://huggingface.co/api/settings/billing/usage-v2', {
+          headers: { Authorization: 'Bearer ' + key },
+          signal: timeoutSignal(HTTP_TIMEOUT_MS),
+        });
+        if (!res.ok) return { error: { kind: 'http', code: 'request.http', message: t('error.request.http', { status: res.status }) } };
+        const spend = parseHuggingFaceBilling(await res.json());
+        if (spend == null) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
+        return { data: { kind: 'billing', spend: spend, currency: 'USD', note: t('host.actualMonthlyBillFromHF') } };
+      } catch (err) {
+        return { error: { kind: 'exception', message: String((err && err.message) || err) } };
+      }
+    }
+
     const SUBSCRIPTION_SOURCES = {
       codex: { fetch: fetchCodexUsage },
       'opencode-go': { fetch: fetchOpenCodeGoUsage },
@@ -3037,6 +3065,7 @@ export default {
       fireworks: { fetch: fetchFireworksBilling },
       'amazon-bedrock': { fetch: fetchBedrockBilling },
       cloudflare: { fetch: fetchCloudflareBilling }, // cloudflare-ai-gateway / cloudflare-workers-ai 共用
+      huggingface: { fetch: fetchHuggingFaceBilling },
     };
 
     // 两套快照引擎实例：订阅制与账单制各一个，状态完全隔离（地区隔离、互不串扰的语义不变），
