@@ -1,4 +1,4 @@
-// dsh-bottom-info-bar — 文案双语契约（对齐姊妹插件 dsh-chatgpt-subscription 的 test-locale-copy.mjs）
+// dsh-bottom-info-bar — 文案双语契约（对齐姊妹插件 dsh-chatgpt-sub 的 test-locale-copy.mjs）
 //
 // 覆盖五条硬约束：
 //   1) locale/{en,zh}.json 的 meta.title / meta.description 与 package.json 接线（展示名 ≠ 包名）

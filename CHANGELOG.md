@@ -123,7 +123,7 @@
 
 ### Fixed
 
-- **命名对齐姊妹插件 dsh-chatgpt-subscription**：`locale/{en,zh}.json` 补 `meta.title`（Bottom Info Bar / 底部信息栏），插件卡片与详情页不再回退成包名；`cordis.patch.yml` 的行 id 改为短键 `bottom-info-bar`（与模块名分离，Components 里不再重复同一串字）；README 双语 H1 统一为展示名；配置页标题改取展示名。
+- **命名对齐姊妹插件 dsh-chatgpt-sub**：`locale/{en,zh}.json` 补 `meta.title`（Bottom Info Bar / 底部信息栏），插件卡片与详情页不再回退成包名；`cordis.patch.yml` 的行 id 改为短键 `bottom-info-bar`（与模块名分离，Components 里不再重复同一串字）；README 双语 H1 统一为展示名；配置页标题改取展示名。
 - **「配置页整块消失」事故的回归修复**：client half 取 `ctx.locale` 与注册字典整段包 try/catch，locale 服务缺席、未授权（cordis 抛 `cannot get property "locale" without inject`）或绑定失效时按浏览器语言兜底、最后退英文。
 - **错误文案跨语言稳定**：宿主每个用户可见错误补稳定 `code`（28 个，如 `request.http` / `subscription.*` / `ledger.*`），字典键统一为 `error.<code>`；前端按 code 取中英文案，字典缺失才退回宿主原文（以后改宿主文案不会再让界面串语言）。
 - **文案审计**：删除空值与无引用的字典键，`credits` 中文改为「积分」，去掉「立即」与破折号式散文。
@@ -748,7 +748,7 @@
 
 ## [1.1.0] - 2026-08-16
 
-> v1.1.0 定稿：**纯显示插件**——双模式（余额制 / 订阅制）显示与订阅额度读取。ChatGPT 订阅的**模型接入**（绑定 / OAuth / 令牌续期 / 模型路由注册 / 凭据注入）已剥离，由独立插件 **dsh-chatgpt-subscription** 提供；本插件不再包含任何绑定 / 令牌管理代码。
+> v1.1.0 定稿：**纯显示插件**——双模式（余额制 / 订阅制）显示与订阅额度读取。ChatGPT 订阅的**模型接入**（绑定 / OAuth / 令牌续期 / 模型路由注册 / 凭据注入）已剥离，由独立插件 **dsh-chatgpt-sub** 提供；本插件不再包含任何绑定 / 令牌管理代码。
 > 已知限制：`chatgpt.com` 后端为非公开接口，可能变更或失效（失效时自动降级、不崩溃）；可用模型以订阅计划为准。
 
 ### Added
@@ -765,7 +765,7 @@
 
 ### Changed
 
-- **ChatGPT 订阅模型接入剥离（移除 v1.2.0 绑定代码）**：dsh-bottom-info-bar 回归纯显示——OAuth 绑定 / 设置页「ChatGPT 订阅」/ 令牌续期与写回 / `openai-codex` 模型路由注册 / 凭据注入 / 绑定标记 全部移除，由独立插件 **dsh-chatgpt-subscription** 提供（该插件负责绑定并把令牌写入 `~/.codex/auth.json`，本插件只读令牌显示额度）；v1.2.0 遗留的 `uninstall.sh --purge-codex` 清理工具已一并移除（其清理对象已不存在，且为避免误触新插件的活体配置）
+- **ChatGPT 订阅模型接入剥离（移除 v1.2.0 绑定代码）**：dsh-bottom-info-bar 回归纯显示——OAuth 绑定 / 设置页「ChatGPT 订阅」/ 令牌续期与写回 / `openai-codex` 模型路由注册 / 凭据注入 / 绑定标记 全部移除，由独立插件 **dsh-chatgpt-sub** 提供（该插件负责绑定并把令牌写入 `~/.codex/auth.json`，本插件只读令牌显示额度）；v1.2.0 遗留的 `uninstall.sh --purge-codex` 清理工具已一并移除（其清理对象已不存在，且为避免误触新插件的活体配置）
 - **提供商显示名 Codex → ChatGPT**：Codex 与 ChatGPT 已合并，信息栏订阅服务名统一显示 ChatGPT（`codex` 保持 Codex）
 - **额度显示改为剩余百分比**：订阅窗口显示 **剩余 = 100 − 已用**（如 `5h 91% · 周 56% · 月 60%`，紧凑标签 + 数值加粗）；hover 浮窗明确写「剩余 xx%（已用 xx%）· 重置 …· 距重置 …」；预警触发条件不变（已用 ≥90% = 剩余 ≤10%），告急文案同步改为「剩余 ≤10%」
 

@@ -3557,7 +3557,7 @@ module.exports = {
         const hasData = windows.length > 0;
         // 错误分支：无旧数据时给出明确引导 / 错误文案；有旧数据时走下方渲染并附"刷新失败"标记。
         // no-key（无令牌/缺 access_token）与 auth（令牌失效 401）→ 统一"未绑定/重新绑定"引导——
-        // 令牌由独立插件 dsh-chatgpt-subscription 维护，本插件只读令牌显示额度，不自行绑定/续期
+        // 令牌由独立插件 dsh-chatgpt-sub 维护，本插件只读令牌显示额度，不自行绑定/续期
         if (sub.error && !hasData) {
           if (fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',

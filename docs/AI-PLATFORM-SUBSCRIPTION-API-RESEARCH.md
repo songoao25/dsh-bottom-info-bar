@@ -31,7 +31,7 @@
 | 是否公开稳定接口 | △ 仅对付费账户开放，且接口版本频繁变更；推荐通过 Dashboard 手动查看或使用官方 SDK |
 | 官方文档链接 | [Billing API](https://platform.openai.com/docs/api-reference/billing) / [Usage API](https://platform.openai.com/docs/api-reference/usage) |
 
-**接入可行性**: ✘ 无稳定公开的 API 接口。OpenAI 官方不提供实时余额查询的稳定 REST API，Dashboard 数据可通过浏览器自动化获取但不推荐生产环境使用。Codex wham 接口（如 `dsh-chatgpt-subscription` 插件所用）是社区逆向工程方案，非官方支持。
+**接入可行性**: ✘ 无稳定公开的 API 接口。OpenAI 官方不提供实时余额查询的稳定 REST API，Dashboard 数据可通过浏览器自动化获取但不推荐生产环境使用。Codex wham 接口（如 `dsh-chatgpt-sub` 插件所用）是社区逆向工程方案，非官方支持。
 
 ---
 

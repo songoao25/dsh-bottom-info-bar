@@ -27,7 +27,7 @@
 
 ## 仓库结构
 
-**仓库根就是插件包**（官方布局：DSH 插件页的「GitHub 仓库地址」直接指向仓库根即可安装，与姊妹插件 `dsh-chatgpt-subscription` 一致）。
+**仓库根就是插件包**（官方布局：DSH 插件页的「GitHub 仓库地址」直接指向仓库根即可安装，与姊妹插件 `dsh-chatgpt-sub` 一致）。
 
 - `package.json` — 插件清单（`dsh.bundle`）与依赖/脚本；版本号归 Release Please 管
 - `cordis.patch.yml` — 插件组合补丁（挂载行；行 `name` 必须是包名）
@@ -91,7 +91,7 @@
 
 - **`lib/` 是入库的构建产物**：这样用户把 GitHub 地址粘进 DSH 插件页就能装，不需要先构建。改 `src/` 后必须 `npm run build` 并提交 `lib/`——CI 的「Verify generated bundle is committed」会拦住忘记重建的 PR。`package.json` 只保留 `prepublishOnly`（发 npm 时重建），**不要加 `prepare` / `prepack`**：pnpm 对 git 依赖会执行它们，会让 git 安装弹出「待批准的构建脚本」。
 - 修改 `src/` 后需重启 `dsh web`（插件在宿主启动时组合，刷新页面不够）；本地 `link:` 副本还要先重建 `lib/`
-- 订阅配额只读：本插件只读 `~/.codex/auth.json` 与 OpenCode Go 配额接口来显示，不负责绑定/刷新/路由；绑定 ChatGPT 账号请装配套插件 dsh-chatgpt-subscription（独立仓库）
+- 订阅配额只读：本插件只读 `~/.codex/auth.json` 与 OpenCode Go 配额接口来显示，不负责绑定/刷新/路由；绑定 ChatGPT 账号请装配套插件 dsh-chatgpt-sub（独立仓库）
 - 花费记录持久化到 `~/.dsh/dsh-bottom-info-bar/usage-records.json`，重启不丢
 - 对外文档（README/CHANGELOG）只写用户视角功能，严禁开发过程流水账与内部代号
 - 提交遵循 Conventional Commits（feat/fix/docs/test/chore）
