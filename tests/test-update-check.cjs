@@ -76,12 +76,12 @@ check('client 只保留一处 getUpdateInfo 调用点（供定期 / 可见性重
   && client.includes('const readUpdateInfo = function ()'))
 check('client 每 60 秒重读版本信息（用于版本诊断，不占聊天信息栏）',
   client.includes('const UPDATE_INFO_REFRESH_MS = 60000;')
-  && client.includes('window.setInterval(readUpdateInfo, UPDATE_INFO_REFRESH_MS)'))
+  && client.includes('scheduleInterval(readUpdateInfo, UPDATE_INFO_REFRESH_MS)'))
 check('client 在页面重新可见 / 窗口获得焦点时也重读版本信息',
   client.includes("document.addEventListener('visibilitychange', onVisible)")
   && client.includes("window.addEventListener('focus', onVisible)"))
 check('client 卸载时清理定时器与监听（不留悬挂副作用）',
-  client.includes('window.clearInterval(timer)')
+  client.includes('cancelInterval(timer)')
   && client.includes("document.removeEventListener('visibilitychange', onVisible)")
   && client.includes("window.removeEventListener('focus', onVisible)"))
 check('client 无论是否有更新都保存当前插件版本', client.includes("typeof info.current === 'string') setUpdateInfo(info)"))

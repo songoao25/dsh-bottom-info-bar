@@ -5,7 +5,7 @@ param([string]$Profile = 'web')
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($cmd in @('dsh', 'pnpm')) {
+foreach ($cmd in @('dsh')) {
   if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
     Write-Error "错误：未找到 $cmd"; exit 1
   }
