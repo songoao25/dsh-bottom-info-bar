@@ -1,0 +1,71 @@
+# 依赖与构建产物
+node_modules/
+pnpm-lock.yaml
+
+# 系统与编辑器
+.DS_Store
+*.log
+
+# Private product-development working materials; never publish to GitHub.
+.product-team/
+*.tmp
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# 密钥与敏感文件（永远不得入库）
+*.pem
+*.key
+.env
+.env.*
+credentials.yaml
+
+# 打包产物
+*.tgz
+*.tar.gz
+
+# IDE
+.idea/
+.vscode/
+
+# 构建产物：lib/ 已提交入库（与姊妹插件一致）。
+# 理由：用户会直接把 GitHub 仓库地址粘进 DSH 的「添加插件」，仓库根必须是一个
+# 开箱即用的 bundle 包 —— 不能要求用户先构建。改 src/ 后务必 npm run build 并提交，
+# CI 的「Verify generated bundle is committed」会拦住忘记重建的 PR。
+
+# 本地工具目录（工作树存在、未跟踪，防误 add）
+.dsh-vision-toolkit/
+
+# Agent 专属物：本项目只允许通用 Agent 资产，此处永不入库（守卫 2 在 CI 强制执行）
+.workbuddy/
+.cursor/
+.aider
+.continue/
+.codeium/
+.claude/
+.gemini/
+.codex/
+.specstory/
+.windsurf/
+.opencode/
+.trae/
+.cline/
+.roo/
+.kilocode/
+.qodo/
+.cody/
+.tabnine/
+.amazonq/
+.ai/
+CLAUDE.md
+CURSOR.md
+CODEX.md
+GEMINI.md
+WINDSURF.md
+COPILOT.md
+.cursorrules
+.cursorignore
+.clinerules
+.windsurfrules

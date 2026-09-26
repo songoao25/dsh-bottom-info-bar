@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 —— tests/test-source-guards.mjs 的「守卫 4」需要与基线的完整
+      # diff 才能判断本 PR 有没有手工改版本元数据；浅克隆会让它取不到基线而跳过。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Build
+        run: npm run build
+      # lib/ 是提交入库的构建产物：用户直接把 GitHub 仓库地址粘进 DSH 就能装，
+      # 前提是仓库里的 lib/ 永远与 src/ 一致。忘记重建的 PR 在这里被拦住。
+      - name: Verify generated bundle is committed
+        run: git status --porcelain -- lib | tee /dev/stderr | wc -l | grep -qx 0
+      - name: Run tests
+        run: node tests/run-all.mjs

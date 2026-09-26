@@ -1,0 +1,162 @@
+// 静态 client（src/client-bundle.js）显示逻辑审计：
+// ① 本会话花费始终显示——不再以 currentSession.tokens > 0 为门槛（新会话/对话刚开始显示 ¥0.000，
+//    hover 仍可查看持久化的 今天/近一月/全部）；
+// ② 原生统计行不再以 steps > 0 为门槛——完整模式下对话刚开始即显示 "0 轮 · 0 步"；
+//    简洁模式中该行保留在 DOM 内，以连续收合动画隐藏。
+// ③ 密度切换仍为严格两态（displayDensity === 'full'）+ toggling 防抖（回归保护）。
+// 用法：node tests/test-static-client.js
+const fs = require('fs');
+
+const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
+
+let pass = 0, fail = 0;
+function check(label, actual, expected) {
+  const ok = actual === expected;
+  if (ok) { pass++; console.log('PASS  ' + label); }
+  else { fail++; console.log('FAIL  ' + label + ' → 期望 ' + JSON.stringify(expected) + '，实际 ' + JSON.stringify(actual)); }
+}
+
+// 1) 本会话始终显示：无 tokens > 0 门槛（v1.8 起为 pushSessionCost 公共小部件，余额制与订阅·充值余额两处复用）
+check('本会话块不再依赖 tokens > 0 门槛', !clientSrc.includes('usg.currentSession.tokens > 0'), true);
+check('本会话块在 usg 存在时始终渲染（pushSessionCost 公共小部件）', clientSrc.includes('function pushSessionCost(groups, trailingErrorGroups, usdSymbol)')
+  && clientSrc.includes('const usg = renderedState.usage;')
+  && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
+check('无记账时显示 ¥0.000 回退', clientSrc.includes('symbol + (0).toFixed(3)'), true);
+check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) })"), true);
+check('hover 仍含 全部', clientSrc.includes("t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) })"), true);
+
+// 2) 原生统计行不再以 steps > 0 为门槛；简洁模式下保留 DOM 供动画收合
+check('原生统计行由 statsProj 驱动，简洁模式保留 DOM 以支持收合', clientSrc.includes('if (statsProj) {')
+  && clientSrc.includes("className: 'bi-density-extra'"), true);
+check('原生统计行不含 steps > 0 门槛', !clientSrc.includes('statsProj.steps > 0'), true);
+
+// 3) 密度两态 + 防抖回归保护
+check('client 源码含 toggling 防抖', clientSrc.includes('toggling'), true);
+check('client 源码含严格判定 === \'full\'', clientSrc.includes("displayDensity === 'full'"), true);
+check('client 源码不含 !== \'compact\' 宽松判定', !clientSrc.includes("props.density !== 'compact'"), true);
+check('client 源码 root onClick 绑定 onToggleDensity', clientSrc.includes('onClick: function () { props.onToggleDensity(); }'), true);
+check('client 切换同时支持键盘，语义为按钮', clientSrc.includes("role: 'button'")
+  && clientSrc.includes('onKeyDown: function (event)'), true);
+check('可交互信息栏不允许选中文本，避免点击时出现正文选择态', clientSrc.includes('user-select: none')
+  && clientSrc.includes('-webkit-user-select: none'), true);
+
+// 4) 当前会话 ID 多路获取（修复：新对话显示上一会话金额）
+check('client 优先读 props.sessionId', clientSrc.includes('if (p.sessionId) return p.sessionId;'), true);
+check('client 回退读 props.session.sessionId', clientSrc.includes('if (p.session && p.session.sessionId) return p.session.sessionId;'), true);
+check('client 回退读 ctx.get(sessions).current', clientSrc.includes("ctx.get ? ctx.get('sessions') : null"), true);
+check('client 空值兜底返回空串（host 对空串返回 null）', clientSrc.includes("return '';"), true);
+
+// 5) 回复完成即时刷新（不等 30s 轮询）
+check('client 监听会话统计变化触发 load', clientSrc.includes('statsProj && statsProj.turns'), true);
+check('client 防抖 800ms 刷新', clientSrc.includes('scheduleTimeout(load, 800)'), true);
+
+// 6) UI 语义：颜色不单独表达状态，正常额度和估算值不误用成功/警告色
+check('浅色普通信息与估算说明使用高对比深灰，三级文字仅用于分隔符', clientSrc.includes('--bi-label-supporting: #3f444a')
+  && clientSrc.includes('color: var(--bi-label-supporting)')
+  && clientSrc.includes('.bi-muted{ color: var(--bi-label-supporting); }')
+  && clientSrc.includes('--bi-separator: var(--dsw-alias-label-tertiary'), true);
+check('估算余额使用中性说明色', clientSrc.includes("className: 'bi-muted'"), true);
+check('正常订阅额度不使用绿色成功色', clientSrc.includes("remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : ''"), true);
+check('高峰价与低余额共用警示红；状态标签用 600，避免与关键数值争夺层级', clientSrc.includes('.bi-peak    { color: var(--bi-state-alert); font-weight: 600; }'), true);
+check('空闲价为浅色与深色主题分别使用高对比绿色', clientSrc.includes('--bi-state-price-low: #087f5b')
+  && clientSrc.includes('--bi-state-price-low: #86efac'), true);
+check('低余额、低额度、刷新失败和阻断错误为浅色与深色主题分别使用高对比红色', clientSrc.includes('--bi-state-alert: #d92d20')
+  && clientSrc.includes('--bi-state-alert: #ff6961')
+  && clientSrc.includes('.bi-err, .bi-stale { color: var(--bi-state-alert); font-weight: 600; }')
+  && clientSrc.includes('.bi-root b.bi-alert-num, .bi-root b.bi-quota-low { color: var(--bi-state-alert); font-weight: 700; }'), true);
+check('主题颜色以 DSH 实际外观属性切换，并在增强对比度下提供独立色阶', clientSrc.includes('body[data-ds-dark-theme] .bi-root')
+  && clientSrc.includes('@media (prefers-contrast: more)')
+  && clientSrc.includes('--bi-state-price-low: #05603a')
+  && clientSrc.includes('--bi-state-alert: #ff7770'), true);
+check('低余额和低额度使用无框“低”字，状态不只依赖颜色且不制造额外视觉焦点', !clientSrc.includes('⚠')
+  && clientSrc.includes('.bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }')
+  && !clientSrc.includes('bi-low-badge')
+  && clientSrc.includes("alertActive ? React.createElement('span', { className: 'bi-low-status' }, t('ui.low'))")
+  && clientSrc.includes("key: 'low' + i, className: 'bi-low-status' }, t('ui.low')"), true);
+check('外部分组为 6px、标签与数据为 4px、模型内部圆点为 4px，层级清晰而不过松', clientSrc.includes('.bi-sep { color: var(--bi-separator); margin: 0 6px; }')
+  && clientSrc.includes('.bi-metric-data { margin-left: 4px; }')
+  && clientSrc.includes('.bi-model-dot { margin: 0 4px; flex: 0 0 auto; }'), true);
+check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
+  && clientSrc.includes("num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s')")
+  && clientSrc.includes("group([num(t(statsProj.turns === 1 ? 'ui.turnCount' : 'ui.turnCountPlural', { count: statsProj.turns })), ' · ', num(t(statsProj.steps === 1 ? 'ui.stepCount' : 'ui.stepCountPlural', { count: statsProj.steps }))], false, 'turnsSteps')")
+  && clientSrc.includes("group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok')"), true);
+check('标签与数据通过 metric 组件统一 4px 边界，不依赖普通字符空格', clientSrc.includes("function metric(label, value, extraClass)")
+  && clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
+  && clientSrc.includes("metric(t('ui.session'), costTxt)")
+  && clientSrc.includes("metric(t('ui.cacheHit'), hit + '%')"), true);
+check('超长模型名不会被根容器裁切：模型详情可整体换行，视觉胶囊保留能力词并省略过长型号', !clientSrc.includes('display: block; overflow: hidden; font-size: 12px')
+  && clientSrc.includes('.bi-row2 > .bi-model-group { white-space: normal; }')
+  && clientSrc.includes('.bi-model-detail { display: inline-flex;')
+  && clientSrc.includes('.bi-vision-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }')
+  && clientSrc.includes("React.createElement('span', { className: 'bi-vision-kind' }, t('ui.vision'))"), true);
+check('整条信息栏的读屏名称引用当前可见信息，切换操作作为独立说明而不覆盖内容', !clientSrc.includes("'aria-label': full ? '切换为简洁模式'")
+  // 读屏名称在「原生行是否参与」时才带上原生行；该判据由 nativeRowShown 一个变量给出（模式变量只服务它）。
+  && clientSrc.includes("const nativeRowShown = row1Present && full;")
+  && clientSrc.includes("'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary'")
+  && clientSrc.includes("'aria-describedby': 'dsh-bottom-info-bar-action'")
+  && clientSrc.includes("id: 'dsh-bottom-info-bar-action'")
+  && clientSrc.includes("className: 'bi-sr-only'"), true);
+check('报错标签统一延后到居中信息组的末尾', clientSrc.includes('const trailingErrorGroups = []')
+  && clientSrc.includes('trailingErrorGroups.push')
+  && clientSrc.includes('const nodes = assembleInfoBarRow(groups, trailingErrorGroups, React.createElement);')
+  // D7：圆环接管后仍位于「居中信息组 + 尾部错误组」之后——错误标签不会跑到圆环右侧。
+  // 2026-09-24 起圆环不再是主行的独立子项，而是与末节点同组（attachContextMeter → .bi-tail），
+  // 换行时两者一起走，圆环不会被单独挤到下一行。
+  && clientSrc.includes('...attachContextMeter(nodes, contextNode, React.createElement)')
+  && clientSrc.includes('function attachContextMeter('), true);
+check('多个刷新失败合并为一个右侧标签', clientSrc.includes('const seenRefreshFailure = { value: false };')
+  && clientSrc.includes("if (text !== t('ui.refreshFailed')) return true;"), true);
+check('状态说明维持原生悬浮提示，不额外引入读屏文案', !clientSrc.includes("'aria-label': title")
+  && !clientSrc.includes("'aria-label': modelLabel"), true);
+
+// 7) 视觉模型：仅 host 明确识别后展示，复刻参考图的实色靛蓝椭圆
+check('视觉标识只接受 host 的显式 true，不通过名称猜测', clientSrc.includes("pr.acceptsImageInput !== true"), true);
+check('服务商、圆点与视觉模型使用同一 flex 中心线，窄宽度下可作为完整单元换行', clientSrc.includes('.bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: var(--bi-line); vertical-align: top; }')
+  && clientSrc.includes('.bi-model-provider, .bi-model-dot { display: inline-flex; align-items: center; height: 16px; line-height: 14px; }')
+  && clientSrc.includes("function modelDetail(pr, modelName)")
+  && clientSrc.includes("className: 'bi-model-dot'"), true);
+check('视觉模型名采用高对比电光蓝实色椭圆、白字、深色细边且不超过文字字形边界', clientSrc.includes('.bi-vision {')
+  && clientSrc.includes('height: 16px')
+  && clientSrc.includes('border-radius: 999px')
+  && clientSrc.includes('border: 1px solid var(--bi-vision-border)')
+  && clientSrc.includes('color: #fff')
+  && clientSrc.includes('background: var(--bi-vision-bg)')
+  && clientSrc.includes('--bi-vision-border: #0044cc')
+  && clientSrc.includes('--bi-vision-bg: #0057ff'), true);
+
+// 8) 两端适配（2026-09-26 独立审计）：定时器走统一入口，样式安装先探 DOM，seed 缺席不崩加载期
+check('定时器统一入口存在且 rpc 走它（无 window 定时器的极简宿主按无超时继续）', (function () {
+  const start = clientSrc.indexOf('function rpc(method, args, externalSignal)');
+  const end = clientSrc.indexOf('function mergeLoadResults');
+  if (start === -1 || end === -1 || end <= start) return false;
+  const body = clientSrc.slice(start, end);
+  return clientSrc.includes('function scheduleTimeout(fn, ms)')
+    && clientSrc.includes('function cancelTimeout(id)')
+    && body.includes('const timer = scheduleTimeout(')
+    && body.includes('cancelTimeout(timer)')
+    && !body.includes('window.setTimeout')
+    && !body.includes('window.clearTimeout');
+})(), true);
+check('slots 等待走统一入口（无定时器时直接重试，不抛错）', clientSrc.includes('if (scheduleTimeout(resolve, delay) === null) resolve();'), true);
+check('组件轮询与防抖同样走定时器统一入口（极简宿主不因 window 缺席崩溃）', clientSrc.includes('function scheduleInterval(fn, ms)')
+  && clientSrc.includes('function cancelInterval(id)')
+  && clientSrc.includes('const id = scheduleInterval(load, 30000);')
+  && clientSrc.includes('const timer = scheduleTimeout(load, 800);')
+  && clientSrc.includes('id = scheduleInterval(function () { setNow(Date.now()); }, 1000);'), true);
+check('两处样式安装各自先探 DOM，无 DOM 时返回空 disposer（有意内联：两函数会被测试单独抽出求值，helper 在抽离作用域不可见）', (function () {
+  const a = clientSrc.indexOf('function installStyles()');
+  const b = clientSrc.indexOf('function bibSetInstallStyles()');
+  if (a === -1 || b === -1 || !(a < b)) return false;
+  const guard = "typeof document.querySelector !== 'function'";
+  const ret = 'return function () {};';
+  const headA = clientSrc.slice(a, a + 600);
+  const headB = clientSrc.slice(b, b + 600);
+  return headA.includes(guard) && headA.includes(ret) && headB.includes(guard) && headB.includes(ret)
+    && !clientSrc.includes('function canInstallStyles');
+})(), true);
+check('primitives 缺席时退回空对象（灰度桌面端 seed 缺失不崩加载期）', !clientSrc.includes('const BIB_SET_PRIMITIVES = require(')
+  && clientSrc.includes("require('@deepseek-ai/dsh-client-ui-primitives')")
+  && clientSrc.includes('if (BIB_SET_PRIMITIVES === null) BIB_SET_PRIMITIVES = {};'), true);
+
+console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
+process.exit(fail > 0 ? 1 : 0);

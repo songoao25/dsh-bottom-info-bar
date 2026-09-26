@@ -1,0 +1,323 @@
+// host.js 审计必修项回归（端到端，桩环境，直接 import 源码无需先 build）：
+// ① 余额 seq 竞态：慢请求凭据失败不得覆盖新快照（审计缺陷 #3）
+// ② 余额失败保留旧快照：credentials / no-key 失败仅换 error，data/fetchedAt 保留（审计缺陷 #3）
+// ③ 余额/花费币种随活跃模型服务商：OpenAI 模型激活 → USD 估算余额 + USD 花费，不再显示 DeepSeek ¥ / ¥0（审计缺陷 #6）
+// ④ llm/stream next() 失败向上传播，不吞成空流（审计缺陷 #5）
+// ⑤ 异常 usage（NaN/Infinity/负数）记账清洗：汇总保持有限、落盘为 0（审计缺陷 #2 端到端）
+// 纯函数层（sanitizeTokens / isValidUsageRecord）见 tests/test-usage-sanitize.cjs。
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const tmpData = mkdtempSync(join(tmpdir(), 'bib-host-fixes-'))
+process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = tmpData
+process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(tmpData, 'no-codex-auth.json')
+process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(tmpData, 'no-opencode-auth.json')
+
+const plugin = (await import('../src/host.js')).default
+
+let failures = 0
+function check(name, cond, detail) {
+  if (cond) console.log('PASS  ' + name)
+  else { failures += 1; console.log('FAIL  ' + name + (detail ? ' — ' + detail : '')) }
+}
+
+// ---------- 桩工具 ----------
+function makeStub(providerId, model) {
+  const captured = { route: null, llmListener: null }
+  const selectedProvider = providerId === undefined ? 'deepseek-official' : providerId
+  const selectedModel = model === undefined ? 'deepseek-v4-flash' : model
+  // v1.6：记录 {name, deferred}，让测试按名称取特定凭据的 deferred
+  const credEntries = []
+  const ctx = {
+    get(name) {
+      if (name === 'agentDefaultModel') {
+        return { currentSelection: () => ({ provider: selectedProvider, model: selectedModel }) }
+      }
+      return undefined
+    },
+    credentials: {
+      resolve: (credName) => {
+        // 每次调用返回一个可手动 resolve/reject 的 deferred（测试可控的竞态时序）
+        const d = { name: credName }
+        d.promise = new Promise((resolve, reject) => { d.resolve = resolve; d.reject = reject })
+        credEntries.push(d)
+        return d.promise
+      },
+    },
+    shell: { resolve: () => ({}), run: async () => ({ exitCode: 0, stdout: { text: '' } }) },
+    interval() { return () => {} },
+    timeout() { return () => {} },
+    on(event, listener) { if (event === 'llm/stream') captured.llmListener = listener; return () => {} },
+    inject(services, cb) {
+      const webCtx = {
+        effect(fn) { const dispose = fn(); return () => { if (typeof dispose === 'function') dispose() } },
+        connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' ? 403 : undefined } },
+        webServer: { register(route) { captured.route = route; return () => {} } },
+      }
+      cb(webCtx)
+      return () => {}
+    },
+  }
+  // v1.6：返回 credEntries（含 name 字段），并提供辅助函数按名称过滤
+  function getCredEntriesByName(name) {
+    return credEntries.filter(e => e.name === name)
+  }
+  return { captured, ctx, credEntries, getCredEntriesByName }
+}
+
+function makeReq(path, method, body, headers) {
+  const listeners = {}
+  const req = {
+    url: path,
+    method: method || 'GET',
+    headers: headers || {},
+    on(ev, cb) { (listeners[ev] = listeners[ev] || []).push(cb); return req },
+    destroy() {},
+  }
+  return {
+    req,
+    emit() {
+      if (body !== undefined) for (const cb of listeners.data || []) cb(Buffer.from(body))
+      for (const cb of listeners.end || []) cb()
+    },
+  }
+}
+async function invoke(route, path, method, body, headers) {
+  const { req, emit } = makeReq(path, method, body, headers)
+  let status = 0
+  let payload = null
+  const res = {
+    writeHead(s) { status = s },
+    end(b) { try { payload = JSON.parse(b) } catch { payload = String(b) } },
+  }
+  const pending = route.handler(req, res)
+  emit()
+  await pending
+  return { status, payload }
+}
+function selectionBody(provider, model) {
+  return JSON.stringify({ selection: { provider, model } })
+}
+function usageBody(sessionId, provider = 'deepseek-official', model = 'deepseek-v4-flash') {
+  return JSON.stringify({ sessionId, selection: { provider, model } })
+}
+async function feedUsage(listener, usage, opts) {
+  const options = Object.assign({ model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 's-usage' }, opts || {})
+  async function* fakeStream() {
+    yield { type: 'usage', usage }
+    yield { type: 'finish' }
+  }
+  const iter = listener(options, async () => fakeStream())
+  for await (const c of iter) { /* drain */ }
+}
+
+function startForcedDeepSeekRefresh(route) {
+  return invoke(route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', JSON.stringify({ selection: { provider: 'deepseek-official', model: 'deepseek-v4-flash' }, force: true }), { 'sec-fetch-site': 'same-origin' })
+}
+
+// fetch 桩：URL 感知——只对 DeepSeek 余额 API 计数并返回 88.5 CNY；其他 URL 返回最小可用响应
+let fetchCalls = 0
+let lastDeepSeekRequest = null
+let malformedDeepSeekBalance = false
+globalThis.fetch = async (url, options) => {
+  let parsedUrl = null
+  try { parsedUrl = new URL(String(url)) } catch { /* 余额测试的 URL 桩继续走下方分支 */ }
+  if (parsedUrl && parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'registry.npmjs.org'
+      && parsedUrl.pathname === '/dsh-bottom-info-bar/latest') {
+    return { ok: true, status: 200, json: async () => ({ version: '1.4.0' }) }
+  }
+  // v1.6：只对 DeepSeek API 计数；其他服务商返回空对象避免抛异常
+  if (parsedUrl && parsedUrl.hostname === 'api.deepseek.com') {
+    fetchCalls += 1
+    lastDeepSeekRequest = { url: String(url), options: options || {} }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => malformedDeepSeekBalance
+        ? ({ balance_infos: [{ currency: 'CNY', total_balance: '88.5oops', granted_balance: '0', topped_up_balance: '88.5' }] })
+        : ({ balance_infos: [{ currency: 'CNY', total_balance: '88.5', granted_balance: '0', topped_up_balance: '88.5' }] }),
+    }
+  }
+  // 其他 URL（moonshot/openrouter/stepfun）返回空对象，不计数
+  return { ok: true, status: 200, json: async () => ({}) }
+}
+
+// ================= ①② 余额 seq 竞态 + 失败保留旧快照 =================
+{
+  const { captured, ctx, credEntries, getCredEntriesByName } = makeStub()
+  const disposer = plugin.apply(ctx)
+  await new Promise((r) => setTimeout(r, 30))
+  // 两次强制刷新并发：第一请求不会再由启动阶段预取触发，只有当前
+  // 客户端明确请求的账户才进入刷新队列。
+  const r1Pending = startForcedDeepSeekRefresh(captured.route)
+  await new Promise((r) => setTimeout(r, 10))
+  const r2Pending = startForcedDeepSeekRefresh(captured.route)
+  await new Promise((r) => setTimeout(r, 10))
+  // v1.6：按名称过滤 deepseek 的凭据请求（排除其他服务商的干扰）
+  const deepseekCreds = getCredEntriesByName('DEEPSEEK_API_KEY')
+  check('两次 deepseek 凭据请求均已挂起（seq=1 与 seq=2）', deepseekCreds.length === 2, String(deepseekCreds.length))
+  // seq=2 先成功 → 写入新快照 88.5
+  deepseekCreds[1].resolve({ value: 'sk-test' })
+  await new Promise((r) => setTimeout(r, 30))
+  const r2 = await r2Pending
+  check('getBalanceSnapshot(force) 触发二次余额刷新', r2.status === 200 && r2.payload.provider === 'deepseek')
+  {
+    const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+    check('新快照（seq=2）成功写入：total=88.5 / CNY / 无 error', b.status === 200 && b.payload.data && b.payload.data.total === 88.5 && b.payload.data.currency === 'CNY' && b.payload.error === null, JSON.stringify(b.payload))
+    check('余额 API 恰好调用 1 次（仅 seq=2 成功路径）', fetchCalls === 1, String(fetchCalls))
+    check('余额请求带代次参数，避免中间缓存返回旧余额', lastDeepSeekRequest && /[?&]_dsh_refresh=\d+/.test(lastDeepSeekRequest.url), String(lastDeepSeekRequest && lastDeepSeekRequest.url))
+    check('余额请求禁用缓存', lastDeepSeekRequest && lastDeepSeekRequest.options.headers && lastDeepSeekRequest.options.headers['Cache-Control'] === 'no-cache, no-store' && lastDeepSeekRequest.options.headers.Pragma === 'no-cache')
+  }
+  // 旧请求（seq=1）此刻才失败：seq guard 必须阻止其覆盖新快照
+  deepseekCreds[0].reject(new Error('cred store down'))
+  await new Promise((r) => setTimeout(r, 30))
+  await r1Pending
+  {
+    const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+    check('慢请求凭据失败不覆盖新快照（seq guard）', b.payload && b.payload.data && b.payload.data.total === 88.5 && b.payload.error === null, JSON.stringify(b.payload))
+  }
+  // 第三次刷新（seq=3）：no-key 失败 → 保留旧快照，仅换 error
+  const r3Pending = startForcedDeepSeekRefresh(captured.route)
+  await new Promise((r) => setTimeout(r, 10))
+  const deepseekCreds2 = getCredEntriesByName('DEEPSEEK_API_KEY')
+  check('第三次 deepseek 凭据请求已发起', deepseekCreds2.length === 3, String(deepseekCreds2.length))
+  deepseekCreds2[2].resolve(undefined) // 未配置 Key → no-key 分支
+  await new Promise((r) => setTimeout(r, 30))
+  await r3Pending
+  {
+    const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+    check('no-key 失败保留旧快照：data.total 仍 88.5', b.payload && b.payload.data && b.payload.data.total === 88.5, JSON.stringify(b.payload))
+    check('no-key 失败仅换 error.kind=no-key', b.payload && b.payload.error && b.payload.error.kind === 'no-key')
+  }
+  // 第四次刷新：格式损坏的金额不能变成“余额 0”，应保留上一笔有效快照并报解析错误。
+  const r4Pending = startForcedDeepSeekRefresh(captured.route)
+  await new Promise((r) => setTimeout(r, 10))
+  const deepseekCreds3 = getCredEntriesByName('DEEPSEEK_API_KEY')
+  check('格式异常测试的 deepseek 凭据请求已发起', deepseekCreds3.length === 4, String(deepseekCreds3.length))
+  malformedDeepSeekBalance = true
+  deepseekCreds3[3].resolve({ value: 'sk-test' })
+  await new Promise((r) => setTimeout(r, 30))
+  await r4Pending
+  {
+    const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+    check('余额格式异常不伪造为 0：保留上次有效金额', b.payload && b.payload.data && b.payload.data.total === 88.5, JSON.stringify(b.payload))
+    check('余额格式异常明确标记 parse 错误', b.payload && b.payload.error && b.payload.error.kind === 'parse', JSON.stringify(b.payload && b.payload.error))
+  }
+  malformedDeepSeekBalance = false
+  disposer()
+}
+
+// ================= ③ 币种随活跃模型服务商（OpenAI 激活） =================
+{
+  const { captured, ctx } = makeStub('openai', 'gpt-4o')
+  const disposer = plugin.apply(ctx)
+  await new Promise((r) => setTimeout(r, 30))
+  {
+    const b = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('openai', 'gpt-4o'), { 'sec-fetch-site': 'same-origin' })
+    check('OpenAI 激活：余额 provider=openai（非恒 deepseek）', b.status === 200 && b.payload.provider === 'openai', JSON.stringify(b.payload && b.payload.provider))
+    check('OpenAI 激活：余额为估算（estimate=true）', b.payload && b.payload.estimate === true)
+    check('OpenAI 激活：币种 USD（非 CNY）', b.payload && b.payload.data && b.payload.data.currency === 'USD', JSON.stringify(b.payload && b.payload.data))
+    check('OpenAI 激活：估算余额 = 起始 20', b.payload && b.payload.data && b.payload.data.total === 20, JSON.stringify(b.payload && b.payload.data))
+  }
+  await feedUsage(captured.llmListener, { inputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 2000 }, { model: 'gpt-4o', provider: 'openai', sessionId: 's-usd' })
+  const r = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-usd', 'openai', 'gpt-4o'))
+  check('OpenAI 记账：本对话有 USD 花费', r.payload && r.payload.currentSession && r.payload.currentSession.costs && r.payload.currentSession.costs.USD > 0, JSON.stringify(r.payload && r.payload.currentSession))
+  check('OpenAI 记账：今天花费 > 0（修复前显示 ¥0）', typeof r.payload.todaySpend === 'number' && r.payload.todaySpend > 0, 'todaySpend=' + r.payload.todaySpend)
+  check('OpenAI 记账：全部花费 > 0（修复前显示 ¥0）', typeof r.payload.totalSpend === 'number' && r.payload.totalSpend > 0, 'totalSpend=' + r.payload.totalSpend)
+  // 币种隔离：追加一条 DeepSeek（CNY）记录，今天花费应保持不变
+  await feedUsage(captured.llmListener, { inputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 1000 }, { model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 's-cny' })
+  const r2 = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-usd', 'openai', 'gpt-4o'))
+  check('USD 活跃下 CNY 记录不混入今天花费（币种隔离）', r2.payload && r2.payload.todaySpend === r.payload.todaySpend, 'before=' + r.payload.todaySpend + ' after=' + r2.payload.todaySpend)
+  disposer()
+}
+
+// ================= ④ llm/stream next() 失败向上传播 =================
+{
+  const { captured, ctx } = makeStub()
+  const disposer = plugin.apply(ctx)
+  await new Promise((r) => setTimeout(r, 30))
+  const iter = captured.llmListener(
+    { model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 's-broken' },
+    async () => { throw new Error('upstream boom') }
+  )
+  let thrown = null
+  try { for await (const c of iter) { /* 不应产出任何 chunk */ } } catch (err) { thrown = err }
+  check('llm/stream next() 失败 → 原异常向上传播（不吞成空流）', thrown !== null && thrown.message === 'upstream boom', thrown ? thrown.message : '未抛出')
+  const rb = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-broken'))
+  check('next() 失败的请求不记账（currentSession null）', rb.payload && rb.payload.currentSession === null, JSON.stringify(rb.payload && rb.payload.currentSession))
+  disposer()
+}
+
+// ================= ⑤ 异常 usage 记账清洗（含落盘校验） =================
+{
+  const { captured, ctx } = makeStub()
+  const disposer = plugin.apply(ctx)
+  await new Promise((r) => setTimeout(r, 30))
+  await feedUsage(captured.llmListener, { uncachedInputTokens: NaN, cacheReadTokens: Infinity, cacheWriteTokens: -100, outputTokens: 500 }, { sessionId: 's-abnormal' })
+  const ra = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-abnormal'))
+  const ca = ra.payload && ra.payload.currentSession
+  check('异常 usage 清洗后本会话 tokens 有限且 = 500', ca && Number.isFinite(ca.tokens) && ca.tokens === 500, JSON.stringify(ca))
+  check('异常 usage 清洗后花费为有限正数（不出现 ¥NaN）', ca && ca.costs && Number.isFinite(ca.costs.CNY) && ca.costs.CNY > 0, JSON.stringify(ca && ca.costs))
+  check('全部花费汇总保持有限（NaN 未污染）', typeof ra.payload.totalSpend === 'number' && Number.isFinite(ra.payload.totalSpend), 'totalSpend=' + ra.payload.totalSpend)
+  disposer() // 冲刷落盘
+  const saved = JSON.parse(readFileSync(join(tmpData, 'usage-records.json'), 'utf8'))
+  const rec = saved.find((x) => x.sessionId === 's-abnormal')
+  check('落盘异常记录数值已清洗（NaN/Infinity/负数 → 0，output 保留 500）', rec && rec.input === 0 && rec.cacheRead === 0 && rec.cacheWrite === 0 && rec.output === 500, JSON.stringify(rec))
+}
+
+// ================= ⑥ 账单导出/清理边界：只动账单，不动设置；进行中/跨站拒绝 =================
+{
+  const { captured, ctx } = makeStub()
+  const disposer = plugin.apply(ctx)
+  await new Promise((r) => setTimeout(r, 30))
+
+  const settingsResult = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/setFieldConfig', 'POST', JSON.stringify({ fields: { balance: false } }), { 'sec-fetch-site': 'same-origin' })
+  check('清理前可以写入独立设置', settingsResult.status === 200)
+  check('清理前设置文件存在', existsSync(join(tmpData, 'settings.json')))
+
+  let unblock = null
+  const hold = new Promise((resolve) => { unblock = resolve })
+  async function* heldStream() {
+    yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 20 } }
+    await hold
+    yield { type: 'finish' }
+  }
+  const iterator = captured.llmListener({ model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 's-clear-busy' }, async () => heldStream())
+  const draining = (async () => { for await (const chunk of iterator) { /* keep the stream active */ } })()
+  await new Promise((r) => setTimeout(r, 10))
+  const busy = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/clearUsageRecords', 'POST', '{}', { 'sec-fetch-site': 'same-origin' })
+  check('回答进行中拒绝清理账单', busy.status === 409 && busy.payload && /回答正在进行/.test(busy.payload.error), JSON.stringify(busy.payload))
+  unblock()
+  await draining
+
+  const crossSite = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/clearUsageRecords', 'POST', '{}', { 'sec-fetch-site': 'cross-site' })
+  check('跨站请求拒绝清理账单', crossSite.status === 403, JSON.stringify(crossSite.payload))
+  const exported = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/exportUsageRecords', 'GET')
+  check('导出包含当前账单记录', exported.status === 200 && exported.payload && exported.payload.recordCount >= 1 && exported.payload.includesArchived === true, JSON.stringify(exported.payload))
+
+  // 制造原子写临时残留，验证清理动作会收掉固定前缀文件，而非留下半次操作垃圾。
+  writeFileSync(join(tmpData, 'usage-records.json.tmp.test'), 'stale')
+  writeFileSync(join(tmpData, 'usage-records.journal.jsonl.compact.test'), 'stale')
+  writeFileSync(join(tmpData, 'usage-summaries.json.tmp.test'), 'stale')
+  const cleared = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/clearUsageRecords', 'POST', '{}', { 'sec-fetch-site': 'same-origin' })
+  check('同源清理账单成功', cleared.status === 200 && cleared.payload && cleared.payload.cleared === true, JSON.stringify(cleared.payload))
+  const afterClear = await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/exportUsageRecords', 'GET')
+  check('清理后导出为空', afterClear.status === 200 && afterClear.payload && afterClear.payload.recordCount === 0, JSON.stringify(afterClear.payload))
+  check('清理后账单快照/流水/归档及临时文件均消失', !existsSync(join(tmpData, 'usage-records.json'))
+    && !existsSync(join(tmpData, 'usage-records.json.bak'))
+    && !existsSync(join(tmpData, 'usage-records.journal.jsonl'))
+    && !existsSync(join(tmpData, 'usage-summaries.json'))
+    && !existsSync(join(tmpData, 'usage-archive'))
+    && !existsSync(join(tmpData, 'usage-records.json.tmp.test'))
+    && !existsSync(join(tmpData, 'usage-records.journal.jsonl.compact.test'))
+    && !existsSync(join(tmpData, 'usage-summaries.json.tmp.test')))
+  check('清理后设置仍在且保持原值', existsSync(join(tmpData, 'settings.json'))
+    && (await invoke(captured.route, '/_dsh/dsh-bottom-info-bar/getFieldConfig', 'GET')).payload.fields.balance === false)
+  disposer()
+}
+
+rmSync(tmpData, { recursive: true, force: true })
+
+console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
+process.exit(failures === 0 ? 0 : 1)

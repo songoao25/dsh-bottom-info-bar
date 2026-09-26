@@ -1,0 +1,98 @@
+// 静态一致性核查（护栏）：检查 host 源码中 被调用但未定义 的标识符 + RPC handler 完整性
+// 用法：node tests/check-host.js src/host.js
+const fs = require('fs');
+const file = process.argv[2] || __dirname + '/../src/host.js';
+const src = fs.readFileSync(file, 'utf8');
+
+// 1) 收集定义：function name(...)、const/let name = ...、函数参数
+const defined = new Set();
+const defRe = /function\s+([A-Za-z_$][\w$]*)\s*\(|const\s+([A-Za-z_$][\w$]*)\s*=|let\s+([A-Za-z_$][\w$]*)\s*=/g;
+let m;
+while ((m = defRe.exec(src))) {
+  for (let i = 1; i <= 3; i++) if (m[i]) defined.add(m[i]);
+}
+// 函数参数（function name(a, b) 与 function (a, b) 匿名）也属定义
+const paramRe = /function\s+(?:[A-Za-z_$][\w$]*)?\s*\(([^)]*)\)/g;
+while ((m = paramRe.exec(src))) {
+  m[1].split(',').forEach(function (p) {
+    const name = p.trim().replace(/^[\s\S]*?([A-Za-z_$][\w$]*)$/, '$1');
+    if (name && name.length > 1) defined.add(name);
+  });
+}
+
+// 2) 收集调用：name( —— lookbehind 排除方法调用（.name(）与紧邻标识符
+const calls = new Map();
+// Comments are prose, not executable code. Strip them before collecting calls
+// so words such as "operation (" in a safety note cannot become fake missing
+// identifier failures in this lightweight audit.
+const executable = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\r\n]*/g, '');
+const callRe = /(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g;
+while ((m = callRe.exec(executable))) {
+  calls.set(m[1], (calls.get(m[1]) || 0) + 1);
+}
+
+// JS 内建 / 全局允许名单（沙箱提供 + Node 标准库导入）
+const builtins = new Set([
+  'console', 'ctx', 'harness', 'Date', 'Math', 'Set', 'Map', 'Array', 'Object',
+  'String', 'Number', 'Boolean', 'parseFloat', 'parseInt', 'isNaN', 'JSON',
+  'Promise', 'Error', 'Intl', 'RegExp', 'btoa', 'atob', 'TextEncoder', 'TextDecoder',
+  'undefined', 'null', 'true', 'false', 'typeof', 'void', 'function', 'return',
+  'new', 'async', 'await', 'for', 'while', 'if', 'else', 'catch', 'try', 'throw',
+  'const', 'let', 'var', 'switch', 'case', 'default', 'break', 'continue', 'do',
+  'in', 'of', 'yield', 'class', 'extends', 'this', 'super', 'delete', 'typeof',
+  'apply', // 插件入口（对象形式 apply(ctx)）
+  'next',  // waterfall 事件回调参数（llm/stream 的 next()）
+  // Node 标准库导入与全局（静态形态）
+  'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'realpathSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename', 'resolve', 'isAbsolute',
+  // 自更新（src/self-update.js 的导入）走同一套静态白名单
+  'fileURLToPath', 'createSelfUpdater', 'compareSemver',
+  // 版本身份（src/version.js 的导入：静态审计跟不进 ESM import，按名单放行）
+  'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
+  'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
+  'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
+  'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',
+  'globalThis', 'webCtx', 'webServer', 'req', 'res', 'dispose',
+  'URLSearchParams', 'isFinite',
+]);
+
+// 3) 未定义引用 = 被调用但既不在 defined 也不在 builtins
+const missing = [];
+for (const [name] of calls) {
+  if (!defined.has(name) && !builtins.has(name) && name.length > 1) missing.push(name);
+}
+
+// 4) RPC handler 清单：静态形态从 ROUTES 对象提取（动态形态为 harness.handle）
+const handlers = [];
+const routesMatch = src.match(/const ROUTES = \{([\s\S]*?)\n    \};/);
+if (routesMatch) {
+  const re = /\n\s{6}([A-Za-z_$][\w$]*): (?:async )?function/g;
+  let m2;
+  while ((m2 = re.exec(routesMatch[1]))) handlers.push(m2[1]);
+}
+// getEstimate / getSpendTrend / setDisplayMode 已删除（客户端从不调用，无场景估算入口）；
+// getConfig 只保留 infoDensity（密度切换用）与 alertThreshold（低余额预警阈值，仍被读取）。
+const expected = ['getBalanceSnapshot', 'getPricing', 'getUsageSummary', 'exportUsageRecords', 'clearUsageRecords', 'getConfig', 'setInfoDensity', 'getBillingMode', 'getSubscriptionSnapshot'];
+const missingHandlers = expected.filter((h) => !handlers.includes(h));
+
+let ok = true;
+console.log('文件：' + file);
+console.log('定义函数数：' + [...defined].filter((n) => n !== 'ctx' && n !== 'apply' && !calls.has(n)).length + '（含内部辅助）');
+if (missing.length === 0) console.log('PASS  未发现未定义引用');
+else { ok = false; console.log('FAIL  未定义引用：' + missing.join(', ')); }
+if (missingHandlers.length === 0) console.log('PASS  ' + handlers.length + ' 个 RPC handler 完整：' + handlers.join(', '));
+else { ok = false; console.log('FAIL  缺失 handler：' + missingHandlers.join(', ')); }
+
+// 关键函数必须存在（防漏贴类缺陷）
+const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'parseCommandCodeUsage', 'mergeSnapshotResult', 'mergeSubscriptionResult', 'createSnapshotEngine', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage', 'fetchCommandCodeUsage', 'minimaxBaseUrl', 'minimaxNumericField', 'minimaxRemainingPercent', 'minimaxAggregateRemainingPercents', 'parseMinimaxTokenPlanRemains', 'resolveMinimaxKey', 'fetchMinimaxTokenPlanUsage', 'normalizeQuotaDisplayMode'];
+const missCritical = critical.filter((f) => !defined.has(f));
+if (missCritical.length === 0) console.log('PASS  关键函数齐备：' + critical.join(', '));
+else { ok = false; console.log('FAIL  关键函数缺失：' + missCritical.join(', ')); }
+
+// P0-3 路径唯一入口：数据目录跟端走（DSH_HOME），登录态候选按序试读（环境变量 > 平台共享目录 > 历史路径）
+function hasAll(haystack, needles) { return needles.every((n) => haystack.includes(n)); }
+if (hasAll(src, ["join(dshHomeDir(), 'dsh-bottom-info-bar')", 'DSH_BOTTOM_INFO_BAR_DATA_DIR'])) console.log('PASS  数据目录唯一入口：显式覆盖 > DSH_HOME/dsh-bottom-info-bar');
+else { ok = false; console.log('FAIL  数据目录未走唯一入口'); }
+if (hasAll(src, ['function opencodeAuthFiles()', 'DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH', 'platformShareDir()', "join(homedir(), '.local', 'share', 'opencode', 'auth.json')"]) && src.includes("process.platform === 'win32'") && src.includes('LOCALAPPDATA')) console.log('PASS  opencode 登录按序试读：环境变量 > 平台共享目录 > 历史路径（含 win32 分支）');
+else { ok = false; console.log('FAIL  opencode 登录候选顺序不对'); }
+
+process.exit(ok ? 0 : 1);

@@ -1,0 +1,398 @@
+// Bottom Info Bar — 静态 host 冒烟测试（不依赖真实 DSH 运行环境）
+// 桩 ctx（credentials/shell/timer/agentDefaultModel/on/inject/interval）→ 调 plugin.apply
+// → 捕获 webServer 路由 → 用假 req/res 逐方法验证 HTTP 分发、记账、同源防护、配置切换、
+//   记账持久化（落盘 → 重新 apply → 记录仍在）。
+// 用法：node tests/smoke-static-host.mjs
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// 隔离数据目录：记账落盘与真实用户数据互不影响
+const tmpData = mkdtempSync(join(tmpdir(), 'bib-smoke-'))
+process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = tmpData
+// 隔离订阅源凭证：指向不存在的 auth 文件 → no-key 分支，测试绝不读取真实登录态/发网络请求
+process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH = join(tmpData, 'no-codex-auth.json')
+process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH = join(tmpData, 'no-opencode-auth.json')
+process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH = join(tmpData, 'no-command-code-auth.json')
+delete process.env.COMMAND_CODE_API_KEY
+delete process.env.CMD_API_KEY
+
+const plugin = (await import('../lib/index.js')).default
+
+let failures = 0
+function check(name, cond, detail) {
+  if (cond) console.log('PASS  ' + name)
+  else { failures += 1; console.log('FAIL  ' + name + (detail ? ' — ' + detail : '')) }
+}
+
+// ---------- 桩环境 ----------
+function makeStub(providerId, model, options) {
+  const captured = { llmListener: null, route: null, intervalCalls: 0 }
+  const opts = options || {}
+  const ctx = {
+    get(name) {
+      if (name === 'agentDefaultModel') {
+        return { currentSelection: () => ({ provider: providerId || 'deepseek-official', model: model || 'deepseek-v4-flash', reasoningEffort: 'high' }) }
+      }
+      return undefined
+    },
+    credentials: {
+      resolve: async (name) => {
+        if (opts.credentials && Object.hasOwn(opts.credentials, name)) return { value: opts.credentials[name] }
+        return opts.credentialName === name ? { value: opts.credentialValue || 'test-key' } : undefined
+      },
+    },
+    shell: { resolve: () => ({}), run: async () => ({ exitCode: 0, stdout: { text: '' } }) },
+    interval() { captured.intervalCalls += 1; return () => {} },
+    timeout() { return () => {} },
+    on(event, listener) {
+      if (event === 'llm/stream') captured.llmListener = listener
+      return () => {}
+    },
+    inject(services, cb) {
+      const webCtx = {
+        effect(fn) { const dispose = fn(); return () => { if (typeof dispose === 'function') dispose() } },
+        connection: { requestRejection(req) { return req.headers['sec-fetch-site'] === 'cross-site' || req.headers.origin === 'https://evil.example' ? 403 : undefined } },
+        webServer: {
+          register(route) { captured.route = route; return () => {} },
+        },
+      }
+      cb(webCtx)
+      return () => {}
+    },
+  }
+  return { captured, ctx }
+}
+
+// ---------- 假 req/res ----------
+function makeReq(path, method, body, headers) {
+  const listeners = {}
+  const req = {
+    url: path,
+    method: method || 'GET',
+    headers: headers || {},
+    on(ev, cb) { (listeners[ev] = listeners[ev] || []).push(cb); return req },
+    destroy() {},
+  }
+  return {
+    req,
+    emit() {
+      if (body !== undefined) for (const cb of listeners.data || []) cb(Buffer.from(body))
+      for (const cb of listeners.end || []) cb()
+    },
+  }
+}
+async function invoke(route, path, method, body, headers) {
+  const { req, emit } = makeReq(path, method, body, headers)
+  let status = 0
+  let payload = null
+  const res = {
+    writeHead(s) { status = s },
+    end(b) { try { payload = JSON.parse(b) } catch { payload = String(b) } },
+  }
+  const pending = route.handler(req, res)
+  emit()
+  await pending
+  return { status, payload }
+}
+function selectionBody(provider, model) {
+  return JSON.stringify({ selection: { provider: provider, model: model } })
+}
+function usageBody(sessionId, provider = 'deepseek-official', model = 'deepseek-v4-flash') {
+  return JSON.stringify({ sessionId: sessionId, selection: { provider: provider, model: model } })
+}
+async function feedUsage(listener) {
+  async function* fakeStream() {
+    yield { type: 'usage', usage: { inputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 2000 } }
+    yield { type: 'finish' }
+  }
+  const iter = listener({ model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 's-usage' }, async () => fakeStream())
+  const seen = []
+  for await (const c of iter) seen.push(c.type)
+  return seen
+}
+
+// ================= 第一次 apply =================
+const first = makeStub()
+const disposer1 = plugin.apply(first.ctx)
+await new Promise((resolve) => setTimeout(resolve, 30))
+check('插件默认导出且 apply 可调用', typeof plugin.apply === 'function')
+check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
+  first.captured.route && first.captured.route.kind === 'prefix' && first.captured.route.path === '/_dsh/dsh-bottom-info-bar')
+
+{
+  const missing = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', undefined, { 'sec-fetch-site': 'same-origin' })
+  check('getBalanceSnapshot 缺少会话选择 → pending，不借用默认余额', missing.status === 200 && missing.payload && missing.payload.selectionPending === true && missing.payload.data === null && missing.payload.provider === null)
+  const missingPricing = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', undefined)
+  check('getPricing 缺少会话选择 → 未知模型，不借用默认模型', missingPricing.status === 200 && missingPricing.payload && missingPricing.payload.fallback === true && missingPricing.payload.model === '' && missingPricing.payload.modelDisplay === '未知模型')
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+  check('getBalanceSnapshot → 200 + no-key（未配置 Key）', r.status === 200 && r.payload && r.payload.error && r.payload.error.kind === 'no-key')
+  const crossSite = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBalanceSnapshot', 'GET', null, { 'sec-fetch-site': 'cross-site' })
+  check('跨站 getBalanceSnapshot → 403（不允许驱动余额请求）', crossSite.status === 403)
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'))
+  check('getPricing → 200 + DeepSeek + 模型名回退原始 id（无 llm 桩）+ peak-valley',
+    r.status === 200 && r.payload.providerDisplay === 'DeepSeek' && r.payload.modelDisplay === 'deepseek-v4-flash' && r.payload.mode === 'peak-valley')
+}
+{
+  // 浏览器当前激活会话的选择必须覆盖 process-wide agentDefaultModel。
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getPricing', 'POST', JSON.stringify({ selection: { provider: 'qwen', model: 'qwen-max' } }))
+  check('getPricing 会话选择优先：qwen 不被全局 DeepSeek 默认值覆盖',
+    r.status === 200 && r.payload.provider === 'qwen' && r.payload.model === 'qwen-max' && r.payload.providerDisplay === 'Qwen')
+  const bm = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', JSON.stringify({ selection: { provider: 'chatgpt', model: 'gpt-5' } }))
+  check('getBillingMode 会话选择优先：ChatGPT 会话正确识别订阅制',
+    bm.status === 200 && bm.payload.provider === 'chatgpt' && bm.payload.model === 'gpt-5' && bm.payload.mode === 'subscription')
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-test', selection: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }))
+  check('getUsageSummary → 200 + sessions 计数', r.status === 200 && typeof r.payload.sessions === 'number' && typeof r.payload.totalSpend === 'number')
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getConfig', 'GET')
+  check('getConfig → 200 + 默认 full', r.status === 200 && r.payload.infoDensity === 'full')
+  check('getConfig → 不含手动 provider/mode 配置', r.status === 200 && !Object.hasOwn(r.payload, 'activeProvider') && !Object.hasOwn(r.payload, 'billingMode'))
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'))
+  check('getBillingMode → 200 + balance（deepseek-official）', r.status === 200 && r.payload.mode === 'balance' && r.payload.provider === 'deepseek-official' && r.payload.reason === 'provider:deepseek-official')
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('deepseek-official', 'deepseek-v4-flash'), { 'sec-fetch-site': 'same-origin' })
+  check('getSubscriptionSnapshot → 200 + balance 模式（不发订阅请求）', r.status === 200 && r.payload.mode === 'balance' && r.payload.source === null && r.payload.windows.length === 0)
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/unknownMethod', 'GET')
+  check('未知方法 → 404', r.status === 404)
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/setInfoDensity', 'POST', JSON.stringify({ density: 'compact' }), { origin: 'https://evil.example' })
+  check('跨源 setInfoDensity → 403', r.status === 403)
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/setInfoDensity', 'POST', JSON.stringify({ density: 'compact' }), { origin: 'http://localhost:3080', host: 'localhost:3080' })
+  check('同源 setInfoDensity → 200 + compact', r.status === 200 && r.payload.infoDensity === 'compact')
+}
+{
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getConfig', 'GET')
+  check('切换后 getConfig → compact', r.status === 200 && r.payload.infoDensity === 'compact')
+}
+
+// ---------- 订阅制模式（Codex / OpenCode Go provider；auth 文件被隔离为不存在 → no-key，不发网络） ----------
+{
+  const subCtx = makeStub('codex', 'gpt-5.3-codex')
+  const subDisposer = plugin.apply(subCtx.ctx)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  {
+    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('codex', 'gpt-5.3-codex'))
+    check('getBillingMode → subscription（provider=codex）', r.status === 200 && r.payload.mode === 'subscription' && r.payload.reason === 'provider:codex')
+  }
+  {
+    const r = await invoke(subCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('codex', 'gpt-5.3-codex'), { 'sec-fetch-site': 'same-origin' })
+    check('getSubscriptionSnapshot（codex 无凭证）→ no-key 错误 + 空窗口', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'codex' && r.payload.error && r.payload.error.kind === 'no-key' && Array.isArray(r.payload.windows) && r.payload.windows.length === 0 && r.payload.plan === null)
+  }
+  subDisposer()
+
+  const ogCtx = makeStub('opencode-go', 'miimo-1.5-rc')
+  const ogDisposer = plugin.apply(ogCtx.ctx)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  {
+    const r = await invoke(ogCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('opencode-go', 'miimo-1.5-rc'), { 'sec-fetch-site': 'same-origin' })
+    check('getSubscriptionSnapshot（opencode-go 未配置）→ no-key 引导', r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'opencode-go' && r.payload.error && r.payload.error.kind === 'no-key')
+  }
+  ogDisposer()
+}
+
+// ---------- Command Code 额度端到端（Issue #99：官方 CLI credits / subscriptions 响应） ----------
+{
+  const noKeyCtx = makeStub('command', 'command-model')
+  const noKeyDisposer = plugin.apply(noKeyCtx.ctx)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  {
+    const r = await invoke(noKeyCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+    check('Command Code 未配置凭据 → no-key 且不发请求', r.status === 200 && r.payload.source === 'command-code' && r.payload.error && r.payload.error.kind === 'no-key')
+  }
+  noKeyDisposer()
+
+  const commandResponses = {
+    credits: {
+      success: true,
+      credits: {
+        planId: 'individual-pro-v1',
+        monthlyCredits: 60,
+        purchasedCredits: 5,
+        freeCredits: 2,
+        windowLimits: {
+          fiveHour: { cap: 100, used: 25, resetAt: 1789284984 },
+          weekly: { cap: 1000, used: 400, resetAt: '2026-09-19T08:26:46Z' },
+        },
+      },
+    },
+    subscriptions: { success: true, data: { planId: 'individual-pro-v1', status: 'active', currentPeriodEnd: '2026-10-01T00:00:00Z' } },
+  }
+  const requested = []
+  // 判断「某个请求是不是发往 Command Code 官方 API」时，不能用 URL 字符串包含域名：
+  // CodeQL js/incomplete-url-substring-sanitization（High）—— 'https://api.commandcode.ai/'
+  // 出现在 URL 的任意位置都算包含，例如 https://evil.example/?u=https://api.commandcode.ai/ 也会命中。
+  // 必须解析出协议与主机名后精确比较。
+  const isCommandCodeApiRequest = (entry) => {
+    try {
+      const parsed = new URL(String(entry.url))
+      return parsed.protocol === 'https:' && parsed.hostname === 'api.commandcode.ai'
+    } catch {
+      return false
+    }
+  }
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => {
+    requested.push({ url: String(url), headers: options && options.headers })
+    if (String(url).includes('/alpha/whoami')) return { ok: true, json: async () => ({ success: true, org: { id: 'org-test' } }) }
+    if (String(url).includes('/alpha/billing/credits')) return { ok: true, json: async () => commandResponses.credits }
+    if (String(url).includes('/alpha/billing/subscriptions')) return { ok: true, json: async () => commandResponses.subscriptions }
+    return { ok: false, status: 404, json: async () => ({}) }
+  }
+  try {
+    writeFileSync(join(tmpData, 'no-command-code-auth.json'), JSON.stringify({ apiKey: 'file-command-key' }))
+    const fileCtx = makeStub('command', 'command-model')
+    const fileDisposer = plugin.apply(fileCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(fileCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+      const fileRequests = requested.filter(isCommandCodeApiRequest)
+      check('Command Code CLI auth.json 回退 → 读取 apiKey', r.status === 200 && r.payload.error === null && fileRequests.length === 3 && fileRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer file-command-key'), JSON.stringify(r.payload))
+    }
+    fileDisposer()
+    rmSync(join(tmpData, 'no-command-code-auth.json'), { force: true })
+    requested.length = 0
+
+    const commandCtx = makeStub('command', 'command-model', { credentials: { COMMAND_CODE_API_KEY: 'test-command-key', CMD_API_KEY: 'wrong-command-key' } })
+    const commandDisposer = plugin.apply(commandCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getBillingMode', 'POST', selectionBody('command', 'command-model'))
+      check('Command Code → subscription 模式', r.status === 200 && r.payload.mode === 'subscription' && r.payload.reason === 'provider:command')
+    }
+    {
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
+      check('Command Code → 官方 credits/订阅接口解析成功', r.status === 200 && r.payload.source === 'command-code' && r.payload.plan === 'Command Code Pro' && r.payload.error === null, JSON.stringify(r.payload))
+      check('Command Code → 5 小时 / 周 / 月窗口 + credits 单位', r.payload.windows.length === 3 && r.payload.windows.map((w) => w.key).join(',') === 'five_hour,seven_day,monthly' && r.payload.balance === 67 && r.payload.balanceUnit === 'credits', JSON.stringify(r.payload))
+      const commandRequests = requested.filter(isCommandCodeApiRequest)
+      check('Command Code → Bearer 请求与 orgId 查询参数', commandRequests.length === 3 && commandRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer test-command-key') && commandRequests.some((entry) => new URL(String(entry.url)).searchParams.get('orgId') === 'org-test'), JSON.stringify(requested))
+    }
+    {
+      commandResponses.credits = { success: true, credits: { windowLimits: { fiveHour: { cap: 0, used: 0 } } } }
+      const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'command', model: 'command-model' } }), { 'sec-fetch-site': 'same-origin' })
+      check('Command Code 响应漂移 → parse 错误而非空白覆盖', r.status === 200 && r.payload.error && r.payload.error.kind === 'parse' && r.payload.windows.length === 3 && r.payload.balance === 67, JSON.stringify(r.payload))
+    }
+    commandDisposer()
+  } finally {
+    globalThis.fetch = realFetch
+  }
+}
+
+// ---------- 智谱积分制端到端（Issue #85：CREDIT_LIMIT + 空窗口不得覆盖旧快照） ----------
+// 这是本仓库首个「真实解析链路」冒烟：桩 fetch 返回真实形态响应 → fetchZaiUsage → 快照窗口
+{
+  const ZAI_CREDIT_RESPONSE = {
+    code: 200,
+    msg: 'Operation successful',
+    data: {
+      limits: [
+        { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 188, remaining: 1811, percentage: 9, nextResetTime: 1789284984350 },
+        { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10000, currentValue: 188, remaining: 9811, percentage: 1, nextResetTime: 1789871510984 },
+      ],
+      level: 'lite',
+    },
+    success: true,
+  }
+  let zaiPayload = ZAI_CREDIT_RESPONSE
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true, json: async () => zaiPayload })
+  try {
+    const zaiCtx = makeStub('zai', 'glm-5.3', { credentialName: 'ZAI_API_KEY' })
+    const zaiDisposer = plugin.apply(zaiCtx.ctx)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    {
+      const r = await invoke(zaiCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('zai', 'glm-5.3'), { 'sec-fetch-site': 'same-origin' })
+      check('智谱积分制：CREDIT_LIMIT → 订阅模式 + 智谱 Lite',
+        r.status === 200 && r.payload.mode === 'subscription' && r.payload.source === 'zai' && r.payload.plan === '智谱 Lite' && r.payload.error === null,
+        JSON.stringify(r.payload))
+      check('智谱积分制：解析出 5 小时 + 周两个窗口',
+        Array.isArray(r.payload.windows) && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour' && r.payload.windows[1].key === 'seven_day',
+        JSON.stringify(r.payload.windows))
+      check('智谱积分制：5 小时已用 9%、周窗口按计数 2%',
+        r.payload.windows[0] && r.payload.windows[0].usedPercent === 9 && r.payload.windows[1] && r.payload.windows[1].usedPercent === 2,
+        JSON.stringify(r.payload.windows))
+      check('智谱积分制：重置时刻为毫秒时间戳（倒计时可用）',
+        r.payload.windows[0].resetsAt === 1789284984350 && r.payload.windows[1].resetsAt === 1789871510984)
+    }
+    {
+      // 上游又一次 schema 漂移：窗口类型全部不认识 → 必须报错并保留上一份好快照，
+      // 绝不能用空窗口覆盖（否则界面只剩套餐名、无窗口也无报错 = Issue #85 原始症状）
+      zaiPayload = { code: 200, success: true, data: { limits: [{ type: 'BRAND_NEW_LIMIT', unit: 42, number: 7, percentage: 5 }], level: 'lite' } }
+      // force:true 绕过 60s 刷新节流，立即重取上游
+      const r = await invoke(zaiCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', JSON.stringify({ force: true, selection: { provider: 'zai', model: 'glm-5.3' } }), { 'sec-fetch-site': 'same-origin' })
+      check('智谱漂移降级：未知窗口类型 → 标记刷新失败而非静默空窗口',
+        r.status === 200 && r.payload.error && r.payload.error.kind === 'parse',
+        JSON.stringify(r.payload.error))
+      check('智谱漂移降级：旧的两个窗口快照被保留',
+        Array.isArray(r.payload.windows) && r.payload.windows.length === 2 && r.payload.windows[0].key === 'five_hour',
+        JSON.stringify(r.payload.windows))
+      check('智谱漂移降级：计划名仍来自旧快照', r.payload.plan === '智谱 Lite')
+    }
+    zaiDisposer()
+  } finally {
+    globalThis.fetch = realFetch
+  }
+}
+
+// ---------- llm/stream 记账 ----------
+{
+  const seen = await feedUsage(first.captured.llmListener)
+  check('llm/stream 透传完整（usage + finish）', seen.length === 2 && seen[0] === 'usage' && seen[1] === 'finish')
+  const r = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', JSON.stringify({ sessionId: 's-usage', selection: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }))
+  const cs = r.payload && r.payload.currentSession
+  check('记账后本会话 tokens = 3000', cs && cs.tokens === 3000, JSON.stringify(cs))
+  check('记账后本会话有 CNY 花费', cs && cs.costs && typeof cs.costs.CNY === 'number' && cs.costs.CNY > 0)
+  check('全部花费 ≈ 本会话花费（totalSpend 3 位四舍五入 vs 原始值）',
+    typeof r.payload.totalSpend === 'number' && Math.abs(r.payload.totalSpend - cs.costs.CNY) < 0.001,
+    'totalSpend=' + r.payload.totalSpend + ' costs=' + cs.costs.CNY)
+  const r2 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('nonexistent-session'))
+  check('新会话（sessionId 未命中）→ currentSession 为 null（不回退上一会话）', r2.payload && r2.payload.currentSession === null,
+    JSON.stringify(r2.payload && r2.payload.currentSession))
+  const r3 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody(''))
+  check('空 sessionId → currentSession 为 null（绝不回退最近会话显示旧账）', r3.payload && r3.payload.currentSession === null,
+    JSON.stringify(r3.payload && r3.payload.currentSession))
+  const r4 = await invoke(first.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('session-s-usage'))
+  check('session- 前缀归一化：session-s-usage 命中 s-usage 记录', r4.payload && r4.payload.currentSession !== null && r4.payload.currentSession.output === 2000,
+    JSON.stringify(r4.payload && r4.payload.currentSession))
+}
+
+// ---------- 持久化：冲刷落盘 → 文件存在且含记录 ----------
+const dataFile = join(tmpData, 'usage-records.json')
+disposer1() // 触发 flushSave
+{
+  const saved = existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : null
+  check('记账落盘文件已生成', Array.isArray(saved) && saved.length >= 1)
+  check('落盘记录含 s-usage 会话', Array.isArray(saved) && saved.some((r) => r.sessionId === 's-usage' && r.input === 1000 && r.output === 2000))
+}
+
+// ================= 第二次 apply（模拟重启后重载） =================
+const second = makeStub()
+const disposer2 = plugin.apply(second.ctx)
+await new Promise((resolve) => setTimeout(resolve, 30))
+{
+  const r = await invoke(second.captured.route, '/_dsh/dsh-bottom-info-bar/getUsageSummary', 'POST', usageBody('s-usage'))
+  const cs = r.payload && r.payload.currentSession
+  check('重启重载后记录仍在（tokens = 3000）', cs && cs.tokens === 3000, JSON.stringify(cs))
+  check('重启重载后全部花费仍 > 0', typeof r.payload.totalSpend === 'number' && r.payload.totalSpend > 0)
+}
+disposer2()
+
+// 清理
+rmSync(tmpData, { recursive: true, force: true })
+
+console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
+process.exit(failures === 0 ? 0 : 1)

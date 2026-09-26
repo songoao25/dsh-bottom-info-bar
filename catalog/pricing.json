@@ -1,0 +1,277 @@
+{
+  "glm-5.3": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 2,
+      "inputCacheMiss": 8,
+      "output": 28
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "2026-08-19 上线旗舰；1M 上下文。缓存存储限时免费。"
+  },
+  "glm-5.3-flash": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.115,
+      "inputCacheMiss": 0.4,
+      "output": 1.4
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "促销价（官方'5折限时两周'，有效期至8月31日批次，约至2026-09初）：输入0.4/缓存命中0.115/输出1.4；刊例价为 0.8/0.23/2.8——活动结束后请将本条目改回刊例价。内置兜底表恒为刊例价。"
+  },
+  "glm-5.2": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 2,
+      "inputCacheMiss": 8,
+      "output": 28
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "与 GLM-5.3 同价；1M 上下文。"
+  },
+  "glm-5.1": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 1.3,
+      "inputCacheMiss": 6,
+      "output": 24
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=输入≤32K。>32K 档：8/命中2/输出28。200K 上下文。"
+  },
+  "glm-5-turbo": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 1.2,
+      "inputCacheMiss": 5,
+      "output": 22
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=输入≤32K。>32K 档：7/1.8/26。200K 上下文。"
+  },
+  "glm-5v-turbo": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 1.2,
+      "inputCacheMiss": 5,
+      "output": 22
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "同 glm-5-turbo 双档（>32K：7/1.8/26）；多模态输入。200K 上下文。"
+  },
+  "glm-4.7": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.4,
+      "inputCacheMiss": 2,
+      "output": 8
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=in[0,32K)&out[0,0.2)。全三档：out[0.2+)→3/0.6/14；in[32K,200K)→4/0.8/16。200K 上下文。"
+  },
+  "glm-4.5-air": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.16,
+      "inputCacheMiss": 0.8,
+      "output": 2
+    },
+    "source": "https://open.bigmodel.cn/pricing",
+    "notes": "基础档=in[0,32K)&out[0,0.2)（当前挂牌即'限时5折'折后价）。全三档：out[0.2+)→0.8/0.16/6；in[32K,128K)→1.2/0.24/8。128K 上下文。"
+  },
+  "mimo-v2-flash": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.02,
+      "inputCacheMiss": 1,
+      "output": 2
+    },
+    "source": "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    "notes": "2026-08-06 调价后 CNY 价，缓存写入免费。本机 pi-ai cost 字段是 USD 勿混用。"
+  },
+  "mimo-v2-omni": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.02,
+      "inputCacheMiss": 1,
+      "output": 2
+    },
+    "source": "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    "notes": "多模态，256K。"
+  },
+  "mimo-v2-pro": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.025,
+      "inputCacheMiss": 3,
+      "output": 6
+    },
+    "source": "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    "notes": "原 ¥7/¥21 → 现 ¥3/¥6。"
+  },
+  "mimo-v2.5": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.02,
+      "inputCacheMiss": 1,
+      "output": 2
+    },
+    "source": "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    "notes": "1M 上下文，图像输入。"
+  },
+  "mimo-v2.5-pro": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.025,
+      "inputCacheMiss": 3,
+      "output": 6
+    },
+    "source": "https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go",
+    "notes": "原 ¥7/¥21 → 现 ¥3/¥6。"
+  },
+  "step-3.7-flash": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.27,
+      "inputCacheMiss": 1.35,
+      "output": 8.1
+    },
+    "source": "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+    "notes": "旗舰多模态推理；旧系已下线。"
+  },
+  "step-3.5-flash": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.14,
+      "inputCacheMiss": 0.7,
+      "output": 2.1
+    },
+    "source": "https://platform.stepfun.com/docs/zh/guides/pricing/details",
+    "notes": "tool calling + 联网搜索。"
+  },
+  "moonshotai-cn:kimi-k3": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 2,
+      "inputCacheMiss": 20,
+      "output": 100
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat-k3",
+    "notes": "国内计费域（api.moonshot.cn）。旗舰 1M 上下文，始终推理；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2.5": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.7,
+      "inputCacheMiss": 4,
+      "output": 21
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat-k25",
+    "notes": "国内计费域（api.moonshot.cn）。多模态 256K；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2.6": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 1.1,
+      "inputCacheMiss": 6.5,
+      "output": 27
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat-k26",
+    "notes": "国内计费域（api.moonshot.cn）。视觉+思考；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2.7-code": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 1.3,
+      "inputCacheMiss": 6.5,
+      "output": 27
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat-k27-code",
+    "notes": "国内计费域（api.moonshot.cn）。仅思考模式；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2.7-code-highspeed": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 2.6,
+      "inputCacheMiss": 13,
+      "output": 54
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat-k27-code",
+    "notes": "国内计费域（api.moonshot.cn）。高速=标准×2；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2-0711-preview": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.15,
+      "inputCacheMiss": 0.6,
+      "output": 2.5
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat",
+    "notes": "国内计费域（api.moonshot.cn）。列表页交叉验证；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2-0905-preview": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.15,
+      "inputCacheMiss": 0.6,
+      "output": 2.5
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat",
+    "notes": "国内计费域（api.moonshot.cn）。同 K2 价；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2-thinking": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.15,
+      "inputCacheMiss": 0.6,
+      "output": 2.5
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat",
+    "notes": "国内计费域（api.moonshot.cn）。思考模式同价；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2-thinking-turbo": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.15,
+      "inputCacheMiss": 1.15,
+      "output": 8
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat",
+    "notes": "国内计费域（api.moonshot.cn）。思考加速版；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "moonshotai-cn:kimi-k2-turbo-preview": {
+    "currency": "CNY",
+    "mode": "flat",
+    "price": {
+      "inputCacheHit": 0.6,
+      "inputCacheMiss": 2.4,
+      "output": 10
+    },
+    "source": "https://platform.kimi.com/docs/pricing/chat",
+    "notes": "国内计费域（api.moonshot.cn）。K2 Turbo；国际站 USD 待采集后另建 moonshotai: 键。"
+  }
+}

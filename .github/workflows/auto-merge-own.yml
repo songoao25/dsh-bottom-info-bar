@@ -1,0 +1,51 @@
+name: Auto-merge own PRs
+
+# 目標：只有倉庫擁有者 songoao25 的 PR 自動開啟 auto-merge（CI 通過後自動 squash），
+# 其他人（外部貢獻者 / fork）的 PR 保持手動，需人工 Review + 手動合併。
+# 這符合業界「trust-by-author」慣例：可信作者的 PR 自動化，不可信作者保留人工閘門。
+#
+# 例外（2026-09-11 新增）：Release Please 開的「發布 PR」不自動合併。
+# 原因：Release Please 用 owner 的 RELEASE_PLEASE_TOKEN 開 PR，作者看起來就是 owner，
+# 因此發布 PR 會被當成「自己的 PR」放行 —— 等於把唯一該有人把關的環節也自動化了。
+# 2026-09-11 的 v2.0.0 誤發事故正是如此（手工 bump 版本號導致 Release Please 算错大版本）。
+# 發布 PR 的分支名固定為 release-please--*，且會被加上 autorelease: 標籤，兩者都排除。
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  enable-auto-merge:
+    # 只有 owner 的 PR 才進入；draft PR 不自動合；發布 PR 留給人工/AI 確認後再合併。
+    # 三道判別條件是有意的縱深防禦（任一命中即攔下）：分支名最穩、標籤次之、標題最後。
+    # 這三道都偏向「多攔」，代價只是某個普通 PR 沒自動合併（看得見、可手動合），
+    # 而漏放的代價是發布 PR 被靜默合併（v2.0.0 事故）。方向必須偏安全。
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner
+      && github.event.pull_request.draft == false
+      && !startsWith(github.event.pull_request.head.ref, 'release-please--')
+      && !contains(join(github.event.pull_request.labels.*.name, ','), 'autorelease')
+      && !startsWith(github.event.pull_request.title, 'chore(main): release ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report automation token mode
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::warning::RELEASE_PLEASE_TOKEN is not configured; auto-merge will work, but release/publish workflows may need manual dispatch."
+          else
+            echo "RELEASE_PLEASE_TOKEN is configured; downstream workflow triggers are enabled."
+          fi
+      - name: Enable auto-merge (squash) for owner PR
+        run: |
+          echo "Owner PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }} → enable auto-merge (squash)"
+          gh pr merge --auto --squash "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}"
+        env:
+          # Prefer an owner PAT so merged PRs can trigger downstream workflows;
+          # fall back to GITHUB_TOKEN so missing optional configuration does not
+          # block the repository owner's normal auto-merge path.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}

@@ -1,0 +1,64 @@
+{
+  "name": "dsh-bottom-info-bar",
+  "version": "1.20.8",
+  "description": "Shows the current model, balance and spend under the composer.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-bottom-info-bar",
+    "balance",
+    "usage",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/songoao25/dsh-bottom-info-bar.git"
+  },
+  "homepage": "https://github.com/songoao25/dsh-bottom-info-bar",
+  "bugs": {
+    "url": "https://github.com/songoao25/dsh-bottom-info-bar/issues"
+  },
+  "author": "songoao25",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "README.md",
+    "README.zh-CN.md",
+    "docs/INSTALL.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "npm run build",
+    "test": "node tests/run-all.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}
