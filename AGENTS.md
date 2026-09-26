@@ -6,7 +6,7 @@
 
 **`MEMORY.md`（仓库根目录）是本项目唯一的项目记忆。** 开工前先读它，收工前把值得留下的复盘追加进去。
 
-**严禁任何 Agent 自建私有的、隐藏的或工具专属的记忆文件**（如 `.workbuddy/memory/`、`.cursor/memory/`、各类工具私有目录下的 memory）。记忆属于项目，不属于工具 —— 写进工具私有目录等于把项目知识锁死在某一个工具里，换一个 Agent 接手就看不到了。若发现历史遗留的工具专属记忆文件，迁移进 `MEMORY.md` 后删除。详见 `MEMORY.md` 顶部「使用规则」。
+**严禁任何 Agent 自建或使用专属物**：记忆、配置、指令文件、私有目录、私有脚本一律不许，所有 Agent 共用同一套通用资产（`MEMORY.md`、`AGENTS.md`、`docs/`、`scripts/`、`tests/`、`locale/`、`install.sh`/`install.ps1`）。记忆属于项目，不属于工具 —— 写进工具私有目录等于把项目知识锁死在某一个工具里，换一个 Agent 接手就看不到了。若发现历史遗留的工具专属物（记忆文件如 `.workbuddy/memory/`、`.cursor/memory/`，配置/指令文件如 `CLAUDE.md`、`.cursorrules`），迁入通用位置后删除。详见 `MEMORY.md` 顶部「使用规则」。
 
 **日常怎么干活看 `docs/WORKFLOW.md`**（面向仓库主人 + Agent 的完整流程：谁做什么、哪一步自动、哪一步需要人工确认）。
 
@@ -84,7 +84,7 @@
 `tests/test-source-guards.mjs` 把几条血的教训从「文档约定」升级为「CI 硬约束」。违反即 CI 红、合不进去：
 
 1. **禁止裸读宿主服务属性**（`ctx.某个服务名`）。cordis 4 的 Context 是 Proxy，读取未在 `inject` 里声明的服务属性会抛 `cannot get property "X" without inject` —— **即使该服务确实存在也一样抛**。本仓库因此踩坑三次（v1.10.1 `ctx.settings`、2026-09-04 同类、Issue #67 `ctx.sessionController` 导致 500）。合法写法只有三种：① 加进本文件 `inject: [...]`；② 改用 `ctx.get('name')`；③ 老宿主兜底时写成同一行的 `try { ... } catch { ... }`。
-2. **项目记忆只允许 `MEMORY.md` 一个**。一旦出现 `.workbuddy/`、`.cursor/memory/` 之类工具专属目录即失败——记忆属于项目，不属于工具。
+2. **本项目只允许通用 Agent 资产，不允许任何 Agent 专属物**。记忆只允许 `MEMORY.md` 一个；配置/指令/私有目录同样禁入（`.workbuddy/`、`.cursor/memory/`、`CLAUDE.md`、`.cursorrules` 之类，完整名单见守卫实现）。出现即失败——通用资产属于项目，专属物属于工具。
 3. **普通 PR 不得手工修改版本元数据**（`package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md`）；只有 `release-please--*` 的发布 PR 有权修改。确需抢修时，在提交信息里写 `[release-metadata-override]` 并在 PR 描述里说明原因（因为 main 开了 `enforce_admins`，没有逃生舱会被永久卡死）。
 
 ## 关键约定
