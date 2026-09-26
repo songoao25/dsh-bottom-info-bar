@@ -19,6 +19,46 @@
 
 ---
 
+## 2026-09-26（v1.20.2：设置页体系化重做 + 日期格式自定义下线 + README 重写）
+
+### 三件事一次发布（fix，PR #182 → 发布 PR #183 → 1.20.2）
+
+1. **区块层级体系**：页标题 15/600、分组/卡片 14/500、小节眉改单行 12/600 次色、字段行 13.5/500；静态设置区与分组共用同一套面板表面（`bib-set-card--panel`），新令牌全部进 `:root`。用户原话：分组小标题跟内容没区分、第一眼乱。
+2. **文案 60 条（中英镜像）**：标点统一（全角冒号、`64 个字符`）、原生字段去模式标注（用户拍板哪条都不标）、小节说明补全字段口径。
+3. **日期格式自定义下线**：`timeFormat` 整条链删除（host 校验/落盘/下发、client 开关区、22 个字典 key），固定通用格式 YYYY-MM-DD HH:mm；旧 settings.json 残留静默忽略；守卫 8 锁死不再加回来。
+
+### B 批清掉（CODE-AUDIT 只变短）
+
+- 死 RPC（getEstimate/getSpendTrend/setDisplayMode）与场景估算函数（computeEstimate/scenarioCost/spendTrend/SCENARIOS）、config.displayMode、`check-host` 名单同步。`alertThreshold` 不是死的（低余额预警仍在读），保留。
+- 客户端死链（StateDot/TAG/INPUT、statedot CSS、bib-bundle-summary、quota-mode-opt--on）。QUOTA_DISPLAY_MODES / collapse--collapsed / self-update 两项 / P1-16/17/18 复核为非问题，不再是欠账。
+- 22 个孤儿 key 删除；`localizeHostText` 反查建 WeakMap 索引；`pad2` / `xiaomiRegionKeyName` 去重；设置区注册表 `BIB_SET_SECTIONS`（加新区改 1 处）。
+- 未动（仍在台账）：C（快照引擎/原子写/version.js/宿主去重）、D（provider 一表/WINDOW_META/注册表渲染/样式合并/大函数拆分）、E（P0-3 路径统一，需用户拍板迁移策略）。
+
+### 截图流水线（可复用，脚本在 /tmp/shot-settings.mjs，未入库）
+
+- 真实 `lib/client.js` + 桩 React 渲染出真实节点树 → 转 HTML，CSS 用 bundle 实际安装的那份（settings 是纯模板，行号锚定 930→1270；**别拿 infobar 那份**，第一处 `textContent` 拼串是信息栏的，本次就抓错过一次）。
+- Menu 桩：closed 时透出 `props.anchor`（色块/时区按钮是当 anchor 传给 Menu 的，直接返回 null 会吞掉它们）；单区块出图必须包进 `.bib-set-root`（全部 `--bib-*` 令牌定义在它身上）；时区 trigger 壳里限 340px 贴近真机。
+- 结论：出图只看三样——结构（节点树）、文案（字典）、样式（bundle CSS），三样全真即与真机一致，只差宿主原生组件的 intrinsic 尺寸。
+- 真机重拍仍需用户在 DSH 里手动截；本次 4 张 settings 图走上面管线，20 张过时图删除，README 210 行→60 行。
+
+### 事故与教训（本次真踩的）
+
+1. **构建只序列化单个函数**：`localizeHostText` 拆出帮手后，build 的 `.toString()` 注入跟不过去，客户端首次走 hostText 即抛。修法：索引收进函数体自包含；测试加 5b 段锁死被注入函数体内不得引用外部帮手。
+2. **守卫正则误伤自家表**：注册表行里写 `ctx.fieldOn` 触发守卫 1（它分不清 cordis Context 和上下文包）。修法：表内一律叫 `deps`——`ctx` 在客户端只留给真正的宿主 Context。
+3. **断言变量名笔误让整文件变红**：新断言里 `table.indexOf`（number 当 string 用）致整文件 143 条全挂。教训：新增断言先单跑该文件再进全量。
+4. **`git add -A` 把 `.workbuddy/` 推进了提交**：amend 摘掉 + `.gitignore` 加 `.workbuddy/`。提交前先 `git status` 扫一眼。
+5. **合并方式**：本仓库禁 merge commit（GraphQL 拒绝），发布 PR 用 squash 合并（#183）。
+
+### 发布链条
+
+PR #182（CI/CodeQL 全绿，auto-merge 自动合并）→ 发布 PR #183（1.20.2，在 `/tmp/rp-183` worktree 跑全量全绿后 squash 合并）→ tag `v1.20.2` → npm `latest = 1.20.2`（curl registry 核验）。
+
+### 本机同步（硬性收尾，本次成功）
+
+探测：只有 `desktop` profile，`node_modules/dsh-bottom-info-bar` 实体目录，同步前 **1.20.1**。备份到 `/tmp/dsh-bib-backup-1.20.1` → `env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar` → 装载 **1.20.2**，且含本次改动（`bib-set-card--panel` 8 处、`BIB_SET_SECTIONS` 2 处）。**仍需重启 DSH**：插件在宿主启动时组合，内存里的 host 还是旧版。
+
+---
+
 ## 2026-09-26（v1.20.1）
 
 **改动**：错误提示里引导用户安装的姊妹插件名同步更新——姊妹插件已统一更名 `dsh-chatgpt-subscription → dsh-chatgpt-sub`（GitHub 仓库 / npm 包名 / 本地目录三处同名，用户拍板；显示名不变仍叫「ChatGPT 订阅」）。纯文案修复（PR #179 → 发布 PR #180 → tag v1.20.1 → npm 上架核验 → 本机 desktop 装载同步 1.20.1）。
