@@ -159,6 +159,12 @@ function copySettings(fromDir, toDir) {
   }
   const noPatch = await invokeRoute(route, 'setFieldConfig', {})
   check('缺 fields/colors 的 patch 拒绝（400）', noPatch.status === 400, noPatch)
+  const onlyFormat = await invokeRoute(route, 'setFieldConfig', { timeFormat: { year: true } })
+  check('日期格式无自定义：纯 timeFormat patch 拒绝（400）', onlyFormat.status === 400, onlyFormat)
+  const withFormat = await invokeRoute(route, 'setFieldConfig', { fields: { balance: false }, timeFormat: { year: true } })
+  check('日期格式无自定义：混入 timeFormat 不影响正常字段（200 且生效）', withFormat.status === 200 && withFormat.body.fields.balance === false, withFormat.body)
+  await invokeRoute(route, 'setFieldConfig', { fields: { balance: true } })
+  check('日期格式无自定义：getFieldConfig 不再下发 timeFormat', !Object.hasOwn((await invokeRoute(route, 'getFieldConfig')).body, 'timeFormat'), true)
   const partial = await invokeRoute(route, 'setFieldConfig', { fields: { balance: false }, colors: { balance: 'oops' } })
   check('整包校验：一处非法则整个 patch 不落', partial.status === 400 && (await invokeRoute(route, 'getFieldConfig')).body.fields.balance === true, partial)
   const preset = await invokeRoute(route, 'setFieldConfig', { colors: { balance: 'purple', period: null } })
@@ -224,7 +230,7 @@ function copySettings(fromDir, toDir) {
   check('normalize：非法返回 undefined', n('#12345') === undefined && n('nope') === undefined && n(7) === undefined, true)
   check('sanitize：默认结构含全部注册字段且颜色为 null', (() => {
     const d = s.mod.internals.defaultFieldSettings()
-    return d.version === 1 && d.infoDensity === 'full' && !Object.hasOwn(d, 'displayPreferences') && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeFormat && d.timeZones && typeof d.customText === 'string'
+    return d.version === 1 && d.infoDensity === 'full' && !Object.hasOwn(d, 'displayPreferences') && !Object.hasOwn(d, 'timeFormat') && Object.entries(d.fields).every(([k,v]) => (['customText','mainTime','worldTime'].includes(k) ? v === false : v === true)) && Object.values(d.colors).every((v) => v === null) && d.timeZones && typeof d.customText === 'string'
   })(), true)
   check('默认 quotaDisplayMode=remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode === 'remaining', s.mod.internals.defaultFieldSettings().quotaDisplayMode)
   const nq = s.mod.internals.normalizeQuotaDisplayMode
@@ -237,6 +243,11 @@ function copySettings(fromDir, toDir) {
     return r.settings.quotaDisplayMode === 'remaining' && r.dropped.includes('quotaDisplayMode')
   })(), true)
   check('sanitize：缺 quotaDisplayMode 时回默认', s.mod.internals.sanitizeSettings({ version: 1 }).settings.quotaDisplayMode === 'remaining', true)
+  check('日期格式无自定义：默认结构不带 timeFormat', !Object.hasOwn(s.mod.internals.defaultFieldSettings(), 'timeFormat'), true)
+  check('日期格式无自定义：旧文件残留 timeFormat 静默忽略（不告警）', (() => {
+    const r = s.mod.internals.sanitizeSettings({ version: 1, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false } })
+    return !Object.hasOwn(r.settings, 'timeFormat') && !r.dropped.includes('timeFormat')
+  })(), true)
 }
 
 // ---------- ⑧ D4：summaries 与 .bak 同时缺失且折叠已发生 → 显式 warn + 客户端可见「账单待整理」 ----------

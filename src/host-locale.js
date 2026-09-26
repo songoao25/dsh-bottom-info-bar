@@ -87,29 +87,50 @@ export function formatHostText(locale, key, params) {
 // Existing RPCs expose text rather than translation metadata. Recognize only
 // dictionary-owned text; leave provider/system details untouched. DSH still
 // supplies the client translator and owns the active language.
+// 反查索引：原来对每个字符串遍历全部字典键两次（精确一次 + 模板一次），每次信息栏渲染
+// 都要跑。语义原样保留（首个命中 wins、键序与原来一致），只是把两趟扫描预计算成精确 Map +
+// 模板表，按传入的 dictionaries 对象缓存（测试传自造字典时各自建一份）。
+// 索具与缓存都收在这个函数体内：构建脚本把本函数整体 `.toString()` 注入客户端 bundle，
+// 拆出去的帮手跟不过去（localizeIndex is not defined），所以不许再拆第二函数。
 export function localizeHostText(message, translate, dictionaries) {
   if (typeof message !== 'string' || message.length === 0) return message
-  for (const key of Object.keys(dictionaries.zh)) {
-    if (dictionaries.zh[key] === message || dictionaries.en[key] === message) return translate(key)
-  }
-  for (const key of Object.keys(dictionaries.zh)) {
-    // host.* 是宿主自述文案；error.* 是「宿主错误码 → 中英文案」的同一批句子（v1.15 起错误键改名为
-    // error.<code>），两者都可能出现在旧快照的 message 里，都要能按模板反查回客户端语言。
-    if (!key.startsWith('host.') && !key.startsWith('error.')) continue
-    for (const language of ['zh', 'en']) {
-      const template = dictionaries[language][key]
-      if (!/\{\w+\}/.test(template)) continue
-      const names = []
-      const pattern = template.split(/(\{\w+\})/).map(function (part) {
-        if (/^\{\w+\}$/.test(part)) { names.push(part.slice(1, -1)); return '([\\s\\S]*?)' }
-        return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      }).join('')
-      const match = new RegExp('^' + pattern + '$').exec(message)
-      if (match) {
-        const params = {}
-        names.forEach(function (name, index) { params[name] = match[index + 1] })
-        return translate(key, params)
+  const cache = localizeHostText.cache || (localizeHostText.cache = new WeakMap())
+  let index = cache.get(dictionaries)
+  if (!index) {
+    const zh = dictionaries.zh || {}
+    const en = dictionaries.en || {}
+    const exact = new Map()
+    const templates = []
+    for (const key of Object.keys(zh)) {
+      for (const language of ['zh', 'en']) {
+        const value = language === 'zh' ? zh[key] : en[key]
+        if (typeof value === 'string' && !exact.has(value)) exact.set(value, key)
       }
+      // host.* 是宿主自述文案；error.* 是「宿主错误码 → 中英文案」的同一批句子（v1.15 起错误键改名为
+      // error.<code>），两者都可能出现在旧快照的 message 里，都要能按模板反查回客户端语言。
+      if (key.startsWith('host.') || key.startsWith('error.')) {
+        for (const language of ['zh', 'en']) {
+          const template = language === 'zh' ? zh[key] : en[key]
+          if (typeof template !== 'string' || !/\{\w+\}/.test(template)) continue
+          const names = []
+          const pattern = template.split(/(\{\w+\})/).map(function (part) {
+            if (/^\{\w+\}$/.test(part)) { names.push(part.slice(1, -1)); return '([\\s\\S]*?)' }
+            return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          }).join('')
+          templates.push({ key: key, names: names, re: new RegExp('^' + pattern + '$') })
+        }
+      }
+    }
+    index = { exact: exact, templates: templates }
+    cache.set(dictionaries, index)
+  }
+  if (index.exact.has(message)) return translate(index.exact.get(message))
+  for (const entry of index.templates) {
+    const match = entry.re.exec(message)
+    if (match) {
+      const params = {}
+      entry.names.forEach(function (name, number) { params[name] = match[number + 1] })
+      return translate(entry.key, params)
     }
   }
   return message

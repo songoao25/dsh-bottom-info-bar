@@ -49,9 +49,6 @@ function bibSetNative(name) {
 }
 const BIB_SET_NATIVE_BUTTON = bibSetNative('Button');
 const BIB_SET_NATIVE_SWITCH = bibSetNative('Switch');
-const BIB_SET_NATIVE_TAG = bibSetNative('Tag');
-const BIB_SET_NATIVE_STATE_DOT = bibSetNative('StateDot');
-const BIB_SET_NATIVE_INPUT = bibSetNative('Input');
 const BIB_SET_NATIVE_MENU = bibSetNative('Menu');
 // 决策 2/4：分组折叠用原生 DisclosureRow，重置二次确认用原生 RiskConfirmation。
 // 与上面同一条铁律：取不到时退回插件内等价实现，绝不把 undefined 交给 React.createElement。
@@ -222,7 +219,7 @@ function activeQuotaDisplayMode() {
   return normalizeQuotaDisplayMode(fieldConfig.quotaDisplayMode);
 }
 
-let fieldConfig = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
+let fieldConfig = { fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -233,7 +230,6 @@ function applyFieldConfigSnapshot(next) {
   fieldConfig = {
     fields: next && next.fields && typeof next.fields === 'object' ? next.fields : {},
     colors: next && next.colors && typeof next.colors === 'object' ? next.colors : {},
-    timeFormat: next && next.timeFormat && typeof next.timeFormat === 'object' ? next.timeFormat : { year: true, month: true, day: true, hour: true, minute: true, second: false },
     timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
     customText: typeof (next && next.customText) === 'string' ? next.customText : '',
     quotaDisplayMode: normalizeQuotaDisplayMode(next && next.quotaDisplayMode),
@@ -288,7 +284,7 @@ function fieldColor(id) {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-// 时间格式化（主/世界共用）：年/月/日/时/分/秒 6 开关，自由组合
+// 时间格式化（主/世界共用）：固定通用格式 YYYY-MM-DD HH:mm，不提供自定义选项。
 const _formatClockCache = new Map();
 function _getClockFormatter(timeZone) {
   const zone = typeof timeZone === 'string' && timeZone.length > 0 ? timeZone : 'UTC';
@@ -303,35 +299,15 @@ function _getClockFormatter(timeZone) {
   }
   return f;
 }
-function formatClock(nowMs, timeZone, fmt) {
-  if (!fmt || typeof fmt !== 'object') return '';
-  const hasYear = !!fmt.year, hasMonth = !!fmt.month, hasDay = !!fmt.day, hasHour = !!fmt.hour, hasMinute = !!fmt.minute, hasSecond = !!fmt.second;
-  if (!hasYear && !hasMonth && !hasDay && !hasHour && !hasMinute && !hasSecond) return '';
+function pad2(x) { return String(x).padStart(2, '0'); }
+function formatClock(nowMs, timeZone) {
   const zone = typeof timeZone === 'string' && timeZone.length > 0 ? timeZone : 'UTC';
   try {
     const parts = _getClockFormatter(zone).formatToParts(new Date(nowMs));
     const map = {};
     for (let i = 0; i < parts.length; i++) { const p = parts[i]; if (p.type !== 'literal') map[p.type] = p.value; }
-    let dateStr = '';
-    const y = hasYear ? map.year : null, mo = hasMonth ? map.month : null, d = hasDay ? map.day : null;
-    if (y && mo && d) dateStr = y + '-' + mo + '-' + d;
-    else if (y && mo) dateStr = y + '-' + mo;
-    else if (y && d) dateStr = y + '-' + d;
-    else if (mo && d) dateStr = mo + '-' + d;
-    else if (y) dateStr = y;
-    else if (mo) dateStr = mo;
-    else if (d) dateStr = d;
-    let timeStr = '';
-    const h = hasHour ? map.hour : null, mi = hasMinute ? map.minute : null, s = hasSecond ? map.second : null;
-    if (h && mi && s) timeStr = h + ':' + mi + ':' + s;
-    else if (h && mi) timeStr = h + ':' + mi;
-    else if (h && s) timeStr = h + ':' + s;
-    else if (mi && s) timeStr = mi + ':' + s;
-    else if (h) timeStr = h;
-    else if (mi) timeStr = mi;
-    else if (s) timeStr = s;
-    if (dateStr && timeStr) return dateStr + ' ' + timeStr;
-    return dateStr || timeStr;
+    if (!map.year || !map.month || !map.day || !map.hour || !map.minute) return '';
+    return map.year + '-' + map.month + '-' + map.day + ' ' + map.hour + ':' + map.minute;
   } catch (e) {
     return '';
   }
@@ -995,6 +971,9 @@ function bibSetInstallStyles() {
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
+        --bib-page-title-size: 15px; --bib-page-title-weight: 600; --bib-page-title-line: 22px;
+        --bib-sub-label-size: 12px; --bib-sub-label-weight: 600; --bib-sub-label-line: 18px;
+        --bib-panel-pad: 12px;
         --bib-desc-size: 13px; --bib-desc-line: 18px;
         --bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;
         --bib-row-gap: 16px;
@@ -1015,7 +994,7 @@ function bibSetInstallStyles() {
       /* 页头（标题 + 说明）：标题与本页其它区块同级（原生 sectionTitle），不另起一套字号。
          宿主已经在页面上方渲染了插件名（20/500）与简介，这里只是本配置块的区块头。 */
       .bib-set-page-head { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; padding: 0; }
-      .bib-set-page-title { width: 100%; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
+      .bib-set-page-title { width: 100%; margin: 0; font-size: var(--bib-page-title-size); font-weight: var(--bib-page-title-weight); line-height: var(--bib-page-title-line); color: var(--dsw-alias-label-primary); }
       /* 只保留 DSH 设置面板这一层纵向滚动：根节点比宿主视口多 2px，确保收起时也会
          进入同一个滚动状态；插件自身和字段清单不再创建第二、第三条滚动轨道。
          注意：这里**不能**设 px 级 max-width（见上面「宽度铁律」）。 */
@@ -1081,19 +1060,27 @@ function bibSetInstallStyles() {
          这样用户不会把一个小箭头旁的文字误认为说明文案。 */
       /* 两个可展开分组是并列的独立入口，留出 16px 呼吸空间，不能像同一列表行挤在一起。 */
       .bib-set-field-list { gap: var(--bib-group-gap); }
-      .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }
+      /* 面板表面（唯一的一套卡片外观）：可折叠分组与静态设置区共用。边框 / 圆角 / 底色只在这里写一遍，
+         展开态的底色变化是分组独有的行为状态，留在分组自己的规则里。 */
+      .bib-set-group, .bib-set-card--panel { border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }
+      .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: hidden; }
+      .bib-set-card--panel { padding: var(--bib-panel-pad); }
       .bib-set-group--expanded { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.03)); }
       .bib-set-group-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
       .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-field-hint-size); font-weight: 400; line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); }
       /* 设置页小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
-         节标题比字段名重一级、比分组标题轻一级（14/500 → 13/600 → 13/400），节与节之间一条细线。 */
+         四级层级（字号/色阶逐级收敛，行式各不相同，第一眼即分得开）：
+           页标题 15/600 主色独占一行 → 分组/卡片标题 14/500 主色（可折叠的带动作）
+           → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色 + 说明另起一行。
+         小节眉故意做成单行眉题（标题与说明同行、说明超长省略），与上下两级的双行堆叠
+         形成对比；节与节之间一条细线。 */
       .bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }
       .bib-set-subsection + .bib-set-subsection { border-top: var(--bib-rule); }
-      .bib-set-subsection-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 0 0; }
-      .bib-set-subsection-label { display: block; min-width: 0; font-size: 13px; font-weight: 600; line-height: 20px; color: var(--dsw-alias-label-primary); }
-      .bib-set-subsection-desc { display: block; min-width: 0; font-size: var(--bib-field-hint-size); font-weight: 400; line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); }
+      .bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }
+      .bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+      .bib-set-subsection-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-sub-label-size); font-weight: 400; line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-tertiary); }
       .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 48px; box-sizing: border-box; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
       .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
       .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
@@ -1162,10 +1149,6 @@ function bibSetInstallStyles() {
       .bib-set-alert--warning { background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f59e0b) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--bib-control-radius); padding: 8px 12px; }
       /* 信息/加载中：安静的一行（原生 sectionCount 的字号与色阶） */
       .bib-set-alert--info { color: var(--dsw-alias-label-secondary); }
-      .bib-set-statedot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
-      .bib-set-statedot--done { background: var(--dsw-alias-state-success-primary, #087f5b); }
-      .bib-set-statedot--warning { background: var(--dsw-alias-state-warning-primary, #f59e0b); }
-      .bib-set-statedot--error { background: var(--dsw-alias-state-error-primary, #d92d20); }
       /* 只使用 DSH 已验证的原生下箭头；展开态旋转 SVG 本身，确保跨宿主版本仍是上下方向。 */
       .bib-set-chevron { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 14px; height: 14px; margin: 0; flex: none; color: var(--dsw-alias-label-tertiary); pointer-events: none; }
       .bib-set-card-header:not(.bib-set-card-header--static):hover .bib-set-chevron, .bib-set-card-header:not(.bib-set-card-header--static):focus-visible .bib-set-chevron { color: var(--dsw-alias-label-primary); }
@@ -1201,9 +1184,6 @@ function bibSetInstallStyles() {
       .bib-set-fieldblock + .bib-set-fieldblock { border-top: var(--bib-rule); }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-field-label-size); font-weight: var(--bib-field-label-weight); line-height: var(--bib-field-label-line); color: var(--dsw-alias-label-primary); }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-field-hint-size); line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-      .bib-set-time-parts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
-      .bib-set-time-part { display: inline-flex; align-items: center; gap: 4px; }
-      .bib-set-time-part-label { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-secondary); }
       .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
@@ -1348,14 +1328,6 @@ function bibSetButton(props) {
     title: props.title,
     onClick: props.onClick,
   }, children);
-}
-
-// 状态点：优先用宿主原生 StateDot（done/ongoing/warning/error/idle）。
-function bibSetStateDot(props) {
-  if (BIB_SET_NATIVE_STATE_DOT) {
-    return React.createElement(BIB_SET_NATIVE_STATE_DOT, { state: props.state, className: props.className });
-  }
-  return React.createElement('span', { className: 'bib-set-statedot bib-set-statedot--' + props.state, 'aria-hidden': 'true' });
 }
 
 // 提示条：照宿主插件详情页的三种原生形态做——
@@ -1745,7 +1717,7 @@ function bibSetFieldGroups(props) {
   return groups;
 }
 
-// 「时间与日期」独立设置区（决策 3）：主/世界时间的时区 + 主时间的年月日时分秒格式。
+// 「时间与日期」独立设置区（决策 3）：主/世界时间的时区。时间显示统一用通用格式，不提供格式选项。
 // 对应字段开关全关时整区隐藏；区内每个字段块照宿主 settings-form 字段基线。
 function bibSetTimeDateSection(props) {
   const mainOn = props.fieldOn('mainTime');
@@ -1770,20 +1742,7 @@ function bibSetTimeDateSection(props) {
         onChange: function (value) { props.onTimeZoneChange('world', value); },
       })));
   }
-  if (mainOn) {
-    blocks.push(React.createElement('div', { key: 'format', className: 'bib-set-fieldblock' },
-      React.createElement('span', { className: 'bib-set-fieldblock-label' }, t('ui.timeFormat')),
-      React.createElement('span', { className: 'bib-set-time-parts' },
-        ['year', 'month', 'day', 'hour', 'minute', 'second'].map(function (key) {
-          const labelKey = { year: 'ui.year', month: 'ui.month', day: 'ui.day', hour: 'ui.hour', minute: 'ui.minute', second: 'ui.second' }[key];
-          return React.createElement('span', { key: key, className: 'bib-set-time-part' },
-            React.createElement('span', { className: 'bib-set-time-part-label' }, t(labelKey)),
-            bibSetSwitch({ label: t(labelKey), checked: !!props.timeFormatOf()[key], onToggle: function (next) { props.onTimeFormatChange(key, next); } }));
-        })),
-      React.createElement('p', { className: 'bib-set-fieldblock-hint' },
-        t('ui.timePreview') + formatClock(Date.now(), props.timeZonesOf().main, props.timeFormatOf()))));
-  }
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-time-date-title' },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-time-date-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-time-date-title',
@@ -1796,7 +1755,7 @@ function bibSetTimeDateSection(props) {
 // 「自定义文字」独立设置区（决策 3）：输入框 + 字数提示；对应开关关闭时整区隐藏。
 function bibSetCustomTextSection(props) {
   if (!props.fieldOn('customText')) return null;
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-custom-text-title' },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-custom-text-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-custom-text-title',
@@ -1866,7 +1825,7 @@ function bibSetQuotaMode(props) {
       key: option.value,
       type: 'button',
       ref: function (node) { refs.current[option.value] = node; },
-      className: (props.optionClassName || 'bib-set-quota-mode-opt') + (selected ? ' bib-set-quota-mode-opt--on' : ''),
+      className: props.optionClassName || 'bib-set-quota-mode-opt',
       role: 'radio',
       'aria-checked': selected,
       tabIndex: selected ? 0 : -1,
@@ -1881,7 +1840,7 @@ function bibSetQuotaMode(props) {
 function bibSetQuotaDisplaySection(props) {
   const windowsOn = ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].some(function (id) { return props.fieldOn(id); });
   if (!windowsOn) return null;
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-quota-mode-title' },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-quota-mode-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-quota-mode-title',
@@ -1895,6 +1854,28 @@ function bibSetQuotaDisplaySection(props) {
           value: props.modeOf(),
           onSelect: props.onModeChange,
         }))));
+}
+
+// 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
+// 不要在 InfoBarSettingsSection 的 return 里再插一段（体系统一化：加东西改 1 处）。
+// 每行 render(ctx) 收到同一个上下文包；返回 null 的区不占位（与原来直写 null 一致）。
+const BIB_SET_SECTIONS = [
+  { id: 'timeDate', render: function (deps) { return bibSetTimeDateSection({ fieldOn: deps.fieldOn, timeZonesOf: deps.timeZonesOf, onTimeZoneChange: deps.setTimeZone }); } },
+  { id: 'customText', render: function (deps) { return bibSetCustomTextSection({ fieldOn: deps.fieldOn, customTextDraft: deps.customTextDraft, customTextOf: deps.customTextOf, onCustomTextChange: deps.onCustomTextChange, onCustomTextCommit: deps.commitCustomText }); } },
+  { id: 'quota', render: function (deps) { return bibSetQuotaDisplaySection({ fieldOn: deps.fieldOn, modeOf: deps.quotaDisplayModeOf, onModeChange: deps.setQuotaDisplayMode }); } },
+  { id: 'data', render: function (deps) { return bibSetDataCard({ busy: deps.busy, onExport: deps.runExport, onClear: deps.runClearRecords }); } },
+  { id: 'version', render: function (deps) { return bibSetVersionSection({ state: deps.updateState, error: deps.updateError, busy: deps.updateBusy, phase: deps.updatePhase, onToggleAuto: deps.onToggleUpdateAuto, onCheck: deps.onCheckUpdate, onInstall: deps.onInstallUpdate, onForce: deps.onForceUpdate, onRollback: deps.onRollbackUpdate }); } },
+];
+function bibSetSectionNodes(deps) {
+  return BIB_SET_SECTIONS.map(function (section) {
+    const node = section.render(deps);
+    // 数组子节点需要稳定 key（直写多参数时 React 按位置隐式处理，map 则不会）：
+    // 有 key 直接用，没有就补一个，补不上也不抛（null 区本来就不占位）。
+    if (node && typeof node === 'object' && (node.key === undefined || node.key === null)) {
+      try { return React.cloneElement(node, { key: 'bib-set-section-' + section.id }); } catch (err) { return node; }
+    }
+    return node;
+  });
 }
 
 const USAGE_EXPORT_COLUMNS = [
@@ -2019,7 +2000,7 @@ function bibSetVersionSection(props) {
   // 的设置页，只能得出「还是得卸载重装」的结论。所以失败时**必须保留板块**并讲清原因。
   if (!state) {
     if (!props.error) return null;
-    return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
+    return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-version-title' },
       bibSetCardHeader({
         static: true,
         titleId: 'bib-set-version-title',
@@ -2093,7 +2074,7 @@ function bibSetVersionSection(props) {
         ? t('ui.updateInstalling', { version: latest })
         : t('ui.updateInstallNow', { version: latest }),
     }) : null);
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-version-title' },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-version-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-version-title',
@@ -2149,7 +2130,7 @@ function bibSetVersionSection(props) {
 
 function bibSetDataCard(props) {
   const disabled = props.busy === true;
-  return React.createElement('section', { className: 'bib-set-card', 'aria-labelledby': 'bib-set-data-title' },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-data-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-data-title',
@@ -2225,7 +2206,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeFormat: cfg.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -2368,7 +2349,6 @@ function InfoBarSettingsSection() {
         fields: res.fields || (prev && prev.fields) || {},
         colors: res.colors || (prev && prev.colors) || {},
         infoDensity: res.infoDensity === 'compact' ? 'compact' : ((res.infoDensity === 'full') ? 'full' : ((prev && prev.infoDensity) || 'full')),
-        timeFormat: res.timeFormat || (prev && prev.timeFormat) || { year: true, month: true, day: true, hour: true, minute: true, second: false },
         timeZones: res.timeZones || (prev && prev.timeZones) || { main: 'Asia/Shanghai', world: 'UTC' },
         customText: typeof res.customText === 'string' ? res.customText : ((prev && prev.customText) || ''),
         // 旧宿主不回传该字段时保留本地值（绝不因一次保存把方向重置掉）
@@ -2447,21 +2427,10 @@ function InfoBarSettingsSection() {
     }
     setColor(id, value.toUpperCase());
   }
-  function timeFormatOf() { return snapshot.timeFormat || { year: true, month: true, day: true, hour: true, minute: true, second: false }; }
   function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
   function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
   function quotaDisplayModeOf() { return normalizeQuotaDisplayMode(snapshot.quotaDisplayMode); }
   function infoDensityOf() { return snapshot.infoDensity === 'compact' ? 'compact' : 'full'; }
-  function setTimeFormatPart(key, next) {
-    const current = timeFormatOf();
-    if (current[key] === next) return;
-    const patch = { timeFormat: Object.assign({}, current, makePair(key, next)) };
-    const prev = current[key];
-    commit(patch,
-      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeFormat: Object.assign({}, s.timeFormat, makePair(key, next)) }); }); },
-      function () { setSnapshot(function (s) { return Object.assign({}, s, { timeFormat: Object.assign({}, s.timeFormat, makePair(key, prev)) }); }); },
-      function () { return t('ui.timeFormat'); });
-  }
   function setTimeZone(which, next) {
     const current = timeZonesOf();
     if (current[which] === next) return;
@@ -2600,9 +2569,7 @@ function InfoBarSettingsSection() {
     onColorChange: setColor,
     onHexChange: onHexChange,
     onHexCommit: commitHex,
-    timeFormatOf: timeFormatOf,
     timeZonesOf: timeZonesOf,
-    onTimeFormatChange: setTimeFormatPart,
     onTimeZoneChange: setTimeZone,
     customTextDraft: customTextDraft,
     customTextOf: customTextOf,
@@ -2687,36 +2654,28 @@ function InfoBarSettingsSection() {
             onClick: function () { requestReset('colors'); },
             children: t('ui.resetColors'),
           })))),
-    bibSetTimeDateSection({
+    bibSetSectionNodes({
       fieldOn: fieldOn,
-      timeFormatOf: timeFormatOf,
       timeZonesOf: timeZonesOf,
-      onTimeFormatChange: setTimeFormatPart,
-      onTimeZoneChange: setTimeZone,
-    }),
-    bibSetCustomTextSection({
-      fieldOn: fieldOn,
+      setTimeZone: setTimeZone,
       customTextDraft: customTextDraft,
       customTextOf: customTextOf,
       onCustomTextChange: onCustomTextChange,
-      onCustomTextCommit: commitCustomText,
-    }),
-    bibSetQuotaDisplaySection({
-      fieldOn: fieldOn,
-      modeOf: quotaDisplayModeOf,
-      onModeChange: setQuotaDisplayMode,
-    }),
-    bibSetDataCard({ busy: saving || dataBusy, onExport: runExport, onClear: runClearRecords }),
-    bibSetVersionSection({
-      state: updateState,
-      error: updateError,
-      busy: updateBusy,
-      phase: updatePhase,
-      onToggleAuto: onToggleUpdateAuto,
-      onCheck: onCheckUpdate,
-      onInstall: onInstallUpdate,
-      onForce: onForceUpdate,
-      onRollback: onRollbackUpdate,
+      commitCustomText: commitCustomText,
+      quotaDisplayModeOf: quotaDisplayModeOf,
+      setQuotaDisplayMode: setQuotaDisplayMode,
+      busy: saving || dataBusy,
+      runExport: runExport,
+      runClearRecords: runClearRecords,
+      updateState: updateState,
+      updateError: updateError,
+      updateBusy: updateBusy,
+      updatePhase: updatePhase,
+      onToggleUpdateAuto: onToggleUpdateAuto,
+      onCheckUpdate: onCheckUpdate,
+      onInstallUpdate: onInstallUpdate,
+      onForceUpdate: onForceUpdate,
+      onRollbackUpdate: onRollbackUpdate,
     }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
     resetDialog);
@@ -2734,7 +2693,7 @@ function InfoBarBundleConfig(props) {
   const view = props && props.view;
   if (view === 'summary') {
     // 摘要与插件描述同源（姊妹插件同款）：宿主已经渲染过标题，这里不再自造第二句描述。
-    return React.createElement('span', { className: 'bib-bundle-summary' }, t('meta.description'));
+    return React.createElement('span', null, t('meta.description'));
   }
   return React.createElement(InfoBarSettingsSection);
 }
@@ -3154,7 +3113,7 @@ module.exports = {
         if (s < 60) return Math.round(s * 10) / 10 + 's';
         const whole = Math.round(s);
         const sec = whole % 60;
-        return Math.floor(whole / 60) + 'm' + String(sec).padStart(2, '0') + 's';
+        return Math.floor(whole / 60) + 'm' + pad2(sec) + 's';
       }
       function formatTps(tps) {
         const clamped = Math.max(0, tps);
@@ -3173,14 +3132,12 @@ module.exports = {
         const h = Math.floor(totalSec / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
         const s = totalSec % 60;
-        const p = function (x) { return String(x).padStart(2, '0'); };
-        return h > 0 ? h + 'h' + p(m) + 'm' : p(m) + ':' + p(s);
+        return h > 0 ? h + 'h' + pad2(m) + 'm' : pad2(m) + ':' + pad2(s);
       }
       // 订阅窗口重置时刻（本地时区，hover 浮窗用）
       function formatDateTime(ms) {
         const d = new Date(ms);
-        const p = function (x) { return String(x).padStart(2, '0'); };
-        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
       }
       // 订阅窗口重置倒计时（天级格式）：≥1 天 → '1d 21h'；≥1 小时 → '3h 12m'；<1 小时 → '12:34'
       function fmtResetCountdown(ms) {
@@ -3190,8 +3147,8 @@ module.exports = {
         const h = Math.floor((totalSec % 86400) / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
         if (d > 0) return d + 'd ' + h + 'h';
-        if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
-        return String(m).padStart(2, '0') + ':' + String(totalSec % 60).padStart(2, '0');
+        if (h > 0) return h + 'h ' + pad2(m) + 'm';
+        return pad2(m) + ':' + pad2(totalSec % 60);
       }
 
       // 订阅窗口剩余百分比（剩余 = 100 - 已用；钳制 ≥0 防接口异常值）
@@ -3316,8 +3273,7 @@ module.exports = {
       function formatDate(ms) {
         if (ms == null || isNaN(ms)) return '—';
         const d = new Date(ms);
-        const p = function (x) { return String(x).padStart(2, '0'); };
-        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
       }
 
       // 订阅制模型组：订阅服务名 · 具体模型（如 `OpenCode Go · V4 Flash`、`ChatGPT · GPT 5.6 Codex`）
@@ -3356,19 +3312,18 @@ module.exports = {
         const title = txt.trim();
         groups.push(fieldSpan('customText', 'ct', React.createElement('span', { title: title }, title)));
       }
-      // 时间：主/世界 各自独立时区，格式共用
+      // 时间：主/世界各自独立时区，显示统一用通用格式
       function pushTimeGroups(groups) {
-        const fmt = fieldConfig.timeFormat;
         const zones = fieldConfig.timeZones;
         if (fieldVisible('mainTime')) {
-          const txt = formatClock(now, zones && zones.main, fmt);
+          const txt = formatClock(now, zones && zones.main);
           if (txt) {
             const zoneLabel = zones && zones.main ? zones.main : '';
             groups.push(fieldSpan('mainTime', 'mt', React.createElement('span', { title: zoneLabel ? (t('ui.mainTime') + ' (' + zoneLabel + ')') : t('ui.mainTime') }, metric(t('ui.mainTime'), txt))));
           }
         }
         if (fieldVisible('worldTime')) {
-          const txt = formatClock(now, zones && zones.world, fmt);
+          const txt = formatClock(now, zones && zones.world);
           if (txt) {
             const zoneLabel = zones && zones.world ? zones.world : '';
             groups.push(fieldSpan('worldTime', 'wt', React.createElement('span', { title: zoneLabel ? (t('ui.worldTime') + ' (' + zoneLabel + ')') : t('ui.worldTime') }, metric(t('ui.worldTime'), txt))));

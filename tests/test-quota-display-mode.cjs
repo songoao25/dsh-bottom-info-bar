@@ -412,7 +412,7 @@ function jsonOk(payload) {
     text: function () { return Promise.resolve(JSON.stringify(payload)); },
   });
 }
-const CONFIG_FIXTURE = { fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 1 };
+const CONFIG_FIXTURE = { fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 1 };
 
 async function createSettingsHarness(handle) {
   const requests = [];

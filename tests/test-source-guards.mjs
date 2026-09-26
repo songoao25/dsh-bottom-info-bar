@@ -280,5 +280,26 @@ check(
       '\n      调用处显式传 apply 内部那个语言感知的 t。参见 mergeSubscriptionResult 的写法。'
 )
 
+// ---------- 守卫 8：时间显示无自定义格式 ----------
+//
+// 日期格式不提供用户选项：时间统一用通用格式 YYYY-MM-DD HH:mm。
+// 曾经有过「年/月/日/时/分/秒 6 开关」的 timeFormat 定制，但设置页实际并不提供该入口，
+// 文案里提「显示格式」会误导用户以为能调 —— 删定制的同时必须删误导文案，且不许加回来。
+const TIME_FORMAT_OFFENDERS = []
+for (const rel of ['src/host.js', 'src/client-bundle.js', 'src/locales.js', 'src/constants.js']) {
+  const abs = join(root, rel)
+  if (!existsSync(abs)) continue
+  stripComments(readFileSync(abs, 'utf8')).split('\n').forEach((line, index) => {
+    if (/timeFormat|TIME_FORMAT/.test(line)) TIME_FORMAT_OFFENDERS.push(`${rel}:${index + 1}  ${line.trim().slice(0, 120)}`)
+  })
+}
+check(
+  '守卫 8：源码不再含日期格式自定义（timeFormat 定制已下线，文案不得提“显示格式”）',
+  TIME_FORMAT_OFFENDERS.length === 0,
+  TIME_FORMAT_OFFENDERS.length === 0 ? undefined
+    : '共 ' + TIME_FORMAT_OFFENDERS.length + ' 处：\n      ' + TIME_FORMAT_OFFENDERS.join('\n      ') +
+      '\n      修法：时间显示固定用通用格式，不加用户选项；字段 note 与设置区描述只讲“时区”。'
+)
+
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
 process.exit(failures === 0 ? 0 : 1)

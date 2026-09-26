@@ -67,7 +67,9 @@ if (routesMatch) {
   let m2;
   while ((m2 = re.exec(routesMatch[1]))) handlers.push(m2[1]);
 }
-const expected = ['getBalanceSnapshot', 'getPricing', 'getEstimate', 'getUsageSummary', 'exportUsageRecords', 'clearUsageRecords', 'getSpendTrend', 'getConfig', 'setDisplayMode', 'setInfoDensity', 'getBillingMode', 'getSubscriptionSnapshot'];
+// getEstimate / getSpendTrend / setDisplayMode 已删除（客户端从不调用，无场景估算入口）；
+// getConfig 只保留 infoDensity（密度切换用）与 alertThreshold（低余额预警阈值，仍被读取）。
+const expected = ['getBalanceSnapshot', 'getPricing', 'getUsageSummary', 'exportUsageRecords', 'clearUsageRecords', 'getConfig', 'setInfoDensity', 'getBillingMode', 'getSubscriptionSnapshot'];
 const missingHandlers = expected.filter((h) => !handlers.includes(h));
 
 let ok = true;
@@ -79,7 +81,7 @@ if (missingHandlers.length === 0) console.log('PASS  ' + handlers.length + ' 个
 else { ok = false; console.log('FAIL  缺失 handler：' + missingHandlers.join(', ')); }
 
 // 关键函数必须存在（防漏贴类缺陷）
-const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'computeEstimate', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'parseCommandCodeUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage', 'fetchCommandCodeUsage', 'minimaxBaseUrl', 'minimaxNumericField', 'minimaxRemainingPercent', 'minimaxAggregateRemainingPercents', 'parseMinimaxTokenPlanRemains', 'resolveMinimaxKey', 'fetchMinimaxTokenPlanUsage', 'normalizeQuotaDisplayMode'];
+const critical = ['spendSummary', 'todaySpend', 'monthSpend', 'last30dSpend', 'costOf', 'sessionTotals', 'computePricing', 'getUsageSummary', 'refreshAllBalances', 'modelDisplayFromCache', 'providerDisplayFromCache', 'refreshModelCatalog', 'detectBillingMode', 'parseOpenCodeGoUsage', 'parseCommandCodeUsage', 'mergeSubscriptionResult', 'kickSubscriptionRefresh', 'getSubscriptionSnapshotRpc', 'readCodexAuthFile', 'fetchCodexUsage', 'fetchOpenCodeGoUsage', 'fetchCommandCodeUsage', 'minimaxBaseUrl', 'minimaxNumericField', 'minimaxRemainingPercent', 'minimaxAggregateRemainingPercents', 'parseMinimaxTokenPlanRemains', 'resolveMinimaxKey', 'fetchMinimaxTokenPlanUsage', 'normalizeQuotaDisplayMode'];
 const missCritical = critical.filter((f) => !defined.has(f));
 if (missCritical.length === 0) console.log('PASS  关键函数齐备：' + critical.join(', '));
 else { ok = false; console.log('FAIL  关键函数缺失：' + missCritical.join(', ')); }

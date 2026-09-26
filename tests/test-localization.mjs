@@ -65,7 +65,7 @@ const cordisLikeCtx = new Proxy({ get: () => undefined }, {
 })
 const resilientT = createHostTranslator(cordisLikeCtx)
 assert.equal(resilientT('host.unknownProvider'), '未知服务商')
-assert.equal(resilientT('host.everydayQuestions'), dictionaries.zh['host.everydayQuestions'])
+assert.equal(resilientT('host.hour'), dictionaries.zh['host.hour'])
 assert.equal(JSON.stringify({ message: '请求失败（HTTP 503）' }, resilientT.json), '{"message":"请求失败（HTTP 503）"}')
 console.log('PASS  translate survives a host ctx that throws on direct .settings access (cordis without inject)')
 
@@ -111,7 +111,7 @@ assert.equal(missing.status, 1, missing.output)
 assert.match(missing.output, /FAIL[^\n]*missingCall/)
 console.log('PASS  English host prose passes; a quote in a regex cannot hide missingCall()')
 
-let states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
+let states = [{ fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 let stateIndex = 0
 const React = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -165,7 +165,7 @@ const rendered = nodes(render())
 // 英文界面（含配置页各状态）不允许出现任何中文：漏译一条就会在这里露出来。
 assert.doesNotMatch(text(render()), /\p{Script=Han}/u, 'the English configuration page must not fall back to Chinese')
 const descriptions = rendered.filter((node) => node.props.className === 'bib-set-rowDesc').map(text)
-assert.ok(descriptions.includes('Shows the account balance; a low balance appears in red.'))
+assert.ok(descriptions.includes('Shows the account balance; a low balance is highlighted in red.'))
 for (const description of descriptions) {
   assert.doesNotMatch(description, /\.[A-Z]| {2}/, description)
 }
@@ -190,7 +190,7 @@ assert.equal(bound, locale.bind('dsh-bottom-info-bar'))
 assert.equal(navLabel(), '底部信息栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
-states = [{ fields: {}, colors: {}, timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false }, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
+states = [{ fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 assert.match(text(render()), /信息栏/)
 assert.doesNotMatch(text(render()), /原生统计行字段/)
 assert.match(text(render()), /余额/)

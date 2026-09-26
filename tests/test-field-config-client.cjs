@@ -125,6 +125,23 @@ check('配置条目以包名 key 注册并保留本地化展示名', clientSrc.i
   && clientSrc.includes("label: function () { return t('meta.title'); }"), true);
 check('设置页组件为普通函数组件（纯 React.createElement，无 JSX 标签）', clientSrc.includes('function InfoBarSettingsSection(')
   && !/<[A-Z][A-Za-z]*[\s/>]/.test(clientSrc), true);
+check('设置区走注册表（加新区只加一行，不在 return 里再插一段）', (function () {
+  const ids = ['timeDate', 'customText', 'quota', 'data', 'version'];
+  const tableAt = clientSrc.indexOf('const BIB_SET_SECTIONS = [');
+  if (tableAt === -1) return false;
+  const tableSlice = clientSrc.slice(tableAt, clientSrc.indexOf('];', tableAt));
+  const orderOk = ids.every(function (id) { return tableSlice.indexOf("id: '" + id + "'") !== -1; })
+    && ids.map(function (id) { return tableSlice.indexOf("id: '" + id + "'"); }).every(function (pos, i, arr) { return i === 0 || pos > arr[i - 1]; });
+  const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');
+  return orderOk
+    && clientSrc.split('function bibSetSectionNodes(deps)').length === 2
+    && body.includes('bibSetSectionNodes({')
+    && !body.includes('bibSetTimeDateSection({')
+    && !body.includes('bibSetCustomTextSection({')
+    && !body.includes('bibSetQuotaDisplaySection({')
+    && !body.includes('bibSetDataCard({')
+    && !body.includes('bibSetVersionSection({');
+})(), true);
 check('M1 单文件化：client-settings.js 已删除，构建不再读取/拼接第二源码', (function () {
   const buildSrc = fs.readFileSync(__dirname + '/../scripts/build.mjs', 'utf8');
   return !fs.existsSync(__dirname + '/../src/client-settings.js')
@@ -313,8 +330,13 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-rowDesc { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }')
     && install.includes('.bib-set-card-desc { width: 100%; min-width: 0; margin: 0; font-size: var(--bib-desc-size); line-height: var(--bib-desc-line); color: var(--dsw-alias-label-secondary); }')
     && install.includes('.bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }')
-    // 页头不再自成一套 15/600，与区块同级
-    && install.includes('.bib-set-page-title { width: 100%; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line);')
+    // 四级层级：页标题 15/600 独占一级，分组/卡片标题 14/500，小节眉 12/600 次色，字段行 13.5/500
+    && install.includes('.bib-set-page-title { width: 100%; margin: 0; font-size: var(--bib-page-title-size); font-weight: var(--bib-page-title-weight); line-height: var(--bib-page-title-line);')
+    // 面板表面只有一套：分组与静态设置区共用同一条规则
+    && install.includes('.bib-set-group, .bib-set-card--panel { border: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16)); border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }')
+    // 小节眉是单行眉题（与上下两级的双行堆叠形成对比），标题用次色小字
+    && install.includes('.bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }')
+    && install.includes('.bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }')
     // 输入框取宿主 primitives 的 .input 尺寸
     && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3);')
     // 按钮：宿主没有原生 Button 时的兜底几何 = Button.module.css .sm（h28 / r14 / 12px / 0 10px）
