@@ -2,9 +2,9 @@
 
 ## 前置条件
 
-- 已安装 DeepSeek Harness（`dsh` CLI 在 PATH 中）
+- 已安装 DeepSeek Harness（`dsh` CLI 在 PATH 中；桌面客户端同样提供该 CLI）
 - 已安装 [pnpm](https://pnpm.io/)
-- 使用 Web 界面（`dsh web`）
+- 网页端用 `dsh web` 启动，桌面客户端（灰度测试中）用其自带的 profile（通常是 `desktop`）：下文命令里的 `--profile web` 在桌面端一律换成 `--profile desktop`
 
 ## 安装
 
@@ -30,13 +30,27 @@ https://github.com/songoao25/dsh-bottom-info-bar
 
 ### 方式三：一键脚本（产生 `link:` 安装）
 
+macOS / Linux：
+
 ```bash
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
 cd dsh-bottom-info-bar
 ./install.sh
-# 默认安装到 web profile；其他 profile 需以 `dsh web` 方式使用：
-./install.sh --profile <profile名>
+# 默认安装到 web profile；桌面客户端：
+./install.sh --profile desktop
 ```
+
+Windows（PowerShell，原生，无需 Git Bash）：
+
+```powershell
+git clone https://github.com/songoao25/dsh-bottom-info-bar.git
+cd dsh-bottom-info-bar
+.\install.ps1
+# 桌面客户端：
+.\install.ps1 -Profile desktop
+```
+
+卸载对应为 `./uninstall.sh` / `.\uninstall.ps1`（同样支持 `--profile` / `-Profile`）。
 
 ### 方式四：从本地代码安装（产生 `link:` 安装）
 
@@ -53,11 +67,11 @@ dsh plugin --profile web add /path/to/dsh-bottom-info-bar
 
 `dsh plugin add` 会：
 
-1. 用 pnpm 把插件包安装到 profile 目录（`~/.dsh/profiles/<name>/`）；
+1. 用 pnpm 把插件包安装到 profile 目录（本端 `DSH_HOME` 下的 `profiles/<name>/`，默认 `~/.dsh/profiles/<name>/`）；
 2. 检测到包声明了 `dsh.bundle`（仓库根的 `cordis.patch.yml`），自动把包名加入 profile 的 bundle 层列表（`dsh.profile.bundles`）；
 3. 下次启动 `dsh` 时，插件随 profile 自动加载——host 注册 HTTP 路由、client 注入页面信息栏。
 
-**注意：安装后需要重启 `dsh web`（或重启 DSH）才会生效**——宿主进程在启动时组合插件。刷新页面不足以加载 host 端。
+**注意：安装后需要重启 DSH（网页端即重启 `dsh web`）才会生效**——宿主进程在启动时组合插件。刷新页面不足以加载 host 端。
 
 ### 验证安装成功
 
@@ -75,10 +89,10 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 ## 配置订阅额度（可选，v1.1.0）
 
-信息栏会自动检测当前模型所属模式：**订阅制**（Codex / OpenCode Go）显示三窗口额度，**余额制**（DeepSeek 等）显示余额。订阅额度数据源：
+信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
 
 - **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-sub**](https://github.com/songoao25)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
-- **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`（或先用 opencode CLI 登录其订阅，写入 `~/.local/share/opencode/auth.json` 的 `opencode-go` 条目）。未配置时信息栏显示"未配置 OpenCode Go"引导，不报错。
+- **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`（或先用 opencode CLI 登录其订阅，写入平台共享目录 `opencode/auth.json` 的 `opencode-go` 条目：macOS/Linux 为 `~/.local/share/opencode/auth.json`，Windows 为 `%LOCALAPPDATA%\opencode\auth.json`）。未配置时信息栏显示"未配置 OpenCode Go"引导，不报错。
 
 ## 更新版本
 
@@ -87,13 +101,13 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 - **全自动更新**（默认）：自动下载 → 校验 → 替换插件自己的文件，然后你重启一次 DSH 就生效。
 - **手动更新**：只提示、不下载；点「检查更新」按钮才执行（该按钮只在手动方式下出现）。
 
-设置页那一块分三层看：最上面是**状态**（结论 + 运行中版本 / 最新版本 / 上次检查时间），中间是**更新方式**二选一，最下面是**出问题时的办法** —— 「回滚到上一版」只在真需要时出现（新版已装好待重启，或上次更新失败），并写明为什么出现。更新失败时会用一句人话讲清原因，原始报错留在 `~/.dsh/dsh-bottom-info-bar/update-log.jsonl`。
+设置页那一块分三层看：最上面是**状态**（结论 + 运行中版本 / 最新版本 / 上次检查时间），中间是**更新方式**二选一，最下面是**出问题时的办法** —— 「回滚到上一版」只在真需要时出现（新版已装好待重启，或上次更新失败），并写明为什么出现。更新失败时会用一句人话讲清原因，原始报错留在本端 `DSH_HOME` 下 `dsh-bottom-info-bar/update-log.jsonl`（默认 `~/.dsh/dsh-bottom-info-bar/update-log.jsonl`）。
 
 检查只发生在启动那一次：新版本装好本来就要重启才生效，而重启本身会触发下一次检查。所以「上次检查」的时间就是判断它有没有在干活的依据。
 
 替换前会校验文件完整性，任何一步失败都整批回滚，不会破坏正在运行的那一份。整个过程只改插件包内文件，不动 profile 的 `package.json` / `pnpm-lock.yaml`，也不碰依赖树。
 
-**前提**：自更新只在插件被当作 profile 插件装载时启用（npm、GitHub 地址、一键脚本三种安装方式都算）。源码副本与 `link:` 安装按只读处理，插件不会去改那份代码，需要按下面的方式手动更新。
+**前提**：自更新只在插件被当作 profile 插件装载时启用（npm、GitHub 地址、一键脚本三种安装方式都算；Windows 与 macOS 的大小写差异已在判定里归一，不会误判）。源码副本与 `link:` 安装按只读处理，插件不会去改那份代码，需要按下面的方式手动更新。
 
 手动更新时，按当初的安装方式二选一：
 
@@ -141,7 +155,7 @@ node scripts/build.mjs
 
 如果想让 Agent 代劳排查，可以把下面这句话发给它：
 
-> 我的 DSH 底部信息栏显示「更新失败」，请帮我看看 `~/.dsh/dsh-bottom-info-bar/update-log.jsonl` 里的失败原因，再判断是重试还是手动更新。不要删除 `~/.dsh/dsh-bottom-info-bar/usage-records.json`，不要覆盖未提交代码，更新后提醒我重启 DSH。
+> 我的 DSH 底部信息栏显示「更新失败」，请帮我看看本端 DSH_HOME 下 `dsh-bottom-info-bar/update-log.jsonl`（默认 `~/.dsh/dsh-bottom-info-bar/update-log.jsonl`）里的失败原因，再判断是重试还是手动更新。不要删除 `dsh-bottom-info-bar/usage-records.json`，不要覆盖未提交代码，更新后提醒我重启 DSH。
 
 普通网页聊天如果没有本机终端权限，不能直接完成更新；Agent 仍应在执行删除、覆盖或迁移安装前先征得用户确认。
 
@@ -150,6 +164,7 @@ node scripts/build.mjs
 ```bash
 cd dsh-bottom-info-bar
 ./uninstall.sh
+# Windows PowerShell：.\uninstall.ps1
 # 或手动：
 dsh plugin --profile web remove dsh-bottom-info-bar
 ```
@@ -160,7 +175,7 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 
 | 现象 | 原因与处理 |
 |---|---|
-| 信息栏不出现 | ① 没重启：需重启 `dsh web`；② 装错 profile：确认启动用的 profile 与安装目标一致；③ `dsh --profile web --dump-config` 里没有 dsh-bottom-info-bar：重新执行安装 |
+| 信息栏不出现 | ① 没重启：需重启 DSH（网页端即重启 `dsh web`）；② 装错 profile：确认启动用的 profile 与安装目标一致（网页端 `web`、桌面端 `desktop`）；③ `dsh --profile <name> --dump-config` 里没有 dsh-bottom-info-bar：重新执行安装 |
 | 安装报 `pnpm not found` | 安装 pnpm：`npm i -g pnpm` 或 `corepack enable` |
 | 安装报 `dsh-bottom-info-bar` 找不到 | 确认包名拼写；本地目录安装时路径要指向**仓库根**（包在仓库根，不是子目录） |
 | 插件页报「这个包没有声明组合包」（英文界面：declares no bundle） | 装到的是一个「仓库根不是包」的仓库——那是包移到仓库根之前的本仓库。插件页里改填包名 `dsh-bottom-info-bar`，或用包含该修复的版本上的仓库地址 |

@@ -124,5 +124,34 @@ check('视觉模型名采用高对比电光蓝实色椭圆、白字、深色细�
   && clientSrc.includes('--bi-vision-border: #0044cc')
   && clientSrc.includes('--bi-vision-bg: #0057ff'), true);
 
+// 8) 两端适配（2026-09-26 独立审计）：定时器走统一入口，样式安装先探 DOM，seed 缺席不崩加载期
+check('定时器统一入口存在且 rpc 走它（无 window 定时器的极简宿主按无超时继续）', (function () {
+  const start = clientSrc.indexOf('function rpc(method, args, externalSignal)');
+  const end = clientSrc.indexOf('function mergeLoadResults');
+  if (start === -1 || end === -1 || end <= start) return false;
+  const body = clientSrc.slice(start, end);
+  return clientSrc.includes('function scheduleTimeout(fn, ms)')
+    && clientSrc.includes('function cancelTimeout(id)')
+    && body.includes('const timer = scheduleTimeout(')
+    && body.includes('cancelTimeout(timer)')
+    && !body.includes('window.setTimeout')
+    && !body.includes('window.clearTimeout');
+})(), true);
+check('slots 等待走统一入口（无定时器时直接重试，不抛错）', clientSrc.includes('if (scheduleTimeout(resolve, delay) === null) resolve();'), true);
+check('两处样式安装各自先探 DOM，无 DOM 时返回空 disposer（有意内联：两函数会被测试单独抽出求值，helper 在抽离作用域不可见）', (function () {
+  const a = clientSrc.indexOf('function installStyles()');
+  const b = clientSrc.indexOf('function bibSetInstallStyles()');
+  if (a === -1 || b === -1 || !(a < b)) return false;
+  const guard = "typeof document.querySelector !== 'function'";
+  const ret = 'return function () {};';
+  const headA = clientSrc.slice(a, a + 600);
+  const headB = clientSrc.slice(b, b + 600);
+  return headA.includes(guard) && headA.includes(ret) && headB.includes(guard) && headB.includes(ret)
+    && !clientSrc.includes('function canInstallStyles');
+})(), true);
+check('primitives 缺席时退回空对象（灰度桌面端 seed 缺失不崩加载期）', !clientSrc.includes('const BIB_SET_PRIMITIVES = require(')
+  && clientSrc.includes("require('@deepseek-ai/dsh-client-ui-primitives')")
+  && clientSrc.includes('if (BIB_SET_PRIMITIVES === null) BIB_SET_PRIMITIVES = {};'), true);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

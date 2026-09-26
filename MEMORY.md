@@ -19,6 +19,13 @@
 
 ---
 
+## 2026-09-26（工具专属记忆迁移：`.workbuddy/memory/2026-09-26.md` 并入后删除，守卫 2）
+
+- npm 发布令牌排查结论（姊妹仓库 `dsh-chatgpt-sub` 上架卡点，本仓库同管线复用）：Granular 令牌未授予 All packages 读写时表现为 E404 PUT（身份已过、拒绝建包），不是 401；要 Classic Automation 或 Granular 且勾选 Read and write + All packages。本机 `~/.npmrc` 钥匙失效时先 `npm whoami` 验证，别直接复制旧 secret。
+- `.workbuddy/` 已删（记忆只允许本文件；`git add -A` 前先 `git status`，gitignore 里的目录测试守卫照样能扫到）。
+
+---
+
 ## 2026-09-26（v1.20.3：体系化重构第二波，C/D 批欠账清零，无行为变化）
 
 ### 一次发布（fix，PR #185 → 发布 PR #186 → 1.20.3）
