@@ -5,7 +5,10 @@ import { readFileSync } from 'node:fs'
 const source = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
 const block = source.match(/const WEEKEND_OFFPEAK_EFFECTIVE_AT = [\s\S]*?(?=\n    \/\/ ---------- 当前模型识别 ----------)/)
 if (!block) throw new Error('未找到周末峰谷判定逻辑')
-const { currentPeriod, nextPeriodLabel } = eval(`(() => {${block[0]}\nreturn { currentPeriod, nextPeriodLabel }; })()`)
+// 判定块引用模块级 BEIJING_OFFSET_MS：从源码同一处取值注入求值作用域，数值只定义一次。
+const offsetMatch = source.match(/const BEIJING_OFFSET_MS = ([^;\n]+)/)
+if (!offsetMatch) throw new Error('未找到 BEIJING_OFFSET_MS 定义')
+const { currentPeriod, nextPeriodLabel } = eval(`(() => { const BEIJING_OFFSET_MS = ${offsetMatch[1]};${block[0]}\nreturn { currentPeriod, nextPeriodLabel }; })()`)
 
 let failures = 0
 function check(label, actual, expected) {

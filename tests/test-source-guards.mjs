@@ -51,6 +51,8 @@ const SOURCE_FILES = [
   'src/host-locale.js',
   'src/constants.js',
   'src/locales.js',
+  'src/self-update.js',
+  'src/version.js',
 ]
 
 const offenders = []

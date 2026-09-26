@@ -9,9 +9,36 @@ function check(name, actual, expected = true) {
   else { fail++; console.log('FAIL ', name, '—', actual, '!==', expected) }
 }
 
-const logicStart = host.indexOf('function stableVersion')
-const logicEnd = host.indexOf('const UPDATE_LATEST_TTL_MS')
-const { stableVersion, compareVersions } = Function(host.slice(logicStart, logicEnd) + '; return { stableVersion, compareVersions }')()
+// 版本解析/比较的唯一定义在 src/version.js（host 与自更新引擎共用，旧 stableVersion/compareVersions 已并入）。
+// 行为断言不变，只换取值位置；导入语句与包路径行（含 import.meta，Function 求值不支持）不在求值范围内。
+const versionSrc = fs.readFileSync('src/version.js', 'utf8')
+const pickLine = (pattern) => {
+  const m = versionSrc.match(pattern)
+  if (!m) throw new Error('version.js 缺少声明：' + pattern)
+  return m[0].replace(/^export /m, '')
+}
+function pickFn(name) {
+  const start = versionSrc.indexOf('export function ' + name)
+  if (start < 0) throw new Error('version.js 缺少函数：' + name)
+  let depth = 0
+  let i = start
+  let inStr = null
+  while (i < versionSrc.length) {
+    const c = versionSrc[i]
+    if (inStr) { if (c === '\\') { i += 2; continue } if (c === inStr) inStr = null }
+    else if (c === '"' || c === "'" || c === '`') inStr = c
+    else if (c === '{') depth++
+    else if (c === '}') { depth--; if (depth === 0) break }
+    i++
+  }
+  return versionSrc.slice(start, i + 1).replace(/^export /m, '')
+}
+const { parseSemver: stableVersion, compareSemver: compareVersions, UPDATE_REGISTRY_URL: registryUrlFromSource } = Function(
+  pickLine(/^export const PACKAGE_NAME = .*$/m) + '\n'
+  + pickLine(/^export const UPDATE_REGISTRY_ORIGIN = .*$/m) + '\n'
+  + pickLine(/^export const UPDATE_REGISTRY_URL = .*$/m) + '\n'
+  + pickFn('parseSemver') + '\n' + pickFn('compareSemver')
+  + '\nreturn { parseSemver, compareSemver, UPDATE_REGISTRY_URL }')()
 
 check('实际识别普通稳定版本号', JSON.stringify(stableVersion('1.4.1')) === JSON.stringify([1, 4, 1]))
 check('实际识别 v 前缀版本号', JSON.stringify(stableVersion('v2.0.0')) === JSON.stringify([2, 0, 0]))
@@ -19,14 +46,13 @@ check('实际拒绝预发布版本号', stableVersion('1.4.1-rc.1') === null)
 check('实际比较新版本大于当前版本', compareVersions('1.4.1', '1.4.0') > 0)
 check('实际比较相同版本', compareVersions('1.4.0', '1.4.0') === 0)
 check('实际比较旧版本小于当前版本', compareVersions('1.3.9', '1.4.0') < 0)
-const registryMatch = host.match(/const UPDATE_REGISTRY_URL = '([^']+)'/)
 let registryUrl = null
-try { registryUrl = registryMatch ? new URL(registryMatch[1]) : null } catch { /* 静态检查失败 */ }
+try { registryUrl = new URL(registryUrlFromSource) } catch { /* 静态检查失败 */ }
 check('host 使用固定 NPM registry 地址', !!registryUrl
   && registryUrl.protocol === 'https:'
   && registryUrl.hostname === 'registry.npmjs.org'
   && registryUrl.pathname === '/dsh-bottom-info-bar/latest')
-check('host 从 package.json 动态读取当前版本', host.includes("new URL('../package.json', import.meta.url)") && host.includes('packageVersion()'))
+check('host 从 package.json 动态读取当前版本', versionSrc.includes("new URL('../package.json', import.meta.url)") && versionSrc.includes('export function packageVersion()') && host.includes('packageVersion()'))
 check('host 版本检查有 5 秒超时', host.includes('UPDATE_CHECK_TIMEOUT_MS = 5000') && host.includes('controller.abort()'))
 // 2026-09-24 起：npm 最新版本按 TTL 重查（不再是进程内一次性检查），
 // 本机已安装版本每次从磁盘重读 —— 否则「更新完还显示提醒」要等刷新页面/重启宿主才消失。
@@ -38,7 +64,7 @@ check('host 的 getUpdateInfo 每次重读已安装版本并重算可用性',
   host.includes('getUpdateInfo: async function ()')
   && host.includes('const latest = await latestVersion()')
   && host.includes('const current = packageVersion()')
-  && host.includes('available: !!latest && compareVersions(latest, current) > 0'))
+  && host.includes('available: !!latest && compareSemver(latest, current) > 0'))
 check('host 启动时预热一次版本查询（失败不影响信息栏）',
   host.includes('预热一次 npm 版本查询') && /\n    latestVersion\(\)\n/.test(host))
 check('host 查询失败时保留上一次已知版本（不闪提醒）',

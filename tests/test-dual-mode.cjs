@@ -51,6 +51,10 @@ const constantsSrcFull = constantsSrc;
 const billingMatch = constantsSrcFull.match(/export const BILLING_PROVIDERS = (\[[\s\S]*?\]);?/);
 if (!billingMatch) throw new Error('无法从 constants.js 中提取 BILLING_PROVIDERS');
 const BILLING_PROVIDERS = eval('(' + billingMatch[1] + ')');
+// 身份映射函数引用 PROVIDER_IDENTITY：同一份表求值进本模块作用域，供抽取函数闭包解析。
+const identityMatch = constantsSrc.match(/export const PROVIDER_IDENTITY = (\{[\s\S]*?\n\});?/);
+if (!identityMatch) throw new Error('无法从 constants.js 中提取 PROVIDER_IDENTITY');
+const PROVIDER_IDENTITY = eval('(' + identityMatch[1] + ')');
 
 // 提取纯函数（eval 出的函数闭包指向本模块作用域，能解析到上面的常量与函数）
 const detectBillingMode = extractFn('detectBillingMode');
@@ -60,6 +64,9 @@ const billingSourceFor = extractFn('billingSourceFor'); // v1.7：账单源映�
 const openCodeGoWindowKey = extractFn('openCodeGoWindowKey'); // parseOpenCodeGoUsage 的依赖
 const normalizeResetAt = extractFn('normalizeResetAt'); // parseOpenCodeGoUsage 的依赖
 const parseOpenCodeGoUsage = extractFn('parseOpenCodeGoUsage');
+// 合并语义住在 mergeSnapshotResult（订阅/账单共用），mergeSubscriptionResult 只是定 fallbackCode 的薄委托——
+// 两个一起抽出来，委托在求值作用域内能解析到本体（与 openCodeGoWindowKey 等依赖同 pattern）。
+const mergeSnapshotResult = extractFn('mergeSnapshotResult');
 const mergeSubscriptionResult = extractFn('mergeSubscriptionResult');
 
 let pass = 0, fail = 0;
@@ -208,7 +215,7 @@ const subFn = extractClientFnBody('pushSubscriptionGroups');
 check('client 按会话优先的 billingMode 分支互斥渲染', clientSrc.includes("const isSub = !!(visibleBillingMode && visibleBillingMode.mode === 'subscription')"), true);
 check('client 余额制渲染函数独立保留', clientSrc.includes('function pushBalanceGroups(groups, trailingErrorGroups)'), true);
 check('client 订阅制渲染函数存在', clientSrc.includes('function pushSubscriptionGroups(groups, trailingErrorGroups)'), true);
-check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌；v1.9 PR2 每窗口独立 data-field）', clientSrc.includes("winNodes.push(fieldSpan(WINDOW_FIELD_IDS[w.key] || 'subWindow5h', 'w' + i,"), true);
+check('client 三窗口显示剩余百分比（统一标签/数据间距 + 加粗数据令牌；v1.9 PR2 每窗口独立 data-field）', clientSrc.includes("winNodes.push(fieldSpan((windowMeta(w.key) || {}).field || 'subWindow5h', 'w' + i,"), true);
 check('client 窗口组不再按模式取舍（开着的窗口两种模式都列出）', clientSrc.includes('const visible = windows;')
   && !clientSrc.includes('const visible = full ?'), true);
 check('client 无订阅快照时不显示加载中（RPC 后台补齐）', subFn.includes("'订阅额度加载中…'"), false);
@@ -229,7 +236,7 @@ check('client 订阅失败提示按实际订阅服务命名，不把 Codex 误�
 check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.includes("if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';"), true);
 check('client codex → Codex 保持（映射不变）', clientSrc.includes("if (provider === 'codex') return 'Codex';"), true);
 check('client 剩余 = 100 - 已用（钳制 ≥0）', clientSrc.includes('return Math.max(0, 100 - w.usedPercent);'), true);
-check('client 紧凑标签 five_hour → 5h', clientSrc.includes("if (key === 'five_hour') return '5h';"), true);
+check('client 紧凑标签 five_hour → 5h（缩写收进 WINDOW_META.short）', clientSrc.includes("five_hour: { field: 'subWindow5h', priority: 1, labelKey: 'host.hour', short: '5h' }") && clientSrc.includes('if (meta && meta.short) return meta.short;'), true);
 check('client hover 明确写 剩余 xx%（已用 xx%）', clientSrc.includes("t('ui.windowRemainingUsed', { label: quotaWindowLabel(w), value: remainingPercent(w), usedPercent: w.usedPercent })"), true);
 check('client 告急时仅将对应额度数字标为鲜红色', clientSrc.includes("const numberClass = remaining <= LOW_QUOTA_PERCENT ? 'bi-quota-low' : '';"), true);
 check('client 订阅源标题用会话优先的订阅服务名映射（openai-codex 显示 ChatGPT）', clientSrc.includes("t('ui.subscriptionSource.titleLines', { value: subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider) })"), true);

@@ -118,9 +118,11 @@ check('服务商、圆点与视觉模型使用同一 flex 中心线，窄宽度�
 check('视觉模型名采用高对比电光蓝实色椭圆、白字、深色细边且不超过文字字形边界', clientSrc.includes('.bi-vision {')
   && clientSrc.includes('height: 16px')
   && clientSrc.includes('border-radius: 999px')
-  && clientSrc.includes('border: 1px solid #0044cc')
+  && clientSrc.includes('border: 1px solid var(--bi-vision-border)')
   && clientSrc.includes('color: #fff')
-  && clientSrc.includes('background: #0057ff'), true);
+  && clientSrc.includes('background: var(--bi-vision-bg)')
+  && clientSrc.includes('--bi-vision-border: #0044cc')
+  && clientSrc.includes('--bi-vision-bg: #0057ff'), true);
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

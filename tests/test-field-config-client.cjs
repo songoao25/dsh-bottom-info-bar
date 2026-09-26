@@ -29,7 +29,7 @@ check('三种计费形态共用同一个身份区入口（重复实现不再各�
 check('锚点组仍由三态互斥分支渲染（不在互斥判定外另起渲染分支）', clientSrc.includes("} else if (isBilling) {")
   && clientSrc.includes("} else if (isSub) {"), true);
 check('订阅窗口逐窗过滤（5h/周/月各自独立）', clientSrc.includes('windowFieldVisible(w.key)')
-  && clientSrc.includes("five_hour: 'subWindow5h'") && clientSrc.includes("seven_day: 'subWindowWeek'") && clientSrc.includes("monthly: 'subWindowMonth'"), true);
+  && clientSrc.includes("five_hour: { field: 'subWindow5h'") && clientSrc.includes("seven_day: { field: 'subWindowWeek'") && clientSrc.includes("monthly: { field: 'subWindowMonth'"), true);
 check('订阅窗口组全隐藏时整组不推送（分隔符收合）', clientSrc.includes('if (winNodes.length > 0) {')
   && clientSrc.includes("key: 'subwin', title: titleLines.join('\\n')"), true);
 check('账单组合片段全隐藏时整组不推送（分隔符收合）', clientSrc.includes('if (nodes.length > 0) {')
@@ -218,7 +218,7 @@ check('字段设置三个分组默认全部收起，组内仍有明确箭头与�
     && !disclosure.includes('React.createElement(BIB_SET_NATIVE_DISCLOSURE')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")
-    && clientSrc.includes("inert: open ? undefined : true")
+    && !clientSrc.includes('inert:')
     && clientSrc.includes("const iconClass = 'bib-set-chevron-icon' + (props.expanded ? ' bib-set-chevron-icon--expanded' : '');")
     && clientSrc.includes('.bib-set-chevron-icon--expanded { transform: rotate(180deg);')
     && !clientSrc.includes('.bib-set-chevron[data-expanded="true"] { transform: rotate(180deg);')
@@ -286,13 +286,27 @@ check('折叠切换可见性：字段分组按原状态展示，且不触发宿�
     && !clientSrc.includes('fieldsCollapsed')
     && clientSrc.includes("className: 'bib-set-collapse' + (open ? ' bib-set-collapse--expanded' : ' bib-set-collapse--collapsed')")
     && clientSrc.includes("'aria-hidden': open ? undefined : 'true'")
-    && clientSrc.includes('inert: open ? undefined : true')
+    && !clientSrc.includes('inert:')
     && !clientSrc.includes('if (!props.expanded) return []')
     && !body.includes('disabledOnly')
     && !body.includes('disabledCount')
     && !body.includes('collapsed.fields')
     && !body.includes('colors: true')
     && !body.includes('time: true');
+})(), true);
+check('样式源零交叉引用（P1-20）：信息栏只用 --bi-*，设置页只用 --bib-*，色板共用', (function () {
+  const infoStart = clientSrc.indexOf('function installStyles()');
+  const setStart = clientSrc.indexOf('function bibSetInstallStyles()');
+  const infoCss = clientSrc.slice(infoStart, setStart);
+  const setTplStart = clientSrc.indexOf('style.textContent = `', setStart);
+  const setTplEndMatch = /\n\s*`;/.exec(clientSrc.slice(setTplStart));
+  if (setTplStart === -1 || !setTplEndMatch) return false;
+  const setTplEnd = setTplStart + setTplEndMatch.index;
+  const setCss = clientSrc.slice(setTplStart, setTplEnd);
+  const infoBib = infoCss.match(/--bib-[a-z-]+/g) || [];
+  const shared = ['--bi-line', '--bi-label', '--bi-separator', '--bi-state', '--bi-palette', '--bi-vision', '--bi-extra'];
+  const setBi = (setCss.match(/--bi-[a-z-]+/g) || []).filter((v) => !shared.some((p) => v.indexOf(p) === 0));
+  return infoBib.length === 0 && setBi.length === 0;
 })(), true);
 check('设置页布局不再依赖内联样式，卡片内容层与边界连续', (function () {
   const body = extractFunctionFrom(clientSrc, 'InfoBarSettingsSection');

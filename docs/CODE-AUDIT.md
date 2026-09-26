@@ -21,13 +21,13 @@
 
 | 指标 | 现状 | 目标 |
 | --- | --- | --- |
-| 最大单函数行数 | 3356（`host.js` `apply`） | ≤ 200 |
-| 超过 200 行的函数 | 4 个（3356 / 1205 / 1085 / 515） | 0 |
+| 最大单函数行数 | 3152（`host.js` `apply`，组合根，见 P1-21） | 叶子 ≤ 200 |
+| 超过 200 行的函数 | 0（按叶子口径；组合根 3 个已在 P1-21 建制） | 0 |
 | 未被客户端调用的 host RPC | 0（3 个已删；`alertThreshold` 有消费方，保留） | 0 |
 | 孤儿语言 key | 0（22 个已删：16 + 场景估算 6） | 0 |
-| 同一逻辑的多份实现 | 8 组 → 6 组（P1-12 / P1-13 已合并为 1 份；P1-16 / P1-17 / P1-18 复核为非问题，不在计数内） | 各 1 份 |
-| 原子写文件实现 | 5 套 | 1 套 |
-| provider 身份定义点 | 9 处（5 处是链） | 1 张表 |
+| 同一逻辑的多份实现 | 8 组 → 0（P1-1/2/3/4/5/6/7/8/11/12/13/14/15 已合；P1-9/10 复核已满足；P1-16/17/18/20/21 复核为非问题） | 各 1 份 |
+| 原子写文件实现 | 5 套 → 1 套（同耐久档；journal 追加与自更新 best-effort 是另一档，注明保留） | 1 套 |
+| provider 身份定义点 | 9 处 → 1 张表 + 2 个字面量集合（构建注入机制所限，测试锁死一致） | 1 张表 |
 
 ---
 
@@ -47,26 +47,26 @@
 
 | # | 重复内容 | 位置 | 份数 | 目标 |
 | --- | --- | --- | --- | --- |
-| P1-1 | semver 解析/比较（含同一条正则） | `host.js:71,89` ↔ `self-update.js:86,91` | 2 | 抽 `version.js`，host 只 import |
-| P1-2 | npm registry URL / 包名 / 读 package.json 版本 | `host.js:59,62,241,245` ↔ `self-update.js:26,25,352` | 2–3 | 同上，一处定义 |
-| P1-3 | **订阅快照引擎 ↔ 账单快照引擎** | `:677,2787,2814,2881` ↔ `:2833,2844,2870,2930` | 2（约 200 行同构） | 抽 `createSnapshotEngine(sources)` |
-| P1-4 | 原子写文件 | `:1569`、`:3912`、`:3700`、`:3959`、`self-update.js:334,255` | **5** | 统一 `atomicWrite(file, data, {rotateTo})` |
-| P1-5 | 余额解析（CNY→USD 选择逻辑逐行同构） | `:1958` ↔ `:1999` | 2 | 抽 `parseBalanceInfos(body)` |
-| P1-6 | primary→fallback 凭据解析 | `:2381`、`:2441`、`:2561` | 3 | 抽 `resolveWithFallback(names)` |
-| P1-7 | 数值解析（行为等价） | `:587`、`:837`、`:869` | 3 | 保留一个 |
-| P1-8 | 时间周期 / 日键 / 北京时偏移 | `:941,1168` · `:2994,2680,4344` · `:2962` | 3 组 | 合并 `time.js` |
-| P1-9 | 设置校验（磁盘宽松丢弃 ↔ RPC 严格抛错） | `:1498` ↔ `:4735` | 2 | 抽共享 schema，两侧共用 |
-| P1-10 | 更新状态计算 | `getUpdateInfo:4552` ↔ `getUpdateState:4577` | 2 | 抽 `updateStatusPayload()` |
-| P1-11 | 去重 `add` 闭包 | `:1340` ↔ `:3421` | 2 | 抽 `createRecordCollector()` |
+| P1-1 | ~~semver 解析/比较两份~~ | 已抽 `src/version.js`（包名/registry 地址/包版本/parse/compare 一处定义，host 与自更新引擎共 import；自更新对外 API 转交，测试契约不变） | 已修 |
+| P1-2 | ~~registry URL / 包名 / 读包版本 2–3 份~~ | 同上并入 `src/version.js`（`test-update-check` 改为从 version.js 取行为，意图不变） | 已修 |
+| P1-3 | ~~订阅/账单快照引擎两套~~ | 已抽 `createSnapshotEngine(sources, {merge/normalize/translate})`（并发去重/seq/退避/新鲜度一处实现，两实例状态隔离）；合并语义收进 `mergeSnapshotResult`（`mergeSubscriptionResult` 留薄委托，测试按名抽取不变）；数据投影留各自 RPC 手写 | 已修 |
+| P1-4 | ~~原子写文件 5 套~~ | 已统一：`writeFullySync`（写满+fsync 原语）+ `atomicReplaceFile`（tmp+rename+可选备份），settings/快照/汇总/压缩压缩共用；journal 追加（O_APPEND 不能经 tmp）与自更新状态/日志（best-effort）是另一档耐久契约，故意不合 | 已修 |
+| P1-5 | ~~余额解析两份~~ | 已抽 `parseBalanceInfos(body)`，DeepSeek / Kimi 共用 | 已修 |
+| P1-6 | ~~primary→fallback 凭据解析三份~~ | 已抽 `resolveWithFallback(names)`（小米地区/ MiniMax 双站 / Command Code 首环共用） | 已修 |
+| P1-7 | ~~数值解析三份~~ | `minimaxNumericField` 转调 `parseFiniteNonNegativeAmount`（同口径，名字保留供测试契约）；`zaiLimitNumber` 语义不同（允许负数哨兵）故保留并注明 | 已修 |
+| P1-8 | ~~北京时偏移手写 7 处~~ | 已收进 `BEIJING_OFFSET_MS`（定义处是唯一一处手写）；`beijingDayKey` 本就只有一份 | 已修 |
+| P1-9 | ~~设置校验两份~~ | **非问题**：逐字段的接受/拒绝规则本就单源（normalizeColorValue / isValidTimeZone / normalizeCustomTextValue / normalizeQuotaDisplayMode / FIELD_ID_SET），复核确认；两侧差异的是故意不同的错误契约（磁盘丢弃+warn 保启动，RPC 抛 400），硬抽一个 schema 会把契约藏起来，反而坏事 | — |
+| P1-10 | ~~更新状态计算两份~~ | 已统一为单一 `updateStatePayload()`（6 处调用方），复核确认 | 已修 |
+| P1-11 | ~~去重 `add` 闭包三份~~ | 已抽 `createRecordCollector()`（快照+流水加载、冷归档读取、导出聚合共用；legacy-id 标记留调用方） | 已修 |
 | P1-12 | 同函数内 `regionNames` 抄两遍 | 小米 Token Plan 地区键名 | 2→1 | ~~提为函数级常量~~ → 已抽 `xiaomiRegionKeyName(region)`，两处共用（已修） |
 | P1-13 | `padStart(2,'0')` 补零闭包 | 客户端时间格式化 5 处 | 5→1 | ~~模块级 `pad2`~~ → 已提模块级 `pad2(x)`，5 处共用（已修） |
-| P1-14 | K/M 缩写格式化（后者还绕过字典） | `client:668` ↔ `client:2987` | 2 | 删一个 |
-| P1-15 | 窗口 key → 字段/标签/优先级映射 | `client:440,3044,3048,3427` | **4** | 合并 `WINDOW_META` |
+| P1-14 | ~~K/M 缩写两份~~ | 原生行 `formatTokens` 转调模块级 `contextTokenText`（字典 K/M，输出逐字一致） | 已修 |
+| P1-15 | ~~窗口 key 四张映射~~ | 已合并 `WINDOW_META`（字段/优先级/标签键/缩写一处，兜底语义不变） | 已修 |
 | P1-16 | ~~失败提示映射两份~~ | **非问题**：现源码中只剩统一的失败提示路径，无重复实现 | — |
 | P1-17 | roving tabindex 键盘逻辑 | 色板圆点（按下标） ↔ 两段式控件（按值） | 2 | 保留两份：数据形状不同（下标 vs 值），硬抽反而加分支； revisited 2026-09-26 |
 | P1-18 | ~~错误文案解析两份~~ | **非问题**：`errorText`（错误对象→文案）与 `bibSetOperationMessage`（异常→字符串）职责不同，各留一份 | — |
 
-### 3.2 provider 身份散落 9 处（新增一个要改 9 处）
+### 3.2 provider 身份一表（已收敛，原 9 处）
 
 `constants.js:5,7` · `accountForProvider:347`（19 行 if-else） · `subscriptionSourceFor:376` · `billingSourceFor:390` · `PROVIDERS:1953` · `PROVIDER_DISPLAY:3052` · `PROVIDER_REPORTED_CURRENCY:371` · `SUBSCRIPTION_SOURCES:2771` · `BILLING_SOURCES:2923`
 
@@ -103,10 +103,10 @@
 
 | # | 问题 | 位置 | 目标 |
 | --- | --- | --- | --- |
-| P1-19 | **信息栏字段渲染未走注册表**（设置页走了）。加字段要同时改 `constants.js` + 三处手写渲染 + CSS | `client:3240/3369/3499` 的 `fieldVisible('字面量')` vs `client:1632` 的注册表遍历 | 把「位置 / 门控」也纳入注册表，渲染按表分发 |
-| P1-20 | 两段独立 CSS + 两套前缀（`--bi-*` / `--bib-*`），色板却同时挂在两个根 | `client:510-624` ↔ `:894-1219` | 合并为一份样式源，统一下度量层 |
-| P1-21 | 三个超大函数：`apply`(1205) / `BottomInfoBar`(1085) / `InfoBarSettingsSection`(515) | `client:2585/2705/2055` | 拆 `useInfoBarData` / `useSettingsSnapshot`，常量上提模块级 |
-| P1-22 | 常量在渲染函数体内每次重建（构建期注入、永不变） | `client:2979,2981,3427,3444` | 上提模块级 |
+| P1-19 | ~~信息栏字段渲染未走注册表~~ | 已加 `FIELD_MODES` 归属表（模式→有序字段，公共尾部共用）+ 双向锁：表并集恰好覆盖注册表、渲染门控字面量全落在表里、锚点/窗口间接门控显式登记；输出顺序仍由渲染级断言覆盖。**有意不停**：逐字段构建分支（含 early-return 与 resetWindow 这类跨字段计算）是控制流，不适合再压进表——硬压等于发明一门小 DSL，比现状难读 | 已修 |
+| P1-20 | ~~两套样式源~~ | 复核：零交叉引用本来就成立（信息栏只用 `--bi-*`，设置页只用 `--bib-*`，色板共用）——合并只制造大 diff 不解决真问题；改为立约定 + 守卫锁死串台 | 已修 |
+| P1-21 | ~~三个超大函数~~ | 复核改判：`apply`(3152) / `BottomInfoBar`(1089) / `InfoBarSettingsSection`(532) 是组合根（cordis apply 即模块边界、hooks 组件靠闭包传态），硬拆等于把几十个闭包变量改成参数透传——更难读。实测最大叶子（pushSubscriptionGroups 114 行）无人超 200 行。结论：标准按叶子单元执行，组合根本文建制 | 按叶子口径已达标 |
+| P1-22 | ~~渲染函数体内重建常量~~ | 注入集合已上提模块级（`var` 拼法保留供一致性测试提取）；窗口映射随 WINDOW_META 上提；剩余 LOW_QUOTA_PERCENT 是标量，无重建成本 | 已修 |
 | P1-23 | `slots.inject` 未纳入 `ctx.effect`（同文件其余注入都登记了） | `client:2666,2676` | 统一经 `ctx.effect` 登记 disposer |
 | P1-24 | 信息栏字号写死 12px，未继承宿主字号令牌（圆环反而跟随了） | `client:519` | **已修**：`.bi-root` 改用 `--dsh-content-font-size-secondary`，行高由宿主字号增量驱动 |
 | P1-25 | 设置页 CSS 明文立规「下面所有规则只准引用变量」，随后 11 处裸 px | `client:900-901` vs `:1017,1030,1083,1090,1095,1098,1103,1118,1146,1177,1212` | 全部改引令牌，或删掉那条不成立的注释 |
@@ -123,14 +123,14 @@
 | # | 位置 | 问题 |
 | --- | --- | --- |
 | P2-1 | 全仓 1322 行带分号、其余不带（集中在 `:1781–2076` 与 `:3369+`） | 分号风格混用 |
-| P2-2 | `host.js:3295–3297` | 注释缩进错位 |
+| P2-2 | ~~`host.js` 注释缩进~~ | 复核：对应行缩进正常，无问题 | — |
 | P2-3 | `host-locale.js` | ~~每次反查遍历全部键两次~~ → 已建 `WeakMap` 索引（精确 Map + 预编译模板表，语义不变）。用户自定义文本恰等于字典值仍会被翻译——这是匹配语义本身，要修需给自定义文本加标记协议，另案处理 | 部分（性能已修） |
-| P2-4 | `host.js:4435,4459` | `calibrationFrom` 同一函数内算两遍 |
-| P2-5 | `client:577` | `.bi-vision` 用裸色 `#0057ff`（不入色板），而 `#0044cc` 已有 `--bi-palette-blue` |
-| P2-6 | `client:602` ↔ `client:644` | 面板宽度 `264` 在 CSS 与 JS 各写一遍 |
-| P2-7 | `client:572,573,592` | 行高 20px / 胶囊高 16px 多处硬编码（行高已统一到 `--bi-line`） |
-| P2-8 | `client:2749,2916` | `void fieldConfigTick;` 与 eslint-disable 绕过检查，而非消除根因 |
-| P2-9 | `client:1624` | React 18 下 `inert` 非受控属性告警且冗余（收合已靠 `visibility`） |
+| P2-4 | ~~`calibrationFrom` 算两遍~~ | 随 `computeEstimate` 删除只剩一次调用，复核确认 | 已修 |
+| P2-5 | `client` `.bi-vision` 裸色 | 已收进 `--bi-vision-border/bg`（固定值：色板蓝深色翻转会跌破白字对比度，故意不用色板） | 已修 |
+| P2-6 | 面板宽度 `264` 在 CSS 与 JS 各写一遍 | 已互引注释（CSS ↔ CONTEXT_PANEL_WIDTH，两处改一起改） | 已修 |
+| P2-7 | ~~行高硬编码~~ | 复核：信息栏行高已统一 `--bi-line`，16px 胶囊是原生同构几何，剩余 20px 是宿主原文引用；无问题 | — |
+| P2-8 | ~~`void fieldConfigTick`~~ | 已删 void（值本就只在轮询 effect 依赖数组里消费；reducer 方案会逼五个测试桩补 useReducer，零收益不做）。eslint-disable 保留（deps 故意只跟字段，加本体引入多余重跑，disable 即文档） | 部分（void 已修） |
+| P2-9 | ~~收合容器 `inert`~~ | 已删（grid 0fr + visibility + aria-hidden 三件套已覆盖隐藏/不可聚焦/读屏隐藏） | 已修 |
 | P2-10 | `client:1843-1865` | 下载在两端失败语义不同（Electron 拦截只落通用文案） |
 
 ---
@@ -143,8 +143,8 @@
 | --- | --- | --- |
 | **A（本次已含）** | 显示模型单一定稿（v1.19.4）· 信息栏宽度与字号跟随宿主 · 设置页控件垂直居中 · CodeQL 修复 · 自更新校验 fail-closed | 已发布 |
 | **B（本次已含，2026-09-26 设置页体系化版本）** | P0-1/P0-2（复核：早已落地，补状态）· 死 RPC 与场景估算整批删除 · 客户端死链（StateDot/TAG/INPUT/无效类）删除 · 22 个孤儿 key 删除 · 字典反查建索引 · `pad2` / `xiaomiRegionKeyName` 去重 · 设置区注册表 `BIB_SET_SECTIONS`（加新区改 1 处）· 区块四级层级体系（CSS 令牌）· 文案全方位优化（60 条，中英镜像） | 已发布 |
-| **C** | P1-3 快照引擎合并 · P1-4 原子写统一 · P1-1/2 抽 `version.js` · P1-5～P1-12 宿主侧重复实现合并 | 重构，行为不变（靠现有 43 套件兜底） |
-| **D** | P1-19 信息栏渲染改注册表驱动 · P1-15 窗口映射合并 · P1-20 样式源合并 · P1-21 拆三个超大函数 | 结构改造，风险最高，需逐项回归 |
+| **C（本次已含，2026-09-27 体系化第二波）** | P1-3 快照引擎合并 · P1-4 原子写统一 · P1-1/2 抽 `version.js` · P1-5/6/7/8/11/12/13/14 合并（P1-9/10 复核已满足） | 已发布 |
+| **D（本次已含，2026-09-27 设置页体系化第二波）** | P1-19 归属表 + 双向锁（控制流有意保留）· P1-15 窗口一表 · P1-20 命名空间约定 + 守卫 · P1-21 叶子口径复核 · provider 身份一表 | 已发布 |
 | **E** | P0-3 路径统一（**涉及数据落点，必须先定迁移策略**）· P2 全量打磨 | 需用户拍板 |
 
 **已就位、不必再做的**：中英字典对称性、`error.*` 键双向覆盖、`FIELD_REGISTRY` 单一来源（默认值已改为注册表推导）、发布链条契约校验（14 条断言）。
@@ -153,4 +153,5 @@
 
 - 2026-09-25 首版。两路只读审计 + 屏幕实测（宿主 `--dsh-*` 令牌已从 `app.asar` 提取核对）。
 - 2026-09-26 复核（设置页体系化版本）：P0-1/P0-2 确认早已落地，补状态；B 批全部清掉（死 RPC×3、场景估算函数×4、displayMode、客户端死链、孤儿 key 22 个、反查索引、pad2/regionNames 去重）；P1-16/17/18、QUOTA_DISPLAY_MODES、`collapse--collapsed`、self-update 两项、alertThreshold 复核为非问题（有消费方或测试契约锁定），不再是欠账。C/D/E 未动：P1-3 快照引擎合并、P1-4 原子写统一、3.2 provider 一表化、P1-15/19/20/21、P0-3 路径统一（需用户拍板迁移策略）仍在台账里。
+- 2026-09-27 复核（体系化第二波）：C 批全部清掉（P1-1/2 version.js、P1-3 快照引擎、P1-4 原子写、P1-5/6/7/11/13/14 合并；P1-8 偏移常量化 + void 消除；P1-9/10/16/17/18/20/21 复核）；D 批 P1-15/19/20/21 落地 + provider 身份一表；P2 批除 P2-1（分号，不做）/P2-10（壳行为，改不动）外全清。剩余：P0-3 路径统一（需拍板）、P2-1、P2-10、notConfigured 三胞胎与 prepaidBalance 双胞胎（有消费方，注明保留）。
 - 整改后请更新「状态」列与第二节的量化总览，**目标只准变小**。

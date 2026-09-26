@@ -365,6 +365,35 @@ try {
   console.log('FAIL  装置抛错 → ' + (error && error.stack ? error.stack.split('\n').slice(0, 4).join(' | ') : String(error)));
 }
 
+// ---------- FIELD_MODES 双向锁（P1-19）：表与渲染分支互相 deputize ----------
+// 正向：表里每个 id 必须在渲染层有门控（直接 fieldVisible 字面量 / 锚点参数 / WINDOW_META 间接三者之一）。
+// 反向：渲染层每个 fieldVisible 字面量必须在表里（防手滑写错 id 导致开关管不住的字段）。
+// 顺序不管——实际输出顺序由上面的渲染级断言覆盖，表只管归属。
+try {
+  const { FIELD_REGISTRY, FIELD_MODES } = require('../src/constants.js');
+  const registryIds = FIELD_REGISTRY.map((f) => f.id);
+  const modeUnion = [];
+  for (const mode of ['native', 'balance', 'subscription', 'billing', 'trailing']) {
+    for (const id of FIELD_MODES[mode]) if (modeUnion.indexOf(id) === -1) modeUnion.push(id);
+  }
+  check('FIELD_MODES 并集恰好覆盖注册表（不多不少）',
+    modeUnion.length === registryIds.length && registryIds.every((id) => modeUnion.indexOf(id) !== -1), true);
+  const gateLiterals = [...clientSrc.matchAll(/fieldVisible\('([A-Za-z0-9]+)'\)/g)].map((m) => m[1]);
+  const indirect = ['anchorGroup', 'subServiceGroup', 'billingServiceGroup', 'subWindow5h', 'subWindowWeek', 'subWindowMonth'];
+  check('渲染层门控字面量全部落在表里（防开关管不住的字段）',
+    [...new Set(gateLiterals)].every((id) => modeUnion.indexOf(id) !== -1), true);
+  check('锚点三字段走 anchorId 参数门控（非字面量，显式登记）',
+    ['anchorGroup', 'subServiceGroup', 'billingServiceGroup'].every((id) => clientSrc.includes("pushIdentityGroups(groups, '" + id + "'")), true);
+  check('订阅窗口三字段走 WINDOW_META 间接门控（非字面量，显式登记）',
+    ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].every((id) => clientSrc.includes("'" + id + "'") && clientSrc.includes('windowMeta(')), true);
+  const directGated = modeUnion.filter((id) => indirect.indexOf(id) === -1);
+  check('表里其余每个 id 都在渲染层有直接门控',
+    directGated.every((id) => gateLiterals.indexOf(id) !== -1), true);
+} catch (error) {
+  fail++;
+  console.log('FAIL  FIELD_MODES 锁 → ' + (error && error.message ? error.message : String(error)));
+}
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
 })();
