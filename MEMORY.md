@@ -19,6 +19,37 @@
 
 ---
 
+## 2026-09-26（v1.20.5：独立审计一次性修复，两端适配 + 文档订正）
+
+### 任务清单与目标（用户原话：全面审计所有项目/代码/README/设计页描述，重点查 bug 隐患、Windows/macOS、网页端、灰度桌面端；列任务目标；直接改完推送）
+
+1. 基线：工作区干净 + 全量测试（仅守卫 2 红，其余全绿）→ 2. bug 隐患 → 3. Windows/macOS → 4. 网页端 → 5. 灰度桌面端 → 6. README 与设计页描述 → 7. 修复 + 测试 + 推送。
+
+### 结论（按用户四问）
+
+- (a) bug：真 bug 4 处 —— ① `BIB_SET_PRIMITIVES` 顶层裸 require，seed 缺席时整包加载期抛错；② `rpc()` 与 slots 等待裸读 `window.setTimeout`，极简宿主/测试桩下抛错；③ 两处样式安装函数裸读 `document`，无 DOM 启动路径抛错；④ `runningProfileName()` 无 `--profile` 时恒退 `web`，桌面端下发的更新命令 profile 错误。另有 `.workbuddy/memory/` 工具专属记忆致守卫 2 本地红（CI 不红，属本地污染）。其余审计项（原子写 Windows rename、chmod、自更新文件锁、shellQuote 三壳差异）逐项复核为无需改动并留理由。
+- (b) Windows/macOS：`install.sh` 系 bash 独占 → 新增 `install.ps1`/`uninstall.ps1`；`isLoadedAsProfilePlugin` 逐字比较在两系统默认不区分大小写文件系统上可误判 → win32/darwin 归一比较；`platformShareDir` 的 LOCALAPPDATA 分支已存在，Codex/CommandCode 走 `homedir()`（与工具实际落点一致）不改；INSTALL 补 Windows 凭据路径。
+- (c) 网页端：全部浏览器 API 已有探测（navigator/document/Blob/URL/getComputedStyle/confirm），本次把漏网的三处（rpc 定时器×2、样式安装×2）补齐；`platform: web` 单 bundle 两端复用，无第二套代码。
+- (d) 灰度桌面端：Electron 参数无 `--profile` → 单 profile 探测兜底（多 profile 仍退 web，不猜）；自更新闸门 `isLoadedAsProfilePlugin` 不变；P2-10（Electron 下载拦截语义）仍是已知项，未动。
+
+### 改动（fix，PR #191 → 发布 PR #192 → 1.20.5）
+
+- client：primitives 缺席退空对象（`BIB_SET_PRIMITIVES = {}`）；定时器统一入口 `scheduleTimeout`/`cancelTimeout`（rpc/slots 共用）；两处样式安装各内联 DOM 守卫（有意不抽 helper：两函数会被测试单独抽出求值，helper 在抽离作用域不可见，localizeHostText 自包含原则同型，测试把两处同时锁死）。
+- host：`runningProfileName` 单 profile 探测；`isLoadedAsProfilePlugin` win32/darwin 忽略大小写。
+- 测试：static-client 新增 4 条两端断言；field-config 更新 primitives 断言 + seed 整体缺席第 4 形态；update-command 新增 desktop 单 profile 用例。
+- 文档：README 中英（profile 占位、按端数据目录）、INSTALL（Windows 章节/桌面端/三计费口径/Windows 凭据路径/按端日志路径）、v1.6 四份设计文档历史快照横幅。
+- 审计过程真踩两坑：① 新断言把 800ms 防抖的合法 `window.setTimeout` 误伤 → 收窄到 rpc 函数体；② helper 方案被单函数抽取求值测试打回 → 改内联并注明。教训：加断言前先 grep 被锁定的合法调用，加 helper 前先确认求值边界。
+
+### 发布链条
+
+PR #191（CI/CodeQL 全绿自动合并）→ 发布 PR #192（1.20.5，`/tmp/rp-192` worktree 全量全绿，squash 合并；本仓库禁 merge commit）→ tag `v1.20.5` → npm `latest = 1.20.5`（registry 直查；`npm view` 有缓存延迟一律不信）。
+
+### 本机同步（硬性收尾，本次成功）
+
+仍是 `desktop` + pnpm 独立快照：1.20.4 → 1.20.5（备份 `/tmp/dsh-bib-backup-1.20.4`，`env -u NODE_OPTIONS pnpm update`），装载含本次改动（`scheduleTimeout` 4 处、`BIB_SET_PRIMITIVES = {}`、`toLowerCase().startsWith` 各命中）。**仍需重启 DSH** 生效。
+
+---
+
 ## 2026-09-26（工具专属记忆迁移：`.workbuddy/memory/2026-09-26.md` 并入后删除，守卫 2）
 
 - npm 发布令牌排查结论（姊妹仓库 `dsh-chatgpt-sub` 上架卡点，本仓库同管线复用）：Granular 令牌未授予 All packages 读写时表现为 E404 PUT（身份已过、拒绝建包），不是 401；要 Classic Automation 或 Granular 且勾选 Read and write + All packages。本机 `~/.npmrc` 钥匙失效时先 `npm whoami` 验证，别直接复制旧 secret。
