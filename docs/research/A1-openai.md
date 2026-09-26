@@ -13,7 +13,7 @@
 | DSH 是否保存 OpenAI API Key | 未在 settings.yaml 发现 `OPENAI_API_KEY` 条目；API Key 需用户自行提供（用户名下目前无 OpenAI API Key） | 本机实测 |
 | `~/.codex/auth.json` 是否存在 | **存在**，`auth_mode: "chatgpt"`，含 `tokens{id_token, access_token, refresh_token, account_id}` + `last_refresh` | 本机实测（已脱敏） |
 | OAuth token 内嵌信息（JWT claims，脱敏） | `chatgpt_plan_type: "plus"`、`chatgpt_subscription_active_start: 2026-08-16`、`chatgpt_subscription_active_until: 2026-09-16`、`email`、`user_id`、`organizations[]`、access_token scope 含 `offline_access`/`api.connectors.*` | 本机实测 `~/.codex/auth.json` 解码 |
-| 配套插件 | `~/.dsh/dsh-chatgpt-subscription/codex-bind.json` 存在（`bound: true, boundAt: 2026-08-15`）；仓库约定：本插件只读 auth.json，绑定/刷新归配套插件 | [AGENTS.md](../../AGENTS.md)、本机实测 |
+| 配套插件 | `~/.dsh/dsh-chatgpt-sub/codex-bind.json` 存在（`bound: true, boundAt: 2026-08-15`）；仓库约定：本插件只读 auth.json，绑定/刷新归配套插件 | [AGENTS.md](../../AGENTS.md)、本机实测 |
 | 关键结论 | **本机已是 ChatGPT Plus 已绑定状态**，openai-codex 通道零额外配置可立即做真实验证 | — |
 
 ⚠️ **本机账号 = ChatGPT Plus（订阅生效中）**：这是 v1.6 之后 openai-codex 适配的最强验证资源。
@@ -102,7 +102,7 @@
 
 | # | 问题 | 结论 | 来源 |
 |---|---|---|---|
-| 1 | DSH provider id | 无独立 provider；经 `openai-codex`（OAuth）通道读取；绑定/刷新归配套插件 `dsh-chatgpt-subscription`（`codex-bind.json` 已 bound） | 本机实测 |
+| 1 | DSH provider id | 无独立 provider；经 `openai-codex`（OAuth）通道读取；绑定/刷新归配套插件 `dsh-chatgpt-sub`（`codex-bind.json` 已 bound） | 本机实测 |
 | 2 | DSH 认证方式 | 同 openai-codex：复用 `~/.codex/auth.json` OAuth | 本机实测 |
 | 3 | 消费方式 | **Subscription**（按月订阅 Plus/Pro/Business/Team）+ **Credits 积分制**（2025 起：每月发放 Credits，月度重置，支持超额与涨价模型）；部分免费额度 | [help.openai Credits](https://help.openai.com/en/articles/12642688-using-credits-for-flexible-usage-in-chatgpt-plus-pro) |
 | 4 | 官方 Balance API | 无公开；Credits 余额走网页私有接口（`/backend-api/accounts/check` 等，D 级） | [everything-chatgpt #9](https://github.com/terminalcommandnewsletter/everything-chatgpt/issues/9) |

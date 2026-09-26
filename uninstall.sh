@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bottom Info Bar — 一键卸载脚本
 # 用法：./uninstall.sh [--profile <name>]
-#       卸载插件本体；ChatGPT 订阅由独立插件 dsh-chatgpt-subscription 负责，不在本脚本清理范围。
+#       卸载插件本体；ChatGPT 订阅由独立插件 dsh-chatgpt-sub 负责，不在本脚本清理范围。
 set -euo pipefail
 
 PROFILE="web"

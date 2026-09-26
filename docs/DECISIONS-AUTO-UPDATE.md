@@ -13,7 +13,7 @@
 | 桌面端**没有** dsh 命令 | `/Applications/DeepSeek Harness.app/Contents/Resources/runtime/bin/` 下只有 `node`，无 `dsh`；`dsh` 也不在 PATH |
 | 卸载重装**不丢数据** | 用户 2026-09-25 实测卸载重装后，`~/.dsh/dsh-bottom-info-bar/` 的 `usage-records.json`（3 条）、`usage-records.journal.jsonl`、`settings.json` 均完好 |
 | 本插件**零运行时依赖** | `package.json` 的 `dependencies` 为空，`peerDependencies` 只有 react；分发内容仅 `lib/`、`cordis.patch.yml`、`locale/*.json` |
-| 同生态没有先例 | 本机 `dsh-chatgpt-subscription`、`dsh-opencode-session` 均无更新机制；DSH 自带插件随 app 更新 |
+| 同生态没有先例 | 本机 `dsh-chatgpt-sub`、`dsh-opencode-session` 均无更新机制；DSH 自带插件随 app 更新 |
 
 **结论**：更新（把新代码替到本机 profile）在制度上只有宿主的插件管理器能做，而它偏偏没有这个动作。因此用户侧唯一路径是「卸载 → 重装」——这正是用户说的「太蠢了」。要在官方支持之前改善，只能由插件**自己更新自己**。
 
