@@ -9,7 +9,7 @@
 // 「内存运行版本 vs 磁盘版本」分离、以及「重启后待重启提示自动消失」。
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -348,6 +348,14 @@ ok('verifyPayload：name 不符 / version 不符 / 非 semver / 缺 package.json
   assert.throws(() => verifyPayload([{ path: 'package.json', data: Buffer.from('{oops') }], {}), /not valid JSON/)
 })
 
+ok('verifyPayload：重复路径一律拒绝，避免校验的 manifest 与最终写入文件不一致', () => {
+  const manifest = Buffer.from(JSON.stringify({ name: PACKAGE_NAME, version: '1.1.0' }))
+  assert.throws(() => verifyPayload([
+    { path: 'package.json', data: manifest },
+    { path: 'package.json', data: Buffer.from(JSON.stringify({ name: 'evil-plugin', version: '9.9.9' })) },
+  ], { version: '1.1.0' }), /duplicate or invalid path/)
+})
+
 ok('verifyPayload：sha512 完整性不符即抛出（防投毒 / 传输损坏）', () => {
   const payload = makePayload('1.1.0')
   const files = extractPackageFiles(payload.tarball)
@@ -407,6 +415,26 @@ ok('applyPayload：逃逸路径直接拒绝，且不产生任何写入', () => {
     )
     assert.equal(sha256(join(fx.packageDir, 'lib', 'index.js')), before)
     assert.equal(existsSync(join(fx.profileDir, 'node_modules', 'evil.js')), false)
+  } finally { fx.cleanup() }
+})
+
+ok('applyPayload：包内中间目录是符号链接时拒绝，绝不沿链接写到包外', () => {
+  const fx = makeFixture()
+  try {
+    const outside = join(fx.base, 'outside')
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'index.js'), '// outside must not change\n')
+    rmSync(join(fx.packageDir, 'lib'), { recursive: true, force: true })
+    symlinkSync(outside, join(fx.packageDir, 'lib'), 'dir')
+    assert.throws(
+      () => applyPayload([{ path: 'lib/index.js', data: Buffer.from('// malicious replacement\n') }], {
+        packageDir: fx.packageDir,
+        backupDir: join(fx.dataDir, 'update-backup', 'symlink'),
+      }),
+      /symbolic link/,
+    )
+    assert.equal(readFileSync(join(outside, 'index.js'), 'utf8'), '// outside must not change\n')
+    assert.equal(existsSync(join(fx.dataDir, 'update-backup', 'symlink')), false, '预检失败不得创建备份')
   } finally { fx.cleanup() }
 })
 

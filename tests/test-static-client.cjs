@@ -48,7 +48,7 @@ check('client 空值兜底返回空串（host 对空串返回 null）', clientSr
 
 // 5) 回复完成即时刷新（不等 30s 轮询）
 check('client 监听会话统计变化触发 load', clientSrc.includes('statsProj && statsProj.turns'), true);
-check('client 防抖 800ms 刷新', clientSrc.includes('window.setTimeout(load, 800)'), true);
+check('client 防抖 800ms 刷新', clientSrc.includes('scheduleTimeout(load, 800)'), true);
 
 // 6) UI 语义：颜色不单独表达状态，正常额度和估算值不误用成功/警告色
 check('浅色普通信息与估算说明使用高对比深灰，三级文字仅用于分隔符', clientSrc.includes('--bi-label-supporting: #3f444a')
@@ -138,6 +138,11 @@ check('定时器统一入口存在且 rpc 走它（无 window 定时器的极简
     && !body.includes('window.clearTimeout');
 })(), true);
 check('slots 等待走统一入口（无定时器时直接重试，不抛错）', clientSrc.includes('if (scheduleTimeout(resolve, delay) === null) resolve();'), true);
+check('组件轮询与防抖同样走定时器统一入口（极简宿主不因 window 缺席崩溃）', clientSrc.includes('function scheduleInterval(fn, ms)')
+  && clientSrc.includes('function cancelInterval(id)')
+  && clientSrc.includes('const id = scheduleInterval(load, 30000);')
+  && clientSrc.includes('const timer = scheduleTimeout(load, 800);')
+  && clientSrc.includes('id = scheduleInterval(function () { setNow(Date.now()); }, 1000);'), true);
 check('两处样式安装各自先探 DOM，无 DOM 时返回空 disposer（有意内联：两函数会被测试单独抽出求值，helper 在抽离作用域不可见）', (function () {
   const a = clientSrc.indexOf('function installStyles()');
   const b = clientSrc.indexOf('function bibSetInstallStyles()');
