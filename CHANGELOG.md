@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.1...v1.20.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* 设置页体系化重做并下线日期格式自定义 ([#182](https://github.com/songoao25/dsh-bottom-info-bar/issues/182)) ([69e8117](https://github.com/songoao25/dsh-bottom-info-bar/commit/69e8117a89d82a62237a7f914be984198cf651e0))
+
 ## [1.20.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.0...v1.20.1) (2026-09-26)
 
 
