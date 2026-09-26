@@ -68,6 +68,7 @@ const SUBSCRIPTION_PROVIDERS = eval('(' + subMatch[1] + ')');
 const BILLING_PROVIDERS = eval('(' + billMatch[1] + ')');
 
 const parseFiniteNonNegativeAmount = extractFn('parseFiniteNonNegativeAmount');
+const parseBalanceInfos = extractFn('parseBalanceInfos');
 const parsePercent = extractFn('parsePercent');
 const normalizeResetAt = extractFn('normalizeResetAt');
 const parseZaiBalance = extractFn('parseZaiBalance');
@@ -128,6 +129,19 @@ check('JWT 解析：expiryMs = 2026-09-16T08:26:46+00:00', nestedParsed && neste
 const flatParsed = parseCodexJwt(makeToken({ chatgpt_plan_type: 'pro', chatgpt_subscription_active_until: '2026-10-01T00:00:00Z' }));
 check('JWT 解析：扁平 claims 兜底 pro', flatParsed && flatParsed.planType, 'pro');
 check('JWT 解析：扁平 claims 兜底到期时间', flatParsed && flatParsed.expiryMs, Date.parse('2026-10-01T00:00:00Z'));
+
+// Moonshot 的余额接口历史上同时出现 balance_infos[] 与新版 data 余额字段。
+check('Moonshot 旧余额形态：按站点优先币种选取', parseBalanceInfos({ balance_infos: [
+  { currency: 'CNY', total_balance: '8', granted_balance: '1', topped_up_balance: '7' },
+  { currency: 'USD', total_balance: '3', granted_balance: '0', topped_up_balance: '3' },
+] }, ['USD', 'CNY']), { currency: 'USD', total: 3, granted: 0, toppedUp: 3 });
+check('Moonshot 新余额形态：data.available_balance 可读', parseBalanceInfos({ data: {
+  available_balance: '12.5', cash_balance: '10', voucher_balance: '2.5', currency: 'USD',
+} }, ['USD', 'CNY']), { currency: 'USD', total: 12.5, granted: 2.5, toppedUp: 10 });
+check('Moonshot 新余额形态：无 available 时仅现金+代金券可求和', parseBalanceInfos({ data: {
+  cash_balance: '10', voucher_balance: '2.5', currency: 'CNY',
+} }, ['CNY', 'USD']), { currency: 'CNY', total: 12.5, granted: 2.5, toppedUp: 10 });
+check('Moonshot 余额形态：无受支持金额字段不臆测', parseBalanceInfos({ data: { monthly_limit: 100 } }, ['USD', 'CNY']), null);
 // 边界：URL-safe base64（+ / = 出现在 payload 中会被 makeToken 正确转换，天然覆盖 padding 补齐路径）
 check('JWT 解析：仅 planType 无到期 → expiryMs=null', parseCodexJwt(makeToken({ chatgpt_plan_type: 'team' })).expiryMs, null);
 check('JWT 解析：仅到期无套餐 → planType=null', parseCodexJwt(makeToken({ chatgpt_subscription_active_until: '2026-09-16T08:26:46+00:00' })).expiryMs, Date.parse('2026-09-16T08:26:46+00:00'));
