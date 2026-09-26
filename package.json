@@ -1,6 +1,6 @@
 {
   "name": "dsh-bottom-info-bar",
-  "version": "1.20.7",
+  "version": "1.20.8",
   "description": "Shows the current model, balance and spend under the composer.",
   "keywords": [
     "deepseek",

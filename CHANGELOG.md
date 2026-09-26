@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.8](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.7...v1.20.8) (2026-09-26)
+
+
+### Bug Fixes
+
+* add Hugging Face monthly billing adapter ([#201](https://github.com/songoao25/dsh-bottom-info-bar/issues/201)) ([364dad2](https://github.com/songoao25/dsh-bottom-info-bar/commit/364dad27999f4a15050e315dffd03d5c9c446622))
+
 ## [1.20.7](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.6...v1.20.7) (2026-09-26)
 
 
