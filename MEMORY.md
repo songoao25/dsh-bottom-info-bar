@@ -19,6 +19,16 @@
 
 ---
 
+## 2026-09-26（v1.20.7：DSH 全预置服务商兼容性基线）
+
+- 从本机 DeepSeek Harness 桌面版 `app.asar` 核对出 **39 个**当前预置 provider id，并将其全部纳入 `DSH_PRESET_PROVIDERS` → `PROVIDER_IDENTITY` 的强制映射；一致性测试要求每个非订阅/账单服务商同时声明本地账本币种，DSH 新增预置项时不再静默退化为“未知”。
+- 账户能力严格分层：有经验证只读接口的继续显示真实余额/订阅/账单；没有可安全读取的公开账户端点时仍支持模型识别与本地 token 账本，界面明确显示“无公开账户数据”，绝不伪造零余额或误标“未适配”。完整矩阵在 `docs/PROVIDER-COMPATIBILITY.md`。
+- 修正 Moonshot 国际站/中国站共用账户桶与中国端点的串账风险：国际站改走 `.ai`、美元优先；中国站保留 `.cn`、人民币优先；余额解析兼容旧 `balance_infos[]` 和新版 `data.available_balance` / 现金+代金券形态。回归覆盖两类响应、非法字段不臆测、双站不共桶。
+- 证据：PR #198 CI 与 CodeQL 全绿；Release Please PR #199 全绿并 rebase 合并；tag `v1.20.7` 的 npm 发布任务 success，Registry 传播后 `npm view dsh-bottom-info-bar version = 1.20.7`；本地 `npm test` 全绿（39 组）。
+- 本机同步：重新探测仅有 `desktop` profile，装载为实体 pnpm 快照；先备份原 1.20.6 到 `/tmp/dsh-bottom-info-bar-1.20.6-backup.sSZ075`，再在 `~/.dsh/profiles/desktop` 执行 `env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar`，验证已是 **1.20.7** 且 `lib/` 含预置清单、账户数据降级和 Moonshot 国际端点。**仍需重启 DSH**，运行中 host 仍是旧内存版本。
+
+---
+
 ## 2026-09-26（v1.20.6：独立第三方/对抗审计收口）
 
 - 自更新从“路径字符串在包内”加固到“真实目录链不含符号链接”：预检时拒绝包根或中间目录是链接的目标，备份扫描用 `lstat` 且不跟随链接；避免异常安装目录把 `lib/x.js` 的替换导向包外。
