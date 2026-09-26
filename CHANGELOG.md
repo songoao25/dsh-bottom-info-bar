@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.2...v1.20.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* 体系化重构第二波（C/D 批欠账清零） ([#185](https://github.com/songoao25/dsh-bottom-info-bar/issues/185)) ([718c3f3](https://github.com/songoao25/dsh-bottom-info-bar/commit/718c3f346d0cd8820d5f058ac6ffeb68c23e8b2c))
+
 ## [1.20.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.1...v1.20.2) (2026-09-26)
 
 
