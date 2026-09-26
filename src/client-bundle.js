@@ -3457,6 +3457,14 @@ module.exports = {
               React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
           }
         }
+        // 已纳入兼容性基线、但服务商没有公开的账户余额/配额接口：保留服务商、模型和
+        // 本地 token 账本，不把“没有公开接口”误说成“插件未适配”。
+        else if (bal && bal.accountDataUnavailable) {
+          if (fieldVisible('unmapped')) {
+            trailingErrorGroups.push(fieldSpan('unmapped', 'account-data-unavailable',
+              React.createElement('span', { className: 'bi-muted', title: t('ui.accountDataUnavailableDetail') }, t('ui.accountDataUnavailable'))));
+          }
+        }
         // 配置引导（未配置 API Key / 内置账号未登录）：与数据展示互斥，占 noKeyHint 槽位
         else if (configHint) {
           if (fieldVisible('noKeyHint')) {

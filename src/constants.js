@@ -6,6 +6,34 @@ export const SUBSCRIPTION_PROVIDERS = ['codex', 'chatgpt', 'opencode-go', 'openc
 // 云账单 provider 集合：这些 provider 走"账单型"显示（本月真实花费 / 预算%），与余额型/额度型互斥（FR-14）
 export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']
 
+// DeepSeek Harness 当前内置的 pi-ai 服务商目录（2026-09-26 从桌面端 app.asar 核对）。
+// 这不是一份“建议支持”的清单，而是兼容性基线：每一个预置 id 都必须在
+// PROVIDER_IDENTITY 里有明确归属；新增 DSH 预置服务商时，测试会要求显式决定其
+// 账户数据能力，不能再悄悄落进未知服务商的错误提示。
+export const DSH_PRESET_PROVIDERS = [
+  'amazon-bedrock', 'ant-ling', 'anthropic', 'azure-openai-responses', 'baseten', 'cerebras',
+  'cloudflare-ai-gateway', 'cloudflare-workers-ai', 'deepseek', 'fireworks', 'github-copilot',
+  'google', 'google-vertex', 'groq', 'huggingface', 'kimi-coding', 'minimax', 'minimax-cn',
+  'mistral', 'moonshotai', 'moonshotai-cn', 'nvidia', 'openai', 'openai-codex', 'opencode',
+  'opencode-go', 'openrouter', 'qwen-token-plan', 'qwen-token-plan-cn', 'qwen-token-plan-individual',
+  'together', 'vercel-ai-gateway', 'xai', 'xiaomi', 'xiaomi-token-plan-ams',
+  'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'zai', 'zai-coding-cn',
+]
+
+// 价目表和宿主上报金额尚未覆盖时的保守币种。它只决定本地 token 账本的分币种
+// 汇总，绝不把不同币种换算或伪装为账户余额。跨区同名模型必须在此处显式分开。
+export const PROVIDER_DEFAULT_CURRENCY = {
+  'deepseek': 'CNY', 'deepseek-official': 'CNY', 'moonshotai-cn': 'CNY', 'stepfun': 'CNY',
+  'xiaomi': 'CNY', 'xiaomi-token-plan-cn': 'CNY', 'qwen-token-plan-cn': 'CNY', 'minimax-cn': 'CNY',
+  'ant-ling': 'USD', 'anthropic': 'USD', 'amazon-bedrock': 'USD', 'azure-openai-responses': 'USD',
+  'baseten': 'USD', 'cerebras': 'USD', 'cloudflare-ai-gateway': 'USD', 'cloudflare-workers-ai': 'USD',
+  'fireworks': 'USD', 'github-copilot': 'USD', 'google': 'USD', 'google-vertex': 'USD', 'groq': 'USD',
+  'huggingface': 'USD', 'kimi-coding': 'USD', 'mistral': 'USD', 'moonshotai': 'USD', 'nvidia': 'USD', 'openai': 'USD',
+  'openai-codex': 'USD', 'chatgpt': 'USD', 'codex': 'USD', 'openrouter': 'USD',
+  'qwen-token-plan': 'USD', 'qwen-token-plan-individual': 'USD', 'together': 'USD',
+  'vercel-ai-gateway': 'USD', 'xai': 'USD',
+}
+
 // ---------- provider 身份总表（新增服务商只改这里 + 上面两个集合） ----------
 // 一个 DSH provider id 一行：account 花费记在哪个账户（分账轴）；subscription / billing
 // 快照源键（无→null）。以前这是三条 if-else 链（accountForProvider / subscriptionSourceFor /
@@ -18,9 +46,10 @@ export const PROVIDER_IDENTITY = {
   'deepseek': { account: 'deepseek', subscription: null, billing: null },
   'deepseek-official': { account: 'deepseek', subscription: null, billing: null },
   'openai': { account: 'openai', subscription: null, billing: null },
+  // Moonshot 的国际站与中国站是不同端点、不同结算币种，不能共用账户桶。
   'moonshotai': { account: 'moonshotai', subscription: null, billing: null },
-  'moonshotai-cn': { account: 'moonshotai', subscription: null, billing: null },
-  'kimi-coding': { account: 'moonshotai', subscription: null, billing: null },
+  'moonshotai-cn': { account: 'moonshotai-cn', subscription: null, billing: null },
+  'kimi-coding': { account: 'kimi-coding', subscription: null, billing: null },
   'openrouter': { account: 'openrouter', subscription: null, billing: null },
   'stepfun': { account: 'stepfun', subscription: null, billing: null },
   'codex': { account: 'codex', subscription: 'codex', billing: null },
@@ -43,6 +72,23 @@ export const PROVIDER_IDENTITY = {
   'amazon-bedrock': { account: 'amazon-bedrock', subscription: null, billing: 'amazon-bedrock' },
   'cloudflare-ai-gateway': { account: 'cloudflare', subscription: null, billing: 'cloudflare' },
   'cloudflare-workers-ai': { account: 'cloudflare', subscription: null, billing: 'cloudflare' },
+  'ant-ling': { account: 'ant-ling', subscription: null, billing: null },
+  'anthropic': { account: 'anthropic', subscription: null, billing: null },
+  'azure-openai-responses': { account: 'azure-openai-responses', subscription: null, billing: null },
+  'baseten': { account: 'baseten', subscription: null, billing: null },
+  'cerebras': { account: 'cerebras', subscription: null, billing: null },
+  'github-copilot': { account: 'github-copilot', subscription: null, billing: null },
+  'google': { account: 'google', subscription: null, billing: null },
+  'google-vertex': { account: 'google-vertex', subscription: null, billing: null },
+  'groq': { account: 'groq', subscription: null, billing: null },
+  'huggingface': { account: 'huggingface', subscription: null, billing: null },
+  'mistral': { account: 'mistral', subscription: null, billing: null },
+  'nvidia': { account: 'nvidia', subscription: null, billing: null },
+  'qwen-token-plan': { account: 'qwen-token-plan', subscription: null, billing: null },
+  'qwen-token-plan-cn': { account: 'qwen-token-plan-cn', subscription: null, billing: null },
+  'qwen-token-plan-individual': { account: 'qwen-token-plan-individual', subscription: null, billing: null },
+  'vercel-ai-gateway': { account: 'vercel-ai-gateway', subscription: null, billing: null },
+  'xai': { account: 'xai', subscription: null, billing: null },
 }
 
 // ============================================================================================

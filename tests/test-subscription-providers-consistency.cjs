@@ -19,6 +19,13 @@ function extractExpected(name) {
 }
 const expectedSub = extractExpected('SUBSCRIPTION_PROVIDERS')
 const expectedBill = extractExpected('BILLING_PROVIDERS')
+const expectedDshPresets = extractExpected('DSH_PRESET_PROVIDERS')
+const defaultCurrencyMatch = constantsSrc.match(/export const PROVIDER_DEFAULT_CURRENCY = (\{[\s\S]*?\n\});?/)
+if (!defaultCurrencyMatch) {
+  console.error('FAIL: 无法从 constants.js 中提取 PROVIDER_DEFAULT_CURRENCY')
+  process.exit(1)
+}
+const expectedCurrencies = eval('(' + defaultCurrencyMatch[1] + ')')
 
 // 从 lib/index.js 提取实际内联的数组（锚点已被替换）
 function extractFrom(text, decl) {
@@ -50,6 +57,7 @@ function check(label, actual, expectedVal) {
 
 check('constants.js 订阅集合有效', expectedSub.length > 0, true)
 check('constants.js 账单集合有效', expectedBill.length > 0, true)
+check('DSH 预置服务商清单有效且无重复', expectedDshPresets.length > 0 && new Set(expectedDshPresets).size === expectedDshPresets.length, true)
 check('lib/index.js 订阅列表与 constants.js 一致', hostSub, expectedSub)
 check('lib/index.js 账单列表与 constants.js 一致', hostBill, expectedBill)
 check('lib/client.js 订阅列表与 constants.js 一致', clientSub, expectedSub)
@@ -71,6 +79,11 @@ check('身份总表订阅列恰好等于 SUBSCRIPTION_PROVIDERS', subOfTable, ex
 check('身份总表账单列恰好等于 BILLING_PROVIDERS', billOfTable, expectedBill.slice().sort())
 check('身份总表每行都有 account（分账轴不许缺）', Object.keys(identity).every((id) => typeof identity[id].account === 'string' && identity[id].account.length > 0), true)
 check('身份总表无 subscription/billing 双非空（两轴互斥）', Object.keys(identity).every((id) => !(identity[id].subscription && identity[id].billing)), true)
+check('全部 DSH 预置服务商都有身份归属（新增预置服务商必须显式适配）', expectedDshPresets.every((id) => Object.hasOwn(identity, id)), true)
+check('每个非订阅/账单的 DSH 预置服务商都有明确本地账本币种', expectedDshPresets
+  .filter((id) => !identity[id].subscription && !identity[id].billing)
+  .every((id) => Object.hasOwn(expectedCurrencies, id)), true)
+check('Moonshot 国际站与中国站不共用账户桶（防跨币种串账）', identity.moonshotai.account !== identity['moonshotai-cn'].account, true)
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL')
 if (fail > 0) process.exit(1)
