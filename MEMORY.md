@@ -19,13 +19,15 @@
 
 ---
 
-## 2026-09-26（独立第三方/对抗审计：自更新、灰度客户端与安装器收口，待发布）
+## 2026-09-26（v1.20.6：独立第三方/对抗审计收口）
 
 - 自更新从“路径字符串在包内”加固到“真实目录链不含符号链接”：预检时拒绝包根或中间目录是链接的目标，备份扫描用 `lstat` 且不跟随链接；避免异常安装目录把 `lib/x.js` 的替换导向包外。
 - tar payload 现在拒绝重复路径，防止先校验一份 `package.json`、后写入另一份同名文件；`applyPayload` 也自行预检白名单/路径，不能依赖上游调用者恰好先做验证。
 - 客户端所有周期轮询、回复防抖和导出 URL 回收统一走安全定时器入口；极简网页/灰度桌面宿主缺少 `window` 定时器或事件 API 时降级而不白屏。
 - Unix 安装/卸载脚本对缺失 `--profile` 给出确定错误；卸载脚本（含 Windows）移除未使用的 pnpm 前置检查，避免无关工具阻塞卸载。
 - 证据：新增重复 tar 路径、目录符号链接逃逸、无 `--profile` 的回归；`npm test` 全绿（含 39 组），构建产物已重建。`npm audit --omit=dev` 因仓库没有 lockfile（且无 runtime dependencies）无法运行，未创建 lockfile 以免改变分发/安装行为。
+- 发布链：PR #195（CI / CodeQL 全绿自动合并）→ 发布 PR #196（隔离 worktree 全量测试全绿后 squash 合并）→ tag `v1.20.6` → Publish NPM success → cache-busted registry `latest = 1.20.6`。
+- 本机同步：重新探测仅有 `desktop` profile，装载为实体快照，先备份至 `/tmp/dsh-bottom-info-bar-backup-1.20.5-20260926`，再以 `env -u NODE_OPTIONS pnpm update dsh-bottom-info-bar` 从 1.20.5 升至 **1.20.6**；装载 `lib/` 已命中重复 tar 路径和安全 interval 两处改动。**仍需重启 DSH**，运行中的 host 在内存中还是旧版。
 
 ---
 
