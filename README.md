@@ -11,189 +11,33 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 
 ## What it shows
 
-| Group | Fields |
-|---|---|
-| Provider | the exact provider and model, mirroring DSH's model switcher |
-| Native stats (kept) | turns and steps, model time, tool time, cache hit rate, input/output tokens, context usage |
-| Money | real balance, subscription quota windows, or this month's cloud bill |
-| Pricing | peak and off-peak prices, the current period, a countdown to the next price change |
-| Spend | this session (including subagents), today, last 30 days, all time |
-| Extras | main time, world time, custom text |
+The bar follows the active session and picks one of three readings per provider (mutually exclusive, nothing to switch by hand): **balance** shows the real balance from the provider's own API, **subscription quota** shows each quota window's remaining allowance with its reset countdown, and **cloud billing** shows this month's real spend from the official billing API. On top of that come four spend tallies — this session, today, last 30 days, all time — plus extras such as time and custom text.
 
-The bar has two densities — click it to switch, and they differ in exactly one way: **Full** keeps DSH's native stats row above the main row, **Compact** collapses it. Both show every enabled plugin field and notice — a field's own switch is the only thing that decides whether it appears. Both follow DSH's light or dark theme.
-
-## Compact mode
-
-Compact mode collapses the native stats row only; the main row keeps showing your enabled plugin fields. Four real states — light and dark, balance and subscription quota.
-
-**Light · balance**
-
-![Balance mode, light theme](assets/bar-compact-light-balance.webp)
-
-**Dark · balance**
-
-![Balance mode, dark theme](assets/bar-compact-dark-balance.webp)
-
-**Light · subscription quota**
-
-![Subscription quota, light theme](assets/bar-compact-light-subscription.webp)
-
-**Dark · subscription quota**
-
-![Subscription quota, dark theme](assets/bar-compact-dark-subscription.webp)
-
-## Three billing modes
-
-The bar follows the active session and picks the mode from the provider. The three modes are mutually exclusive — there is no manual switch.
-
-### Balance
-
-Shows the real balance from the provider's own API. It refetches when the bar opens, the page refreshes or the provider changes, then polls every 60 seconds; a failed refresh keeps the last known figure on screen. Below 20 (in the account's currency) the amount and a **Low** label turn red.
-
-### Subscription quota
-
-Every available quota window (5-hour / weekly / monthly) and its countdown to the next reset are shown together — both always come from the same window, so they can never disagree. Windows show **remaining** percent by default and can be switched to **used** in settings; the low-quota warning always follows the remaining ≤ 20% rule. Turn off any window you do not want; Compact mode will not hide it for you.
-
-### Cloud billing
-
-Shows this month's real spend from the provider's official billing API, for example `Together | This month $12.34` or `AWS Bedrock | This month $45.60 · Budget 46%`. Cloudflare also shows the daily free-quota remainder with a UTC-midnight reset countdown when the API actually reports a free allowance.
+Click the bar to switch between **Full** and **Compact**. They differ in exactly one way: Full keeps DSH's native stats row, Compact collapses it. Whether a field appears is decided by that field's own switch alone, so the main row reads identically in both.
 
 ## Install
-
-Requires DeepSeek Harness with the web interface (`dsh web`) and pnpm.
-
-**From npm** (recommended — installs the released version):
 
 ```bash
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-**From the GitHub repository** — [github.com/songoao25/dsh-bottom-info-bar](https://github.com/songoao25/dsh-bottom-info-bar) (tracks the default branch; `lib/` is committed, so no build runs on install):
-
-```bash
-dsh plugin --profile web add https://github.com/songoao25/dsh-bottom-info-bar
-```
-
-**With the local one-click script** (clone, build and install in one step):
-
-```bash
-git clone https://github.com/songoao25/dsh-bottom-info-bar.git
-cd dsh-bottom-info-bar
-./install.sh
-```
-
-If you installed from a checkout before the package moved to the repository root, your profile points at `<repo>/plugin`. That path still resolves — the repository keeps `plugin/` as symlinks to the package root — so nothing needs reinstalling. If it does not resolve (a ZIP download, for instance, delivers those symlinks as plain files), remove the plugin and install again with one of the commands above.
-
-Then **restart `dsh web`** — plugins are composed when the host starts, so a page refresh is not enough. The plugin shows up in the Plugins list, enabled:
-
-![Plugins list with Bottom Info Bar installed](assets/plugins-list.webp)
-
-More detail and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+Then **restart `dsh web`** — plugins are composed when the host starts, so a page refresh is not enough. Other install methods and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Settings
 
-Everything lives on the plugin page — **Plugins → bottom-info-bar**. Changes save as you make them.
+Everything lives on the plugin page (**Plugins → bottom-info-bar**) and saves as you change it, in three groups, all collapsed by default: **native information** (DSH's own stats row, Full mode only), **plugin information** (everything this bar adds, both modes), and **notices** (one-off update and failure reminders, shown only when there is really something to say).
 
-![Plugin settings overview](assets/settings-overview.webp)
+![Plugin information grouped by billing mode](assets/settings-plugin.webp)
 
-**Information display** — choose **Compact** or **Full** and the choice is saved. They differ in exactly one place: Full also keeps DSH's native stats row, Compact collapses it. No field choice is affected, so switching back and forth never loses your setup.
+Plugin information is further grouped by billing mode — read only the block that matches your provider; each block's heading says which items carry data for it. Time zones, custom text, quota percentage direction and billing data are separate sections:
 
-**Fields and colors** — one switch and one color per field, in three groups. Turn a field off and the bar drops it — **identically in Compact and Full**. All three groups start collapsed; click a group to open it (typing in the search box opens all three).
+![Time and date: time zones only](assets/settings-time.webp)
 
-- **Native information** — the fields DSH's own stats row already showed. They live in the native row, which only Full mode keeps.
-- **Plugin information** — everything this bar adds: provider and model, subscriptions, spend, balance, pricing and quota, the adopted context ring included. Shown in both modes.
-- **Notices** — update and failure badges, plus the "could not refresh" style warnings. Shown in both modes; each one has its own switch, and a one-off notice simply appears whenever there is really something to say, regardless of density.
+API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode, Xiaomi Token Plan, Command Code, MiniMax) read the local sign-in, and MiniMax requires a Subscription Key. Anything off the list gets a not-supported hint instead of borrowed numbers.
 
-The context ring sits at the right end of the main row, which exists in both modes — so it stays visible either way.
+## Spend and updates
 
-![Native information fields](assets/settings-native.webp)
-![Plugin information fields](assets/settings-plugin.webp)
-
-**Subscription window percentage** — show quota windows as **remaining** (default) or **used**. The low-quota warning always follows remaining ≤ 20%.
-
-![Subscription window percentage set to remaining](assets/settings-quota.webp)
-![Subscription window percentage set to used](assets/settings-quota-used.webp)
-
-**Time and date** — main and world time zones, plus which of year / month / day / hour / minute / second to display.
-
-![Time and date settings](assets/settings-time.webp)
-
-**Custom text** — up to 64 characters, shown in the bar.
-
-![Custom text settings](assets/settings-custom.webp)
-
-**Billing data** — export the ledger as CSV or JSON, or clear it after confirmation. Settings and sign-in information stay untouched.
-
-## Supported providers
-
-The bar detects the provider from DSH's current model — no configuration. Set the key in DSH under **Settings → Models**.
-
-### Balance
-
-| Provider | Display name | Credential / source |
-|---|---|---|
-| deepseek / deepseek-official | DeepSeek | `DEEPSEEK_API_KEY` |
-| openai | OpenAI | `OPENAI_API_KEY` — estimated from your spending rate; there is no public balance API |
-| moonshotai / moonshotai-cn / kimi-coding | Kimi | `MOONSHOT_API_KEY` |
-| openrouter | OpenRouter | `OPENROUTER_API_KEY` |
-| stepfun | StepFun | `STEPFUN_API_KEY` |
-| xiaomi | Xiaomi MiMo | `XIAOMI_API_KEY` |
-
-### Subscription quota
-
-| Provider | Display name | Credential / source |
-|---|---|---|
-| codex / chatgpt / openai-codex | ChatGPT / Codex | `~/.codex/auth.json` (read-only, decoded locally) |
-| opencode-go / opencode | OpenCode Go | `OPENCODE_GO_API_KEY` or the opencode CLI login |
-| zai / zai-coding-cn | Zhipu | `ZAI_CODING_CN_API_KEY` (fallback `ZAI_API_KEY`) |
-| xiaomi-token-plan-cn / -sgp / -ams | Xiaomi MiMo | `XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY` (fallback `XIAOMI_API_KEY`) |
-| command / command-code | Command Code | `COMMAND_CODE_API_KEY` or `CMD_API_KEY`, or `~/.commandcode/auth.json` |
-| minimax / minimax-cn | MiniMax | `MINIMAX_API_KEY` (Global) / `MINIMAX_CN_API_KEY` (CN) — must be a **Subscription Key** |
-
-### Cloud billing
-
-| Provider | Display name | Credential / source |
-|---|---|---|
-| together | Together | `TOGETHER_API_KEY` — official Usage API, this month's spend |
-| fireworks | Fireworks | `FIREWORKS_API_KEY` — official Billing API, this period's spend |
-| amazon-bedrock | AWS Bedrock | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — Cost Explorer + Budgets |
-| cloudflare-ai-gateway / cloudflare-workers-ai | Cloudflare | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` (token needs Billing read) |
-
-Anything else shows a **Not supported** hint instead of borrowing another provider's numbers.
-
-## Spend tracking
-
-Every model response is recorded (usage × unit price) and aggregated four ways: **this session** (including subagents), **today**, **last 30 days** and **all time**. The price is locked the moment a response completes, so later price-table updates never rewrite history. A model with no known price keeps its token counts but is excluded from money totals — no amount is ever invented. Records are written to disk before they count, so a restart loses nothing; if a write fails, the bar says **Spend not saved**.
-
-## Updating
-
-The plugin checks npm shortly after each DSH start. Pick how it should act in **Version and updates** on the plugin settings page:
-
-- **Automatic** (default): download, verify and replace the plugin's own files, then all you do is restart DSH once.
-- **Manual**: it only checks and tells you; nothing is downloaded until you press **Check now**. That button only appears in manual mode.
-
-The check happens at startup only — a new version needs a restart to take effect anyway, and the restart itself triggers the next check. So the settings page shows **last checked**, and you never have to guess whether it is doing anything.
-
-Every file is verified before it lands, and a failure rolls the whole batch back, so a bad download never breaks the copy you are running. If the new version misbehaves, **Roll back to the previous version** appears in the same section along with the reason; once you are satisfied it stops taking up space. Only this plugin's own files are touched — never the dependency tree or the profile manifest.
-
-When something needs you, the bar shows two short badges: **Restart to apply** (a new version is on disk) and **Update failed** (the last update did not go through). Each one has its own switch under **Notices** and takes no space otherwise. On failure the settings page explains it in plain words, and the raw error is kept in `~/.dsh/dsh-bottom-info-bar/update-log.jsonl` for troubleshooting.
-
-Updating itself only runs when the plugin is loaded from a profile (npm, GitHub address and the install script all qualify). A source checkout or a `link:` install is treated as read-only and left alone — update those by hand:
-
-| Installed via | Command |
-|---|---|
-| npm | `dsh plugin --profile <profile> add dsh-bottom-info-bar@latest` |
-| GitHub address | `dsh plugin --profile <profile> add <the same address>` |
-| local checkout or install script | `git -C <repo> fetch origin && git -C <repo> checkout main && git -C <repo> merge --ff-only origin/main && node <repo>/scripts/build.mjs` |
-
-The first upgrade to v1.19.0 still needs the table above, because the updater itself only arrives with that version. Later releases need nothing from you.
-
-## Privacy and security
-
-- **Read-only credentials.** API keys stay in DSH; `~/.codex/auth.json` and `~/.commandcode/auth.json` are read locally and never written back. This plugin does not bind or refresh accounts.
-- **No conversation content.** The ledger stores tokens, model, provider, currency and cost — never prompts, messages or keys.
-- **Local only.** Data lives in `~/.dsh/dsh-bottom-info-bar/` (directory `0700`, files `0600`). Nothing leaves your machine except the provider API requests the bar itself makes.
-- **Uninstalling keeps your data.** Export or clear it from the plugin page (Billing data) if you want a clean slate.
+Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays in `~/.dsh/dsh-bottom-info-bar/` and survives uninstall — export or clear it from Billing data if you want a clean slate.
 
 ## Development
 

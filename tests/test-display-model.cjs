@@ -195,7 +195,6 @@ const FIELD_CONFIG = function (fields) {
   return {
     fields: fields,
     colors: {},
-    timeFormat: { year: true, month: true, day: true, hour: true, minute: true, second: false },
     timeZones: { main: 'Asia/Shanghai', world: 'UTC' },
     customText: 'SONGOAO25',
     quotaDisplayMode: 'remaining',

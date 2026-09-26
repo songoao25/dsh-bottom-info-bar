@@ -822,7 +822,8 @@ ok('版本与更新区在读不到状态时也不消失（2026-09-25 血案：�
     '读不到状态时不得直接返回 null：整块消失等于用户看不到任何更新入口')
   assert.match(client, /const \[updateError, setUpdateError\] = React\.useState\(null\)/, '必须记录读不到状态的原因')
   assert.match(client, /setUpdateError\(String\(\(err && err\.message\) \|\| err \|\| 'unknown'\)\)/, '失败时必须留下原因')
-  assert.match(client, /error: updateError,/, '原因必须传给版本区')
+  assert.match(client, /error: deps\.updateError/, '原因必须传给版本区（经设置区注册表转交）')
+  assert.match(client, /updateError: updateError,/, '设置区上下文必须带上读失败的原因' )
   assert.match(client, /t\('ui\.versionUnavailable'\)/, '必须有一句说明「重启 DSH 后就会出现」')
   // 成功读到一次即清除；此后的偶发失败不得把已经显示出来的版本信息换掉
   assert.match(client, /setUpdateError\(null\);/, '成功读取必须清除错误状态')

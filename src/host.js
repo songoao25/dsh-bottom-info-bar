@@ -41,8 +41,6 @@ const SETTINGS_FILE = join(DATA_DIR, 'settings.json')
 const SETTINGS_FORMAT_VERSION = 1
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/
 const CUSTOM_TEXT_MAX_LEN = 64
-const TIME_FORMAT_KEYS = ['year', 'month', 'day', 'hour', 'minute', 'second']
-const DEFAULT_TIME_FORMAT = { year: true, month: true, day: true, hour: true, minute: true, second: false }
 const DEFAULT_TIME_ZONES = { main: 'Asia/Shanghai', world: 'UTC' }
 const SUMMARIES_FORMAT_VERSION = 1
 const DETAIL_RETENTION_DAYS = 90 // 明细保留窗：更早的 priced 明细折叠进日桶
@@ -1504,16 +1502,6 @@ function isValidTimeZone(tz) {
   if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return false
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true } catch { return false }
 }
-function normalizeTimeFormatValue(raw) {
-  if (!isPlainSettingsObject(raw)) return undefined
-  const out = {}
-  for (const k of TIME_FORMAT_KEYS) {
-    const v = raw[k]
-    if (typeof v !== 'boolean') return undefined
-    out[k] = v
-  }
-  return out
-}
 function normalizeTimeZonesValue(raw) {
   if (!isPlainSettingsObject(raw)) return undefined
   const out = {}
@@ -1542,7 +1530,7 @@ function normalizeQuotaDisplayMode(value) {
 // 默认开关取自注册表的 defaultOff（单一真相源：新增字段只改 constants.js，不必在这里再抄一份名单 ——
 // 抄一份名单就意味着一处漏改会让新字段静默变成"默认打开"，谁也发现不了）。
 function defaultFieldSettings() {
-  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeFormat: { ...DEFAULT_TIME_FORMAT }, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'remaining' }
+  const settings = { version: SETTINGS_FORMAT_VERSION, infoDensity: 'full', fields: {}, colors: {}, timeZones: { ...DEFAULT_TIME_ZONES }, customText: '', quotaDisplayMode: 'remaining' }
   for (const field of FIELD_REGISTRY) {
     settings.fields[field.id] = field.defaultOff !== true
     settings.colors[field.id] = null // null=未自定义 → 客户端沿用原语义色（零回归）
@@ -1585,11 +1573,8 @@ function sanitizeSettings(raw) {
       settings.colors[key] = normalized
     }
   } else dropped.push('colors')
-  if (isPlainSettingsObject(raw.timeFormat)) {
-    const normalized = normalizeTimeFormatValue(raw.timeFormat)
-    if (normalized === undefined) dropped.push('timeFormat')
-    else settings.timeFormat = normalized
-  } else if ('timeFormat' in raw) dropped.push('timeFormat')
+  // 旧版本 settings.json 里可能残留日期格式自定义键：直接忽略，
+  // 时间显示统一用固定的通用格式 YYYY-MM-DD HH:mm，不再读用户定制。
   if (isPlainSettingsObject(raw.timeZones)) {
     const out = { ...settings.timeZones }
     let ok = true
@@ -1706,11 +1691,9 @@ export const __settingsInternals = {
   QUOTA_DISPLAY_MODES: QUOTA_DISPLAY_MODES,
   settingsFile: SETTINGS_FILE,
   isValidTimeZone: isValidTimeZone,
-  normalizeTimeFormatValue: normalizeTimeFormatValue,
   normalizeTimeZonesValue: normalizeTimeZonesValue,
   normalizeCustomTextValue: normalizeCustomTextValue,
   CUSTOM_TEXT_MAX_LEN: CUSTOM_TEXT_MAX_LEN,
-  DEFAULT_TIME_FORMAT: DEFAULT_TIME_FORMAT,
   DEFAULT_TIME_ZONES: DEFAULT_TIME_ZONES,
 }
 
@@ -2025,13 +2008,6 @@ export default {
       }
     }
 
-    const SCENARIOS = [
-      { id: 'qa',       label: t('host.everydayQuestions'),            outputK: 2,   inputK: 4 },
-      { id: 'coding',   label: t('host.mediumCodingTask'),        outputK: 15,  inputK: 30 },
-      { id: 'doc',      label: t('host.longDocumentAnalysisCodeReview'), outputK: 40,  inputK: 120 },
-      { id: 'refactor', label: t('host.largeProjectRefactorAcrossMultiple'),  outputK: 150, inputK: 500 },
-      { id: 'subagent', label: t('host.subagentWorkflow'),        outputK: 300, inputK: 1000 },
-    ];
     const CALIB_SESSIONS = 10;
     const SPEND_DAYS = 7;
     const ALERT_THRESHOLD = 20; // 默认预警阈值（¥/$）
@@ -2229,7 +2205,6 @@ export default {
         infoDensity: config.infoDensity,
         fields: shallowSettingsCopy(fieldSettings.fields),
         colors: shallowSettingsCopy(fieldSettings.colors),
-        timeFormat: { ...fieldSettings.timeFormat },
         timeZones: { ...fieldSettings.timeZones },
         customText: fieldSettings.customText,
         quotaDisplayMode: fieldSettings.quotaDisplayMode,
@@ -2252,7 +2227,6 @@ export default {
       }
     }
     let config = {
-      displayMode: 'replace',
       infoDensity: fieldSettings.infoDensity, // 'full' 完整 | 'compact' 简洁（v1.9 起落盘持久）
       alertThreshold: ALERT_THRESHOLD,
     };
@@ -2729,13 +2703,11 @@ export default {
     // v1.7 FR-9：小米 MiMo Token Plan 订阅源（按地区路由 baseUrl + 凭据，地区互不串数据）
     // 凭据：XIAOMI_TOKEN_PLAN_CN/SGP/AMS_API_KEY 按地区优先，回退 XIAOMI_API_KEY；Bearer。
     // 主端点 GET /v1/tokenPlan/usage（月度 Credits 额度窗）；形态不符/失败回退 GET /v1/user/balance（token_balance/token_limit）。
+    function xiaomiRegionKeyName(region) {
+      return { cn: 'XIAOMI_TOKEN_PLAN_CN_API_KEY', sgp: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY', ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY' }[region];
+    }
     async function resolveXiaomiRegionKey(region) {
-      const regionNames = {
-        cn: 'XIAOMI_TOKEN_PLAN_CN_API_KEY',
-        sgp: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY',
-        ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
-      };
-      const primary = regionNames[region];
+      const primary = xiaomiRegionKeyName(region);
       if (primary) {
         const cred = await resolveCredentialValue(primary);
         if (cred) return cred;
@@ -2746,12 +2718,7 @@ export default {
     async function fetchXiaomiTokenPlanUsage(region) {
       const key = await resolveXiaomiRegionKey(region);
       if (!key) {
-        const regionNames = {
-          cn: 'XIAOMI_TOKEN_PLAN_CN_API_KEY',
-          sgp: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY',
-          ams: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY',
-        };
-        const credName = regionNames[region] || 'XIAOMI_TOKEN_PLAN_*_API_KEY';
+        const credName = xiaomiRegionKeyName(region) || 'XIAOMI_TOKEN_PLAN_*_API_KEY';
         return { error: { kind: 'no-key', code: 'subscription.xiaomi-not-configured', message: t('error.subscription.xiaomi-not-configured', { credName: credName }) } };
       }
       const base = xiaomiRegionBaseUrl(region);
@@ -4554,86 +4521,6 @@ export default {
       return Math.round(total * 1000) / 1000;
     }
 
-    // ---------- 场景估算 ----------
-    function scenarioCost(sc, rate, prices) {
-      const input = sc.inputK * 1000;
-      const output = sc.outputK * 1000;
-      const inputCost = input * (rate * prices.inputCacheHit + (1 - rate) * prices.inputCacheMiss);
-      const outputCost = output * prices.output;
-      return (inputCost + outputCost) / 1e6;
-    }
-
-    function computeEstimate(nowMs, selected) {
-      // v1.9：会话合计取一次，估算与校准两处复用（原来各全扫一遍明细）
-      const allSessions = sessionTotals();
-      const selection = selected || modelSelection();
-      const pricing = computePricing(nowMs, selection);
-      const bal = activeBalanceSummary(nowMs, selection);
-      const balance = bal.data ? bal.data.total : null;
-      const currency = bal.currency || null;
-
-      let conversion = null;
-      if (balance != null && pricing.prices) {
-        const p = pricing.prices;
-        const outputTokens = (balance * 1e6) / p.output;
-        const inputTokens = (balance * 1e6) / p.inputCacheMiss;
-        conversion = {
-          outputTokens: Math.floor(outputTokens),
-          outputHanzi: Math.floor(outputTokens * 0.5),
-          outputWords: Math.floor(outputTokens * 0.75),
-          outputBooks: (outputTokens * 0.5) / 200000,
-          inputTokens: Math.floor(inputTokens),
-          inputHanzi: Math.floor(inputTokens * 0.5),
-        };
-      }
-
-      let scenarios = [];
-      if (balance != null && pricing.prices) {
-        const p = pricing.prices;
-        const pvEntry = pricing.mode === 'peak-valley' ? pricingEntryFor(pricing.provider, pricing.model, nowMs) : null;
-        const peakPrices = pvEntry ? pvEntry.peak : p;
-        const offpeakPrices = pvEntry ? pvEntry.offpeak : p;
-        scenarios = SCENARIOS.map(function (sc) {
-          return {
-            id: sc.id, label: sc.label, outputK: sc.outputK, inputK: sc.inputK,
-            optimistic: Math.floor(balance / scenarioCost(sc, 1.0, offpeakPrices)),
-            pessimistic: Math.floor(balance / scenarioCost(sc, 0, peakPrices)),
-            baseline: Math.floor(balance / scenarioCost(sc, 0.5, p)),
-            offpeakBase: Math.floor(balance / scenarioCost(sc, 0.5, offpeakPrices)),
-          };
-        });
-        const calib = calibrationFrom(allSessions, CALIB_SESSIONS);
-        if (calib && calib.medianOutput > 0) {
-          const sc = {
-            id: 'calibrated', label: t('host.yourTypicalSession'),
-            outputK: Math.max(1, Math.round(calib.medianOutput / 1000)),
-            inputK: Math.max(1, Math.round((calib.medianInput + calib.medianCacheRead + calib.medianCacheWrite) / 1000)),
-            calibrated: true, calibrationCount: calib.count,
-          };
-          scenarios.unshift({
-            id: sc.id, label: sc.label, outputK: sc.outputK, inputK: sc.inputK,
-            calibrated: true, calibrationCount: sc.calibrationCount,
-            optimistic: Math.floor(balance / scenarioCost(sc, 1.0, offpeakPrices)),
-            pessimistic: Math.floor(balance / scenarioCost(sc, 0, peakPrices)),
-            baseline: Math.floor(balance / scenarioCost(sc, 0.5, p)),
-            offpeakBase: Math.floor(balance / scenarioCost(sc, 0.5, offpeakPrices)),
-          });
-        }
-      }
-
-      return {
-        currency: currency,
-        balance: balance,
-        conversion: conversion,
-        scenarios: scenarios,
-        calibration: calibrationFrom(allSessions, CALIB_SESSIONS),
-        pricing: pricing,
-        fetchedAt: bal.provider && balances[bal.provider] ? balances[bal.provider].fetchedAt : null,
-        stale: !!(bal.provider && balances[bal.provider] && balances[bal.provider].error !== null && balances[bal.provider].data !== null),
-        error: bal.provider && balances[bal.provider] ? balances[bal.provider].error : null,
-      };
-    }
-
     // ---------- 全部花费（v1.6 账户 + 币种双条件过滤） ----------
     // v1.9：全部历史读全量日桶（含已折叠天），不再回扫明细
     function totalSpend(selection) {
@@ -4674,46 +4561,6 @@ export default {
         persistence: ledgerError ? { state: ledgerError.kind, code: ledgerError.code || null, message: ledgerError.message, at: ledgerError.at } : { state: 'ok', code: null, message: null, at: null },
         now: nowMs,
       };
-    }
-
-    // ---------- 花费趋势 ----------
-    // v1.9：逐日点位改读日桶（一次按桶扫描）；byModel 需要模型维度（桶无此维度），
-    // 保留一次保留窗内的明细扫描（7/30 天 ⊆ 90 天窗，不再随总历史增长）
-    function spendTrend(nowMs, days) {
-      const d = days === 30 ? 30 : 7;
-      const points = [];
-      for (let i = d - 1; i >= 0; i--) {
-        const dayStart = new Date(nowMs + 8 * 3600 * 1000);
-        dayStart.setUTCDate(dayStart.getUTCDate() - i);
-        dayStart.setUTCHours(0, 0, 0, 0);
-        const startMs = dayStart.getTime() - 8 * 3600 * 1000;
-        const dayKey = beijingDayKey(startMs);
-        const label = String(dayStart.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dayStart.getUTCDate()).padStart(2, '0');
-        let spend = 0;
-        let offpeak = 0;
-        const dayBuckets = summariesState.dayBuckets[dayKey] || {};
-        for (const account of Object.keys(dayBuckets)) {
-          for (const currency of Object.keys(dayBuckets[account])) {
-            const bucket = dayBuckets[account][currency];
-            spend += bucket.cost;
-            offpeak += bucket.costOffpeak;
-          }
-        }
-        points.push({ label: label, spend: Math.round(spend * 1000) / 1000, offpeak: Math.round(offpeak * 1000) / 1000 });
-      }
-      const cutoff = nowMs - d * MS_PER_DAY;
-      const byModel = new Map();
-      scanDetailRange(beijingDayStartMs(beijingDayKey(cutoff)), Infinity, function (r) {
-        if (r.ts < cutoff) return;
-        const c = costOf(r, false);
-        if (c == null) return;
-        const key = r.model || r.provider;
-        byModel.set(key, (byModel.get(key) || 0) + c);
-      });
-      const byModelList = Array.from(byModel.entries()).map(function (entry) {
-        return { model: entry[0], spend: Math.round(entry[1] * 1000) / 1000 };
-      }).sort(function (a, b) { return b.spend - a.spend; });
-      return { days: d, points: points, byModel: byModelList, now: nowMs };
     }
 
     // ---------- RPC 路由（webServer HTTP，替代动态沙箱 harness.handle） ----------
@@ -4818,9 +4665,6 @@ export default {
         if (llm) await refreshModelCapability(sel.provider, sel.model, force);
         return computePricing(Date.now(), sel);
       },
-      getEstimate: function (args) {
-        return computeEstimate(Date.now(), selectionFromArgs(args));
-      },
       getUsageSummary: async function (args) {
         const sessionId = args && typeof args === 'object' ? String(args.sessionId || '') : '';
         return getUsageSummary(Date.now(), sessionId, selectionFromArgs(args));
@@ -4864,12 +4708,8 @@ export default {
         }
         return { cleared: true, recordCount: exported.records.length, warning: null };
       },
-      getSpendTrend: function (args) {
-        const days = args && typeof args === 'object' ? Number(args.days) : 7;
-        return spendTrend(Date.now(), days);
-      },
       getConfig: function () {
-        return { displayMode: config.displayMode, infoDensity: config.infoDensity, alertThreshold: config.alertThreshold };
+        return { infoDensity: config.infoDensity, alertThreshold: config.alertThreshold };
       },
       getBillingMode: function (args) {
         // 纯本地计算：优先使用客户端已订阅的当前会话模型，避免把另一个会话的
@@ -4886,11 +4726,6 @@ export default {
       getBillingStatus: function (args) {
         const force = !!(args && typeof args === 'object' && args.force === true);
         return getBillingSnapshotRpc(selectionFromArgs(args), force);
-      },
-      setDisplayMode: function (args) {
-        const mode = args && typeof args === 'object' ? args.mode : null;
-        if (mode === 'extend' || mode === 'replace') config.displayMode = mode;
-        return { displayMode: config.displayMode };
       },
       setInfoDensity: function (args) {
         const d = args && typeof args === 'object' ? args.density : null;
@@ -4911,13 +4746,12 @@ export default {
       },
       setFieldConfig: function (args) {
         const patch = isPlainSettingsObject(args) ? args : null;
-        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'infoDensity') && !Object.hasOwn(patch, 'timeFormat') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
+        if (!patch || (!Object.hasOwn(patch, 'fields') && !Object.hasOwn(patch, 'colors') && !Object.hasOwn(patch, 'infoDensity') && !Object.hasOwn(patch, 'timeZones') && !Object.hasOwn(patch, 'customText') && !Object.hasOwn(patch, 'customTextValue') && !Object.hasOwn(patch, 'quotaDisplayMode'))) {
           throw invalidArgument(t('host.patchMustIncludeFieldsOr'));
         }
         // 先整包校验再应用：非法 patch 一个字段都不落，避免半新半旧
         let normalizedFields = null;
         let normalizedColors = null;
-        let normalizedTimeFormat = null;
         let normalizedTimeZones = null;
         let normalizedCustomText = null;
         let hasCustomTextPatch = false;
@@ -4952,17 +4786,7 @@ export default {
             normalizedColors[key] = value;
           }
         }
-        if (Object.hasOwn(patch, 'timeFormat')) {
-          const tf = patch.timeFormat;
-          if (!isPlainSettingsObject(tf)) throw invalidArgument(t('host.timeFormatMustBeAnObject'));
-          normalizedTimeFormat = {};
-          for (const k of TIME_FORMAT_KEYS) {
-            if (!Object.hasOwn(tf, k)) continue
-            if (typeof tf[k] !== 'boolean') throw invalidArgument(t('host.timeFieldMustBeABoolean', { key: k }));
-            normalizedTimeFormat[k] = tf[k]
-          }
-          if (Object.keys(normalizedTimeFormat).length === 0) throw invalidArgument(t('host.timeFormatMustBeAnObject'));
-        }
+        // 日期格式自定义已下线：旧客户端若仍随 patch 发来，直接忽略（不抛错，保证旧 bundle 平滑过渡）。
         if (Object.hasOwn(patch, 'timeZones')) {
           const tz = patch.timeZones;
           if (!isPlainSettingsObject(tz)) throw invalidArgument(t('host.timeZonesMustBeAnObject'));
@@ -5008,12 +4832,6 @@ export default {
             changed = true;
           }
         }
-        for (const key of Object.keys(normalizedTimeFormat || {})) {
-          if (fieldSettings.timeFormat[key] !== normalizedTimeFormat[key]) {
-            fieldSettings.timeFormat[key] = normalizedTimeFormat[key];
-            changed = true;
-          }
-        }
         for (const key of Object.keys(normalizedTimeZones || {})) {
           if (fieldSettings.timeZones[key] !== normalizedTimeZones[key]) {
             fieldSettings.timeZones[key] = normalizedTimeZones[key];
@@ -5046,10 +4864,9 @@ export default {
         return settingsPayload(persistError);
       },
       resetFieldConfig: function () {
-        // 只重置标签显隐 + 显示模式 + 时间格式/时区/自定义文本/订阅窗口百分比方向；颜色保持不动（两个重置按钮彼此独立）
+        // 只重置标签显隐 + 显示模式 + 时区/自定义文本/订阅窗口百分比方向；颜色保持不动（两个重置按钮彼此独立）
         const defaults = defaultFieldSettings()
         fieldSettings.fields = shallowSettingsCopy(defaults.fields);
-        fieldSettings.timeFormat = { ...defaults.timeFormat }
         fieldSettings.timeZones = { ...defaults.timeZones }
         fieldSettings.customText = defaults.customText
         fieldSettings.quotaDisplayMode = defaults.quotaDisplayMode
@@ -5072,7 +4889,7 @@ export default {
     // connection 服务统一完成，插件不能根据 Origin/Host 自行判断。
     // 更新四件套都走 POST：installUpdate / runUpdateCheck 会替换包内文件，setUpdateAuto 与
     // rollbackUpdate 会改状态，checkUpdate 会写「上次检查时间」并触发一次网络查询。
-    const MUTATING = { getBalanceSnapshot: true, setDisplayMode: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true, checkUpdate: true, installUpdate: true, runUpdateCheck: true, setUpdateAuto: true, rollbackUpdate: true };
+    const MUTATING = { getBalanceSnapshot: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true, checkUpdate: true, installUpdate: true, runUpdateCheck: true, setUpdateAuto: true, rollbackUpdate: true };
     function invalidArgument(message) {
       const err = new Error(message);
       err.status = 400;

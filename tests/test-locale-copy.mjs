@@ -142,6 +142,33 @@ hostLines.forEach((line, index) => {
   assert.match(line, /code:/, 'host error at line ' + (index + 1) + ' must carry a stable code')
 })
 
+// ---------- 5b. 注入客户端的函数必须自包含 ----------
+// 构建把 host-locale.js 的 localizeHostText 整体 `.toString()` 塞进客户端 bundle：
+// 它体内调用的每一个名字都必须在函数内部声明（或为内置对象），拆出去的帮手跟不过去，
+// 客户端 vm 里第一次走 hostText 就会抛 localizeIndex is not defined（2026-09-26 真踩过）。
+{
+  const localeHelperSource = readFileSync(join(pluginDir, 'src', 'host-locale.js'), 'utf8')
+  const injectedAt = localeHelperSource.indexOf('export function localizeHostText')
+  assert.ok(injectedAt !== -1, 'host-locale.js must define localizeHostText for client injection')
+  const injectedBody = localeHelperSource.slice(injectedAt)
+  const declared = new Set()
+  for (const match of injectedBody.matchAll(/\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/g)) declared.add(match[1])
+  for (const match of injectedBody.matchAll(/\bfunction\s*\(([^)]*)\)/g)) {
+    for (const param of match[1].split(',')) { const name = param.trim(); if (/^[A-Za-z_$][\w$]*$/.test(name)) declared.add(name) }
+  }
+  const paramsOf = injectedBody.match(/export function localizeHostText\(([^)]*)\)/)
+  for (const param of (paramsOf ? paramsOf[1] : '').split(',')) { const name = param.trim(); if (/^[A-Za-z_$][\w$]*$/.test(name)) declared.add(name) }
+  const BUILTINS = new Set(['Map', 'WeakMap', 'RegExp', 'String', 'Object', 'Array', 'Number', 'Boolean', 'JSON', 'localizeHostText'])
+  const strays = new Set()
+  for (const match of injectedBody.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\(/g)) {
+    const name = match[1]
+    if (name[0] === name[0].toLowerCase() && (declared.has(name) || ['split', 'map', 'join', 'push', 'set', 'get', 'has', 'exec', 'test', 'slice', 'replace', 'forEach', 'startsWith', 'includes', 'trim'].includes(name))) continue
+    if (BUILTINS.has(name) || declared.has(name)) continue
+    strays.add(name)
+  }
+  assert.deepEqual([...strays].sort(), [], 'localizeHostText must be self-contained for .toString() injection: ' + [...strays].join(', '))
+}
+
 // ---------- 6. 在 cordis 语义的 ctx 上真实跑 client half ----------
 assert.match(clientSource, /inject:\s*\['slots',\s*'locale'\]/, 'the client half must declare the services it reads')
 
