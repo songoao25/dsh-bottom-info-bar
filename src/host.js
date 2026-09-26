@@ -20,7 +20,7 @@ import { createSelfUpdater } from './self-update.js'
 import * as hostLocale from './host-locale.js'
 const t = hostLocale.createHostTranslator()
 
-const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(homedir(), '.dsh', 'dsh-bottom-info-bar')
+const DATA_DIR = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR || join(dshHomeDir(), 'dsh-bottom-info-bar')
 const DATA_FILE = join(DATA_DIR, 'usage-records.json')
 const DATA_BACKUP_FILE = DATA_FILE + '.bak'
 const DATA_TEMP_FILE = DATA_FILE + '.tmp'
@@ -100,6 +100,13 @@ function dshHomeDir() {
   const configured = typeof process.env.DSH_HOME === 'string' ? process.env.DSH_HOME.trim() : ''
   return configured.length > 0 ? configured : join(homedir(), '.dsh')
 }
+// ---------- 路径唯一入口（P0-3，用户拍板：网页端与桌面端分开） ----------
+// 本插件自己的数据（账本/设置/价目缓存/更新状态）跟随「所在端的家目录」：
+// DSH_HOME 有值 → 数据落该端名下，网页端与桌面端各归各，互不读写；
+// 无值 → 沿用历史默认（与原来逐字相同，老用户路径一字不差，不搬家）。
+// 环境变量 DSH_BOTTOM_INFO_BAR_DATA_DIR 永远优先（测试与特殊部署用）。
+// 登录态文件（~/.codex/auth.json 等）是「人」的身份不是「端」的数据，只读不写，原地不动——
+// 换端不断登，账本分开算，两件事不要混在一起。
 
 // 「更新命令」取决于本插件是怎么装上的，两者不能混用：
 //   - npm 安装       → dsh plugin add …@latest；
@@ -309,7 +316,24 @@ const SUBSCRIPTION_RETRY_BACKOFF_MS = 60000 // 订阅刷新失败后的退避期
 // 订阅源 auth 文件路径（可用环境变量覆盖——测试隔离用，避免测试误读真实登录态）；
 // 本插件只读令牌查询额度，令牌的绑定/续期由独立插件 dsh-chatgpt-sub 维护
 const CODEX_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_CODEX_AUTH || join(homedir(), '.codex', 'auth.json')
-const OPENCODE_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH || join(homedir(), '.local', 'share', 'opencode', 'auth.json')
+// 平台共享目录：POSIX 沿用 ~/.local/share；Windows 走 %LOCALAPPDATA%。
+// 平台分支只在这里做一次，调用方只读结果。
+function platformShareDir() {
+  if (process.platform === 'win32' && typeof process.env.LOCALAPPDATA === 'string' && process.env.LOCALAPPDATA.length > 0) return process.env.LOCALAPPDATA
+  return join(homedir(), '.local', 'share')
+}
+// opencode 登录文件候选位置（按序试读，先命中即用）：显式环境变量 → 平台共享目录 → 历史 POSIX 路径。
+// Windows 下真实位置未经实测，用「新老都试」代替「猜一个」：原来认得出来的现在还认得出来，
+// 原来认不出来的现在多一次机会。非 Windows 平台候选归一，与原来逐字相同。
+function opencodeAuthFiles() {
+  if (typeof process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH === 'string' && process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH.length > 0) {
+    return [process.env.DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH]
+  }
+  const files = [join(platformShareDir(), 'opencode', 'auth.json')]
+  const legacy = join(homedir(), '.local', 'share', 'opencode', 'auth.json')
+  if (files[0] !== legacy) files.push(legacy)
+  return files
+}
 const COMMAND_CODE_AUTH_FILE = process.env.DSH_BOTTOM_INFO_BAR_COMMAND_CODE_AUTH || join(homedir(), '.commandcode', 'auth.json')
 const COMMAND_CODE_API_BASE = 'https://api.commandcode.ai'
 const COMMAND_CODE_PLAN_TOTAL_CREDITS = {
@@ -2415,16 +2439,18 @@ export default {
         const cred = await ctx.credentials.resolve('OPENCODE_GO_API_KEY');
         if (cred && typeof cred.value === 'string' && cred.value.length > 0) return cred.value;
       } catch (err) { /* 回退到 auth.json */ }
-      try {
-        const auth = JSON.parse(readFileSync(OPENCODE_AUTH_FILE, 'utf8'));
-        for (const name of ['opencode-go', 'opencode']) {
-          const entry = auth && auth[name];
-          if (entry && typeof entry === 'object') {
-            if (typeof entry.key === 'string' && entry.key.length > 0) return entry.key;
-            if (typeof entry.apiKey === 'string' && entry.apiKey.length > 0) return entry.apiKey;
+      for (const file of opencodeAuthFiles()) {
+        try {
+          const auth = JSON.parse(readFileSync(file, 'utf8'));
+          for (const name of ['opencode-go', 'opencode']) {
+            const entry = auth && auth[name];
+            if (entry && typeof entry === 'object') {
+              if (typeof entry.key === 'string' && entry.key.length > 0) return entry.key;
+              if (typeof entry.apiKey === 'string' && entry.apiKey.length > 0) return entry.apiKey;
+            }
           }
-        }
-      } catch (err) { /* 未配置 → 返回 null */ }
+        } catch (err) { /* 该候选无文件/损坏 → 试下一个 */ }
+      }
       return null;
     }
 
