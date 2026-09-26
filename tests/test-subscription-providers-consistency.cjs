@@ -57,5 +57,20 @@ check('lib/client.js 账单列表与 constants.js 一致', clientBill, expectedB
 check('host 与 client 产物订阅列表彼此一致', hostSub, clientSub)
 check('host 与 client 产物账单列表彼此一致', hostBill, clientBill)
 
+// 身份总表 ↔ 集合双向一致：表里标了订阅/账单源的 pid 必须恰好就是两个集合的成员（只多只少都红）。
+// 集合保留字面量是构建注入机制逼的（正则提取），表是 host 路由的唯一真相源，两边由本段锁死。
+const identityMatch = constantsSrc.match(/export const PROVIDER_IDENTITY = (\{[\s\S]*?\n\});?/)
+if (!identityMatch) {
+  console.error('FAIL: 无法从 constants.js 中提取 PROVIDER_IDENTITY')
+  process.exit(1)
+}
+const identity = eval('(' + identityMatch[1] + ')')
+const subOfTable = Object.keys(identity).filter((id) => identity[id].subscription !== null).sort()
+const billOfTable = Object.keys(identity).filter((id) => identity[id].billing !== null).sort()
+check('身份总表订阅列恰好等于 SUBSCRIPTION_PROVIDERS', subOfTable, expectedSub.slice().sort())
+check('身份总表账单列恰好等于 BILLING_PROVIDERS', billOfTable, expectedBill.slice().sort())
+check('身份总表每行都有 account（分账轴不许缺）', Object.keys(identity).every((id) => typeof identity[id].account === 'string' && identity[id].account.length > 0), true)
+check('身份总表无 subscription/billing 双非空（两轴互斥）', Object.keys(identity).every((id) => !(identity[id].subscription && identity[id].billing)), true)
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL')
 if (fail > 0) process.exit(1)

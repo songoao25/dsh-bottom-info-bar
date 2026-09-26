@@ -93,6 +93,7 @@ const parseApi = eval(
   + 'const WINDOW_LABELS = ' + JSON.stringify(WINDOW_LABELS) + ';'
   + 'const MINIMAX_PLAN_NAME = ' + JSON.stringify(MINIMAX_PLAN_NAME) + ';'
   + extractFn('minimaxBaseUrl')
+  + extractFn('parseFiniteNonNegativeAmount')
   + extractFn('minimaxNumericField')
   + extractFn('minimaxRemainingPercent')
   + extractFn('minimaxAggregateRemainingPercents')
@@ -124,6 +125,7 @@ function makeFetchHarness(options) {
     + 'const HTTP_TIMEOUT_MS = ' + HTTP_TIMEOUT_MS + ';'
     + extractFn('timeoutSignal')
     + extractFn('resolveCredentialValue')
+    + extractFn('resolveWithFallback')
     + extractFn('resolveMinimaxKey')
     + extractFn('fetchMinimaxTokenPlanUsage')
     + 'return { resolveMinimaxKey: resolveMinimaxKey, fetch: fetchMinimaxTokenPlanUsage } })'

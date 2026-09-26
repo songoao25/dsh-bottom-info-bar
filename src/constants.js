@@ -6,6 +6,45 @@ export const SUBSCRIPTION_PROVIDERS = ['codex', 'chatgpt', 'opencode-go', 'openc
 // 云账单 provider 集合：这些 provider 走"账单型"显示（本月真实花费 / 预算%），与余额型/额度型互斥（FR-14）
 export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']
 
+// ---------- provider 身份总表（新增服务商只改这里 + 上面两个集合） ----------
+// 一个 DSH provider id 一行：account 花费记在哪个账户（分账轴）；subscription / billing
+// 快照源键（无→null）。以前这是三条 if-else 链（accountForProvider / subscriptionSourceFor /
+// billingSourceFor），加一个服务商要改三处，必然漏改；现在三函数只查这张表。
+// 上面两个集合保留字面量（构建直接正则提取注入客户端，派生写法提不出来）；
+// tests/test-subscription-providers-consistency.cjs 锁死「表 ↔ 集合」双向一致，漂移即红。
+// 不在这张表里的：余额来源例外（PLATFORM_BALANCE_PROVIDERS，另一条轴）、上报币种
+// （PROVIDER_REPORTED_CURRENCY，不同语义）、显示名（PROVIDER_DISPLAY，目录驱动+翻译）。
+export const PROVIDER_IDENTITY = {
+  'deepseek': { account: 'deepseek', subscription: null, billing: null },
+  'deepseek-official': { account: 'deepseek', subscription: null, billing: null },
+  'openai': { account: 'openai', subscription: null, billing: null },
+  'moonshotai': { account: 'moonshotai', subscription: null, billing: null },
+  'moonshotai-cn': { account: 'moonshotai', subscription: null, billing: null },
+  'kimi-coding': { account: 'moonshotai', subscription: null, billing: null },
+  'openrouter': { account: 'openrouter', subscription: null, billing: null },
+  'stepfun': { account: 'stepfun', subscription: null, billing: null },
+  'codex': { account: 'codex', subscription: 'codex', billing: null },
+  'chatgpt': { account: 'codex', subscription: 'codex', billing: null },
+  'openai-codex': { account: 'codex', subscription: 'codex', billing: null },
+  'opencode-go': { account: 'opencode-go', subscription: 'opencode-go', billing: null },
+  'opencode': { account: 'opencode-go', subscription: 'opencode-go', billing: null },
+  'zai': { account: 'zai', subscription: 'zai', billing: null },
+  'zai-coding-cn': { account: 'zai', subscription: 'zai', billing: null },
+  'xiaomi': { account: 'xiaomi', subscription: null, billing: null },
+  'xiaomi-token-plan-cn': { account: 'xiaomi-token-plan', subscription: 'xiaomi-cn', billing: null },
+  'xiaomi-token-plan-sgp': { account: 'xiaomi-token-plan', subscription: 'xiaomi-sgp', billing: null },
+  'xiaomi-token-plan-ams': { account: 'xiaomi-token-plan', subscription: 'xiaomi-ams', billing: null },
+  'command': { account: 'command-code', subscription: 'command-code', billing: null },
+  'command-code': { account: 'command-code', subscription: 'command-code', billing: null },
+  'minimax': { account: 'minimax', subscription: 'minimax', billing: null },
+  'minimax-cn': { account: 'minimax', subscription: 'minimax-cn', billing: null },
+  'together': { account: 'together', subscription: null, billing: 'together' },
+  'fireworks': { account: 'fireworks', subscription: null, billing: 'fireworks' },
+  'amazon-bedrock': { account: 'amazon-bedrock', subscription: null, billing: 'amazon-bedrock' },
+  'cloudflare-ai-gateway': { account: 'cloudflare', subscription: null, billing: 'cloudflare' },
+  'cloudflare-workers-ai': { account: 'cloudflare', subscription: null, billing: 'cloudflare' },
+}
+
 // ============================================================================================
 // 显示模型（唯一一套逻辑，2026-09-26 用户拍板定型 —— 动任何显示相关的代码前先读完这一段）
 // ============================================================================================
@@ -131,6 +170,22 @@ export const FIELD_SECTIONS = [
   { id: 'billing', label: "section.billing.label", desc: "section.billing.desc" },
   { id: 'common', label: "section.common.label", desc: "section.common.desc" },
 ]
+
+// ---------- 字段在信息栏的归属（位置 + 门控的机器可读版） ----------
+// 每个模式列出它可能渲染的字段 id（按渲染顺序）；公共尾部（提醒 + 圆环）三种模式共用。
+// 注意这张表只管「谁可能出现在哪一行」，不管显隐——显隐永远只由字段开关决定，
+// 数据条件（provider 有没有这项数据）由各字段自己的构建分支判定。两者都满足才出现。
+// tests/test-display-model.cjs 双向锁死：表里的每个 id 必须在对应渲染分支有门控，
+// 渲染分支里的每个门控 id 必须在这张表里；渲染出的实际顺序由渲染级断言覆盖。
+// 订阅窗口三字段走 WINDOW_META 间接门控（windowFieldVisible），锚点三字段走 anchorId 参数门控，
+// 见表下注释与测试里的机制说明——三者都是 fieldVisible，只是写法不同。
+export const FIELD_MODES = {
+  native: ['turnsSteps', 'llmTime', 'toolTime', 'cacheHit', 'tokensIO'],
+  balance: ['customText', 'anchorGroup', 'mainTime', 'worldTime', 'unmapped', 'noKeyHint', 'balance', 'balanceError', 'period', 'countdown', 'sessionCost', 'usageError'],
+  subscription: ['customText', 'subServiceGroup', 'mainTime', 'worldTime', 'expiry', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'subBalance', 'sessionCost'],
+  billing: ['customText', 'billingServiceGroup', 'mainTime', 'worldTime', 'billingSpend', 'budget', 'freeQuota'],
+  trailing: ['refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure', 'contextUsage'],
+}
 
 // ---------- v1.9.0 PR2：预设色板（语义色名） ----------
 // 客户端按「浅色默认 → 深色覆盖 → 增强对比」三套配对定义 --bi-palette-<name>；

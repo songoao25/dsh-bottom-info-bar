@@ -49,8 +49,12 @@ function extractFn(name) {
 }
 const platformListDecl = hostSrc.match(/const PLATFORM_BALANCE_PROVIDERS = \[[^\]]*\]/)
 if (!platformListDecl) throw new Error('未找到 PLATFORM_BALANCE_PROVIDERS（余额来源表）')
+const constantsSrc = readFileSync(join(root, 'src', 'constants.js'), 'utf8')
+const identityDecl = constantsSrc.match(/export const PROVIDER_IDENTITY = (\{[\s\S]*?\n\});?/)
+if (!identityDecl) throw new Error('未找到 PROVIDER_IDENTITY（身份总表）')
 const pure = new Function(
   platformListDecl[0] + '\n'
+  + 'const PROVIDER_IDENTITY = (' + identityDecl[1] + ')\n'
   + extractFn('parseFiniteNonNegativeAmount') + '\n'
   + extractFn('platformWalletSum') + '\n'
   + extractFn('parsePlatformAccountBalance') + '\n'

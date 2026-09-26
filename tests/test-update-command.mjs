@@ -323,7 +323,7 @@ check(
 // ---------- ④ 提醒自愈：本地副本更新完，available 必须自己变 false ----------
 const pkgDir = mkdtempSync(join(tmpdir(), 'bib-pkg-'))
 mkdirSync(join(pkgDir, 'src'), { recursive: true })
-for (const file of ['host.js', 'constants.js', 'host-locale.js', 'locales.js', 'self-update.js']) {
+for (const file of ['host.js', 'constants.js', 'host-locale.js', 'locales.js', 'self-update.js', 'version.js']) {
   copyFileSync(join(root, 'src', file), join(pkgDir, 'src', file))
 }
 const setInstalledVersion = (version) => writeFileSync(
