@@ -3345,6 +3345,7 @@ module.exports = {
         if (provider === 'fireworks') return 'Fireworks';
         if (provider === 'amazon-bedrock') return 'AWS Bedrock';
         if (provider === 'cloudflare-ai-gateway' || provider === 'cloudflare-workers-ai') return 'Cloudflare';
+        if (provider === 'huggingface') return 'Hugging Face';
         return t('ui.cloudBilling');
       }
 

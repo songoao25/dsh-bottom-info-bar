@@ -134,7 +134,8 @@ check('自动识别忽略旧的手动覆盖参数：deepseek 仍为 balance', de
 check('自动识别理由只含 provider', detectBillingMode('codex', 'balance').reason, 'provider:codex');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
 check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn']));
-check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai']));
+check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai', 'huggingface']));
+check('provider=huggingface → billing', detectBillingMode('huggingface', 'auto').mode, 'billing');
 
 check('窗口标签表配置正确', JSON.stringify(WINDOW_LABELS), JSON.stringify({ five_hour: '5 小时', seven_day: '周', monthly: '月' }));
 
