@@ -119,25 +119,26 @@ check(
       '\n      修法：内容迁入通用位置（记忆进根目录 MEMORY.md，其余进 AGENTS.md/docs/）后删除。规则见 MEMORY.md 顶部「使用规则」。'
 )
 
-// ---------- 守卫 3：通用记忆文件必须存在，且被 AGENTS.md 指向 ----------
-const memoryPath = join(root, 'MEMORY.md')
-const hasMemory = existsSync(memoryPath)
-check('守卫 3a：根目录存在唯一的通用记忆文件 MEMORY.md', hasMemory)
-
-if (hasMemory) {
-  const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8')
-  check(
-    '守卫 3b：AGENTS.md 明确指向 MEMORY.md（保证任何 Agent 都能找到记忆）',
-    /MEMORY\.md/.test(agents) && /严禁任何 Agent 自建/.test(agents),
-    'AGENTS.md 缺少「项目记忆」段或未声明「禁止自建记忆」规则'
-  )
-  const memory = readFileSync(memoryPath, 'utf8')
-  check(
-    '守卫 3c：MEMORY.md 自身写明「禁止自建工具专属记忆」的规则',
-    /严禁任何 Agent 自建/.test(memory),
-    'MEMORY.md 顶部「使用规则」缺少该条'
-  )
-}
+// ---------- 守卫 3：过程文稿不得入仓 ----------
+// 仓库只收用户文档与代码：根目录不留过程记忆与 Agent 指令文件，docs/ 只留用户说明。
+// 想法、方向、调研过程、复盘一律不进仓库。
+const FORBIDDEN_PROCESS_DOCS = ['MEMORY.md', 'AGENTS.md']
+const foundProcessDocs = FORBIDDEN_PROCESS_DOCS.filter((p) => existsSync(join(root, p)))
+check(
+  '守卫 3a：根目录不存在过程文稿（MEMORY.md / AGENTS.md）',
+  foundProcessDocs.length === 0,
+  foundProcessDocs.length === 0 ? undefined : '发现：' + foundProcessDocs.join(', ')
+)
+const ALLOWED_DOCS = ['INSTALL.md', 'PROVIDER-COMPATIBILITY.md']
+let extraDocs = []
+try {
+  extraDocs = readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !ALLOWED_DOCS.includes(f))
+} catch (err) { extraDocs = ['docs/ 不可读：' + String((err && err.message) || err)] }
+check(
+  '守卫 3b：docs/ 只留用户说明（INSTALL.md / PROVIDER-COMPATIBILITY.md）',
+  extraDocs.length === 0,
+  extraDocs.length === 0 ? undefined : '发现：' + extraDocs.join(', ')
+)
 
 // ---------- 守卫 4：发布元数据不允许被手工修改（仅 PR 场景）----------
 //

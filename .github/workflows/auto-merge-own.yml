@@ -7,7 +7,7 @@ name: Auto-merge own PRs
 # 例外（2026-09-11 新增）：Release Please 開的「發布 PR」不自動合併。
 # 原因：Release Please 用 owner 的 RELEASE_PLEASE_TOKEN 開 PR，作者看起來就是 owner，
 # 因此發布 PR 會被當成「自己的 PR」放行 —— 等於把唯一該有人把關的環節也自動化了。
-# 2026-09-11 的 v2.0.0 誤發事故正是如此（詳見 MEMORY.md）。
+# 2026-09-11 的 v2.0.0 誤發事故正是如此（手工 bump 版本號導致 Release Please 算错大版本）。
 # 發布 PR 的分支名固定為 release-please--*，且會被加上 autorelease: 標籤，兩者都排除。
 on:
   pull_request_target:
