@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.5...v1.20.6) (2026-09-26)
+
+
+### Bug Fixes
+
+* harden update and install edge cases ([#195](https://github.com/songoao25/dsh-bottom-info-bar/issues/195)) ([f447428](https://github.com/songoao25/dsh-bottom-info-bar/commit/f44742885ad047e73cf0f9d40aa156e307041b18))
+
 ## [1.20.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.4...v1.20.5) (2026-09-26)
 
 
