@@ -88,4 +88,11 @@ const missCritical = critical.filter((f) => !defined.has(f));
 if (missCritical.length === 0) console.log('PASS  关键函数齐备：' + critical.join(', '));
 else { ok = false; console.log('FAIL  关键函数缺失：' + missCritical.join(', ')); }
 
+// P0-3 路径唯一入口：数据目录跟端走（DSH_HOME），登录态候选按序试读（环境变量 > 平台共享目录 > 历史路径）
+function hasAll(haystack, needles) { return needles.every((n) => haystack.includes(n)); }
+if (hasAll(src, ["join(dshHomeDir(), 'dsh-bottom-info-bar')", 'DSH_BOTTOM_INFO_BAR_DATA_DIR'])) console.log('PASS  数据目录唯一入口：显式覆盖 > DSH_HOME/dsh-bottom-info-bar');
+else { ok = false; console.log('FAIL  数据目录未走唯一入口'); }
+if (hasAll(src, ['function opencodeAuthFiles()', 'DSH_BOTTOM_INFO_BAR_OPENCODE_AUTH', 'platformShareDir()', "join(homedir(), '.local', 'share', 'opencode', 'auth.json')"]) && src.includes("process.platform === 'win32'") && src.includes('LOCALAPPDATA')) console.log('PASS  opencode 登录按序试读：环境变量 > 平台共享目录 > 历史路径（含 win32 分支）');
+else { ok = false; console.log('FAIL  opencode 登录候选顺序不对'); }
+
 process.exit(ok ? 0 : 1);

@@ -250,6 +250,40 @@ function copySettings(fromDir, toDir) {
   })(), true)
 }
 
+// ---------- ⑦b 数据目录跟端走（P0-3，用户拍板：网页端与桌面端分开） ----------
+// DATA_DIR = 显式覆盖 > DSH_HOME/dsh-bottom-info-bar > 历史默认；无 DSH_HOME 时与原来逐字相同。
+{
+  const { homedir } = await import('node:os')
+  async function settingsFileFor(env, tag) {
+    const savedDataDir = process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR
+    const savedHome = process.env.DSH_HOME
+    try {
+      if ('dataDir' in env) {
+        if (env.dataDir === null) delete process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR
+        else process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = env.dataDir
+      }
+      if ('home' in env) {
+        if (env.home === null) delete process.env.DSH_HOME
+        else process.env.DSH_HOME = env.home
+      }
+      const mod = await import('../src/host.js?datadir=' + tag)
+      return mod.__settingsInternals.settingsFile
+    } finally {
+      if (savedDataDir === undefined) delete process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR
+      else process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = savedDataDir
+      if (savedHome === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = savedHome
+    }
+  }
+  const endHome = mkdtempSync(join(tmpdir(), 'bib-dsh-home-'))
+  check('数据目录：显式覆盖优先（不受 DSH_HOME 影响）',
+    (await settingsFileFor({ dataDir: join(tmpdir(), 'bib-override-'), home: endHome }, 'override')) === join(join(tmpdir(), 'bib-override-'), 'settings.json'), true)
+  check('数据目录：跟所在端的 DSH_HOME 走（两端分开）',
+    (await settingsFileFor({ dataDir: null, home: endHome }, 'end')) === join(endHome, 'dsh-bottom-info-bar', 'settings.json'), true)
+  check('数据目录：无 DSH_HOME 时与历史默认逐字相同（老用户不搬家）',
+    (await settingsFileFor({ dataDir: null, home: null }, 'legacy')) === join(homedir(), '.dsh', 'dsh-bottom-info-bar', 'settings.json'), true)
+}
+
 // ---------- ⑧ D4：summaries 与 .bak 同时缺失且折叠已发生 → 显式 warn + 客户端可见「账单待整理」 ----------
 {
   // 对照组：正常启动（从未折叠、无冷归档）→ 无告警、persistence=ok
