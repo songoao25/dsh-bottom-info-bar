@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.0...v1.20.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* 提示文案指向更名后的 ChatGPT 订阅插件 ([#179](https://github.com/songoao25/dsh-bottom-info-bar/issues/179)) ([d8135a7](https://github.com/songoao25/dsh-bottom-info-bar/commit/d8135a77a5ff0a56bce1a32b28a8877449ac1eb8))
+
 ## [1.20.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.19.5...v1.20.0) (2026-09-25)
 
 
