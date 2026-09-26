@@ -312,5 +312,35 @@ check(
       '\n      修法：时间显示固定用通用格式，不加用户选项；字段 note 与设置区描述只讲“时区”。'
 )
 
+// ---------- 守卫 9：版本标题不得泄露过程与隐私 ----------
+//
+// 长期标准：每次修复与小版本迭代的标题（提交信息、CHANGELOG 条目、PR 标题）
+// 只描述版本更新了什么，不写想法、方向、调研过程、复盘、对话与隐私相关的一切。
+// 标题里出现下面的词即失败，按“只讲更新内容”重写后再提交。
+const TITLE_PRIVACY_WORDS = ['复盘', '审计', '调研', '想法', '方向', '对话', '隐私', '泄露', '泄漏', '记忆', '流水账', '内部代号', 'MEMORY']
+const titlePrivacyHits = []
+try {
+  const { execSync } = await import('node:child_process')
+  const subjects = execSync('git log -n 30 --format=%s', { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')
+  subjects.forEach((subject, index) => {
+    for (const word of TITLE_PRIVACY_WORDS) {
+      if (subject.includes(word)) titlePrivacyHits.push(`提交 #${index}: ${subject.slice(0, 80)}（含“${word}”）`)
+    }
+  })
+} catch (err) { titlePrivacyHits.push('git log 不可用，跳过提交标题检查') }
+try {
+  const changelogText = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
+  for (const word of TITLE_PRIVACY_WORDS) {
+    if (changelogText.includes(word)) titlePrivacyHits.push(`CHANGELOG.md 含“${word}”`)
+  }
+} catch (err) { /* 缺文件由版本守卫处理，这里不重复判 */ }
+check(
+  '守卫 9：版本标题只讲更新内容（提交信息与 CHANGELOG 不得出现过程/隐私词）',
+  titlePrivacyHits.length === 0,
+  titlePrivacyHits.length === 0 ? undefined
+    : '共 ' + titlePrivacyHits.length + ' 处：\n      ' + titlePrivacyHits.join('\n      ') +
+      '\n      修法：标题只描述版本更新了什么，过程与隐私内容一律不写。'
+)
+
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')
 process.exit(failures === 0 ? 0 : 1)
