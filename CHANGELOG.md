@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.7](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.6...v1.20.7) (2026-09-26)
+
+
+### Bug Fixes
+
+* cover all DSH preset providers ([#198](https://github.com/songoao25/dsh-bottom-info-bar/issues/198)) ([7aa396e](https://github.com/songoao25/dsh-bottom-info-bar/commit/7aa396e7a94394f3cdb20d84483adac77093db7e))
+
 ## [1.20.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.5...v1.20.6) (2026-09-26)
 
 
