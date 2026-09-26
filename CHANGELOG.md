@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.20.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.3...v1.20.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* 数据目录跟端走（P0-3），网页端与桌面端分开 ([#188](https://github.com/songoao25/dsh-bottom-info-bar/issues/188)) ([07422d6](https://github.com/songoao25/dsh-bottom-info-bar/commit/07422d630edb28954e394cb8d0eb37e0660e2b72))
+
 ## [1.20.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.2...v1.20.3) (2026-09-26)
 
 
