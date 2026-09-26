@@ -21,7 +21,7 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-然后**重启 `dsh web`**（插件在宿主启动时组合，只刷新页面不够）。其他装法与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
+然后**重启 DSH**（插件在宿主启动时组合，只刷新页面不够）。桌面客户端把 `--profile web` 换成 `--profile desktop`。其他装法（含 Windows PowerShell）与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
 
 ## 设置
 
@@ -37,7 +37,7 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 ## 花费与更新
 
-每次模型响应记一条（用量 × 单价，单价在响应完成时锁定），重启不丢。插件每次随 DSH 启动检查一次新版本：**全自动更新**（默认）下载好等你重启生效，**手动更新**只提示不下载；新版有问题可以在设置页回滚到上一版。账本只记 token 与金额，不记对话内容；数据只存本机 `~/.dsh/dsh-bottom-info-bar/`，卸载不删——要清零去设置页的账单数据里导出或清除。
+每次模型响应记一条（用量 × 单价，单价在响应完成时锁定），重启不丢。插件每次随 DSH 启动检查一次新版本：**全自动更新**（默认）下载好等你重启生效，**手动更新**只提示不下载；新版有问题可以在设置页回滚到上一版。账本只记 token 与金额，不记对话内容；数据存放在本端 `DSH_HOME` 下的 `dsh-bottom-info-bar/` 目录（默认 `~/.dsh/dsh-bottom-info-bar/`，可用 `DSH_BOTTOM_INFO_BAR_DATA_DIR` 覆盖），卸载不删——要清零去设置页的账单数据里导出或清除。
 
 ## 开发
 

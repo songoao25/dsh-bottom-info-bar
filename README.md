@@ -21,7 +21,7 @@ Click the bar to switch between **Full** and **Compact**. They differ in exactly
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-Then **restart `dsh web`** — plugins are composed when the host starts, so a page refresh is not enough. Other install methods and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+Then **restart DSH** — plugins are composed when the host starts, so a page refresh is not enough. Use `--profile desktop` instead of `--profile web` on the desktop client. Other install methods (including Windows PowerShell) and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Settings
 
@@ -37,7 +37,7 @@ API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode
 
 ## Spend and updates
 
-Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays in `~/.dsh/dsh-bottom-info-bar/` and survives uninstall — export or clear it from Billing data if you want a clean slate.
+Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays under this end's `DSH_HOME` in `dsh-bottom-info-bar/` (default `~/.dsh/dsh-bottom-info-bar/`, overridable via `DSH_BOTTOM_INFO_BAR_DATA_DIR`) and survives uninstall — export or clear it from Billing data if you want a clean slate.
 
 ## Development
 

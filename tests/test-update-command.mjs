@@ -39,7 +39,7 @@ for (const lang of ['zh', 'en']) {
 }
 
 // ---------- ③ host 运行时：命令必须匹配安装形态，且 link: 的命令真的能跑 ----------
-async function getUpdateInfoWithProfile(profilePackage) {
+async function getUpdateInfoWithProfile(profilePackage, profileName) {
   const home = mkdtempSync(join(tmpdir(), 'bib-upd-'))
   const dataDir = mkdtempSync(join(tmpdir(), 'bib-upd-data-'))
   const prevHome = process.env.DSH_HOME
@@ -47,8 +47,9 @@ async function getUpdateInfoWithProfile(profilePackage) {
   process.env.DSH_HOME = home
   process.env.DSH_BOTTOM_INFO_BAR_DATA_DIR = dataDir
   if (profilePackage) {
-    mkdirSync(join(home, 'profiles', 'web'), { recursive: true })
-    writeFileSync(join(home, 'profiles', 'web', 'package.json'), JSON.stringify(profilePackage))
+    const dir = typeof profileName === 'string' && profileName.length > 0 ? profileName : 'web'
+    mkdirSync(join(home, 'profiles', dir), { recursive: true })
+    writeFileSync(join(home, 'profiles', dir, 'package.json'), JSON.stringify(profilePackage))
   }
   try {
     const mod = await import('../src/host.js?upd=' + encodeURIComponent(dataDir))
@@ -391,6 +392,16 @@ check(
   'host：读不到 profile 配置时安全退回 npm 命令（不抛错）',
   noProfile && noProfile.installMode === 'npm' && typeof noProfile.updateCommand === 'string' && noProfile.updateCommand.length > 0,
   noProfile && { mode: noProfile.installMode, cmd: noProfile.updateCommand }
+)
+
+// 灰度桌面端（Electron 启动参数里没有 --profile）：本机只有一个 profile（desktop）
+// 时更新命令必须带 desktop，否则用户照抄会更新到错误的 profile。
+const desktopCase = await getUpdateInfoWithProfile({ dependencies: { 'dsh-bottom-info-bar': '^1.10.19' } }, 'desktop')
+check(
+  'host：单 desktop profile（无 --profile 参数）→ 更新命令带 --profile desktop',
+  desktopCase && desktopCase.installMode === 'npm'
+    && desktopCase.updateCommand === 'dsh plugin --profile desktop add dsh-bottom-info-bar@latest',
+  desktopCase && { mode: desktopCase.installMode, cmd: desktopCase.updateCommand }
 )
 
 for (const dir of fixtureDirs) rmSync(dir, { recursive: true, force: true })

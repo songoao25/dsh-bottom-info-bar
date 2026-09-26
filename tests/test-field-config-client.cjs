@@ -181,7 +181,9 @@ check('M2 首渲骨架：加载分支先渲染页面标题行「信息底栏设�
 check('字段开关使用 role=switch + aria-checked（含中文可读名）', clientSrc.includes("role: 'switch'")
   && clientSrc.includes("'aria-checked': checked") && clientSrc.includes("label: t('ui.show', { label: fieldLabel })"), true);
 check('折叠箭头复用 DSH 原生下箭头，且按宿主版本择名（新 Regular/Medium ↔ 旧 …Outline14）',
-  clientSrc.includes("const BIB_SET_PRIMITIVES = require('@deepseek-ai/dsh-client-ui-primitives');")
+  clientSrc.includes("require('@deepseek-ai/dsh-client-ui-primitives')")
+  && !clientSrc.includes('const BIB_SET_PRIMITIVES = require(')
+  && clientSrc.includes('if (BIB_SET_PRIMITIVES === null) BIB_SET_PRIMITIVES = {};')
   && clientSrc.includes('const BIB_SET_CHEVRON_ICON = BIB_SET_PRIMITIVES.IconChevronDownOutlineRegular')
   && clientSrc.includes('|| BIB_SET_PRIMITIVES.IconChevronDownOutlineMedium')
   && clientSrc.includes('|| BIB_SET_PRIMITIVES.IconChevronDownOutline14')
@@ -688,29 +690,33 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
 
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
 // primitives 走两个宿主版本各加载一次（新版 Regular / 旧版 …Outline14），
-// 再各用「primitives 一个图标都没有」的极端情形加载一次，确认模块体在任何
-// 宿主图标命名下都不抛错（择名逻辑必须能容忍全缺失）。
+// 再用「primitives 一个图标都没有」与「seed 模块整个缺席（require 直接抛错，
+// 灰度桌面端形态）」两种极端情形各加载一次，确认模块体在任何宿主下都不抛错。
 {
   const code = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
-  function loadWith(primitives) {
+  function loadWith(primitives, primitivesMissing) {
     let captured = null;
     const fakeWindow = { __ModuleLoader__: { load(o) { captured = o; } } };
     const fakeRequire = function (name) {
       if (name === 'react') return { createElement: function () { return null; }, useState: function () {}, useRef: function () {}, useEffect: function () {}, useCallback: function () {} };
-      if (name === '@deepseek-ai/dsh-client-ui-primitives') return primitives;
+      if (name === '@deepseek-ai/dsh-client-ui-primitives') {
+        if (primitivesMissing) throw new Error('no such seed module');
+        return primitives;
+      }
       throw new Error('unexpected require: ' + name);
     };
     new Function('window', 'require', code)(fakeWindow, fakeRequire);
     return captured && captured.factory(fakeRequire);
   }
   const hosts = [
-    ['新版宿主（Regular/Medium）', { IconChevronDownOutlineRegular: function () { return null; }, IconChevronDownOutlineMedium: function () { return null; }, Tooltip: function () { return null; } }],
-    ['旧版宿主（…Outline14）', { IconChevronDownOutline14: function () { return null; } }],
-    ['宿主无任何图标', {}],
+    ['新版宿主（Regular/Medium）', { IconChevronDownOutlineRegular: function () { return null; }, IconChevronDownOutlineMedium: function () { return null; }, Tooltip: function () { return null; } }, false],
+    ['旧版宿主（…Outline14）', { IconChevronDownOutline14: function () { return null; } }, false],
+    ['宿主无任何图标', {}, false],
+    ['宿主无 primitives 模块', null, true],
   ];
   hosts.forEach(function (entry) {
     try {
-      const exported = loadWith(entry[1]);
+      const exported = loadWith(entry[1], entry[2]);
       check('lib/client.js 工厂可加载且导出 inject/apply（' + entry[0] + '）',
         !!exported && Array.isArray(exported.inject) && typeof exported.apply === 'function', true);
     } catch (err) {
