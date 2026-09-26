@@ -38,5 +38,34 @@ credentials.yaml
 # 本地工具目录（工作树存在、未跟踪，防误 add）
 .dsh-vision-toolkit/
 
-# 工具专属记忆目录：记忆只允许 MEMORY.md，此处永不入库（守卫 2）
+# Agent 专属物：本项目只允许通用 Agent 资产，此处永不入库（守卫 2 在 CI 强制执行）
 .workbuddy/
+.cursor/
+.aider
+.continue/
+.codeium/
+.claude/
+.gemini/
+.codex/
+.specstory/
+.windsurf/
+.opencode/
+.trae/
+.cline/
+.roo/
+.kilocode/
+.qodo/
+.cody/
+.tabnine/
+.amazonq/
+.ai/
+CLAUDE.md
+CURSOR.md
+CODEX.md
+GEMINI.md
+WINDSURF.md
+COPILOT.md
+.cursorrules
+.cursorignore
+.clinerules
+.windsurfrules

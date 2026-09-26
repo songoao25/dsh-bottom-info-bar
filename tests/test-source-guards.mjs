@@ -94,21 +94,29 @@ check(
   'ctx.timeout 会在当前 DSH web Cordis Context 中触发未注入服务错误'
 )
 
-// ---------- 守卫 2：记忆文件必须唯一且通用 ----------
+// ---------- 守卫 2：本项目只允许通用 Agent 资产 ----------
 //
-// 项目记忆属于项目，不属于工具。任何工具专属的隐藏记忆目录都不允许出现。
-const FORBIDDEN_MEMORY_PATHS = [
-  '.workbuddy', '.cursor/memory', '.aider', '.continue/memory', '.codeium',
+// 举一反三（2026-09-26 用户拍板）：禁的不只是记忆目录。一切 Agent 专属物都不许进仓库 ——
+// 记忆目录、配置目录、私有指令文件，改用通用等价物（MEMORY.md / AGENTS.md / docs/）。
+// 专属物把项目知识锁死在某一个工具里，换一个 Agent 接手就看不到了，等于丢失。
+const FORBIDDEN_AGENT_PATHS = [
+  // 工具专属记忆/配置目录
+  '.workbuddy', '.cursor/memory', '.aider', '.continue', '.codeium',
   '.claude/memory', '.gemini/memory', '.codex/memory', '.specstory',
+  '.windsurf', '.opencode', '.trae', '.cline', '.roo', '.kilocode',
+  '.qodo', '.cody', '.tabnine', '.amazonq', '.ai',
+  // 工具专属指令/配置文件（仓库根）
+  'CLAUDE.md', 'CURSOR.md', 'CODEX.md', 'GEMINI.md', 'WINDSURF.md', 'COPILOT.md',
+  '.cursorrules', '.cursorignore', '.clinerules', '.windsurfrules',
 ]
-const foundForbidden = FORBIDDEN_MEMORY_PATHS.filter((p) => existsSync(join(root, p)))
+const foundForbidden = FORBIDDEN_AGENT_PATHS.filter((p) => existsSync(join(root, p)))
 
 check(
-  '守卫 2：不存在工具专属的记忆目录（记忆必须只放 MEMORY.md）',
+  '守卫 2：不存在任何 Agent 专属物（记忆/配置/指令只允许通用资产）',
   foundForbidden.length === 0,
   foundForbidden.length === 0 ? undefined
     : '发现：' + foundForbidden.join(', ') +
-      '\n      修法：把内容迁入根目录 MEMORY.md 后删除该目录。规则见 MEMORY.md 顶部「使用规则」。'
+      '\n      修法：内容迁入通用位置（记忆进根目录 MEMORY.md，其余进 AGENTS.md/docs/）后删除。规则见 MEMORY.md 顶部「使用规则」。'
 )
 
 // ---------- 守卫 3：通用记忆文件必须存在，且被 AGENTS.md 指向 ----------
