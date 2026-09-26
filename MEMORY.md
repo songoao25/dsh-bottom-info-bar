@@ -19,6 +19,18 @@
 
 ---
 
+## 2026-09-26（v1.20.1）
+
+**改动**：错误提示里引导用户安装的姊妹插件名同步更新——姊妹插件已统一更名 `dsh-chatgpt-subscription → dsh-chatgpt-sub`（GitHub 仓库 / npm 包名 / 本地目录三处同名，用户拍板；显示名不变仍叫「ChatGPT 订阅」）。纯文案修复（PR #179 → 发布 PR #180 → tag v1.20.1 → npm 上架核验 → 本机 desktop 装载同步 1.20.1）。
+
+**踩坑 1：全局替换误伤 CHANGELOG.md**：按字符串全局替换旧名时把发布历史条目也改了，`test-source-guards` 守卫 4 拦下（版本元数据由 Release Please 独占，手工改会破坏基准）。规矩：**全局替换必须排除 CHANGELOG.md 与 lib/**（lib 由构建再生，CHANGELOG 是不可改写的历史）。
+
+**踩坑 2：shell 工作目录残留，git 命令跑错仓库**：连续操作两个仓库时有一条 `git remote set-url` 在错误的 cwd 里执行——把本仓库 origin 误改成姊妹仓库地址，还误拉了对方的 v0.x 标签进来。复原动作（可复用）：① `git remote set-url` 改回真值；② 外来标签逐一判定归属（`git merge-base --is-ancestor <sha> origin/main`，是祖先的才是自己的历史），`git tag -d` 删外来标签；③ 重新 `git fetch origin --prune`，origin/main 强制更新回真值。**教训：跨仓库操作时每条 git 命令都显式 `cd`，绝不信任工作目录残留。**
+
+**姊妹仓库的 npm 上架被阻塞（待用户）**：本机 `~/.npmrc` 里的 npm 令牌已失效（whoami 401，granular token 过期/被吊销），复制进 `dsh-chatgpt-sub` 仓库的 `NPM_TOKEN` secret 同样失效，tag v0.4.0 触发的 Publish NPM 报 PUT 404。本仓库 CI 能发布成功证明其 secret 里存的是**另一把仍有效的旧令牌**，但 gh 无法读取 secret 值。需要用户新建一把 npm token 后配置到 `dsh-chatgpt-sub` 仓库，再 rerun 发布。
+
+---
+
 ## 2026-09-26（v1.20.0）
 
 ### 设置页分块 + 更新流程拆「检查/安装」两动作 + #173 内置账号余额（feat+fix，PR #176）
