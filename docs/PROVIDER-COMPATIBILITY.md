@@ -16,8 +16,8 @@
 | `openrouter`、`stepfun`、`xiaomi` | 是 | 真实余额 | 已核验的服务商账户端点 |
 | `openai` | 是 | 估算余额 | OpenAI 没有通用公开余额端点；估算值会明确标注 |
 | `openai-codex`、`opencode`、`opencode-go`、`zai`、`zai-coding-cn`、`xiaomi-token-plan-*`、`minimax`、`minimax-cn` | 是 | 真实订阅/套餐数据 | 走各自已适配的额度来源 |
-| `together`、`fireworks`、`amazon-bedrock`、`cloudflare-ai-gateway`、`cloudflare-workers-ai` | 是 | 真实本月账单 | 走服务商/云账户账单接口 |
-| `ant-ling`、`anthropic`、`azure-openai-responses`、`baseten`、`cerebras`、`github-copilot`、`google`、`google-vertex`、`groq`、`huggingface`、`kimi-coding`、`mistral`、`nvidia`、`qwen-token-plan`、`qwen-token-plan-cn`、`qwen-token-plan-individual`、`vercel-ai-gateway`、`xai` | 是 | 明确降级 | 当前没有可由 DSH 常规推理凭据安全、稳定读取的统一余额/配额接口；仍显示模型并保持本地账本 |
+| `together`、`fireworks`、`amazon-bedrock`、`cloudflare-ai-gateway`、`cloudflare-workers-ai`、`huggingface` | 是 | 真实本月账单 | 走服务商/云账户账单接口（Hugging Face 需 HF_TOKEN，细粒度 token 需 Billing 读权限） |
+| `ant-ling`、`anthropic`、`azure-openai-responses`、`baseten`、`cerebras`、`github-copilot`、`google`、`google-vertex`、`groq`、`kimi-coding`、`mistral`、`nvidia`、`qwen-token-plan`、`qwen-token-plan-cn`、`qwen-token-plan-individual`、`vercel-ai-gateway`、`xai` | 是 | 明确降级 | 当前没有可由 DSH 常规推理凭据安全、稳定读取的统一余额/配额接口；仍显示模型并保持本地账本 |
 
 ## 为什么不直接把所有管理接口都接上
 
