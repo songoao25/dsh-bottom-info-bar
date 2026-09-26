@@ -19,6 +19,40 @@
 
 ---
 
+## 2026-09-26（v1.20.3：体系化重构第二波，C/D 批欠账清零，无行为变化）
+
+### 一次发布（fix，PR #185 → 发布 PR #186 → 1.20.3）
+
+- **快照引擎合并**：`createSnapshotEngine` + `mergeSnapshotResult`，订阅/账单各一个状态隔离实例；数据投影留 RPC 手写（控制流不硬压进表）。`mergeSubscriptionResult` 留薄委托（测试按名抽取）。
+- **provider 身份一表**：`PROVIDER_IDENTITY`（28 行），三条 if-else 链改查表；集合保留字面量是构建注入所限，一致性测试双向锁定。
+- **version.js**：包名/registry/包版本/semver 一处定义；自更新对外 API 转交不变；`test-update-check` 改从 version.js 取行为。
+- **原子写统一**：`writeFullySync` + `atomicReplaceFile`；journal 追加与自更新 best-effort 是另一档耐久契约，注明保留。
+- **小合并**：余额解析/凭据 fallback/数值解析（minimax 转调，zai 语义不同保留）/去重收集器×3/ KM 缩写/窗口元表/北京时偏移常量/注入常量上提。
+- **FIELD_MODES + 双向锁**、样式命名空间约定 + 守卫、P2 打磨（inert/void/裸色/面板互引）。
+- **有意不做**：P1-17（形状不同）、P1-21（组合根，叶子口径达标）、P2-1（blame 污染）、P0-3（需用户拍板迁移策略，见下）。
+
+### 对抗性结论备忘
+
+- 控制流（early-return、resetWindow 跨字段计算）不适合压进表，硬压等于发明小 DSL；机器锁死一致性比字面"改 1 处"更诚实。
+- 合并只在同耐久档/同语义内做：原子写分档、自更新 writes 不碰、zai 负数语义保留。
+- 测试桩只认 useState/useEffect/useRef/useCallback：客户端新增 hook API 前先同步五个桩。
+- 构建只序列化单个函数：`localizeHostText` 自包含原则继续有效（本次 version.js 是真模块，无此问题）。
+- `git add -A` 前先 `git status`（.workbuddy 已 gitignore）。
+
+### 发布链条
+
+PR #185（CI/CodeQL 全绿自动合并）→ 发布 PR #183→#186（1.20.3，`/tmp/rp-186` worktree 全量全绿，squash 合并；本仓库禁 merge commit）→ tag `v1.20.3` → Publish NPM success → curl registry 核验 `latest = 1.20.3`。
+
+### 本机同步（硬性收尾，本次成功）
+
+仍是 `desktop` + pnpm 独立快照：1.20.2 → 1.20.3（`env -u NODE_OPTIONS pnpm update`），装载含引擎代码（`createSnapshotEngine` 4 处）。**仍需重启 DSH** 生效。
+
+### 待用户拍板（P0-3）
+
+`DATA_DIR` 不认 `DSH_HOME`，两端账本可能落到两个地方。可选：① 迁数据（丢数风险）；② 双读合并（重数风险）。这是用户数据，不擅自选。
+
+---
+
 ## 2026-09-26（v1.20.2：设置页体系化重做 + 日期格式自定义下线 + README 重写）
 
 ### 三件事一次发布（fix，PR #182 → 发布 PR #183 → 1.20.2）
