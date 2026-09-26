@@ -47,9 +47,13 @@ PR #185（CI/CodeQL 全绿自动合并）→ 发布 PR #183→#186（1.20.3，`/
 
 仍是 `desktop` + pnpm 独立快照：1.20.2 → 1.20.3（`env -u NODE_OPTIONS pnpm update`），装载含引擎代码（`createSnapshotEngine` 4 处）。**仍需重启 DSH** 生效。
 
-### 待用户拍板（P0-3）
+### P0-3 已拍板落地（v1.20.4）
 
-`DATA_DIR` 不认 `DSH_HOME`，两端账本可能落到两个地方。可选：① 迁数据（丢数风险）；② 双读合并（重数风险）。这是用户数据，不擅自选。
+用户原话：网页端就是网页端，桌面端就是桌面端，分开。据此：`DATA_DIR` 改走 `dshHomeDir()`（无值时逐字相同，不搬家）；登录态只读不动；opencode 按序试读。发布链：PR #188 → 发布 PR #189 → tag `v1.20.4` → npm。**注意**：v1.20.4 的复盘与本条合并记录，不另开条目。
+
+### 本机同步 v1.20.4（硬性收尾）
+
+仍是 `desktop` + pnpm 独立快照：1.20.3 → 1.20.4（备份 `/tmp/dsh-bib-backup-1.20.3`，`env -u NODE_OPTIONS pnpm update`）。**仍需重启 DSH** 生效。
 
 ---
 
