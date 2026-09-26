@@ -17,6 +17,14 @@ Click the bar to switch between **Full** and **Compact**. They differ in exactly
 
 ## Install
 
+Recommended: open the DSH plugin page, add a plugin, and paste this repository URL — no commands needed:
+
+```
+https://github.com/songoao25/dsh-bottom-info-bar
+```
+
+Prefer the terminal? This installs the same thing from npm:
+
 ```bash
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
