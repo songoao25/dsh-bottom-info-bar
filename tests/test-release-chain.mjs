@@ -104,6 +104,13 @@ check(
   /NODE_AUTH_TOKEN:\s*\$\{\{\s*secrets\.NPM_TOKEN\s*\}\}/.test(publishNpm),
   'publish-npm.yml 未把 NPM_TOKEN 接到 NODE_AUTH_TOKEN'
 )
+check(
+  '契约 3d：npm 发布后必须验证公开版本、latest 和 tarball，且手动诊断不会重复发布',
+  publishNpm.includes('node scripts/verify-npm-publication.mjs')
+    && publishNpm.includes('inputs.verify_only != true')
+    && existsSync(join(root, 'scripts/verify-npm-publication.mjs')),
+  'npm publish 接受请求不代表新版本已可安装；缺少读回会误报发布成功'
+)
 
 // ---------- 契约 4：人工闸门必须仍然存在 ----------
 //
