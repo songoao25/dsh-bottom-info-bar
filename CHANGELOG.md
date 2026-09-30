@@ -2,6 +2,14 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.20.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.9...v1.20.10) (2026-09-30)
+
+
+### Bug Fixes
+
+* confirm in-session plugin updates before install ([#211](https://github.com/songoao25/dsh-bottom-info-bar/issues/211)) ([66b795a](https://github.com/songoao25/dsh-bottom-info-bar/commit/66b795a6056b4e1c25bdee8fd116d02517a2a9df))
+* verify npm release is publicly installable ([#209](https://github.com/songoao25/dsh-bottom-info-bar/issues/209)) ([fd7ecdb](https://github.com/songoao25/dsh-bottom-info-bar/commit/fd7ecdbcbc394f59eb4ffbdc78824f0f72e1dc40))
+
 ## [1.20.9](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.8...v1.20.9) (2026-09-30)
 
 
