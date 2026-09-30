@@ -1,28 +1,36 @@
 name: Publish NPM package
 
+# 这个 job 的契约只有一条：**只发不等**。
+#
+# npm 的发布是异步的：`npm publish` 返回 0 只代表「已受理」，版本要等服务端扫描/校验
+# （生命周期状态 validating）结束后才会公开可下载。实测「上传完成 → 公开可下载」的延迟：
+#   2026-09-26  v1.20.4~v1.20.8   74s ~ 157s
+#   2026-09-30  v1.20.9           1098s（≈18 分钟）
+#   2026-09-30  v1.20.10          >25 分钟
+#
+# 一旦把「等它公开」写进这个 job，发包耗时就等于 npm 的服务端队列耗时 ——
+# 2026-09-30 v1.20.10 正是这样从几十秒变成十几分钟、并且常常判红的。
+#
+# 公开可用性改由独立的 verify-npm-release.yml 后台读回校验，不阻塞这里。
 on:
   push:
     tags:
       - 'v*.*.*'
+  # 手动兜底：自动链断了还能人工发版（幂等，重跑已发布版本不会判红）。
   workflow_dispatch:
-    inputs:
-      verify_only:
-        description: Check public npm availability without publishing again
-        type: boolean
-        default: false
-      version:
-        description: Exact release version to verify (defaults to package.json)
-        type: string
-        required: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
     name: Publish dsh-bottom-info-bar to NPM
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     steps:
       - name: Check out release tag
         uses: actions/checkout@v7
@@ -43,20 +51,37 @@ jobs:
               echo "Tag version $tag_version does not match package version $package_version"
               exit 1
             fi
-          else
-            echo "Manual publish: using package version $package_version"
           fi
+          echo "Releasing dsh-bottom-info-bar@$package_version"
 
-      # prepublishOnly 会先 npm run build，保证 npm 包里的 lib/ 与 src/ 一致
+      # prepublishOnly 会先 npm run build，保证 npm 包里的 lib/ 与 src/ 一致。
       - name: Publish package
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verify_only != true }}
-        run: npm publish --access public
+        shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
 
-      - name: Verify public npm release
-        run: node scripts/verify-npm-publication.mjs
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_RELEASE_VERSION: ${{ inputs.version || '' }}
-          NPM_VERIFY_TIMEOUT_MS: ${{ inputs.verify_only == true && '0' || '' }}
+          # 幂等 1：版本已经在 npm 上，直接跳过（重跑旧标签不该报红）。
+          if npm view "${package_name}@${version}" version >/dev/null 2>&1; then
+            echo "::notice::${package_name}@${version} 已经在 npm 上，跳过发布。"
+            exit 0
+          fi
+
+          if output="$(npm publish --access public 2>&1)"; then
+            printf '%s\n' "$output"
+            echo "::notice::npm 已受理 ${package_name}@${version}。服务端校验是异步的（通常 1~2 分钟，偶发十几分钟），公开可用性由 Verify npm release 工作流后台读回确认。"
+            exit 0
+          else
+            status=$?
+          fi
+          printf '%s\n' "$output"
+
+          # 幂等 2：版本正在 npm 服务端 validating 时重复 publish 会 403。
+          # 那说明包已经在 npm 手上了，不是发布失败。
+          if printf '%s' "$output" | grep -q "cannot publish over the previously published versions"; then
+            echo "::notice::${package_name}@${version} 已存在或正在 npm 服务端处理中，按幂等处理。"
+            exit 0
+          fi
+          exit "$status"

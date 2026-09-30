@@ -1,0 +1,76 @@
+name: Verify npm release
+
+# 后台哨兵：确认发到 npm 的版本真的公开可安装。
+#
+# 为什么独立成一个 workflow：npm 的发布是异步的（详见 publish-npm.yml 顶部的注释），
+# 从「上传完成」到「公开可下载」实测要 74s ~ 18min，且会随 npm 侧队列劣化。
+# 把这段等待放回发布 job，就等于把「发包耗时」绑到 npm 的队列上 ——
+# 这正是 2026-09-30 发包从几十秒变成十几分钟、且常常判红的原因。
+# 所以：发布 job 秒级结束，等待和读回都在这里，慢也只慢这个哨兵。
+#
+# 三条触发路径：
+#   workflow_run      —— 每次 Publish NPM package 跑完自动复查（正常路径，会等一小会儿）
+#   schedule          —— 定时兜底：标签打了但发布 job 根本没跑（静默失败）也能被抓到
+#   workflow_dispatch —— 随时手动复查
+on:
+  workflow_run:
+    workflows: ['Publish NPM package']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to verify (defaults to package.json)
+        type: string
+        required: false
+  schedule:
+    - cron: '41 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-npm-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Read back public npm availability
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # 发布 job 自己红的时候不必再补一刀 —— 那已经是可见的失败了。
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      # workflow_run 时按触发它的 ref 检出（版本号精确到刚发的那一次）；
+      # schedule / 手动触发则用默认分支。
+      - name: Check out release ref
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Compute release age
+        id: age
+        shell: bash
+        run: |
+          # .release-please-manifest.json 只在 Release Please 的发布提交里改写，
+          # 所以它的最近一次提交时间就是这次发布的时刻。
+          epoch="$(git log -1 --format=%ct -- .release-please-manifest.json)"
+          echo "release_epoch=$epoch" >> "$GITHUB_OUTPUT"
+          echo "release age: $(( $(date +%s) - epoch ))s"
+
+      # 读回校验：版本元数据 + latest 不落后 + tarball 完整性。
+      # 仍在宽限期内（默认 45 分钟）就判「待定」放行，超过宽限期才失败。
+      - name: Read back public npm release
+        run: node scripts/verify-npm-publication.mjs
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_RELEASE_VERSION: ${{ github.event.inputs.version || '' }}
+          NPM_RELEASE_EPOCH: ${{ steps.age.outputs.release_epoch }}
+          # 发布刚结束时值得等一小会儿（典型 1~2 分钟就能确认）；
+          # 定时兜底只读一次，绝不空等。
+          NPM_VERIFY_WAIT_MS: ${{ github.event_name == 'workflow_run' && '600000' || '0' }}

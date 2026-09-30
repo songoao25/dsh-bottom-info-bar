@@ -104,12 +104,43 @@ check(
   /NODE_AUTH_TOKEN:\s*\$\{\{\s*secrets\.NPM_TOKEN\s*\}\}/.test(publishNpm),
   'publish-npm.yml 未把 NPM_TOKEN 接到 NODE_AUTH_TOKEN'
 )
+// ---------- 契约 3d：发布与「读回校验」必须解耦 ----------
+//
+// 2026-09-30 事故：读回校验被写在发布 job 里，而 npm 的发布是**异步**的
+// （npm publish 返回 0 只代表受理，公开可下载要等 74s ~ 18min）。
+// 结果发布 job 被 npm 的服务端队列绑死：发包从几十秒变成十几分钟，还常常判红。
+// 契约：发布 job 只发不等；等待与读回属于独立的后台哨兵。
+const verifyReleasePath = '.github/workflows/verify-npm-release.yml'
+const verifyScriptPath = 'scripts/verify-npm-publication.mjs'
+const verifyRelease = existsSync(join(root, verifyReleasePath)) ? read(verifyReleasePath) : ''
+const verifyScript = existsSync(join(root, verifyScriptPath)) ? read(verifyScriptPath) : ''
+
 check(
-  '契约 3d：npm 发布后必须验证公开版本、latest 和 tarball，且手动诊断不会重复发布',
-  publishNpm.includes('node scripts/verify-npm-publication.mjs')
-    && publishNpm.includes('inputs.verify_only != true')
-    && existsSync(join(root, 'scripts/verify-npm-publication.mjs')),
+  '契约 3d：publish-npm 只发不等（不得再把读回校验挂进发布 job）',
+  !publishNpm.includes('verify-npm-publication.mjs') && !publishNpm.includes('NPM_VERIFY_'),
+  '把读回校验放回发布 job，会让发包耗时等于 npm 异步校验队列的耗时'
+)
+check(
+  '契约 3e：读回校验独立成 workflow，且自动跟随每次发布运行',
+  verifyRelease.includes('workflow_run:')
+    && verifyRelease.includes('Publish NPM package')
+    && verifyRelease.includes('schedule:')
+    && verifyRelease.includes('node scripts/verify-npm-publication.mjs'),
+  '缺少独立哨兵：要么没人确认版本真的公开可安装，要么发布 job 又被拖慢'
+)
+check(
+  '契约 3f：读回校验仍覆盖版本元数据 / latest / tarball 完整性',
+  verifyScript.includes('dist.integrity')
+    && verifyScript.includes('/latest')
+    && verifyScript.includes('.tgz')
+    && verifyScript.includes("createHash('sha512')"),
   'npm publish 接受请求不代表新版本已可安装；缺少读回会误报发布成功'
+)
+check(
+  '契约 3g：重跑已发布版本必须幂等（不再因为 403 判红）',
+  publishNpm.includes('cannot publish over the previously published versions')
+    && publishNpm.includes('npm view'),
+  '重跑同一个标签会 403（版本已存在）：必须按幂等处理，而不是判发布失败'
 )
 
 // ---------- 契约 4：人工闸门必须仍然存在 ----------
