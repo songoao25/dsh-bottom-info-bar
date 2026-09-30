@@ -5,6 +5,15 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Check public npm availability without publishing again
+        type: boolean
+        default: false
+      version:
+        description: Exact release version to verify (defaults to package.json)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -13,6 +22,7 @@ jobs:
   publish:
     name: Publish dsh-bottom-info-bar to NPM
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - name: Check out release tag
         uses: actions/checkout@v7
@@ -39,6 +49,14 @@ jobs:
 
       # prepublishOnly 会先 npm run build，保证 npm 包里的 lib/ 与 src/ 一致
       - name: Publish package
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verify_only != true }}
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify public npm release
+        run: node scripts/verify-npm-publication.mjs
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_RELEASE_VERSION: ${{ inputs.version || '' }}
+          NPM_VERIFY_TIMEOUT_MS: ${{ inputs.verify_only == true && '0' || '' }}
