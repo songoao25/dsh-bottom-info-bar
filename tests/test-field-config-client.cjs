@@ -100,8 +100,8 @@ check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAME
 check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定（提醒信息在最后）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin', 'notice'])
   && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息'
   && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
-check('分组：原生组恰 5 个 DeepSeek 原生标签（只在完整模式出现）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
-  === 'turnsSteps,llmTime,toolTime,cacheHit,tokensIO', true);
+check('分组：原生组包含 7 个 DeepSeek 原生标签（只在完整模式出现）', FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
+  === 'turnsSteps,llmTime,toolTime,avgTTFT,outputSpeed,cacheHit,tokensIO', true);
 // 2026-09-25 用户拍板：上下文圆环原型虽来自原生底栏，但已被本插件接管、且始终渲染在主行，
 // 所以按插件组对待 —— 归原生组会让它在简洁模式下消失（因为原生组整组只在完整模式可见）。
 check('分组：上下文圆环归入插件组（它住在主行，两种模式都可见）',

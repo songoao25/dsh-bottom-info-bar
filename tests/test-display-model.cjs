@@ -259,7 +259,7 @@ function handleFor(scenario, fields, density) {
   };
 }
 
-// 原生统计行投影：turnsSteps / llmTime / toolTime / cacheHit / tokensIO 都该在原生行里
+// 原生统计行投影：包括首 token 耗时与输出速率，均须在原生行里
 const STATS = { turns: 3, steps: 7, llmMs: 1200, toolMs: 400, ttftMs: 300, ttftSteps: 3, decodeMs: 2000, decodeTokens: 500 };
 const TOKENS = { inputTokens: 10000, outputTokens: 2000, cacheReadTokens: 6000 };
 // 上下文投影：两个字段（contextWindow / projectedTokens）就够圆环出数
@@ -300,10 +300,12 @@ try {
       scenario.expect.every(function (id) { return compactMain.indexOf(id) !== -1; }), true);
     // 原生字段只进原生行，绝不混进主行
     check('[' + scenario.name + '] 原生统计字段只进原生行',
-      ['turnsSteps', 'llmTime', 'toolTime', 'cacheHit', 'tokensIO'].every(function (id) {
+      ['turnsSteps', 'llmTime', 'toolTime', 'avgTTFT', 'outputSpeed', 'cacheHit', 'tokensIO'].every(function (id) {
         return compactNative.indexOf(id) !== -1 && full.harness.fieldsIn(full.tree, ROW_NATIVE).indexOf(id) !== -1
           && compactMain.indexOf(id) === -1;
       }), true);
+    check('[' + scenario.name + '] 输出速率实际显示 250 tok/s',
+      full.harness.textIn(full.tree, ROW_NATIVE).includes('250 tok/s'), true);
   }
 
   // 提醒字段属于主行，两种密度都在（用「更新失败」这条一次性提醒验证；失败原因走结构化 kind）
@@ -360,6 +362,14 @@ try {
       return ['customText', 'mainTime', 'worldTime', 'expiry', 'subWindowWeek'].every(function (id) { return fields.indexOf(id) === -1; });
     }), true);
   check('关掉部分字段后，两种密度的主行仍逐字相同', offCompactMain.join(',') === offFullMain.join(','), true);
+  const ttftOff = await renderOnce(SCENARIOS[0], allFieldsOn({ avgTTFT: false }), 'full');
+  const speedOff = await renderOnce(SCENARIOS[0], allFieldsOn({ outputSpeed: false }), 'full');
+  check('首 token 时间和输出速率可分别通过原生字段开关隐藏',
+    !ttftOff.harness.fieldsIn(ttftOff.tree, ROW_NATIVE).includes('avgTTFT')
+      && ttftOff.harness.fieldsIn(ttftOff.tree, ROW_NATIVE).includes('outputSpeed')
+      && !speedOff.harness.fieldsIn(speedOff.tree, ROW_NATIVE).includes('outputSpeed')
+      && speedOff.harness.fieldsIn(speedOff.tree, ROW_NATIVE).includes('avgTTFT')
+      && !speedOff.harness.textIn(speedOff.tree, ROW_NATIVE).includes('tok/s'), true);
 } catch (error) {
   fail++;
   console.log('FAIL  装置抛错 → ' + (error && error.stack ? error.stack.split('\n').slice(0, 4).join(' | ') : String(error)));

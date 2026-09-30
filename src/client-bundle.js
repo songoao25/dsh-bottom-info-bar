@@ -164,9 +164,6 @@ function errorText(error) {
 
 const RPC_BASE = '/_dsh/dsh-bottom-info-bar';
 
-// 排版优化（正式版）：完整模式下隐藏"首 token 平均 / tok/s"两个低优先级原生字段，
-// 让原生统计行在 748px 对话宽度下单行放得下；hover 信息浮窗（title）仍显示全部原生信息。
-const HIDE_SPEED_FIELDS = true;
 // RPC 超时兜底：host 侧 15s 超时之上再留余量；端点挂起时 20s 内必失败，杜绝永久"加载中…"
 const RPC_TIMEOUT_MS = 20000;
 
@@ -3903,10 +3900,12 @@ module.exports = {
         }
         if (durations.length > 0) group(durations);
 
-        const speeds = [];
-        if (statsProj.ttftSteps > 0) speeds.push(metric(t('ui.avgTTFT'), formatDuration(statsProj.ttftMs / statsProj.ttftSteps)));
-        if (statsProj.decodeMs > 0) speeds.push(' · ', num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s'));
-        if (speeds.length > 0) group(speeds, HIDE_SPEED_FIELDS); // 不占可见版式，title 浮窗保留（官方隐藏字段，非用户可配）
+        if (statsProj.ttftSteps > 0 && fieldVisible('avgTTFT')) {
+          group([metric(t('ui.avgTTFT'), formatDuration(statsProj.ttftMs / statsProj.ttftSteps))], false, 'avgTTFT');
+        }
+        if (statsProj.decodeMs > 0 && fieldVisible('outputSpeed')) {
+          group([num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s')], false, 'outputSpeed');
+        }
 
         if (usageProj && (billedInput(usageProj) > 0 || (usageProj.outputTokens || 0) > 0)) {
           const denom = billedInput(usageProj);
