@@ -2292,8 +2292,12 @@ function InfoBarSettingsSection() {
   }, []);
 
   // ---------- 版本与更新（自更新体系）----------
-  // 与设置快照分开维护：后台自动更新是异步发生的（启动后延迟触发），状态会自己变，
-  // 所以单独拉取并定期跟随，用户不必手动刷新页面。
+  // 进入插件设置页就通知宿主：本次启动的自动更新若尚未安装，应留待下次重启。
+  // 旧宿主不认识这个接口时安静降级，新页仍可查看版本信息。
+  React.useEffect(function () {
+    rpc('enterUpdatePage').catch(function () {});
+  }, []);
+  // 与设置快照分开维护：更新状态可能异步变化，定期跟随而不刷新整页。
   const [updateState, setUpdateState] = React.useState(null);
   const [updateBusy, setUpdateBusy] = React.useState(false);
   // 正在跑的是哪个动作（'check' / 'install' / 'mode'）。结论行据此说「正在更新到 X」——
@@ -2355,17 +2359,31 @@ function InfoBarSettingsSection() {
     setUpdateState(function (prev) { return prev ? Object.assign({}, prev, { autoUpdate: enabled }) : prev; });
     runUpdateAction('mode', function () { return rpc('setUpdateAuto', { enabled: enabled }); });
   }
-  // 「检查更新」= 只问不装。走 checkUpdate（宿主侧是纯读接口），绝不碰包文件。
-  function onCheckUpdate() {
-    return runUpdateAction('check', function () { return rpc('checkUpdate'); });
+  function confirmUpdate(version) {
+    if (typeof version !== 'string' || !version) return false;
+    try {
+      return typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm(t('ui.updateConfirm', { version: version })) : false;
+    } catch (err) { return false; }
   }
-  // 「更新到 X」= 唯一的安装动作，只在真有可装的新版时出现。
+  // 「检查更新」只问版本；发现新版后在当前页面弹窗确认，确认才走安装接口。
+  function onCheckUpdate() {
+    return runUpdateAction('check', function () { return rpc('checkUpdate'); }).then(function (state) {
+      if (state && state.available === true && state.pendingRestart !== true && confirmUpdate(state.latest)) {
+        return runUpdateAction('install', function () { return rpc('installUpdate'); });
+      }
+      return state;
+    });
+  }
+  // 状态轮询出现的「更新到 X」按钮也须确认，不能绕过弹窗。
   function onInstallUpdate() {
+    if (!updateState || !confirmUpdate(updateState.latest)) return;
     return runUpdateAction('install', function () { return rpc('installUpdate'); });
   }
   // 「允许更新到 X」：用户回滚过的版本默认不再装回来（引擎侧 holdVersion），
   // 只有这个显式动作才解除暂缓 —— 逃生门不能被自动流程悄悄重新打开。
   function onForceUpdate() {
+    if (!updateState || !confirmUpdate(updateState.holdVersion)) return;
     return runUpdateAction('install', function () { return rpc('installUpdate', { force: true }); });
   }
   function onRollbackUpdate() {
