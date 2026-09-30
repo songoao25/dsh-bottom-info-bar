@@ -208,6 +208,7 @@ function makeUpdater(fixture, options) {
     packageDir: fixture.packageDir,
     dataDir: fixture.dataDir,
     runningVersion: opts.runningVersion || '1.0.0',
+    autoInstallAllowed: opts.autoInstallAllowed,
     keepBackups: opts.keepBackups,
     now: () => 1758800000000,
     fetch: async (url, init) => {
@@ -683,6 +684,26 @@ await okAsync('关闭自动更新后：只查版本、不下载、不替换，�
   } finally { fx.cleanup() }
 })
 
+await okAsync('用户打开设置页后，启动自动更新在下载途中也不会替换文件；确认后可手动安装', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    let pageVisited = false
+    const payload = makePayload('1.1.0')
+    const { updater } = makeUpdater(fx, {
+      payload,
+      latestVersion: '1.1.0',
+      autoInstallAllowed: () => !pageVisited,
+      onFetch: async (url) => { if (url.endsWith('.tgz')) pageVisited = true },
+    })
+    const automatic = await updater.run()
+    assert.equal(automatic.skipped, 'page-visited')
+    assert.equal(JSON.parse(readFileSync(join(fx.packageDir, 'package.json'), 'utf8')).version, '1.0.0')
+    const confirmed = await updater.run({ manual: true })
+    assert.equal(confirmed.pendingVersion, '1.1.0')
+    assert.equal(JSON.parse(readFileSync(join(fx.packageDir, 'package.json'), 'utf8')).version, '1.1.0')
+  } finally { fx.cleanup() }
+})
+
 await okAsync('开关状态落盘，重启后仍是关闭', async () => {
   const fx = makeFixture({ version: '1.0.0' })
   try {
@@ -812,8 +833,10 @@ ok('host 接线：装载形态闸门 + 测试隔离开关 + 全部更新 RPC 与
   // 检查走引擎的只读分支、安装走写分支 —— 写死了这两个 mode 才谈得上「检查不会装」
   assert.match(host, /run\(\{ mode: 'check', manual: true \}\)/, 'checkUpdate 必须走只读的检查分支')
   assert.match(host, /run\(\{ mode: 'install', manual: true, force: force \}\)/, 'installUpdate 必须走安装分支')
-  assert.match(host, /runUpdateCheck: async function \(args\) \{\s*return ROUTES\.installUpdate\(args\)/,
-    '老接口 runUpdateCheck 只能当作 installUpdate 的别名（旧页面的语义就是「检查并安装」）')
+  assert.match(host, /runUpdateCheck: async function \(args\) \{\s*return ROUTES\.checkUpdate\(args\)/,
+    '老接口 runUpdateCheck 也不得在未确认时安装')
+  assert.match(host, /enterUpdatePage: async function \(\) \{\s*updatePageVisited = true/,
+    '进入设置页必须推迟本次启动的自动安装')
   // 状态只有一个出口：所有更新 RPC 都返回同一份 payload，客户端不必把两种形状拼起来
   assert.match(host, /async function updateStatePayload\(\)/)
   const payloadUses = (host.match(/updateStatePayload\(\)/g) || []).length
@@ -931,6 +954,9 @@ ok('2026-09-26：检查与安装拆成两个按钮，检查按钮不再藏进「
   const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
   // 两个动词：检查 = checkUpdate（纯读），安装 = installUpdate（唯一的写动作）
   assert.match(client, /rpc\('checkUpdate'\)/)
+  assert.match(client, /rpc\('enterUpdatePage'\)/)
+  assert.match(client, /state\.available === true && state\.pendingRestart !== true && confirmUpdate\(state\.latest\)/)
+  assert.match(client, /window\.confirm\(t\('ui\.updateConfirm', \{ version: version \}\)\)/)
   assert.match(client, /rpc\('installUpdate'\)/)
   assert.match(client, /rpc\('installUpdate', \{ force: true \}\)/)
   assert.doesNotMatch(client, /rpc\('runUpdateCheck'/, '新界面不得再调用「检查即安装」的老接口')
@@ -947,6 +973,31 @@ ok('2026-09-26：检查与安装拆成两个按钮，检查按钮不再藏进「
   assert.match(client, /t\('ui\.updateHostOutdated'\)/)
 })
 
+await okAsync('手动检查发现新版：拒绝弹窗只检查，确认后才安装', async () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  const start = client.indexOf('  function onCheckUpdate() {')
+  const end = client.indexOf('  function onInstallUpdate() {', start)
+  assert.ok(start >= 0 && end > start)
+  const source = client.slice(start, end)
+  async function drive(accepted) {
+    const calls = []
+    const rpc = async (method) => {
+      calls.push(method)
+      return method === 'checkUpdate'
+        ? { available: true, latest: '1.1.0', pendingRestart: false }
+        : { pendingRestart: true }
+    }
+    const runUpdateAction = async (_phase, factory) => factory()
+    const confirmUpdate = (version) => { assert.equal(version, '1.1.0'); return accepted }
+    const onCheckUpdate = Function('runUpdateAction', 'rpc', 'confirmUpdate',
+      source + '\nreturn onCheckUpdate')(runUpdateAction, rpc, confirmUpdate)
+    await onCheckUpdate()
+    return calls
+  }
+  assert.deepEqual(await drive(false), ['checkUpdate'])
+  assert.deepEqual(await drive(true), ['checkUpdate', 'installUpdate'])
+})
+
 ok('2026-09-26：动作完成后重新读状态（半状态会让结论说说谎最多 15 秒）', () => {
   const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
   // 读状态只有一个入口：轮询与动作后共用它
@@ -958,7 +1009,7 @@ ok('2026-09-26：动作完成后重新读状态（半状态会让结论说说谎
   for (const call of ["runUpdateAction('mode'", "runUpdateAction('check'", "runUpdateAction('install'"]) {
     assert.ok(client.includes(call), '更新动作必须统一走 runUpdateAction：' + call)
   }
-  assert.equal((client.match(/runUpdateAction\('install'/g) || []).length, 2, '安装与强制安装都走 install 通道')
+  assert.equal((client.match(/runUpdateAction\('install'/g) || []).length, 3, '检查确认、安装按钮、强制安装都走 install 通道')
 })
 
 ok('2026-09-26：更新动作前后保护滚动位置（用户报「点完更新，设置页滑到最上端」）', () => {

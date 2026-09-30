@@ -339,6 +339,7 @@ export function createSelfUpdater(options) {
   const keepBackups = Number.isInteger(config.keepBackups) ? config.keepBackups : 3
   const timeoutMs = Number.isFinite(config.timeoutMs) ? config.timeoutMs : 60000
   const maxBytes = Number.isFinite(config.maxBytes) ? config.maxBytes : 8 * 1024 * 1024
+  const autoInstallAllowed = typeof config.autoInstallAllowed === 'function' ? config.autoInstallAllowed : () => true
 
   // holdVersion：用户回滚过的版本。回滚是「新版有问题」时的逃生门，若重启后 8 秒的自动检查又把它
   // 装回来，等于逃生门自己会关上。因此回滚后只暂缓「正好等于该版本」的更新，更高版本照常进行。
@@ -441,13 +442,15 @@ export function createSelfUpdater(options) {
     } catch { /* 目录不存在即无需清理 */ }
   }
 
-  async function performUpdate(target) {
+  async function performUpdate(target, manual) {
     const tarball = await downloadTarball(target.version)
     const files = extractPackageFiles(tarball)
     verifyPayload(files, { integrity: target.integrity, version: target.version, tarball })
+    // 用户打开设置页后，即使启动时的自动下载已经开始，也不得在当前页面替换插件文件。
+    if (!manual && !autoInstallAllowed()) return false
     const result = applyPayload(files, { packageDir, backupDir: join(backupRoot, target.version), log })
     pruneBackups()
-    return result
+    return !!result
   }
 
   async function runOnce(options) {
@@ -506,8 +509,15 @@ export function createSelfUpdater(options) {
       saveState()
       return Object.assign({}, state, { latest: latest.version, skipped: 'auto-disabled' })
     }
+    if (!manual && !autoInstallAllowed()) {
+      saveState()
+      return Object.assign({}, state, { latest: latest.version, skipped: 'page-visited' })
+    }
     try {
-      await performUpdate(latest)
+      if (!await performUpdate(latest, manual)) {
+        saveState()
+        return Object.assign({}, state, { latest: latest.version, skipped: 'page-visited' })
+      }
       state.pendingVersion = latest.version
       // 装上了一个「不等于暂缓版本」的新版：暂缓自动解除（回滚过的那个旧版本已被越过）
       state.holdVersion = null
@@ -543,6 +553,10 @@ export function createSelfUpdater(options) {
     //   run({ manual: true })  → 安装（用户点「更新到 X」；自动方式关掉时的显式授权）
     run(options) {
       const slot = options && options.mode === 'check' ? 'check' : 'install'
+      // 启动自动更新在途时，用户确认的手动安装必须随后真正执行，不能复用自动任务的跳过结果。
+      if (slot === 'install' && options && options.manual && inFlight.install) {
+        return inFlight.install.then(() => this.run(options))
+      }
       if (inFlight[slot]) return inFlight[slot]
       const pending = runOnce(options).finally(() => { inFlight[slot] = null })
       inFlight[slot] = pending
