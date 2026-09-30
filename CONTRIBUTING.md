@@ -39,7 +39,9 @@ CI 还会强制执行几条硬规矩（违反即红），请提前了解：
 
 - **你自己的 PR 不会自动合并**，需要维护者 review 后手动合并；仓库主人的 PR 才会自动合并（trust-by-author）。
 - 合并进 main 后，Release Please 会自动算出新版本号并开一个「发布 PR」，该 PR 需维护者确认后才会打标签并发布到 npm。所以你的改动会在**下一个版本**里与用户见面。
-- 详细流程见 `docs/WORKFLOW.md`。
+- 发布链路的细节、以及「为什么发布 job 不能等 npm」这类必须遵守的规则，写在
+  `.github/workflows/publish-npm.yml` 与 `.github/workflows/verify-npm-release.yml`
+  的注释里，并由 `tests/test-release-chain.mjs` 逐条钉死 —— 改发布链路前请先读它们。
 
 ## 开发环境
 
