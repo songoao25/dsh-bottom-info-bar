@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.20.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.10...v1.20.11) (2026-09-30)
+
+
+### Bug Fixes
+
+* keep npm publish fast by moving readback into its own workflow ([#212](https://github.com/songoao25/dsh-bottom-info-bar/issues/212)) ([7a62162](https://github.com/songoao25/dsh-bottom-info-bar/commit/7a621628e7091636bf506dfd1991ed14466b3720))
+
 ## [1.20.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.9...v1.20.10) (2026-09-30)
 
 
