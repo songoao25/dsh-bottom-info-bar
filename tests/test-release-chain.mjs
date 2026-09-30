@@ -131,7 +131,7 @@ check(
 check(
   '契约 3f：读回校验仍覆盖版本元数据 / latest / tarball 完整性',
   verifyScript.includes('dist.integrity')
-    && verifyScript.includes('/latest')
+    && verifyScript.includes('dist-tags')
     && verifyScript.includes('.tgz')
     && verifyScript.includes("createHash('sha512')"),
   'npm publish 接受请求不代表新版本已可安装；缺少读回会误报发布成功'
@@ -141,6 +141,18 @@ check(
   publishNpm.includes('cannot publish over the previously published versions')
     && publishNpm.includes('npm view'),
   '重跑同一个标签会 403（版本已存在）：必须按幂等处理，而不是判发布失败'
+)
+check(
+  '契约 3h：npm 漏掉 latest 标签时必须能自动校正',
+  verifyScript.includes('dist-tag')
+    && verifyScript.includes('NPM_VERIFY_REPAIR_DIST_TAG')
+    && verifyRelease.includes('NPM_VERIFY_REPAIR_DIST_TAG'),
+  'v1.20.10 实测：版本已公开，latest 却仍停在旧版本 —— 用户 npm i 装到的还是旧包'
+)
+check(
+  '契约 3i：判定必须区分「npm 已受理在排队」与「npm 根本没收到」',
+  verifyScript.includes('/status') && verifyScript.includes('validating'),
+  '只按时间判断会把 npm 的异步校验队列误判成发布失败'
 )
 
 // ---------- 契约 4：人工闸门必须仍然存在 ----------

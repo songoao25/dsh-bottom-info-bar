@@ -52,6 +52,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 20
+          # registry-url 会让 setup-node 写一份带 NODE_AUTH_TOKEN 占位的 .npmrc，
+          # 校正 latest 标签（npm dist-tag add）时要靠它认证。
+          registry-url: https://registry.npmjs.org
 
       - name: Compute release age
         id: age
@@ -74,3 +77,6 @@ jobs:
           # 发布刚结束时值得等一小会儿（典型 1~2 分钟就能确认）；
           # 定时兜底只读一次，绝不空等。
           NPM_VERIFY_WAIT_MS: ${{ github.event_name == 'workflow_run' && '600000' || '0' }}
+          # npm 偶尔会把版本放进 registry 却漏掉 latest（v1.20.10 实测），
+          # 这里允许脚本替它把 latest 指到刚发布的版本上。
+          NPM_VERIFY_REPAIR_DIST_TAG: '1'
