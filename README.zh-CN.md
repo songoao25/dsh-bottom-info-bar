@@ -60,3 +60,5 @@ dsh plugin --profile web add dsh-bottom-info-bar
 💬 有问题或想法？扫码加入微信群 **DeepThinking**：
 
 <img src="assets/wechat-group.png" width="180" alt="微信群 DeepThinking 二维码">
+
+节假日计价已覆盖国务院公布的 2026 年中国放假调休日期。后续年份需在年度通知公布后更新日历；未收录年份使用周一至周五/周末规则。调休上班的周末仍为空闲价，已冻结的历史费用保持不变。
