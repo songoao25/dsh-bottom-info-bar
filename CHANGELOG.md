@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.20.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.11...v1.20.12) (2026-10-01)
+
+
+### Bug Fixes
+
+* apply off-peak pricing during Chinese public holidays ([#216](https://github.com/songoao25/dsh-bottom-info-bar/issues/216)) ([f726dd8](https://github.com/songoao25/dsh-bottom-info-bar/commit/f726dd864fbc8f705dc8a825da953e4c8f025a4e))
+
 ## [1.20.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.10...v1.20.11) (2026-09-30)
 
 
