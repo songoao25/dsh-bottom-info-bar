@@ -58,3 +58,5 @@ Every model response records one entry (usage × unit price, locked the moment t
 [MIT](LICENSE) © 2026 songoao25
 
 💬 Questions or ideas? Join our WeChat group **DeepThinking** — [QR code](assets/wechat-group.png).
+
+Holiday pricing includes the official 2026 Chinese holiday leave ranges. Later calendars must be updated after the annual State Council notice; unlisted years use the weekday/weekend rule. Make-up working weekends remain off-peak. Frozen historical costs are unchanged.
