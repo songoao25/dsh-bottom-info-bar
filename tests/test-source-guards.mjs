@@ -97,7 +97,7 @@ check(
 // ---------- 守卫 2：本项目只允许通用 Agent 资产 ----------
 //
 // 举一反三（2026-09-26 用户拍板）：禁的不只是记忆目录。一切 Agent 专属物都不许进仓库 ——
-// 记忆目录、配置目录、私有指令文件，改用通用等价物（MEMORY.md / AGENTS.md / docs/）。
+// 记忆目录、配置目录、私有指令文件都不许进仓库；这些内容放仓库之外的本机私有工作区。
 // 专属物把项目知识锁死在某一个工具里，换一个 Agent 接手就看不到了，等于丢失。
 const FORBIDDEN_AGENT_PATHS = [
   // 工具专属记忆/配置目录
@@ -116,7 +116,8 @@ check(
   foundForbidden.length === 0,
   foundForbidden.length === 0 ? undefined
     : '发现：' + foundForbidden.join(', ') +
-      '\n      修法：内容迁入通用位置（记忆进根目录 MEMORY.md，其余进 AGENTS.md/docs/）后删除。规则见 MEMORY.md 顶部「使用规则」。'
+      '\n      修法：把内容迁到仓库之外（本机私有工作区）后删除；仓库只保留代码与 docs/ 下的用户文档。' +
+      '\n      注意：守卫 3a 同样禁止 AGENTS.md / MEMORY.md 入仓，不要用它们当替代位置。'
 )
 
 // ---------- 守卫 3：过程文稿不得入仓 ----------
@@ -190,7 +191,8 @@ if (!baseRef) {
         : '被修改：' + touched.join(', ') +
           (override ? '\n      （已检测到 [release-metadata-override]，本次放行）' : '') +
           '\n      版本号 / CHANGELOG / manifest 由 Release Please 自动维护，手工改会破坏它的基准，' +
-          '\n      进而重演 v2.0.0 误发事故。发版请合并 Release Please 开出的「发布 PR」。详见 AGENTS.md「发布机制」。' +
+          '\n      进而重演 v2.0.0 误发事故。发版请合并 Release Please 开出的「发布 PR」；' +
+          '\n      发布链路细节见 .github/workflows/publish-npm.yml 与 verify-npm-release.yml 的注释。' +
           '\n      确有抢修需要时：在提交信息里加 [release-metadata-override] 并在 PR 描述里说明原因。'
     )
   }

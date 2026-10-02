@@ -33,7 +33,7 @@ CI 还会强制执行几条硬规矩（违反即红），请提前了解：
 
 - **不要手工修改版本号**：`plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 由 [Release Please](https://github.com/googleapis/release-please) 自动维护，手工改会破坏它的发布基准。
 - **不要裸读宿主服务属性**（如 `ctx.someService`）。cordis 4 的 Context 是 Proxy，读取未声明 `inject` 的服务属性会抛错——请用 `ctx.get('name')` 或声明注入。这是本项目踩过三次的坑。
-- 细节见仓库根目录 `AGENTS.md`。
+- 这几条由 `tests/test-source-guards.mjs` 在 CI 里强制检查，违反会直接变红；发布链路的细节写在 `.github/workflows/publish-npm.yml` 与 `verify-npm-release.yml` 的注释里。
 
 ### 合并与发布（外部贡献者请注意）
 

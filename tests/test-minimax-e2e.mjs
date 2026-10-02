@@ -825,7 +825,7 @@ function sliceBetween(src, startMarker, endMarker) {
   }
 }
 {
-  // 对比度（AGENTS.md 反色铁律）：选中态品牌深档 × 白字 ≥ 4.5:1，hover 不退回浅档
+  // 对比度（反色铁律）：选中态品牌深档 × 白字 ≥ 4.5:1，hover 不退回浅档
   function channel(c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
   function luminance(hex) {
     const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex).trim())
