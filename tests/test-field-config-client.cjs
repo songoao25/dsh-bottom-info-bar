@@ -934,8 +934,46 @@ function withFakeDocument(run) {
     && clientSrc.includes('stroke-width: 2px'), true);
   check('D7：悬浮说明复用 primitives 的 Tooltip（与原生同一用法），缺失时才退回浏览器 title',
     clientSrc.includes("const CONTEXT_TOOLTIP = typeof BIB_SET_PRIMITIVES.Tooltip === 'function' ? BIB_SET_PRIMITIVES.Tooltip : null;")
-    && clientSrc.includes("React.createElement(CONTEXT_TOOLTIP, { label: ariaText, side: 'top', delayMs: 200, disabled: open }, button)")
+    && clientSrc.includes("React.createElement(CONTEXT_TOOLTIP, { label: ariaText, side: 'top', delayMs: 200, disabled: open, portal: true }, button)")
     && clientSrc.includes('if (CONTEXT_TOOLTIP === null) buttonProps.title = ariaText;'), true);
+  // Issue #218: exercise the actual component rather than matching its call text.
+  {
+    let state = [false, null];
+    let cursor = 0;
+    let stopped = 0;
+    const tooltip = function Tooltip() {};
+    const react = {
+      useState(initial) {
+        const index = cursor++;
+        return [state[index], function (next) { state[index] = next; }];
+      },
+      useRef() { return { current: null }; },
+      useEffect() {},
+      createElement(type, props, ...children) { return { type, props: props || {}, children }; },
+    };
+    const body = {};
+    const factory = new Function('React', 'CONTEXT_TOOLTIP', 'ReactDOM', 'document', 't', 'fieldStyle',
+      'CONTEXT_READING_SLOT', 'CONTEXT_RADIUS', 'CONTEXT_CIRCUMFERENCE', 'CONTEXT_PANEL_ROWS', 'contextTokenText',
+      extractFunctionFrom(clientSrc, 'ContextMeterRing') + '; return ContextMeterRing;');
+    const ring = factory(react, tooltip, { createPortal: (node, target) => ({ node, target }) }, { body },
+      t, () => undefined, '\u0000', 5.5, 2 * Math.PI * 5.5, [], String);
+    const render = function () {
+      cursor = 0;
+      return ring({ context: { percent: 33, usedTokens: 330, contextWindow: 1000 } });
+    };
+    const closed = render();
+    const trigger = closed.children[0];
+    check('Issue #218：实际渲染仍用原生 Tooltip 并把气泡移出底栏',
+      trigger.type === tooltip && trigger.props.portal === true
+      && trigger.props.side === 'top' && trigger.props.delayMs === 200
+      && trigger.props.disabled === false && trigger.children[0].props.title === undefined, true);
+    trigger.children[0].props.onClick({ stopPropagation() { stopped++; } });
+    const opened = render();
+    check('Issue #218：点击只打开统计面板，原生提示禁用，面板仍挂在 body',
+      stopped === 1 && opened.children[0].props.disabled === true
+      && opened.children[1].target === body
+      && opened.children[1].node.props.role === 'dialog', true);
+  }
   check('D7：明细面板挂到 body（避免被底栏容器裁切），Esc 与外部点击可关',
     clientSrc.includes('ReactDOM.createPortal(panel, portalTarget)')
     && clientSrc.includes("if (event.key === 'Escape') setOpen(false);"), true);

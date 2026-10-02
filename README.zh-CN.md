@@ -31,6 +31,8 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 然后**重启 DSH**（插件在宿主启动时组合，只刷新页面不够）。桌面客户端把 `--profile web` 换成 `--profile desktop`。其他装法（含 Windows PowerShell）与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
 
+上下文占用圆环保留原生悬浮提示，点击可打开统计面板。提示和面板都显示在底栏外层，避免出现时改动底栏内部。
+
 ## 设置
 
 都在插件页（**插件 → bottom-info-bar**），改完自动保存，一共三组，每组默认收起：**原生信息**（DSH 原生统计行，只在完整模式出现）、**插件信息**（本插件新增的全部内容，两种模式都显示）、**提醒信息**（更新与失败这类一次性提醒，真有事才出现）。
