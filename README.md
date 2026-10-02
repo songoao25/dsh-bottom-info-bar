@@ -31,6 +31,8 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 Then **restart DSH** — plugins are composed when the host starts, so a page refresh is not enough. Use `--profile desktop` instead of `--profile web` on the desktop client. Other install methods (including Windows PowerShell) and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
+The context usage ring keeps the native hover tooltip and opens a statistics panel when clicked. Both overlays render outside the bottom bar so they do not change its contents.
+
 ## Settings
 
 Everything lives on the plugin page (**Plugins → bottom-info-bar**) and saves as you change it, in three groups, all collapsed by default: **native information** (DSH's own stats row, Full mode only), **plugin information** (everything this bar adds, both modes), and **notices** (one-off update and failure reminders, shown only when there is really something to say).
