@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.20.13](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.12...v1.20.13) (2026-10-02)
+
+
+### Bug Fixes
+
+* isolate context tooltip from composer dock ([#219](https://github.com/songoao25/dsh-bottom-info-bar/issues/219)) ([c1c1b17](https://github.com/songoao25/dsh-bottom-info-bar/commit/c1c1b1751e487beb41aed524ce042b187fdebdcc))
+
 ## [1.20.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.11...v1.20.12) (2026-10-01)
 
 
