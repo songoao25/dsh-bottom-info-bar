@@ -534,6 +534,25 @@ function infoBarShouldRemoveAll(registry, isVisible) {
   return registry.length > 0;
 }
 
+// 余额悬停明细（2026-10-07 用户拍板）：底栏只放得下一个总数，但用户想知道其中「充的钱」与
+// 「送的钱」各是多少 —— 两者的来源与规则不同，并成一个数就分不清了。
+// 文案与 DSH 设置页逐字对齐（充值余额 / 赠金余额，见 src/locales.js）：宿主已经这么叫，
+// 插件换一套说法只会让同一个数在同一个界面上有两个名字。
+// 展开条件只有一条「赠金为正」：
+//   · 赠金为 0 时（大多数服务商没有赠金概念）多出来的两行只是把同一个数字说三遍；
+//   · 首行直接沿用调用方给的既有文案，不展开时与老版本逐字一致 —— 零回归。
+// 金额取不到（老快照 / 非数字形态）按 0 处理：宁可少显示一行明细，也不猜一个数。
+function balanceHoverLines(baseTitle, data, symbol, translate, format) {
+  const lines = [baseTitle];
+  if (!data || typeof data !== 'object') return lines;
+  const granted = typeof data.granted === 'number' && isFinite(data.granted) ? data.granted : 0;
+  if (!(granted > 0)) return lines;
+  const toppedUp = typeof data.toppedUp === 'number' && isFinite(data.toppedUp) ? data.toppedUp : 0;
+  lines.push(translate('ui.balanceDetailToppedUp', { symbol: symbol, value: format(toppedUp) }));
+  lines.push(translate('ui.balanceDetailGranted', { symbol: symbol, value: format(granted) }));
+  return lines;
+}
+
 // 两处样式安装函数各自先探 DOM（无 DOM 的宿主启动路径上直接返回空 disposer，绝不抛）：
 // 有意各写一遍而不抽 helper——两个函数都会被测试单独抽出求值（installStyles 走切片、
 // bibSetInstallStyles 走单函数抽取），helper 在抽离求值时不可见（localizeHostText 自包含原则）；
@@ -3495,8 +3514,11 @@ module.exports = {
           const balTitle = bal.estimate
             ? t('ui.estimatedBalance', { symbol: symbol, value: fmt(bal.data.total) })
             : t('ui.balance', { symbol: symbol, value: fmt(bal.data.total) });
+          // 悬停明细：赠金为正时在总计下面补「充值余额 / 赠金余额」两行（2026-10-07 拍板）。
+          // 原生 title 里的换行符由浏览器渲染成多行；不展开时与老版本逐字一致。
+          const balHoverTitle = balanceHoverLines(balTitle, bal.data, symbol, t, fmt).join('\n');
           if (fieldVisible('balance')) {
-            groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balTitle },
+            groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balHoverTitle },
               metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
               alertActive ? React.createElement('span', { className: 'bi-low-status' }, t('ui.low')) : null,
               bal.estimate ? React.createElement('span', { className: 'bi-muted' }, t('ui.estimated')) : null,
@@ -3558,14 +3580,23 @@ module.exports = {
             const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
             const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
             const symbol = usdSymbol ? '$' : '¥';
-            const costTxt = costCNY != null ? '¥' + costCNY.toFixed(3)
-              : (costUSD != null ? '$' + costUSD.toFixed(3) : symbol + (0).toFixed(3));
+            const priced = costCNY != null || costUSD != null;
+            const unpricedRecords = cs && cs.unpricedRecords ? cs.unpricedRecords : 0;
+            // 有 token 但一条都没定价 → 绝不用 ¥0.000 冒充“没有花费”（审计 2026-10-05）：
+            // 未收录模型只记账、不猜价，界面必须直说“暂不可计算”；部分未计价则前缀 ≈。
+            const hasTokens = !!(cs && cs.tokens > 0);
+            const costTxt = priced
+              ? (unpricedRecords > 0 ? '≈' : '') + (costCNY != null ? '¥' + costCNY.toFixed(3) : '$' + costUSD.toFixed(3))
+              : (hasTokens ? symbol + '—' : symbol + (0).toFixed(3));
             const today = usg.todaySpend != null ? t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) }) : '';
             const month = usg.monthSpend != null ? t('ui.lastDays', { symbol: symbol, value: fmt(usg.monthSpend, 3) }) : '';
             const total = usg.totalSpend != null ? t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) }) : '';
             const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
+            const costTitle = [t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' })];
+            if (!priced && hasTokens) costTitle.push(t('ui.pricingNotListedUsingDefaults'));
+            else if (priced && unpricedRecords > 0) costTitle.push(t('ui.spendPartlyUnpriced'));
             groups.push(fieldSpan('sessionCost', 'convo', React.createElement('span', {
-              title: t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' }) },
+              title: costTitle.join('\n') },
               metric(t('ui.session'), costTxt))));
           }
         } else if (errs.usage && fieldVisible('usageError')) {
@@ -3888,7 +3919,9 @@ module.exports = {
       if (statsProj) {
         // 每组：{ nodes: React 节点数组（数字用 num 加粗）, text: 纯文本（title 用）, fieldId: 字段 id（着色用） }
         const ng = [];
-        function group(parts, hidden, fieldId) {
+        // title：可选的原生悬浮说明。整行已有 title（nativeLine），组级 title 让每个指标
+        // 能自带口径说明（例如“缓存命中”按 token 计、只含主 Agent），浏览器悬停取最内层。
+        function group(parts, hidden, fieldId, title) {
           const nodesArr = [];
           const texts = [];
           function textOf(part) {
@@ -3904,7 +3937,7 @@ module.exports = {
             else if (Array.isArray(p)) { for (let j = 0; j < p.length; j++) nodesArr.push(p[j]); texts.push(textOf(p)); }
             else { nodesArr.push(p); texts.push(textOf(p)); }
           }
-          ng.push({ nodes: nodesArr, text: texts.join(''), hidden: !!hidden, fieldId: fieldId || null });
+          ng.push({ nodes: nodesArr, text: texts.join(''), hidden: !!hidden, fieldId: fieldId || null, title: title || null });
         }
 
         // v1.9.0 PR2：原生统计行字段按设置过滤（隐藏组完全不进 ng，不占版式也不进 title）
@@ -3930,10 +3963,19 @@ module.exports = {
 
         if (usageProj && (billedInput(usageProj) > 0 || (usageProj.outputTokens || 0) > 0)) {
           const denom = billedInput(usageProj);
-          const hit = denom > 0 ? Math.round(((usageProj.cacheReadTokens || 0) / denom) * 100) : null;
-          if (hit != null && fieldVisible('cacheHit')) group([metric(t('ui.cacheHit'), hit + '%')], false, 'cacheHit');
+          const cacheReadTokens = usageProj.cacheReadTokens || 0;
+          // 一位小数（审计 2026-10-05）：99.6% 过去被四舍五入成“100%”，用户会误以为缓存全命中、
+          // 输入几乎免费。100% 只能意味着未命中为 0，否则必须把小数露出来。
+          const hit = denom > 0 ? Math.round((cacheReadTokens / denom) * 1000) / 10 : null;
+          if (hit != null && fieldVisible('cacheHit')) {
+            group([metric(t('ui.cacheHit'), hit + '%')], false, 'cacheHit', t('ui.cacheHitScope', {
+              hit: formatTokens(cacheReadTokens),
+              miss: formatTokens(Math.max(0, denom - cacheReadTokens)),
+              percent: hit,
+            }));
+          }
           if (fieldVisible('tokensIO')) {
-            group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric(t('ui.output'), formatTokens(usageProj.outputTokens || 0) + ' tok')], false, 'tokensIO');
+            group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok'), ' · ', metric(t('ui.output'), formatTokens(usageProj.outputTokens || 0) + ' tok')], false, 'tokensIO', t('ui.tokenScope'));
           }
         }
 
@@ -3948,6 +3990,7 @@ module.exports = {
             key: 'ng' + i,
             'data-field': ng[i].fieldId || undefined,
             style: ng[i].fieldId ? fieldStyle(ng[i].fieldId) : undefined,
+            title: ng[i].title || undefined,
           }, ng[i].nodes));
         }
         // D6：原生组全部被隐藏（或全空）→ 原生行不渲染（不留空行/占位；hover 浮窗随之消失）
