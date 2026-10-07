@@ -504,7 +504,7 @@ function parseOpenCodeGoUsage(body, windowLabels) {
   return { plan: 'OpenCode Go', windows: windows }
 }
 
-// Command Code 的额度接口返回 credits.windowLimits（fiveHour / weekly）与套餐周期 credits。
+// Command Code 的额度接口返回顶层 windowLimits（fiveHour / weekly）与套餐周期 credits，兼容旧嵌套路径。
 // 套餐总额只使用官方 CLI 当前目录中的已知 planId；未知套餐不猜测月度百分比。
 function commandCodePayload(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || body.success === false) return null
@@ -544,8 +544,9 @@ function parseCommandCodeUsage(creditsBody, subscriptionBody, windowLabels) {
   if (!credits || typeof credits !== 'object' || Array.isArray(credits)) return null
   const wl = windowLabels || WINDOW_LABELS
   const windows = []
-  const fiveHour = commandCodeWindow(credits.windowLimits && credits.windowLimits.fiveHour, 'five_hour', wl.five_hour)
-  const weekly = commandCodeWindow(credits.windowLimits && credits.windowLimits.weekly, 'seven_day', wl.seven_day)
+  const windowLimits = creditsPayload.windowLimits || credits.windowLimits
+  const fiveHour = commandCodeWindow(windowLimits && windowLimits.fiveHour, 'five_hour', wl.five_hour)
+  const weekly = commandCodeWindow(windowLimits && windowLimits.weekly, 'seven_day', wl.seven_day)
   if (fiveHour) windows.push(fiveHour)
   if (weekly) windows.push(weekly)
 
