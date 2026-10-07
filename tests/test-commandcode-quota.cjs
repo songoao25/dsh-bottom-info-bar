@@ -95,6 +95,37 @@ check('完整响应：秒级和 ISO 重置时间', full && full.windows.map((w) 
 check('完整响应：总剩余 credits', full && full.balance, 67)
 check('完整响应：余额单位为 credits', full && full.balanceUnit, 'credits')
 
+// Issue #221: windowLimits is a sibling of credits in the current API response.
+// Synthetic amounts deliberately differ from the report's account data.
+const topLevelCredits = {
+  credits: { monthlyCredits: 56, purchasedCredits: 3, freeCredits: 1 },
+  windowLimits: {
+    fiveHour: { cap: 20, used: 3, resetAt: 1800000000000 },
+    weekly: { cap: 50, used: 12, resetAt: 1800500000000 },
+  },
+}
+const goatSubscription = { planId: 'individual-goat', status: 'active', currentPeriodEnd: 1801000000000 }
+const topLevel = parseCommandCodeUsage(topLevelCredits, goatSubscription, WINDOW_LABELS)
+check('顶层窗口：GOAT 套餐', topLevel && topLevel.plan, 'Command Code GOAT')
+check('顶层窗口：5 小时 / 周 / 月窗口顺序', topLevel && topLevel.windows.map((w) => w.key), ['five_hour', 'seven_day', 'monthly'])
+check('顶层窗口：已用比例与月度额度', topLevel && topLevel.windows.map((w) => w.usedPercent), [15, 24, 20])
+check('顶层窗口：毫秒重置时间', topLevel && topLevel.windows.map((w) => w.resetsAt), [1800000000000, 1800500000000, 1801000000000])
+check('顶层窗口：余额不变', topLevel && topLevel.balance, 60)
+check('data 包装：顶层窗口结果一致', parseCommandCodeUsage({ success: true, data: topLevelCredits }, { data: goatSubscription }, WINDOW_LABELS), topLevel)
+const withoutSubscription = parseCommandCodeUsage(topLevelCredits, { success: false }, WINDOW_LABELS)
+check('订阅请求失败：仍保留顶层滚动窗口', withoutSubscription && withoutSubscription.windows.map((w) => w.key), ['five_hour', 'seven_day'])
+const bothShapes = parseCommandCodeUsage({
+  ...topLevelCredits,
+  credits: { ...topLevelCredits.credits, windowLimits: fullCredits.data.credits.windowLimits },
+}, goatSubscription, WINDOW_LABELS)
+check('两种路径同时存在：优先顶层当前数据', bothShapes, topLevel)
+check('顶层窗口为空：兼容旧嵌套路径', parseCommandCodeUsage({ ...fullCredits, data: { ...fullCredits.data, windowLimits: null } }, fullSubscription, WINDOW_LABELS), full)
+const invalidTopLevel = parseCommandCodeUsage({
+  credits: { monthlyCredits: 'invalid', purchasedCredits: 0, freeCredits: 0 },
+  windowLimits: { fiveHour: { cap: 0, used: 3 }, weekly: { cap: 50, used: 'invalid' } },
+}, null, WINDOW_LABELS)
+check('顶层畸形窗口：不伪造额度', invalidTopLevel, null)
+
 const unknownPlan = parseCommandCodeUsage({
   credits: {
     planId: 'individual-future-v2',

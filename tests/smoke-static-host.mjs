@@ -224,10 +224,10 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
         monthlyCredits: 60,
         purchasedCredits: 5,
         freeCredits: 2,
-        windowLimits: {
-          fiveHour: { cap: 100, used: 25, resetAt: 1789284984 },
-          weekly: { cap: 1000, used: 400, resetAt: '2026-09-19T08:26:46Z' },
-        },
+      },
+      windowLimits: {
+        fiveHour: { cap: 100, used: 25, resetAt: 1789284984 },
+        weekly: { cap: 1000, used: 400, resetAt: '2026-09-19T08:26:46Z' },
       },
     },
     subscriptions: { success: true, data: { planId: 'individual-pro-v1', status: 'active', currentPeriodEnd: '2026-10-01T00:00:00Z' } },
@@ -278,6 +278,7 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
       const r = await invoke(commandCtx.captured.route, '/_dsh/dsh-bottom-info-bar/getSubscriptionSnapshot', 'POST', selectionBody('command', 'command-model'), { 'sec-fetch-site': 'same-origin' })
       check('Command Code → 官方 credits/订阅接口解析成功', r.status === 200 && r.payload.source === 'command-code' && r.payload.plan === 'Command Code Pro' && r.payload.error === null, JSON.stringify(r.payload))
       check('Command Code → 5 小时 / 周 / 月窗口 + credits 单位', r.payload.windows.length === 3 && r.payload.windows.map((w) => w.key).join(',') === 'five_hour,seven_day,monthly' && r.payload.balance === 67 && r.payload.balanceUnit === 'credits', JSON.stringify(r.payload))
+      check('Command Code 顶层窗口 → 百分比和重置时间保留', JSON.stringify(r.payload.windows.map((w) => [w.usedPercent, w.resetsAt])) === JSON.stringify([[25, 1789284984000], [40, Date.parse('2026-09-19T08:26:46Z')], [25, Date.parse('2026-10-01T00:00:00Z')]]), JSON.stringify(r.payload))
       const commandRequests = requested.filter(isCommandCodeApiRequest)
       check('Command Code → Bearer 请求与 orgId 查询参数', commandRequests.length === 3 && commandRequests.every((entry) => entry.headers && entry.headers.Authorization === 'Bearer test-command-key') && commandRequests.some((entry) => new URL(String(entry.url)).searchParams.get('orgId') === 'org-test'), JSON.stringify(requested))
     }
