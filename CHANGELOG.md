@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.20.14](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.13...v1.20.14) (2026-10-07)
+
+
+### Bug Fixes
+
+* correct V4 Pro billing and show topped-up/granted balances on hover ([#222](https://github.com/songoao25/dsh-bottom-info-bar/issues/222)) ([1d9c8af](https://github.com/songoao25/dsh-bottom-info-bar/commit/1d9c8af30938ae85fd2bd39812b8f08e213332fe))
+
 ## [1.20.13](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.12...v1.20.13) (2026-10-02)
 
 
