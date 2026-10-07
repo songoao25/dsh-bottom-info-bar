@@ -534,6 +534,25 @@ function infoBarShouldRemoveAll(registry, isVisible) {
   return registry.length > 0;
 }
 
+// 余额悬停明细（2026-10-07 用户拍板）：底栏只放得下一个总数，但用户想知道其中「充的钱」与
+// 「送的钱」各是多少 —— 两者的来源与规则不同，并成一个数就分不清了。
+// 文案与 DSH 设置页逐字对齐（充值余额 / 赠金余额，见 src/locales.js）：宿主已经这么叫，
+// 插件换一套说法只会让同一个数在同一个界面上有两个名字。
+// 展开条件只有一条「赠金为正」：
+//   · 赠金为 0 时（大多数服务商没有赠金概念）多出来的两行只是把同一个数字说三遍；
+//   · 首行直接沿用调用方给的既有文案，不展开时与老版本逐字一致 —— 零回归。
+// 金额取不到（老快照 / 非数字形态）按 0 处理：宁可少显示一行明细，也不猜一个数。
+function balanceHoverLines(baseTitle, data, symbol, translate, format) {
+  const lines = [baseTitle];
+  if (!data || typeof data !== 'object') return lines;
+  const granted = typeof data.granted === 'number' && isFinite(data.granted) ? data.granted : 0;
+  if (!(granted > 0)) return lines;
+  const toppedUp = typeof data.toppedUp === 'number' && isFinite(data.toppedUp) ? data.toppedUp : 0;
+  lines.push(translate('ui.balanceDetailToppedUp', { symbol: symbol, value: format(toppedUp) }));
+  lines.push(translate('ui.balanceDetailGranted', { symbol: symbol, value: format(granted) }));
+  return lines;
+}
+
 // 两处样式安装函数各自先探 DOM（无 DOM 的宿主启动路径上直接返回空 disposer，绝不抛）：
 // 有意各写一遍而不抽 helper——两个函数都会被测试单独抽出求值（installStyles 走切片、
 // bibSetInstallStyles 走单函数抽取），helper 在抽离求值时不可见（localizeHostText 自包含原则）；
@@ -3495,8 +3514,11 @@ module.exports = {
           const balTitle = bal.estimate
             ? t('ui.estimatedBalance', { symbol: symbol, value: fmt(bal.data.total) })
             : t('ui.balance', { symbol: symbol, value: fmt(bal.data.total) });
+          // 悬停明细：赠金为正时在总计下面补「充值余额 / 赠金余额」两行（2026-10-07 拍板）。
+          // 原生 title 里的换行符由浏览器渲染成多行；不展开时与老版本逐字一致。
+          const balHoverTitle = balanceHoverLines(balTitle, bal.data, symbol, t, fmt).join('\n');
           if (fieldVisible('balance')) {
-            groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balTitle },
+            groups.push(fieldSpan('balance', 'bal', React.createElement('span', { title: balHoverTitle },
               metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total), alertActive ? 'bi-alert-num' : ''),
               alertActive ? React.createElement('span', { className: 'bi-low-status' }, t('ui.low')) : null,
               bal.estimate ? React.createElement('span', { className: 'bi-muted' }, t('ui.estimated')) : null,

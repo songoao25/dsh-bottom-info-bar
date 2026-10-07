@@ -11,7 +11,7 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 
 ## What it shows
 
-The bar follows the active session and picks one of three readings per provider (mutually exclusive, nothing to switch by hand): **balance** shows the real balance from the provider's own API, **subscription quota** shows each quota window's remaining allowance with its reset countdown, and **cloud billing** shows this month's real spend from the official billing API. On top of that come four spend tallies — this session, today, last 30 days, all time — plus extras such as time and custom text.
+The bar follows the active session and picks one of three readings per provider (mutually exclusive, nothing to switch by hand): **balance** shows the real balance from the provider's own API, **subscription quota** shows each quota window's remaining allowance with its reset countdown, and **cloud billing** shows this month's real spend from the official billing API. On top of that come four spend tallies — this session, today, last 30 days, all time — plus extras such as time and custom text. In balance mode, hovering the balance expands it into topped-up and granted balances, so gifted credit is never conflated with the money you paid in.
 
 Click the bar to switch between **Full** and **Compact**. They differ in exactly one way: Full keeps DSH's native stats row, Compact collapses it. Whether a field appears is decided by that field's own switch alone, so the main row reads identically in both.
 

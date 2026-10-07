@@ -54,6 +54,7 @@ const cases = [
   ['test-subscription-providers-consistency（共享常量单一生源一致性）', ['tests/test-subscription-providers-consistency.cjs'], join(root), process.execPath],
   ['test-v17-adapters（v1.7 解析器：JWT/小米/Together/Fireworks/SigV4/Cloudflare/normalize）', ['tests/test-v17-adapters.cjs'], join(root), process.execPath],
   ['test-deepseek-account（issue #173：内置账号余额 / 两条轴分离 / 四种降级 / 金额字符串形态）', ['tests/test-deepseek-account.mjs'], join(root), process.execPath],
+  ['test-balance-breakdown（余额悬停明细：充值/赠金拆分、赠金为 0 零回归、DSH 文案对齐）', ['tests/test-balance-breakdown.mjs'], join(root), process.execPath],
   ['test-update-check（启动版本检查与红色提醒）', ['tests/test-update-check.cjs'], join(root), process.execPath],
   ['test-update-command（点击更新标签复制命令 + 命令随安装形态区分）', ['tests/test-update-command.mjs'], join(root), process.execPath],
   ['test-self-update（自更新引擎：版本比较/完整性校验/原子替换/回滚/开关/审计日志 + host/client 接线）', ['tests/test-self-update.mjs'], join(root), process.execPath],
