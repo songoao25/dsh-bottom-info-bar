@@ -62,6 +62,7 @@ const cases = [
   ['test-localization（zh/en rendering and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
   ['test-locale-copy（locale meta.title / 字典对称 / 错误码文案 / cordis ctx / patch 行 id）', ['tests/test-locale-copy.mjs'], join(root), process.execPath],
   ['test-runtime-uninstall（插件管理页运行时装卸：卸载清空 / 停用重启不动 / 不留残留）', ['tests/test-runtime-uninstall.mjs'], join(root), process.execPath],
+  ['test-billing-audit（计费审计：官方价目/峰谷/缓存口径/去重/未计价/多 Agent）', ['tests/test-billing-audit.mjs'], join(root), process.execPath],
 ]
 
 let failed = 0
