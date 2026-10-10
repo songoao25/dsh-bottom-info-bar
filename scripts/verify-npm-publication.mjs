@@ -20,10 +20,10 @@
 //
 // 判定规则：
 //   版本公开 + latest 不落后                     => 成功
-//   npm 明确说「有，正在 validating」             => 待定放行（已受理，只是慢）
+//   npm 明确说「有，正在 validating」             => 未完成（已受理，尚未公开）
 //      但超过 NPM_VERIFY_STUCK_MS（默认 6h）     => 失败（该找 npm 了）
 //   npm 说没收到这个版本，且已超过宽限期          => 失败（发布确实没跑成）
-//   查不到状态（无 token / 网络失败）             => 退化为按年龄判断
+//   查不到状态（无 token / 网络失败）             => 未完成，不能认定发布成功
 //
 // 环境变量：
 //   NPM_RELEASE_VERSION        要校验的版本；默认取 package.json，且必须与之一致
@@ -194,7 +194,7 @@ for (;;) {
 
   const state = await lifecycle()
 
-  // npm 明确说「有，正在校验」：已受理，只是慢。等待，但不会因此判失败。
+  // npm 明确说「有，正在校验」：已受理，等待公开后才能通过验证。
   if (state.state === 'validating' || state.state === 'pending') {
     if (releaseAgeMs() >= stuckMs) {
       console.error(`${PACKAGE}@${requestedVersion} 在 npm 服务端停留 ${fmt(releaseAgeMs())} 仍未公开，超过 ${fmt(stuckMs)} 上限。`)
@@ -218,6 +218,9 @@ for (;;) {
 }
 
 const finalState = await lifecycle()
-console.log(`结果：待定 —— npm 已受理 ${PACKAGE}@${requestedVersion}（状态：${finalState.detail}），${fmt(releaseAgeMs())} 后仍在服务端处理中。`)
-console.log('这是 npm 的异步发布队列，与本次发布是否成功无关；定时复查会继续确认它最终公开。')
-process.exit(0)
+if (finalState.state === 'validating' || finalState.state === 'pending') {
+  console.error(`结果：尚未公开 —— npm 已受理 ${PACKAGE}@${requestedVersion}（状态：${finalState.detail}），请稍后重新运行公开验证。`)
+} else {
+  console.error(`结果：发布未确认 —— ${PACKAGE}@${requestedVersion} 仍不可公开下载（状态：${finalState.detail}），请检查发布日志和 npm 授权后重新验证。`)
+}
+process.exit(1)

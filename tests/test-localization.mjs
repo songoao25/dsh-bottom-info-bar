@@ -29,7 +29,7 @@ assert.equal(localizeHostText('', hostT, dictionaries), '')
 preference = 'en'
 assert.equal(hostT('host.unknownProvider'), 'Unknown provider')
 preference = '<invalid>'
-assert.equal(hostT('host.unknownProvider'), '未知服务商')
+assert.equal(hostT('host.unknownProvider'), 'Unknown provider', 'unsupported languages fall back to English')
 
 // DSH 0.1.7 起 settings 服务换成 SettingsForms：get(ns) 被移除，只剩 describe()。
 // 只认 get 的旧写法会在新宿主上静默回退 zh —— 宿主语言是英文时插件却吐中文。
@@ -159,6 +159,7 @@ function nodes(tree) {
 function text(tree) {
   if (Array.isArray(tree)) return tree.map(text).join('')
   if (tree == null || typeof tree === 'boolean') return ''
+  if (typeof tree === 'object' && tree.type === 'option' && tree.props.value !== 'auto') return '' // language names are intentionally written in their own language
   return typeof tree === 'object' ? text(tree.props.children) : String(tree)
 }
 const rendered = nodes(render())

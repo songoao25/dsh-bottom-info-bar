@@ -1,3 +1,4 @@
+import { LOCALES } from '../src/locales.js'
 // 计费审计回归（2026-10-05）：DeepSeek 官方价目 / 峰谷口径 / 缓存命中口径 / 去重 / 未计价。
 //
 // 覆盖用户提出的 17 项：
@@ -216,7 +217,7 @@ check('⑰ 内部 token 始终是整数、展示才格式化（账本字段为 N
 const localeKeys = ['ui.cacheHitScope', 'ui.tokenScope', 'ui.spendPartlyUnpriced']
 for (const key of localeKeys) {
   const count = (localeSrc.match(new RegExp('"' + key + '"', 'g')) || []).length
-  check('locale 中英双语齐备：' + key, count === 2, count)
+  check('locale 全部语言齐备：' + key, count === Object.keys(LOCALES).length && Object.values(LOCALES).every(dictionary => typeof dictionary[key] === 'string' && dictionary[key].length > 0), count)
 }
 check('⑬ 未计价文案不承诺任何金额', localeSrc.includes('绝不套用其他模型价格估算') && localeSrc.includes('no other model\'s price is substituted'))
 

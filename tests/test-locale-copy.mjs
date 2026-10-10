@@ -21,13 +21,14 @@ const pluginDir = root
 const pkg = JSON.parse(readFileSync(join(pluginDir, 'package.json'), 'utf8'))
 const clientSource = readFileSync(join(pluginDir, 'src', 'client-bundle.js'), 'utf8')
 const localesSource = readFileSync(join(pluginDir, 'src', 'locales.js'), 'utf8')
+const { LOCALES } = await import('../src/locales.js')
 const { FIELD_REGISTRY, FIELD_GROUP_LABELS } = await import('../src/constants.js')
 const hostSource = readFileSync(join(pluginDir, 'src', 'host.js'), 'utf8')
 const patchSource = readFileSync(join(pluginDir, 'cordis.patch.yml'), 'utf8')
 const artifact = readFileSync(join(pluginDir, 'lib', 'client.js'), 'utf8')
 
 // ---------- 1. locale 文件：DSH 内置语言只有 zh / en ----------
-assert.deepEqual(readdirSync(join(pluginDir, 'locale')).sort(), ['en.json', 'zh.json'],
+assert.deepEqual(readdirSync(join(pluginDir, 'locale')).sort(), Object.keys(LOCALES).map(language => language + '.json').sort(),
   'locale/ must carry exactly the two DSH built-in languages (zh, en)')
 const en = JSON.parse(readFileSync(join(pluginDir, 'locale', 'en.json'), 'utf8'))
 const zh = JSON.parse(readFileSync(join(pluginDir, 'locale', 'zh.json'), 'utf8'))
@@ -53,10 +54,6 @@ assert.equal(pkg.description, en.meta.description,
   'package.json description is the English fallback and must equal locale/en.json meta.description')
 
 // ---------- 3. client 字典：键对称 / 非空 / 两侧不同 ----------
-const dictionaryBlock = localesSource.match(/export const LOCALES = \{[\s\S]*\n\}/)
-assert.ok(dictionaryBlock, 'src/locales.js must define the zh/en dictionary')
-// 用本 realm 的 JSON.parse 取字典：vm 里造出来的对象跨 realm，deepStrictEqual 会因原型不同而误报。
-const LOCALES = JSON.parse(dictionaryBlock[0].replace('export const LOCALES = ', ''))
 const zhKeys = Object.keys(LOCALES.zh)
 const enKeys = Object.keys(LOCALES.en)
 assert.ok(zhKeys.length >= 300, 'the dictionary must cover every user-visible string (got ' + zhKeys.length + ')')

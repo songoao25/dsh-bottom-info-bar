@@ -1,61 +1,42 @@
-# 贡献指南（Contributing）
+# Contributing
 
-感谢你考虑为本项目贡献！以下是指南，请先阅读再提交。
+Report reproducible bugs in [Issues](https://github.com/songoao25/dsh-bottom-info-bar/issues). Include DSH and plugin versions, operating system, installation method, steps, expected behavior and actual behavior. Discuss substantial features before implementing them.
 
-## 如何贡献
+For security vulnerabilities, follow [SECURITY.md](SECURITY.md) rather than opening a public issue. Never attach credentials, sign-in files, conversation content or personal account data.
 
-### 报告 Bug
-- 先搜索 [Issues](https://github.com/songoao25/dsh-bottom-info-bar/issues) 是否已存在；
-- 新建 Issue 时请包含：复现步骤、期望行为、实际行为、环境信息。
+## Structure
 
-### 提出新功能
-- 先在 Issues 中发起讨论，说明用途和场景，避免重复劳动；
-- 讨论通过后再实现。
+- `src/host.js`: provider data, usage accounting and RPC.
+- `src/client-bundle.js`: the info bar and plugin configuration page.
+- `src/locales.js` and `src/host-locale.js`: translated copy and host presentation.
+- `scripts/build.mjs`: generates the host and client bundles in `lib/`.
+- `locale/`: plugin display-name and description dictionaries.
+- `tests/`: behavior and packaging checks.
+- `docs/INSTALL.md`: installation, updates and troubleshooting.
 
-### 提交代码
-1. Fork 本仓库并创建功能分支：`git checkout -b feature/xxx`
-2. 遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交规范：
-   - `feat: 新功能`
-   - `fix: 修复`
-   - `docs: 文档`
-   - `test: 测试`
-   - `chore: 杂项`
-3. 提交信息用英文或中文均可，但需清晰描述改动；
-4. 通过 Pull Request 提交，描述清楚改动内容和验证方式。
+The repository root is the installable package. Generated `lib/` files are committed so a repository-address installation requires no build approval. Edit source files and rebuild; do not edit generated files directly.
 
-### 提交前请自测
+## Checks
 
 ```bash
-node tests/run-all.mjs     # 会自动先 build 再跑全部测试
+npm run build
+node tests/run-all.mjs
+git diff --check
+npm pack --dry-run
 ```
 
-CI 还会强制执行几条硬规矩（违反即红），请提前了解：
+Use existing dependencies. Keep tests isolated from real accounts, credentials and user files. Declare host services through injection before reading them; unavailable services must not make the configuration page disappear. Keep `prepublishOnly` as the publishing hook; do not add installation lifecycle scripts such as `prepare`, `prepack` or `postinstall`.
 
-- **不要手工修改版本号**：`plugin/package.json` 的 `version`、`.release-please-manifest.json`、`CHANGELOG.md` 由 [Release Please](https://github.com/googleapis/release-please) 自动维护，手工改会破坏它的发布基准。
-- **不要裸读宿主服务属性**（如 `ctx.someService`）。cordis 4 的 Context 是 Proxy，读取未声明 `inject` 的服务属性会抛错——请用 `ctx.get('name')` 或声明注入。这是本项目踩过三次的坑。
-- 这几条由 `tests/test-source-guards.mjs` 在 CI 里强制检查，违反会直接变红；发布链路的细节写在 `.github/workflows/publish-npm.yml` 与 `verify-npm-release.yml` 的注释里。
+Provider credentials belong in DSH settings or the existing local sign-in stores. Keep the info bar read-only with respect to subscription sign-in files. Stored usage records contain token counts and costs, not conversation content. Do not alter provider identifiers or historical costs while translating presentation text.
 
-### 合并与发布（外部贡献者请注意）
+## Pull requests and releases
 
-- **你自己的 PR 不会自动合并**，需要维护者 review 后手动合并；仓库主人的 PR 才会自动合并（trust-by-author）。
-- 合并进 main 后，Release Please 会自动算出新版本号并开一个「发布 PR」，该 PR 需维护者确认后才会打标签并发布到 npm。所以你的改动会在**下一个版本**里与用户见面。
-- 发布链路的细节、以及「为什么发布 job 不能等 npm」这类必须遵守的规则，写在
-  `.github/workflows/publish-npm.yml` 与 `.github/workflows/verify-npm-release.yml`
-  的注释里，并由 `tests/test-release-chain.mjs` 逐条钉死 —— 改发布链路前请先读它们。
+Use a focused branch and [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Describe the user-visible change, checks performed and remaining verification gaps. External contributions need maintainer review.
 
-## 开发环境
+Release Please manages versions and release notes. Do not manually change package or manifest version fields outside the established release process. Owner code PRs may auto-merge after required checks; release PRs are excluded and need maintainer confirmation. Tags trigger npm publication. Verify the public registry, `latest` tag, downloadable archive and integrity after publication; a successful workflow alone does not establish availability.
 
-- 本项目是 DeepSeek Harness 的静态 bundle 插件；
-- 主要文件结构：
-  - `plugin/src/` — 源码（host.js + client-bundle.js）
-  - `plugin/` — npm 包
-  - `tests/` — 测试（`node tests/run-all.mjs` 自动先 build 再测）
-- 修改源码后需重建：`cd plugin && npm run build`。
+README.md is the English entry point; README.zh-CN.md mirrors it in Chinese. Keep installation claims aligned with published packages and DSH's actual supported installation paths. Public repository files are for users and contributors; exclude private instructions, session records, account data and internal audits.
 
-## 行为准则
+## Conduct and license
 
-请遵守 [行为准则](CODE_OF_CONDUCT.md)。参与本项目即表示你同意遵守它。
-
-## 许可证
-
-贡献的代码将采用与本项目相同的 [MIT 许可证](LICENSE)。
+Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Contributions are licensed under [MIT](LICENSE).

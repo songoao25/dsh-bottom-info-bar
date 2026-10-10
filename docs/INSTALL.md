@@ -2,9 +2,9 @@
 
 ## 前置条件
 
-- 已安装 DeepSeek Harness（`dsh` CLI 在 PATH 中；桌面客户端同样提供该 CLI）
+- 已安装 DeepSeek Harness（网页端命令行安装需要 `dsh` CLI 在 PATH 中）
 - 已安装 [pnpm](https://pnpm.io/)
-- 网页端用 `dsh web` 启动，桌面客户端（灰度测试中）用其自带的 profile（通常是 `desktop`）：下文命令里的 `--profile web` 在桌面端一律换成 `--profile desktop`
+- 网页端用 `dsh web` 启动。桌面客户端通过**插件 → 添加插件**安装；`desktop` 配置由客户端管理，命令行不允许修改。以下脚本和命令适用于 CLI 的网页端配置。
 
 ## 安装
 
@@ -36,8 +36,7 @@ macOS / Linux：
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
 cd dsh-bottom-info-bar
 ./install.sh
-# 默认安装到 web profile；桌面客户端：
-./install.sh --profile desktop
+# 默认安装到 web profile
 ```
 
 Windows（PowerShell，原生，无需 Git Bash）：
@@ -46,8 +45,7 @@ Windows（PowerShell，原生，无需 Git Bash）：
 git clone https://github.com/songoao25/dsh-bottom-info-bar.git
 cd dsh-bottom-info-bar
 .\install.ps1
-# 桌面客户端：
-.\install.ps1 -Profile desktop
+
 ```
 
 卸载对应为 `./uninstall.sh` / `.\uninstall.ps1`（同样支持 `--profile` / `-Profile`）。
@@ -91,7 +89,7 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
 
-- **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-sub**](https://github.com/songoao25)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
+- **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-sub**](https://github.com/songoao25/dsh-chatgpt-sub)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
 - **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`（或先用 opencode CLI 登录其订阅，写入平台共享目录 `opencode/auth.json` 的 `opencode-go` 条目：macOS/Linux 为 `~/.local/share/opencode/auth.json`，Windows 为 `%LOCALAPPDATA%\opencode\auth.json`）。未配置时信息栏显示"未配置 OpenCode Go"引导，不报错。
 
 ## 更新版本
@@ -175,7 +173,7 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 
 | 现象 | 原因与处理 |
 |---|---|
-| 信息栏不出现 | ① 没重启：需重启 DSH（网页端即重启 `dsh web`）；② 装错 profile：确认启动用的 profile 与安装目标一致（网页端 `web`、桌面端 `desktop`）；③ `dsh --profile <name> --dump-config` 里没有 dsh-bottom-info-bar：重新执行安装 |
+| 信息栏不出现 | ① 没重启：需重启 DSH（网页端即重启 `dsh web`）；② 装错 profile：确认启动用的 profile 与安装目标一致（CLI 网页端通常为 `web`；桌面端请在应用的插件页检查）；③ `dsh --profile <name> --dump-config` 里没有 dsh-bottom-info-bar：重新执行安装 |
 | 安装报 `pnpm not found` | 安装 pnpm：`npm i -g pnpm` 或 `corepack enable` |
 | 安装报 `dsh-bottom-info-bar` 找不到 | 确认包名拼写；本地目录安装时路径要指向**仓库根**（包在仓库根，不是子目录） |
 | 插件页报「这个包没有声明组合包」（英文界面：declares no bundle） | 装到的是一个「仓库根不是包」的仓库——那是包移到仓库根之前的本仓库。插件页里改填包名 `dsh-bottom-info-bar`，或用包含该修复的版本上的仓库地址 |

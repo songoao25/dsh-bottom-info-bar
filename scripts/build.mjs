@@ -8,6 +8,7 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createLanguageRuntime } from '../src/language-runtime.js'
 import { LOCALES } from '../src/locales.js'
 import { localizeHostText } from '../src/host-locale.js'
 
@@ -86,6 +87,7 @@ await copyFile(join(root, 'src', 'constants.js'), join(libDir, 'constants.js'))
 //    也不再做 module.exports 重写/async 串接式的设置页包装。
 let clientSource = await readFile(join(root, 'src', 'client-bundle.js'), 'utf8')
 clientSource = injectSharedConstants(clientSource).replace('/*__LOCALES__*/{}', () => JSON.stringify(LOCALES))
+  .replace('/*__LANGUAGE_RUNTIME__*/', () => createLanguageRuntime.toString())
   .replace('/*__HOST_TEXT__*/', () => localizeHostText.toString())
 const wrapped = [
   'window.__ModuleLoader__.load({ id: "dsh-bottom-info-bar", factory: (require) => {',
@@ -98,3 +100,8 @@ const wrapped = [
 await writeFile(join(libDir, 'client.js'), wrapped)
 
 console.log('build OK → lib/index.js, lib/constants.js, lib/client.js')
+
+await mkdir(join(root, 'locale'), { recursive: true })
+for (const [language, dictionary] of Object.entries(LOCALES)) {
+  await writeFile(join(root, 'locale', language + '.json'), JSON.stringify({ meta: { title: dictionary['meta.title'], description: dictionary['meta.description'] } }, null, 2) + '\n')
+}

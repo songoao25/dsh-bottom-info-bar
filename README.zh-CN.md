@@ -29,7 +29,7 @@ https://github.com/songoao25/dsh-bottom-info-bar
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-然后**重启 DSH**（插件在宿主启动时组合，只刷新页面不够）。桌面客户端把 `--profile web` 换成 `--profile desktop`。其他装法（含 Windows PowerShell）与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
+然后**重启 DSH**（插件在宿主启动时组合，只刷新页面不够）。桌面客户端请使用**插件 → 添加插件**；它的配置由客户端管理，不能通过命令行安装。其他装法（含 Windows PowerShell）与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
 
 上下文占用圆环保留原生悬浮提示，点击可打开统计面板。提示和面板都显示在底栏外层，避免出现时改动底栏内部。
 
@@ -49,6 +49,10 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 每次模型响应记一条（用量 × 单价，单价在响应完成时锁定），重启不丢。插件每次随 DSH 启动检查一次新版本：**全自动更新**（默认）下载好等你重启生效，**手动更新**只提示不下载；新版有问题可以在设置页回滚到上一版。账本只记 token 与金额，不记对话内容；数据存放在本端 `DSH_HOME` 下的 `dsh-bottom-info-bar/` 目录（默认 `~/.dsh/dsh-bottom-info-bar/`，可用 `DSH_BOTTOM_INFO_BAR_DATA_DIR` 覆盖），卸载不删——要清零去设置页的账单数据里导出或清除。
 
+## 语言
+
+插件内置简体中文、繁体中文、英语、日语、韩语、西班牙语、葡萄牙语、法语、德语、意大利语、俄语、印地语和印度尼西亚语。默认跟随 DSH 的语言；也可以在本插件设置页的**语言**中单独选择，选择会保存在当前浏览器。墨西哥西班牙语、巴西葡萄牙语等地区变体使用对应的内置语言；不支持的语言显示英语。
+
 ## 开发
 
 - 构建：`npm run build`
@@ -59,7 +63,7 @@ dsh plugin --profile web add dsh-bottom-info-bar
 
 [MIT](LICENSE) © 2026 songoao25
 
-💬 有问题或想法？扫码加入微信群 **DeepThinking**：
+有问题或想法？扫码加入微信群 **DeepThinking**：
 
 <img src="assets/wechat-group.png" width="180" alt="微信群 DeepThinking 二维码">
 
