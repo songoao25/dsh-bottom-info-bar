@@ -29,7 +29,7 @@ Prefer the terminal? This installs the same thing from npm:
 dsh plugin --profile web add dsh-bottom-info-bar
 ```
 
-Then **restart DSH** — plugins are composed when the host starts, so a page refresh is not enough. Use `--profile desktop` instead of `--profile web` on the desktop client. Other install methods (including Windows PowerShell) and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+Then **restart DSH** — plugins are composed when the host starts, so a page refresh is not enough. In the desktop app, use **Plugins → Add plugin**; its profile is managed by the app and cannot be installed into through the CLI. Other install methods (including Windows PowerShell) and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 The context usage ring keeps the native hover tooltip and opens a statistics panel when clicked. Both overlays render outside the bottom bar so they do not change its contents.
 
@@ -49,6 +49,10 @@ API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode
 
 Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays under this end's `DSH_HOME` in `dsh-bottom-info-bar/` (default `~/.dsh/dsh-bottom-info-bar/`, overridable via `DSH_BOTTOM_INFO_BAR_DATA_DIR`) and survives uninstall — export or clear it from Billing data if you want a clean slate.
 
+## Languages
+
+The plugin includes English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, Portuguese, French, German, Italian, Russian, Hindi and Indonesian. It follows DSH’s language by default. Choose **Language** on this plugin’s settings page to use a different language independently; the choice is saved in this browser. Regional variants such as Spanish (Mexico) and Portuguese (Brazil) use the corresponding built-in language. Unsupported languages fall back to English.
+
 ## Development
 
 - Build: `npm run build`
@@ -59,6 +63,6 @@ Every model response records one entry (usage × unit price, locked the moment t
 
 [MIT](LICENSE) © 2026 songoao25
 
-💬 Questions or ideas? Join our WeChat group **DeepThinking** — [QR code](assets/wechat-group.png).
+Questions or ideas? Join our WeChat group **DeepThinking** — [QR code](assets/wechat-group.png).
 
 Holiday pricing includes the official 2026 Chinese holiday leave ranges. Later calendars must be updated after the annual State Council notice; unlisted years use the weekday/weekend rule. Make-up working weekends remain off-peak. Frozen historical costs are unchanged.

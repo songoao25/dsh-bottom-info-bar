@@ -80,7 +80,7 @@ function timeoutSignal(ms) {
 function isLoadedAsProfilePlugin() {
   try {
     const real = realpathSync(PACKAGE_DIR)
-    const profilesRoot = join(dshHomeDir(), 'profiles') + sep
+    const profilesRoot = realpathSync(join(dshHomeDir(), 'profiles')) + sep
     // Windows 与 macOS 默认文件系统不区分大小写：盘符或目录大小写不一致
     // （如 C:\ 与 c:\）时逐字比较会误判为「非 profile 安装」，自更新被静默关闭。
     // 平台分支只在这一处做一次，调用方只读布尔结果。

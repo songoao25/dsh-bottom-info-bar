@@ -21,6 +21,9 @@ if (build.status !== 0) {
 console.log('build OK → lib/')
 
 const cases = [
+  ['test-npm-verification（offline registry readback and failure reporting）', ['tests/test-npm-verification.mjs'], root, process.execPath],
+  ['test-multilingual', ['tests/test-multilingual.mjs'], root, process.execPath],
+  ['test-language-runtime', ['tests/test-language-runtime.mjs'], root, process.execPath],
   ['test-release-version（package/manifest/changelog 一致性）', ['tests/test-release-version.mjs'], join(root), process.execPath],
   ['test-release-chain（发布链条契约：标签格式/路径/闸门/钉子必须两边一致）', ['tests/test-release-chain.mjs'], join(root), process.execPath],
   ['test-source-guards（源码守卫：裸服务访问 / 记忆文件唯一性 / 发布元数据不可手工改）', ['tests/test-source-guards.mjs'], join(root), process.execPath],

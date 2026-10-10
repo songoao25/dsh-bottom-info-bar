@@ -105,44 +105,27 @@ const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
 let localeService;
-// 文案取值（跟随宿主界面语言）：优先 DSH 的 locale 服务；服务缺席、未授权或 bind 失效时
-// 按浏览器语言兜底，最后退英文。**整段取值都必须包在 try/catch 里**——cordis 对未在 inject
-// 里声明的服务属性会直接抛 cannot get property "locale" without inject，渲染期抛错会让
-// 整块配置区静默消失（页面上只剩宿主渲染的标题和描述）。取不到文案是小事，页面消失是大事。
-function browserDictionary() {
-  const nav = typeof navigator !== 'undefined' ? navigator
-    : (typeof window !== 'undefined' && window ? window.navigator : undefined);
-  const tags = nav && nav.languages && nav.languages.length > 0 ? nav.languages : [nav && nav.language];
-  for (let i = 0; i < tags.length; i++) {
-    if (!tags[i]) continue;
-    const base = String(tags[i]).toLowerCase().split('-')[0];
-    if (LOCALES[base]) return LOCALES[base];
-  }
-  return LOCALES.en;
+function pluginLanguagePicker(React, runtime, onError) {
+  return React.createElement('div', { className: 'bib-set-row' },
+    React.createElement('div', { className: 'bib-set-rowText' },
+      React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
+      React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
+    React.createElement('select', {
+      id: 'bib-language', value: runtime.preference(), className: 'bib-set-language',
+      onChange: function (event) {
+        try { runtime.setPreference(event.target.value); onError(null); }
+        catch { onError({ text: function () { return t('language.saveFailed'); } }); }
+      },
+    }, React.createElement('option', { value: 'auto' }, t('language.auto')),
+      runtime.options().map(function (language) { return React.createElement('option', { key: language.id, value: language.id }, language.label); })));
 }
-function formatCopy(template, params) {
-  return String(template).replace(/\{(\w+)\}/g, function (match, name) {
-    return params && Object.hasOwn(params, name) ? String(params[name]) : match;
-  });
-}
+/*__LANGUAGE_RUNTIME__*/
+let languageRuntime;
 function createTranslator(service) {
-  let bound = null;
-  if (service && typeof service.bind === 'function') {
-    try { bound = service.bind(LOCALE_NAMESPACE); } catch (err) { bound = null; }
-  }
-  return function translate(key, params) {
-    if (bound) {
-      try {
-        const resolved = bound(key, params);
-        if (typeof resolved === 'string' && resolved !== '' && resolved !== key) return resolved;
-      } catch (err) { /* 绑定失效：继续走浏览器语言兜底 */ }
-    }
-    const dictionary = browserDictionary();
-    const template = (dictionary && dictionary[key]) || (LOCALES.en && LOCALES.en[key]) || key;
-    return params ? formatCopy(template, params) : template;
-  };
+  if (languageRuntime) languageRuntime.dispose();
+  languageRuntime = createLanguageRuntime(LOCALE_NAMESPACE, LOCALES, service);
+  return languageRuntime.t;
 }
-// apply() 之前也可能有渲染路径（hostText）：先给一份按浏览器语言兜底的翻译器。
 t = createTranslator(null);
 // Compatibility with existing host snapshots, whose display fields are text.
 // Known labels and messages follow the browser locale even while snapshots are cached.
@@ -1200,6 +1183,7 @@ function bibSetInstallStyles() {
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
          fallback（宿主无 Menu）时控件块仍按 grid-column: 1 / -1 落第二行，见 .bib-set-controls--field。 */
       .bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--bib-row-gap); row-gap: 8px; align-items: start; width: 100%; min-width: 0; }
+      .bib-set-language { max-width: 100%; min-width: 0; font: inherit; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-background-primary, transparent); border: 1px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 5px 8px; }
       .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-rowText--field { min-width: 0; }
       /* 行标题照原生 .X_2TxG_rowId：13.5/500/20。 */
@@ -2137,7 +2121,7 @@ function bibSetVersionSection(props) {
   const showFallback = !disabled && (canRollback || held);
   const showInstall = !disabled && available && !held;
   // ① 状态层：先给结论，再把事实摆在下面
-  let statusText = t('ui.updateUpToDate');
+  let statusText = t(latest ? 'ui.updateUpToDate' : 'ui.updateErrorCheckFailed');
   if (disabled) statusText = t('ui.updateDisabled');
   else if (busy && phase === 'install' && latest) statusText = t('ui.updateInstalling', { version: latest });
   else if (restartDirection === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
@@ -2269,11 +2253,10 @@ function InfoBarSettingsSection() {
     return bibSetHideHostScrollbars(settingsRootRef.current);
   }, []);
 
-  // 设置页跟随 DSH 的全局语言；这里不提供重复的插件语言开关。
+  // Language changes redraw this page without reloading or changing DSH preferences.
   const [, setLocaleRevision] = React.useState(0);
   React.useEffect(function () {
-    if (!localeService || typeof localeService.subscribe !== 'function') return undefined;
-    return localeService.subscribe(function () {
+    return languageRuntime.subscribe(function () {
       setLocaleRevision(function (value) { return value + 1; });
     });
   }, []);
@@ -2433,11 +2416,13 @@ function InfoBarSettingsSection() {
     if (status === 'loading') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
+    pluginLanguagePicker(React, languageRuntime, setOpError),
         bibSetAlert({ tone: 'info', children: t('ui.loadingInfoBarSettings') }));
     }
     if (status === 'error') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
+    pluginLanguagePicker(React, languageRuntime, setOpError),
         bibSetAlert({ tone: 'error', children: t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater')) }));
     }
 
@@ -2731,6 +2716,7 @@ function InfoBarSettingsSection() {
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
+    pluginLanguagePicker(React, languageRuntime, setOpError),
     React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
@@ -2795,6 +2781,7 @@ function InfoBarSettingsSection() {
   } catch (err) {
     return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
+    pluginLanguagePicker(React, languageRuntime, setOpError),
       bibSetAlert({ tone: 'error', children: t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) }) }));
   }
 }
@@ -2827,6 +2814,7 @@ module.exports = {
       } catch (err) { /* 注册失败：退回浏览器语言 */ }
     }
     t = createTranslator(localeService);
+    ctx.effect(function () { return function () { languageRuntime.dispose(); }; }, 'dsh-bottom-info-bar: language preference');
     // slots 服务可能晚于 apply 就绪：优先 ctx.slots（inject 注入属性），回退 ctx.get('slots')；
     // 轮询等待采用渐进退避（300ms 起步，逐步增至 1s，总计约 45s），避免固定间隔在启动慢时过早放弃
     let slots = ctx.slots || ctx.get('slots');
@@ -2948,6 +2936,10 @@ module.exports = {
         errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
+      const [, setLanguageRevision] = React.useState(0);
+      React.useEffect(function () {
+        return languageRuntime.subscribe(function () { setLanguageRevision(function (value) { return value + 1; }); });
+      }, []);
       const [updateInfo, setUpdateInfo] = React.useState(null);
       const [now, setNow] = React.useState(Date.now());
       // This state is owned by DSH's per-session model selector, not by the

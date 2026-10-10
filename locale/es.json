@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Barra de información inferior",
+    "description": "Muestra el modelo actual, el saldo y el gasto debajo del cuadro de mensaje."
+  }
+}
