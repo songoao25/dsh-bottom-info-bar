@@ -2,6 +2,18 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.14...v1.21.0) (2026-10-10)
+
+
+### Features
+
+* add thirteen-language plugin settings ([#226](https://github.com/songoao25/dsh-bottom-info-bar/issues/226)) ([105f4d8](https://github.com/songoao25/dsh-bottom-info-bar/commit/105f4d89db7f27629e344ab75e5a5f08f5cf410d))
+
+
+### Bug Fixes
+
+* restore Command Code five-hour and weekly quota windows ([#224](https://github.com/songoao25/dsh-bottom-info-bar/issues/224)) ([7797120](https://github.com/songoao25/dsh-bottom-info-bar/commit/77971205814305f6323f76cf568d3e397f7b47cb))
+
 ## [1.20.14](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.13...v1.20.14) (2026-10-07)
 
 
