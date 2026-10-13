@@ -49,6 +49,10 @@ API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode
 
 Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays under this end's `DSH_HOME` in `dsh-bottom-info-bar/` (default `~/.dsh/dsh-bottom-info-bar/`, overridable via `DSH_BOTTOM_INFO_BAR_DATA_DIR`) and survives uninstall — export or clear it from Billing data if you want a clean slate.
 
+## Uninstall and roll back
+
+Remove the plugin on the DSH plugin page (or `dsh plugin --profile web remove dsh-bottom-info-bar`) and restart DSH: the native stats row comes back by itself and no plugin files are left behind. The ledger is kept on purpose — export or clear it from **Billing data** before removing the plugin if you want a clean slate. To go back a version instead, the update section offers **roll back to the previous version** while a newer build is waiting for a restart, and after a failed update. Details: [docs/INSTALL.md](docs/INSTALL.md).
+
 ## Languages
 
 The plugin includes English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, Portuguese, French, German, Italian, Russian, Hindi and Indonesian. It follows DSH’s language by default. Choose **Language** on this plugin’s settings page to use a different language independently; the choice is saved in this browser. Regional variants such as Spanish (Mexico) and Portuguese (Brazil) use the corresponding built-in language. Unsupported languages fall back to English.

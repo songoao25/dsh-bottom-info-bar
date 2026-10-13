@@ -35,6 +35,11 @@ on:
       - 'v*.*.*'
   # 手动兜底：自动链断了还能人工发版（幂等，重跑已发布版本不会判红）。
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Check publishing authentication without publishing
+        type: boolean
+        default: false
 
 permissions:
   # OIDC：可信发布需要 job 能签发 id-token；其余权限保持只读。
@@ -60,6 +65,9 @@ jobs:
           # 可信发布要求 npm CLI ≥ 11.5.1、Node ≥ 22.14（Node 20 自带 npm 10 不支持 OIDC）。
           node-version: 24
           registry-url: https://registry.npmjs.org
+          # 发布构建一律不用依赖缓存（npm 官方发布示例的硬要求）：
+          # 缓存会引入"本地/CI 不一致"的隐蔽风险，而发版是低频动作，省这点时间不值得。
+          package-manager-cache: false
 
       - name: Verify tag matches package version
         shell: bash
@@ -85,6 +93,8 @@ jobs:
           fi
 
       - name: Publish package
+        # 手动触发时可选「只验认证、不发布」：先确认 OIDC 与 npm 侧配置通了，再决定发不发。
+        if: ${{ inputs.verify_only != true }}
         shell: bash
         run: |
           package_name="$(node -p "require('./package.json').name")"

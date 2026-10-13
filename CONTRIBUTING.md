@@ -37,6 +37,25 @@ Release Please manages versions and release notes. Do not manually change packag
 
 README.md is the English entry point; README.zh-CN.md mirrors it in Chinese. Keep installation claims aligned with published packages and DSH's actual supported installation paths. Public repository files are for users and contributors; exclude private instructions, session records, account data and internal audits.
 
+## Repository framework status
+
+This repository follows the personal GitHub project standard: one workflow per responsibility
+(`ci`, `codeql`, `release-please`, `publish-npm`, `verify-npm-release`, `auto-merge-own`),
+a seven-section README with a Chinese mirror, SemVer with tags created only by the release bot,
+and npm publishing through Trusted Publishing (OIDC) with no long-lived token. The maintainer
+token lives in the `RELEASE_PLEASE_TOKEN` repository secret.
+
+Known deviations (checked 2026-10-13):
+
+- No `.github/ISSUE_TEMPLATE/` yet; issues stay free-form until a bug-report form is added.
+- The read-back sentinel no longer repairs a stale `latest` dist-tag, because that needs
+  credentials. If npm drops `latest` again (v1.20.10 did), the sentinel fails loudly and a
+  maintainer runs `npm dist-tag add dsh-bottom-info-bar@<version> latest` by hand.
+- Published versions once skipped numbers (`1.10.12` → `1.10.18`). That history is not rewritten;
+  from here on versions increment one by one and are changed only by the release bot.
+
+Any deviation from the standard belongs in this section with a reason and a date.
+
 ## Conduct and license
 
 Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Contributions are licensed under [MIT](LICENSE).
