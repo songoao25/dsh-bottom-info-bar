@@ -42,8 +42,14 @@ README.md is the English entry point; README.zh-CN.md mirrors it in Chinese. Kee
 This repository follows the personal GitHub project standard: one workflow per responsibility
 (`ci`, `codeql`, `release-please`, `publish-npm`, `verify-npm-release`, `auto-merge-own`),
 a seven-section README with a Chinese mirror, SemVer with tags created only by the release bot,
-and npm publishing through Trusted Publishing (OIDC) with no long-lived token. The maintainer
-token lives in the `RELEASE_PLEASE_TOKEN` repository secret.
+and npm publishing through Trusted Publishing (OIDC) with no long-lived token.
+
+Release secrets (GitHub shows no expiry through its API — read the date on the token page and
+record the renewal here):
+
+| Name | Purpose | Referenced by | Expires | Last renewed |
+| --- | --- | --- | --- | --- |
+| `RELEASE_PLEASE_TOKEN` | Let the release bot open release PRs, and let the tag it creates trigger publishing | `release-please.yml`, `auto-merge-own.yml` | see the GitHub token page | 2026-09-11 |
 
 Known deviations (checked 2026-10-13):
 
