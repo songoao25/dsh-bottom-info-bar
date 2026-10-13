@@ -45,7 +45,7 @@ const builtins = new Set([
   // Node 标准库导入与全局（静态形态）
   'existsSync', 'mkdirSync', 'readFileSync', 'readdirSync', 'renameSync', 'rmSync', 'statSync', 'openSync', 'writeSync', 'fsyncSync', 'closeSync', 'chmodSync', 'realpathSync', 'randomUUID', 'createHash', 'createHmac', 'homedir', 'join', 'dirname', 'basename', 'resolve', 'isAbsolute',
   // 自更新（src/self-update.js 的导入）走同一套静态白名单
-  'fileURLToPath', 'createSelfUpdater', 'compareSemver',
+  'fileURLToPath', 'createSelfUpdater', 'classifyRestart', 'compareSemver',
   // 版本身份（src/version.js 的导入：静态审计跟不进 ESM import，按名单放行）
   'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
