@@ -339,7 +339,7 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('--bib-desc-size: 13px; --bib-desc-line: 18px;')
     && install.includes('--bib-control-radius: 8px;')
     && install.includes('--bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius);')
-    && install.includes('--bib-input-height: 34px; --bib-input-radius: var(--bib-control-radius);')
+    && install.includes('--bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px);')
     // 第二层：具体规则必须引用 token，而不是退回裸数字
     && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line);')
     && install.includes('.bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line);')
@@ -355,7 +355,7 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }')
     // 输入框取宿主 primitives 的 .input 尺寸
     && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3);')
-    // 按钮：宿主没有原生 Button 时的兜底几何 = Button.module.css .sm（h28 / r14 / 12px / 0 10px）
+    // 按钮：宿主没有原生 Button 时的兜底几何 = Button.module.css .sm（h28 / r8 / 12px / 0 10px）
     && install.includes('.bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex;')
     && install.includes('height: var(--bib-btn-height); border: 0.5px solid var(--dsw-alias-border-l3);')
     && install.includes('border-radius: var(--bib-btn-radius); padding: 0 var(--bib-btn-pad-inline); font-size: var(--bib-btn-size); font-weight: 400;')
@@ -449,6 +449,25 @@ check('横向既不自带内边距（否则与宿主 323.2 错位）也不越界
     && install.includes('.bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }')
     && !install.includes('.bib-set-footer');
 })(), true);
+// 兜底输入框几何（2026-10-13 复测 DSH 0.2.0-rc.2）：高 34px、圆角 12px —— 照宿主
+// primitives settings-form fields.module.css 的 .input（border-radius: var(--dsw-radius-md)）。
+// 这四类输入框只服务「老宿主取不到 primitives」的兜底路径，原生 Input 分支不读这些值。
+// 圆角必须走独立的 --bib-input-radius（12px），**不能**跟 --bib-control-radius（8px）走：
+// 后者管的是分组卡片 / 色块 / 警示条 / 分段控件槽 / 系统取色井那一类 8px 形状，混用会连带变形。
+check('兜底输入框几何：34px 高 / 12px 圆角（= 宿主 .input 现值），且四类兜底规则都走独立的 --bib-input-radius', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-time-zone', '.bib-set-hex'];
+  const usesInputRadius = fallbacks.every(function (selector) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(escaped + '\\s*\\{[^}]*border-radius: var\\(--bib-input-radius\\)').test(install);
+  });
+  return install.includes('--bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 12px; --bib-input-size: 13px;')
+    // 共享的 8px 形状变量原地不动（它还要管分组卡片等别的形状）
+    && install.includes('--bib-control-radius: 8px;')
+    && install.includes('--bib-btn-radius: var(--bib-control-radius);')
+    && usesInputRadius;
+})(), true);
+
 // 可发现性不能靠冗余文案：整块点击面、明确动作和焦点态已经足够。
 check('设置页分组具备明确的整块操作面和展开文字，不附带重复状态说明', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
@@ -549,7 +568,9 @@ check('搜索无结果有明确空状态，避免空白内容块', clientSrc.inc
   && clientSrc.includes('.bib-set-empty {'), true);
 check('设置页搜索工具栏使用系统清除操作与本地化结果数量', clientSrc.includes("className: 'bib-set-toolbar'")
   && clientSrc.includes("type: 'search'")
-  && clientSrc.includes("className: 'bib-set-search'")
+  // 搜索框优先走宿主原生 Input（bibSetInput），.bib-set-search 只在老宿主的兜底分支出现
+  && clientSrc.includes("fallbackClassName: 'bib-set-search'")
+  && clientSrc.includes('bibSetInput({')
   && clientSrc.includes("t('ui.searchResultCount', { count: fieldsMatchCount })")
   && clientSrc.includes("t('ui.enabledFieldsCount', { count: fieldsEnabledCount })")
   && clientSrc.includes("t('ui.searchFieldsLabel')"), true);
@@ -686,6 +707,84 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
       .filter(function (prop) { return !ALLOWED.test(prop); });
     return !!m && decls.length === 3 && offenders.length === 0;
   })(), true);
+}
+
+// ---------- ⑤-4 原生 Button / Input / SegmentedControl 类名隔离（2026-10-13） ----------
+// 与 ⑤-2 同型：宿主组件的外观规则与插件规则特异性同为 (0,1,0)，而插件 <style> 后插入 —— 只要
+// 把插件的自绘外观类挂给宿主组件，插件就会反向覆盖宿主（hover / 焦点环 / 禁用态 / 圆角全走插件，
+// 宿主换皮也不跟随）。结论：原生分支只准挂「布局类 + 宿主没有的插件专有态类」。
+{
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // ① 原生 Button：不得复用 .bib-set-btn（那是兜底实现的外观）
+  const buttonFn = extractFunctionFrom(clientSrc, 'bibSetButton');
+  const buttonNative = buttonFn.slice(
+    buttonFn.indexOf('if (BIB_SET_NATIVE_BUTTON) {'),
+    buttonFn.indexOf("return React.createElement('button'"));
+  check('原生 Button 不再挂插件外观类 .bib-set-btn（否则反向覆盖宿主按钮外观）',
+    buttonNative.length > 0 && !/bib-set-btn(?![-w])/.test(buttonNative), true);
+  check('原生 Button 保留宿主没有的「危险按钮」态类 .bib-set-btn--destructive（由共享分支传给两类实现）',
+    buttonFn.includes("const destructive = props.destructive ? ' bib-set-btn--destructive' : '';")
+    && buttonNative.includes('className: (destructive + layout)'), true);
+
+  // ② 原生 Input：只挂 bib-set-input 布局类 + 调用点给的 layout
+  const inputFn = extractFunctionFrom(clientSrc, 'bibSetInput');
+  const inputNative = inputFn.slice(
+    inputFn.indexOf('if (BIB_SET_NATIVE_INPUT) {'),
+    inputFn.indexOf("return React.createElement('input'"));
+  check('原生 Input 只挂布局类 bib-set-input（绝不把自绘外观类交给宿主）',
+    inputNative.includes("className: 'bib-set-input'")
+    && !/bib-set-search|bib-set-hex|bib-set-custom-text-input/.test(inputNative), true);
+  check('三个输入框都走 bibSetInput；自绘外观类只在 fallbackClassName 里出现，layout 限定在白名单内', (function () {
+    const ALLOWED = ['bib-set-input--block', 'bib-set-input--hex', 'bib-set-input--invalid'];
+    const fallbacks = [];
+    let m;
+    const reFallback = /fallbackClassName:\s*'([^']+)'/g;
+    while ((m = reFallback.exec(clientSrc)) !== null) fallbacks.push(m[1]);
+    const layouts = [];
+    const reLayout = /layout:\s*'([^']+)'/g;
+    while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
+    return fallbacks.length === 4
+      && fallbacks.indexOf('bib-set-search') !== -1
+      && fallbacks.indexOf('bib-set-custom-text-input') !== -1
+      && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length === 2
+      && layouts.length === 4
+      && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
+  })(), true);
+
+  // ③ 原生 SegmentedControl：只透传调用点给的布局类，外观全归宿主
+  const segFn = extractFunctionFrom(clientSrc, 'bibSetQuotaMode');
+  const segNative = segFn.slice(segFn.indexOf('if (BIB_SET_NATIVE_SEGMENTED) {'), segFn.indexOf('const refs = React.useRef({});'));
+  check('原生 SegmentedControl 只透传 props.className（自绘类 .bib-set-quota-mode* 只服务兜底）',
+    segNative.length > 0 && segNative.includes('className: props.className')
+    && !segNative.includes('bib-set-quota-mode-opt'), true);
+  check('分段控件布局类白名单：只允许 .bib-set-segmented（列向 flex 里防止被 stretch 拉满整行）', (function () {
+    const matches = clientSrc.match(/className:\s*native\s*\?\s*'([^']+)'\s*:\s*null/g) || [];
+    const names = matches.map(function (s) { return s.match(/'([^']+)'/)[1]; });
+    return names.length === 1 && names[0] === 'bib-set-segmented';
+  })(), true);
+
+  // ④ CSS：原生衔接类只做布局 + 两条插件专有声明（非法描红 / hex 等宽）
+  check('.bib-set-input* / .bib-set-segmented 声明块内没有宿主外观属性', (function () {
+    const FORBIDDEN = /^(?:appearance|background|padding|margin|transform|opacity|height|inline-size|block-size|box-shadow|border|border-radius|color|font-size|line-height)(?:$|[-:])/;
+    const re = /\.bib-set-input[^{}]*\{([^}]*)\}|\.bib-set-segmented[^{}]*\{([^}]*)\}/g;
+    let m, blocks = 0;
+    const offenders = [];
+    while ((m = re.exec(cssOnly)) !== null) {
+      blocks++;
+      const body = m[1] !== undefined ? m[1] : m[2];
+      body.split(';').map(function (d) { return d.trim(); }).filter(Boolean).forEach(function (d) {
+        if (d === 'border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20))') return;
+        if (d.indexOf('font-family:') === 0) return;
+        if (FORBIDDEN.test(d)) offenders.push(d);
+      });
+    }
+    return blocks >= 5 && offenders.length === 0;
+  })(), true);
+  check('兜底路径的自绘外观类全部保留（老宿主仍可渲染）',
+    /\.bib-set-search\s*\{/.test(cssOnly) && /\.bib-set-custom-text-input\s*\{/.test(cssOnly)
+    && /\.bib-set-hex\s*\{/.test(cssOnly) && /\.bib-set-btn\s*\{/.test(cssOnly), true);
 }
 
 // ---------- ⑥ 组装 bundle 可执行性（ModuleLoader 工厂真实加载一次） ----------
