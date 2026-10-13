@@ -18,6 +18,7 @@ import {
   PACKAGE_NAME,
   UPDATE_ERROR_KINDS,
   applyPayload,
+  classifyRestart,
   compareSemver,
   createSelfUpdater,
   describeUpdateError,
@@ -943,7 +944,7 @@ ok('设置页三层组织：状态 / 设置 / 兜底，动作按钮与设置分�
   assert.match(client, /manual \? t\('ui\.updateModeManualDesc'\) : t\('ui\.updateModeAutoDesc'\)/)
   // ③ 兜底层：回滚的唯一依据不再是 pendingVersion —— 它为了定位备份而永不清除，
   //    原来那样写会让「回滚到上一版」一旦更新成功就永久常驻（用户说「像乱加上去的」）。
-  assert.match(client, /const canRollback = restartDirection === 'update' \|\| !!state\.lastError;/)
+  assert.match(client, /const canRollback = restartKind === 'update' \|\| !!state\.lastError;/)
   assert.doesNotMatch(client, /canRollback = !!state\.pendingVersion/)
   // 失败原因讲人话：读代号，绝不把英文报错回显给用户
   assert.match(client, /updateErrorText\(state\.lastErrorKind \|\| state\.lastError\)/)
@@ -1103,6 +1104,108 @@ await okAsync('手动安装仍受「只升不降」与「暂缓」约束（检�
     assert.deepEqual(lower.requests.filter((url) => !url.endsWith('/latest')), [], '只升不降')
     assert.equal(held.latest, '0.9.0')
   } finally { fx.cleanup() }
+})
+
+// =====================================================================================
+// 16. 2026-10-13：重启方向的三种说法（用户报「运行中的版本已是最新，界面却显示已回滚到旧」）
+// =====================================================================================
+// 现场：磁盘被插件之外的东西换成旧版（DSH 自己的插件安装、手动装旧包都算），引擎里根本没有回滚记录。
+// host 原来只按「磁盘版本 < 运行中版本」就套用「已回滚到上一版 X。」，于是从没点过回滚的用户会看到
+// 一句他没做过的动作，而事实行的「运行中版本」还停在最新版 —— 界面自己在说两套话。
+// 现在方向分三种：update（磁盘已是新版）/ rollback（用户真点过回滚）/ downgrade（磁盘变旧了，但不是他）。
+ok('重启方向三分类：磁盘变旧且没有回滚记录时是 downgrade，绝不冒充用户回滚', () => {
+  // 正常升级：磁盘已是新版
+  assert.equal(classifyRestart({ diskVersion: '1.1.0', runningVersion: '1.0.0', holdVersion: null }), 'update')
+  // 版本一致：没有任何待重启
+  assert.equal(classifyRestart({ diskVersion: '1.0.0', runningVersion: '1.0.0', holdVersion: null }), null)
+  // 用户真回滚过：holdVersion 正是被回滚掉的、也就是内存里正在跑的那个版本
+  assert.equal(classifyRestart({ diskVersion: '1.0.0', runningVersion: '1.1.0', holdVersion: '1.1.0' }), 'rollback')
+  // 磁盘被外部换成旧版：没有凭据就是 downgrade（用户报的那一次就是这个形状）
+  assert.equal(classifyRestart({ diskVersion: '1.20.8', runningVersion: '1.20.14', holdVersion: null }), 'downgrade')
+  // 有暂缓版本、但它不是正在跑的那个：仍然不算「用户回滚了这一次」
+  assert.equal(classifyRestart({ diskVersion: '1.0.0', runningVersion: '1.1.0', holdVersion: '1.2.0' }), 'downgrade')
+  // 版本号读不出来（package.json 损坏）：不猜方向，宁可什么也不说
+  assert.equal(classifyRestart({ diskVersion: null, runningVersion: '1.1.0', holdVersion: null }), null)
+  assert.equal(classifyRestart({}), null)
+  assert.equal(classifyRestart(null), null)
+})
+
+await okAsync('真实装置：外部换旧版 → downgrade；用户点过回滚 → rollback（两种都不再相互冒充）', async () => {
+  // ① 外部降级：装载时磁盘与运行版本一致，之后被引擎之外的东西换成旧版（本引擎「只升不降」，做不出这一步）
+  const external = makeFixture({ version: '1.20.14' })
+  try {
+    const updater = createSelfUpdater({ packageDir: external.packageDir, dataDir: external.dataDir, runningVersion: '1.20.14' })
+    updater.loadState()
+    assert.equal(classifyRestart(updater.getState()), null, '装载时应无待重启')
+    writeFileSync(join(external.packageDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '1.20.8' }, null, 2) + '\n')
+    const state = updater.getState()
+    assert.equal(state.runningVersion, '1.20.14')
+    assert.equal(state.diskVersion, '1.20.8')
+    assert.equal(state.holdVersion, null, '没有任何回滚记录')
+    assert.equal(classifyRestart(state), 'downgrade')
+  } finally { external.cleanup() }
+
+  // ② 真回滚：用户点过「回滚到上一版」——引擎记下被回滚掉的版本，重启后版本会退回去，这一次才配叫回滚
+  const real = makeFixture({ version: '1.20.14' })
+  try {
+    writeFileSync(join(real.dataDir, 'update-state.json'), JSON.stringify({ pendingVersion: '1.20.14', holdVersion: null }))
+    const backupDir = join(real.dataDir, 'update-backup', '1.20.14')
+    mkdirSync(backupDir, { recursive: true })
+    writeFileSync(join(backupDir, 'package.json'), JSON.stringify({ name: PACKAGE_NAME, version: '1.20.13' }, null, 2) + '\n')
+    const updater = createSelfUpdater({ packageDir: real.packageDir, dataDir: real.dataDir, runningVersion: '1.20.14' })
+    updater.loadState()
+    assert.equal(updater.rollback().restored, true)
+    const state = updater.getState()
+    assert.equal(state.diskVersion, '1.20.13')
+    assert.equal(state.holdVersion, '1.20.14')
+    assert.equal(classifyRestart(state), 'rollback')
+  } finally { real.cleanup() }
+})
+
+ok('client 兼容旧宿主：没有 restartKind 时用回滚记录现场判，判不出就算 downgrade 而不是回滚', () => {
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  const start = client.indexOf('function bibSetRestartKind(state) {')
+  assert.ok(start > 0, '缺少 bibSetRestartKind：方向判定必须有唯一一处')
+  // 从源码里抠出这个函数直接跑（函数体不含字符串花括号，可安全配对）—— 兼容分支的真实行为要有覆盖
+  let depth = 0
+  let end = -1
+  for (let i = client.indexOf('{', start); i < client.length; i++) {
+    if (client[i] === '{') depth += 1
+    else if (client[i] === '}') {
+      depth -= 1
+      if (depth === 0) { end = i + 1; break }
+    }
+  }
+  assert.ok(end > 0, 'bibSetRestartKind 花括号不配对')
+  const bibSetRestartKind = Function(client.slice(start, end) + '\nreturn bibSetRestartKind')()
+  // 新宿主的 payload：host 说是什么就是什么
+  assert.equal(bibSetRestartKind({ restartKind: 'update' }), 'update')
+  assert.equal(bibSetRestartKind({ restartKind: 'rollback' }), 'rollback')
+  assert.equal(bibSetRestartKind({ restartKind: 'downgrade' }), 'downgrade')
+  // 旧宿主的 payload：只有 restartDirection 与 holdVersion（包已替换、DSH 还没重启时的窗口）
+  assert.equal(bibSetRestartKind({ restartDirection: 'update' }), 'update')
+  assert.equal(bibSetRestartKind({ restartDirection: 'rollback', holdVersion: '1.20.14', runningVersion: '1.20.14' }), 'rollback')
+  assert.equal(bibSetRestartKind({ restartDirection: 'rollback', holdVersion: null, runningVersion: '1.20.14' }), 'downgrade')
+  assert.equal(bibSetRestartKind({ restartDirection: null }), null)
+  assert.equal(bibSetRestartKind(null), null)
+})
+
+ok('host / client 接线：三分类唯一实现在引擎，旧页面仍认 restartDirection，结论行与信息栏提示都按方向选', () => {
+  const host = readFileSync(join(root, 'src', 'host.js'), 'utf8')
+  const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
+  // host：分类只从引擎取（不在 host 里再写一份版本比较），payload 同时给出新字段与兼容字段
+  assert.match(host, /import \{ classifyRestart, createSelfUpdater \} from '\.\/self-update\.js'/)
+  assert.match(host, /const restartKind = classifyRestart\(\{/)
+  assert.match(host, /restartKind: restartKind,/)
+  assert.match(host, /restartDirection: delta > 0 \? 'update' : \(delta < 0 \? 'rollback' : null\)/,
+    '旧页面只认 restartDirection，不能改它的语义')
+  // client：结论行三种说法分开
+  assert.match(client, /else if \(restartKind === 'downgrade'\) statusText = t\('ui\.updateDowngradePending'/)
+  assert.match(client, /const canRollback = restartKind === 'update' \|\| !!state\.lastError;/)
+  // 信息栏标记的悬浮提示按方向选，绝不再一律说「已更新到 X」
+  assert.match(client, /const restartTitle = restartKind === 'rollback'/)
+  assert.match(client, /title: restartTitle,/)
+  assert.doesNotMatch(client, /title: t\('ui\.updatePendingRestart'/)
 })
 
 console.log('\n自更新引擎单测：' + passed + ' PASS / ' + failed + ' FAIL')

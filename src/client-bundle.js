@@ -2074,6 +2074,18 @@ const UPDATE_ERROR_COPY = {
 function updateErrorText(kind) {
   return t(UPDATE_ERROR_COPY[kind] || 'ui.updateErrorUnknown');
 }
+// 重启方向：优先认 host 给的三分类 restartKind（'update' / 'rollback' / 'downgrade'）。
+// 宿主还是旧版时（包文件已替换、DSH 没重启 —— 正是这块最常出问题的窗口）没有这个字段，
+// 就用回滚记录现场判一次：只做字符串相等，不做版本比较（版本比较的唯一出口在 host）。
+// 拿不到「用户点过回滚」的凭据就只能中性陈述，绝不替用户编一个他没做过的动作。
+function bibSetRestartKind(state) {
+  if (!state) return null;
+  if (state.restartKind === 'update' || state.restartKind === 'rollback' || state.restartKind === 'downgrade') return state.restartKind;
+  if (state.restartDirection === 'update') return 'update';
+  if (state.restartDirection !== 'rollback') return null;
+  return typeof state.holdVersion === 'string' && state.holdVersion.length > 0 && state.holdVersion === state.runningVersion
+    ? 'rollback' : 'downgrade';
+}
 // 设置页「版本与更新」区。三层结构（2026-09-25 第三轮用户拍板「分三层：状态—设置—兜底」）：
 //   ① 状态：一句结论 + 一行事实（运行中 / 最新 / 上次检查）+ 动作按钮（只看 / 只装）；
 //   ② 设置：唯一的决策项「更新方式」二选一，说明跟着选中项变；
@@ -2115,10 +2127,10 @@ function bibSetVersionSection(props) {
   // 「手动更新」= 自动下载关掉了。方向必须按 `=== false` 判定：任何非 false 的值都算全自动。
   const manual = state.autoUpdate === false;
   const shown = function (value) { return typeof value === 'string' && value.length > 0 ? value : t('ui.versionUnknown'); };
-  // 方向由 host 判定（见 getUpdateState）：update = 磁盘已是新版待重启；rollback = 用户回滚过、
-  // 磁盘比运行版本旧，同样只有重启才生效，但说法必须不同，否则用户会以为自己在跑新版。
-  const restartDirection = state.restartDirection === 'update' || state.restartDirection === 'rollback'
-    ? state.restartDirection : null;
+  // 方向由 host 判定（见 getUpdateState）：update = 磁盘已是新版待重启；rollback = 用户点过回滚、
+  // 磁盘比运行版本旧；downgrade = 磁盘比运行版本旧，但不是用户回滚的（插件被外部装成了旧版）。
+  // 三者都只有重启才生效，但说法必须分开：把外部降级说成「已回滚」既冤枉用户又让人看不懂。
+  const restartKind = bibSetRestartKind(state);
   const latest = typeof state.latest === 'string' && state.latest.length > 0 ? state.latest : null;
   // 「有新版可装」由 host 判定（latest 严格高于磁盘版本）。没有确切版本号就不摆出装按钮 ——
   // 文案里带不出版本号的按钮，等于让用户闭着眼睛点。
@@ -2130,18 +2142,19 @@ function bibSetVersionSection(props) {
   // ③ 兜底的显示条件（2026-09-25 第三轮拍板「按需出现」）：
   // 这里**刻意不再包含 pendingVersion**。它为了在回滚时定位备份而永不清除（见 self-update.js），
   // 于是只要成功更新过一次，「回滚到上一版」就永远挂在界面上 —— 这正是用户觉得最像「乱加」的一处。
-  // 真正需要逃生门的窗口只有两个：新版已装好但还没重启（restartDirection === 'update'，此时退回最省事），
-  // 以及上次更新失败（lastError）。已经回滚过的（restartDirection === 'rollback'）不再显示 ——
-  // 那时引擎侧的 pendingVersion 已清空，再点一次也没有可回滚的对象。
-  const canRollback = restartDirection === 'update' || !!state.lastError;
+  // 真正需要逃生门的窗口只有两个：新版已装好但还没重启（restartKind === 'update'，此时退回最省事），
+  // 以及上次更新失败（lastError）。磁盘已经比运行中旧（'rollback' / 'downgrade'）时不再显示 ——
+  // 回滚过的那次 pendingVersion 已清空，外部降级则根本没有可回滚的对象，点了也没意义。
+  const canRollback = restartKind === 'update' || !!state.lastError;
   const showFallback = !disabled && (canRollback || held);
   const showInstall = !disabled && available && !held;
   // ① 状态层：先给结论，再把事实摆在下面
   let statusText = t('ui.updateUpToDate');
   if (disabled) statusText = t('ui.updateDisabled');
   else if (busy && phase === 'install' && latest) statusText = t('ui.updateInstalling', { version: latest });
-  else if (restartDirection === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
-  else if (restartDirection === 'rollback') statusText = t('ui.updateRolledBack', { version: shown(state.diskVersion) });
+  else if (restartKind === 'update') statusText = t('ui.updatePendingRestart', { version: shown(state.diskVersion) });
+  else if (restartKind === 'rollback') statusText = t('ui.updateRolledBack', { version: shown(state.diskVersion) });
+  else if (restartKind === 'downgrade') statusText = t('ui.updateDowngradePending', { version: shown(state.diskVersion), running: shown(state.runningVersion) });
   else if (state.lastError) statusText = t('ui.updateFailed');
   else if (held) statusText = t('ui.updateHeld', { version: state.holdVersion });
   else if (available) statusText = t('ui.updateAvailableNow', { version: latest });
@@ -3882,12 +3895,21 @@ module.exports = {
        // 开关只管「出现还是不出现」，与当前是简洁模式还是完整模式无关 —— 主行两种模式都可见。
        const updateStatus = updateInfo && updateInfo.updateStatus ? updateInfo.updateStatus : null;
        const restartVersion = updateInfo && updateInfo.pendingRestart === true ? updateInfo.diskVersion : null;
+       // 悬浮提示也要按重启方向选：磁盘被外部换成旧版时，说「已更新到 X」等于把方向说反了。
+       const restartKind = restartVersion ? bibSetRestartKind(updateStatus) : null;
+       const restartRunning = updateStatus && typeof updateStatus.runningVersion === 'string' && updateStatus.runningVersion.length > 0
+         ? updateStatus.runningVersion : t('ui.versionUnknown');
+       const restartTitle = restartKind === 'rollback'
+         ? t('ui.updateRolledBack', { version: restartVersion })
+         : (restartKind === 'update'
+           ? t('ui.updatePendingRestart', { version: restartVersion })
+           : t('ui.updateDowngradePending', { version: restartVersion, running: restartRunning }));
        const updateFailed = !!(updateStatus && updateStatus.lastError);
        if (restartVersion && fieldVisible('updateNotice')) {
          trailingErrorGroups.push(fieldSpan('updateNotice', 'updatebadge', React.createElement('span', {
            key: 'updateBadge',
            className: 'bi-update-badge',
-           title: t('ui.updatePendingRestart', { version: restartVersion }),
+           title: restartTitle,
            onClick: function (event) { event.stopPropagation(); },
            onKeyDown: function (event) { event.stopPropagation(); },
          }, t('ui.updateRestartBadge'))));
