@@ -52,8 +52,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 20
-          # registry-url 会让 setup-node 写一份带 NODE_AUTH_TOKEN 占位的 .npmrc，
-          # 校正 latest 标签（npm dist-tag add）时要靠它认证。
+          # 只读校验全部走匿名 registry 读取，不需要任何凭据。
           registry-url: https://registry.npmjs.org
 
       - name: Compute release age
@@ -71,7 +70,8 @@ jobs:
       - name: Read back public npm release
         run: node scripts/verify-npm-publication.mjs
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # 不再有长期密钥：生命周期状态查询降级为 unknown，"latest 落后时自动校正" 也随之不可用；
+          # 真正的通过条件（公开元数据 + tarball 完整性 + latest 已指向新版本）不受影响。
           NPM_RELEASE_VERSION: ${{ github.event.inputs.version || '' }}
           NPM_RELEASE_EPOCH: ${{ steps.age.outputs.release_epoch }}
           # 发布刚结束时值得等一小会儿（典型 1~2 分钟就能确认）；

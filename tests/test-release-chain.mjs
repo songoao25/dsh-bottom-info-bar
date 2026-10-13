@@ -100,9 +100,13 @@ check(
   '去掉手动入口后，一旦自动链出问题就只能改代码才能发版'
 )
 check(
-  '契约 3c：publish-npm 用 NPM_TOKEN 发布（唯一密钥入口）',
-  /NODE_AUTH_TOKEN:\s*\$\{\{\s*secrets\.NPM_TOKEN\s*\}\}/.test(publishNpm),
-  'publish-npm.yml 未把 NPM_TOKEN 接到 NODE_AUTH_TOKEN'
+  '契约 3c：publish-npm 走 npm 可信发布（OIDC），不得再依赖长期密钥',
+  /^\s*id-token:\s*write\s*$/m.test(publishNpm)
+    && !publishNpm.includes('secrets.NPM_TOKEN')
+    && !publishNpm.includes('NODE_AUTH_TOKEN')
+    && publishNpm.includes('ACTIONS_ID_TOKEN_REQUEST_URL')
+    && (function () { const m = publishNpm.match(/node-version:\s*['"]?(\d+)/); return !!m && Number(m[1]) >= 22; })(),
+  '可信发布要求 id-token: write + Node ≥ 22.14（npm CLI ≥ 11.5.1），且不得再依赖 NPM_TOKEN'
 )
 // ---------- 契约 3d：发布与「读回校验」必须解耦 ----------
 //
@@ -129,6 +133,11 @@ check(
   '缺少独立哨兵：要么没人确认版本真的公开可安装，要么发布 job 又被拖慢'
 )
 check(
+  '契约 3e-2：读回哨兵同样不依赖长期密钥（匿名只读校验）',
+  !verifyRelease.includes('secrets.NPM_TOKEN'),
+  'verify-npm-release.yml 仍引用 NPM_TOKEN：那个令牌已被 npm 拒绝，哨兵会误报'
+)
+check(
   '契约 3f：读回校验仍覆盖版本元数据 / latest / tarball 完整性',
   verifyScript.includes('dist.integrity')
     && verifyScript.includes('dist-tags')
@@ -143,11 +152,14 @@ check(
   '重跑同一个标签会 403（版本已存在）：必须按幂等处理，而不是判发布失败'
 )
 check(
-  '契约 3h：npm 漏掉 latest 标签时必须能自动校正',
+  '契约 3h：npm 漏掉 latest 标签时的处置——脚本保留自愈代码，但 OIDC 下无令牌，实际退化为报错并要求人工校正',
   verifyScript.includes('dist-tag')
     && verifyScript.includes('NPM_VERIFY_REPAIR_DIST_TAG')
-    && verifyRelease.includes('NPM_VERIFY_REPAIR_DIST_TAG'),
-  'v1.20.10 实测：版本已公开，latest 却仍停在旧版本 —— 用户 npm i 装到的还是旧包'
+    && verifyScript.includes('!process.env.NPM_TOKEN')
+    && verifyRelease.includes('NPM_VERIFY_REPAIR_DIST_TAG')
+    && !verifyRelease.includes('secrets.NPM_TOKEN'),
+  'v1.20.10 实测：版本已公开，latest 却仍停在旧版本 —— 用户 npm i 装到的还是旧包；'
+    + '去掉长期密钥后，这条自愈不再生效（哨兵会判红、提示手工 npm dist-tag add），断言必须反映这个降级'
 )
 check(
   '契约 3i：判定必须区分「npm 已受理在排队」与「npm 根本没收到」',

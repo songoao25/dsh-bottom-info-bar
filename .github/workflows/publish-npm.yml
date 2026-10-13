@@ -12,6 +12,23 @@ name: Publish NPM package
 # 2026-09-30 v1.20.10 正是这样从几十秒变成十几分钟、并且常常判红的。
 #
 # 公开可用性改由独立的 verify-npm-release.yml 后台读回校验，不阻塞这里。
+#
+# 认证：**没有长期密钥**，走 npm 可信发布（Trusted Publishing / OIDC）。
+# 背景（2026-10-13）：npm 自 2025-11 起只支持带到期日的 granular token，并要求发布过 2FA
+# 或使用勾了 Bypass 2FA 的令牌。本仓库原来的 NPM_TOKEN 已被 npm 拒绝 —— 姊妹仓库
+# dsh-chatgpt-sub 在 2026-10-10 用同样的方式连试四次（tag 触发 + 手动触发）全部失败，
+# 改成可信发布后才恢复。本仓库自 2026-10-07 之后没发过版，所以还没撞上。
+# 现在由 job 申请 id-token: write，npm CLI 自动把 GitHub 签发的 OIDC token 换成一次性发布凭证，
+# 不再需要任何长期密钥（也就不会再过期、泄漏或被撤销）。
+#
+# 前置条件（包所有者在 npmjs.com 配一次，配错时下面的 Check 步骤会明确报错）：
+#   包 dsh-bottom-info-bar → Settings → Trusted Publisher → GitHub Actions
+#     Organization or user: songoao25
+#     Repository:            dsh-bottom-info-bar
+#     Workflow filename:     publish-npm.yml   （只填文件名，必须带 .yml）
+#     Environment name:      留空
+#     Allowed actions:       勾上允许 npm publish（不能只留 stage publish）
+# 可信发布要求 npm CLI ≥ 11.5.1、Node ≥ 22.14，所以这里固定 Node 24。
 on:
   push:
     tags:
@@ -20,6 +37,8 @@ on:
   workflow_dispatch:
 
 permissions:
+  # OIDC：可信发布需要 job 能签发 id-token；其余权限保持只读。
+  id-token: write
   contents: read
 
 concurrency:
@@ -38,7 +57,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 可信发布要求 npm CLI ≥ 11.5.1、Node ≥ 22.14（Node 20 自带 npm 10 不支持 OIDC）。
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches package version
@@ -55,10 +75,17 @@ jobs:
           echo "Releasing dsh-bottom-info-bar@$package_version"
 
       # prepublishOnly 会先 npm run build，保证 npm 包里的 lib/ 与 src/ 一致。
+      # 早失败、说清原因：缺 id-token 权限时 npm 只会给出含糊的 ENEEDAUTH，这里直接点破。
+      - name: Check OIDC publishing environment
+        shell: bash
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::OIDC token request is unavailable. Add 'permissions: id-token: write' to this workflow."
+            exit 1
+          fi
+
       - name: Publish package
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           package_name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
