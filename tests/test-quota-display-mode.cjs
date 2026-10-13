@@ -186,7 +186,10 @@ check('③ 两个倒计时键的占位符集合一致（含 {value4}）', (funct
 })(), true);
 
 // ---------- ④ 设置页分段控件：显隐 / 语义 / 键盘 ----------
-function buildQuotaUi() {
+// options.segmented 给出时模拟「宿主有原生 SegmentedControl」；缺省模拟「老宿主，取不到」。
+// 切片求值不会带上模块级常量，因此 BIB_SET_NATIVE_SEGMENTED 与分段控件 id 必须在装置里显式给出。
+function buildQuotaUi(options) {
+  const opts = options || {};
   const createElement = function (type, props) {
     return { type: typeof type === 'function' ? type.name : type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
   };
@@ -195,11 +198,13 @@ function buildQuotaUi() {
     + 'const headerCalls = [];\n'
     + 'const bibSetCardHeader = function (props) { headerCalls.push(props); return { type: "bibSetCardHeader", props: props }; };\n'
     + 'const DEFAULT_QUOTA_DISPLAY_MODE = ' + JSON.stringify(quotaState.fallback) + ';\n'
+    + 'const BIB_SET_NATIVE_SEGMENTED = ' + (opts.segmented ? 'arguments[2]' : 'null') + ';\n'
+    + "const BIB_SET_QUOTA_MODE_ID = 'bib-set-quota-mode';\n"
     + extractFunctionFrom(clientSrc, 'normalizeQuotaDisplayMode') + '\n'
     + extractFunctionFrom(clientSrc, 'bibSetQuotaMode') + '\n'
     + extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection') + '\n'
     + 'return { section: bibSetQuotaDisplaySection, mode: bibSetQuotaMode, headerCalls: headerCalls };';
-  return new Function(body)(t, React);
+  return new Function(body)(t, React, opts.segmented);
 }
 
 const quotaUi = buildQuotaUi();
@@ -336,6 +341,65 @@ check('④ 键盘：未处理的键不拦截、不回调（Tab / 字母键）', 
 check('④ 控件不含裸 div role=button 之类的伪语义（子项用原生 button）', (function () {
   const body = extractFunctionFrom(clientSrc, 'bibSetQuotaMode');
   return body.indexOf("React.createElement('button'") !== -1 && body.indexOf("role: 'radio'") !== -1 && body.indexOf("role: 'radiogroup'") !== -1;
+})(), true);
+
+// ---------- ④-n 原生 SegmentedControl 分支（2026-10-13）----------
+// 宿主提供 SegmentedControl 时必须渲染它（外观 / 键盘 / 换皮全归宿主），不再自绘两段式；
+// 它的语义是 tablist：aria-controls 指向的 tabpanel 必须真实存在，否则页面留下悬空引用。
+function FakeSegmentedControl() { return null; }
+const quotaNative = buildQuotaUi({ segmented: FakeSegmentedControl });
+
+check('④-n 宿主有 SegmentedControl 时渲染原生组件，不再自绘 radiogroup', (function () {
+  const control = quotaNative.mode({ id: 'bib-set-quota-mode', label: t('ui.quotaDisplayModeTitle'), value: 'remaining', onSelect: function () {} });
+  return control.type === 'FakeSegmentedControl'
+    && control.props.role === undefined
+    && control.props.id === 'bib-set-quota-mode'
+    && control.props.value === 'remaining'
+    && control.props.label === t('ui.quotaDisplayModeTitle')
+    && control.props.options.length === 2
+    && control.props.options[0].value === 'remaining' && control.props.options[0].label === t('ui.quotaDisplayRemaining')
+    && control.props.options[1].value === 'used' && control.props.options[1].label === t('ui.quotaDisplayUsed');
+})(), true);
+check('④-n 受控：onChange 原样透传给调用方，控件自己不持有状态', (function () {
+  let picked = null;
+  const control = quotaNative.mode({ value: 'remaining', onSelect: function (value) { picked = value; } });
+  control.props.onChange('used');
+  return picked === 'used';
+})(), true);
+check('④-n 归一回退：归一结果落在选项之外时取第一项（下标 -1 会让滑块消失、整组不可 Tab）', (function () {
+  const control = quotaNative.mode({ value: 'junk', onSelect: function () {}, normalize: function () { return 'junk'; } });
+  return control.props.value === 'remaining';
+})(), true);
+check('④-n disabled / className 透传（className 只用于布局收口）', (function () {
+  const control = quotaNative.mode({ value: 'remaining', onSelect: function () {}, disabled: true, className: 'bib-set-segmented' });
+  return control.props.disabled === true && control.props.className === 'bib-set-segmented';
+})(), true);
+check('④-n 区块：两个 tabpanel 与 tab 的 id / aria-labelledby 成对，非选中项 hidden', (function () {
+  const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'used'; }, onModeChange: function () {} });
+  const fieldblock = section.children[1].children[0];
+  const panels = fieldblock.children[1];
+  return Array.isArray(panels) && panels.length === 2
+    && panels[0].props.id === 'bib-set-quota-mode-remaining-panel'
+    && panels[0].props['aria-labelledby'] === 'bib-set-quota-mode-remaining'
+    && panels[0].props.role === 'tabpanel'
+    && panels[0].props.hidden === true
+    && panels[1].props.id === 'bib-set-quota-mode-used-panel'
+    && panels[1].props['aria-labelledby'] === 'bib-set-quota-mode-used'
+    && panels[1].props.hidden === false;
+})(), true);
+check('④-n 区块：说明文案随 tabpanel 走，区块头不再重复同一句', (function () {
+  const header = quotaNative.headerCalls[0];
+  const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'remaining'; }, onModeChange: function () {} });
+  const panels = section.children[1].children[0].children[1];
+  return header.description === undefined && panels[0].children[0] === t('ui.quotaDisplayModeDesc');
+})(), true);
+check('④-n 兜底路径零回归：没有 SegmentedControl 时仍是自绘 radiogroup + 区块头说明，且不渲染 tabpanel', (function () {
+  const section = sectionOn(['subWindow5h']);
+  const control = section.children[1].children[0].children[0];
+  const panels = section.children[1].children[0].children[1];
+  return control.type === 'bibSetQuotaMode'
+    && quotaUi.headerCalls[0].description === t('ui.quotaDisplayModeDesc')
+    && (panels === null || panels === undefined);
 })(), true);
 
 // ---------- ⑤ 对比度铁律：真实颜色计算 ----------

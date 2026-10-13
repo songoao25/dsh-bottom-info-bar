@@ -101,6 +101,10 @@ const BIB_SET_NATIVE_MENU = bibSetNative('Menu');
 // 决策 2/4：分组折叠用原生 DisclosureRow，重置二次确认用原生 RiskConfirmation。
 // 与上面同一条铁律：取不到时退回插件内等价实现，绝不把 undefined 交给 React.createElement。
 const BIB_SET_NATIVE_RISK_CONFIRM = bibSetNative('RiskConfirmation');
+// 2026-10-13：文本输入与「几个互斥模式选一个」的分段控件同样优先用宿主原生组件。
+// 仍然是同一个铁律：逐成员做存在性判断，取不到时退回插件内等价实现（老宿主行为不变）。
+const BIB_SET_NATIVE_INPUT = bibSetNative('Input');
+const BIB_SET_NATIVE_SEGMENTED = bibSetNative('SegmentedControl');
 const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
@@ -1025,8 +1029,16 @@ function bibSetInstallStyles() {
            --bib-row-gap        .X_2TxG_rowLine        { gap: 16px }
            --bib-row-label-*    .X_2TxG_rowId          { 13.5 / 500 / 20 }
            --bib-row-hint-*     .X_2TxG_rowModule      { 11.5 / 400 / 16, label-tertiary }
-           --bib-btn-h/radius/pad/font  primitives Button.module.css .sm { 28 / 14 / 0 10 / 12 18 }
-           --bib-input-h/radius/pad/font  primitives settings-form fields.module.css .input { 34 / 8 / 0 12 / 13 }
+           --bib-btn-h/radius/pad/font  primitives Button.module.css .sm { 28 / 8 / 0 10 / 12 18 }
+           --bib-input-h/radius/pad/font  primitives settings-form fields.module.css .input { 34 / 12 / 0 12 / 13 }
+
+         2026-10-13 / DSH 0.2.0-rc.2 复测（安装版 app.asar；重点是圆角，其余数字顺手复核）：
+           · Button.module.css：.button 声明 border-radius: var(--dsw-radius-md)，.sm 覆盖为
+             var(--dsw-radius-sm)；tokens --dsw-radius-sm = 8px → 按钮圆角 8px（旧注释写 14，订正）。
+           · settings-form fields.module.css：.input 的 border-radius: var(--dsw-radius-md) = 12px
+             （旧注释写 8，订正；兜底输入框随之改为单独取 --dsw-radius-md，见变量块里的注释）。
+           · 其余与旧注释一致、未改：.sm { 28 / 12 / 0 10 / 12 18 } 与 .input { 34 / 0 12 / 13 /
+             .5px border-l4 / bg-layer-3 }；tokens --dsw-radius-xs/sm/md/lg = 4 / 8 / 12 / 16。
 
          【横向对齐铁律】宿主给我们的容器 .X_2TxG_detailSection 实测 padding:0、左沿 323.2，
          宿主自己的区块标题文字左沿也是 323.2。所以我们的内容块一律 padding 左右为 0，
@@ -1059,7 +1071,11 @@ function bibSetInstallStyles() {
         --bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;
         --bib-control-radius: 8px;
         --bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius); --bib-btn-pad-inline: 10px; --bib-btn-size: 12px; --bib-btn-line: 18px;
-        --bib-input-height: 34px; --bib-input-radius: var(--bib-control-radius); --bib-input-pad-inline: 12px; --bib-input-size: 13px;
+        /* 兜底输入框（老宿主取不到 primitives）：几何照宿主 settings-form fields.module.css 的 .input
+           —— 34px / r12 / 0 12px / 13px。圆角必须单独取 --dsw-radius-md（12px），**不能**跟
+           --bib-control-radius（8px）走：后者管的是卡片分组、色块、警示条、分段控件槽、系统取色井
+           那一类「8px 形状」，两者形状不同，共用一个变量会连带变形。 */
+        --bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 12px; --bib-input-size: 13px;
         --bib-rule: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16));
         --bib-swatch-size: 20px; --bib-swatch-radius: var(--bib-control-radius);
         --bib-menu-dot-size: 12px;
@@ -1217,6 +1233,20 @@ function bibSetInstallStyles() {
       .bib-set-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .bib-set-select-chevron { flex: none; color: var(--dsw-alias-label-tertiary); }
       .bib-set-select-trigger--open .bib-set-select-chevron { color: var(--dsw-alias-label-primary); }
+      /* ===== 原生输入框衔接（2026-10-13）=====
+         宿主原生 Input 的外观（边框 / 底色 / 圆角 / 焦点态）全部交还宿主；插件只补三类声明：
+         ① 布局（整行宽度 / 不拉伸）② 宿主没有的 hex 等宽 + 固定宽度 ③ 宿主没有的非法态描红。
+         绝不把 .bib-set-search / .bib-set-custom-text-input / .bib-set-hex 这些自绘外观类挂给原生 Input——
+         同特异性 + 插件样式后插入 = 反向覆盖宿主（与原生 Button / Switch 同一个坑）。 */
+      .bib-set-input { min-width: 0; }
+      .bib-set-input--block { display: flex; width: 100%; min-inline-size: 0; }
+      .bib-set-input--hex { flex: none; }
+      .bib-set-input--hex input { flex: none; width: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .bib-set-input--invalid { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
+      /* ===== 原生分段控件衔接（2026-10-13）=====
+         原生 SegmentedControl 是 inline-grid：落进列向 flex 会被默认的 stretch 拉满整行，
+         这里只把布局收口（外观仍全部交还宿主）。 */
+      .bib-set-segmented { align-self: flex-start; max-width: 100%; min-width: 0; }
       /* ===== 提示条：照宿主插件详情页的三种原生形态 ===== */
       /* 错误：.X_2TxG_failure（错误色 + 行内 + gap 10）+ .X_2TxG_reason（12/18、可任意换行） */
       .bib-set-alerts { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; padding: 0; }
@@ -1307,7 +1337,7 @@ function bibSetInstallStyles() {
          .bib-set-data-row（同「导出账单」的行几何），不再悬浮在页面右下角。 */
       .bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }
       .bib-set-reset-row .bib-set-data-copy { display: flex; flex-direction: column; gap: 2px; }
-      /* 按钮优先渲染宿主原生 Button（.sm = h28 / r14 / 12px / 0 10px）；
+      /* 按钮优先渲染宿主原生 Button（.sm = h28 / r8 / 12px / 0 10px）；
          下面这份只是宿主没有 Button 时的等价兜底。 */
       .bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; height: var(--bib-btn-height); border: 0.5px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); background: transparent; border-radius: var(--bib-btn-radius); padding: 0 var(--bib-btn-pad-inline); font-size: var(--bib-btn-size); font-weight: 400; line-height: var(--bib-btn-line); transition: background-color 120ms ease, border-color 120ms ease; }
       .bib-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.08)); border-color: var(--dsw-alias-border-l3); }
@@ -1381,20 +1411,27 @@ function bibSetSwitch(props) {
     React.createElement('span', { className: 'bib-set-switch-thumb' })));
 }
 
-// 按钮：优先用宿主原生 Button（size=sm 即 28px 胶囊，与插件详情页的原生按钮同一套几何）。
-// variant: 'outline' 普通、'primary' 主操作、'ghost' 无边框；danger 走宿主错误色令牌。
+// 按钮：优先用宿主原生 Button（size=sm 即 28px、8px 圆角，与插件详情页的原生按钮同一套几何）。
+// variant: 'outline' 普通、'primary' 主操作、'ghost' 无边框。
+//
+// 【原生分支只准挂布局类与插件专有态类】宿主按钮的外观规则（.button / .sm / .outline / hover /
+// focus-visible / disabled）与插件规则特异性同为 (0,1,0)，而插件 <style> 后插入 —— 只要把
+// .bib-set-btn 交给原生 Button，插件的边框/圆角/hover/焦点环/禁用不透明度就会反过来压过宿主，
+// 宿主换皮时按钮也不跟随（与原生 Switch 同一个坑，见测试 ⑤-2 的取证）。
+// 因此 .bib-set-btn 只服务兜底 <button>；原生分支最多挂两类：
+//   · props.className            —— 调用方给的纯布局类（如 bib-set-select-trigger）
+//   · .bib-set-btn--destructive  —— 宿主没有「危险按钮」变体，这一条外观必须由插件补。
 function bibSetButton(props) {
   const variant = props.variant || (props.primary ? 'primary' : 'outline');
-  const className = 'bib-set-btn'
-    + (props.destructive ? ' bib-set-btn--destructive' : '')
-    + (props.className ? ' ' + props.className : '');
+  const destructive = props.destructive ? ' bib-set-btn--destructive' : '';
+  const layout = props.className ? ' ' + props.className : '';
   const children = props.children;
   if (BIB_SET_NATIVE_BUTTON) {
     return React.createElement(BIB_SET_NATIVE_BUTTON, {
       type: 'button',
       variant: variant,
       size: 'sm',
-      className: className,
+      className: (destructive + layout).trim() || undefined,
       disabled: props.disabled === true,
       title: props.title,
       onClick: props.onClick,
@@ -1402,11 +1439,27 @@ function bibSetButton(props) {
   }
   return React.createElement('button', {
     type: 'button',
-    className: className,
+    className: 'bib-set-btn' + destructive + layout,
     disabled: props.disabled === true,
     title: props.title,
     onClick: props.onClick,
   }, children);
+}
+
+// 文本输入：优先用宿主原生 Input（.wrap 的边框 / 底色 / 圆角 / 焦点态都由宿主维护）。
+// 与 Button / Switch 同一条铁律：原生分支只挂布局类与宿主没有的插件态类，绝不把 .bib-set-*
+// 的自绘外观交给宿主组件（同特异性 + 插件样式后插入 = 反向覆盖）。
+//   attrs             —— 直接透传给 <input> 的属性（value / onChange / aria-* / data-* 等）
+//   layout            —— 原生分支的附加布局类（bib-set-input 本体由本函数补）
+//   fallbackClassName —— 宿主没有 Input 时使用的自绘外观类
+function bibSetInput(props) {
+  const attrs = props.attrs || {};
+  if (BIB_SET_NATIVE_INPUT) {
+    return React.createElement(BIB_SET_NATIVE_INPUT, Object.assign({}, attrs, {
+      className: 'bib-set-input' + (props.layout ? ' ' + props.layout : ''),
+    }));
+  }
+  return React.createElement('input', Object.assign({}, attrs, { className: props.fallbackClassName }));
 }
 
 // 提示条：照宿主插件详情页的三种原生形态做——
@@ -1614,19 +1667,24 @@ function bibSetColorPicker(props) {
       const draft = props.hexDraftOf(props.fieldId);
       const hexValue = draft !== null ? draft : props.committedHexText(props.fieldId);
       const hexInvalid = draft !== null && draft.trim().length > 0 && !BIB_SET_HEX_PATTERN.test(draft.trim());
-      return React.createElement('input', {
-        type: 'text',
-        className: 'bib-set-hex',
-        'aria-label': t('ui.hexColor', { label: props.label }),
-        'aria-invalid': hexInvalid ? 'true' : 'false',
-        'data-invalid': hexInvalid ? 'true' : 'false',
-        placeholder: '#RRGGBB',
-        spellCheck: false,
-        maxLength: 7,
-        value: hexValue,
-        onChange: function (event) { props.onHexChange(props.fieldId, event && event.target ? event.target.value : ''); },
-        onBlur: function () { props.onHexCommit(props.fieldId); },
-        onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onHexCommit(props.fieldId); } },
+      // 原生 Input 的非法态：宿主没有错误变体，插件用 .bib-set-input--invalid 补一条描红
+      // （只覆盖 border-color，几何与焦点态仍归宿主）；兜底路径继续用 data-invalid 描红。
+      return bibSetInput({
+        layout: 'bib-set-input--hex' + (hexInvalid ? ' bib-set-input--invalid' : ''),
+        fallbackClassName: 'bib-set-hex',
+        attrs: {
+          type: 'text',
+          'aria-label': t('ui.hexColor', { label: props.label }),
+          'aria-invalid': hexInvalid ? 'true' : 'false',
+          'data-invalid': hexInvalid ? 'true' : 'false',
+          placeholder: '#RRGGBB',
+          spellCheck: false,
+          maxLength: 7,
+          value: hexValue,
+          onChange: function (event) { props.onHexChange(props.fieldId, event && event.target ? event.target.value : ''); },
+          onBlur: function () { props.onHexCommit(props.fieldId); },
+          onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onHexCommit(props.fieldId); } },
+        },
       });
     })());
   return React.createElement(BIB_SET_NATIVE_MENU, {
@@ -1688,19 +1746,22 @@ function bibSetFieldRow(field, props) {
             if (picked && BIB_SET_HEX_PATTERN.test(picked)) props.onColorChange(field.id, picked.toUpperCase());
           },
         })),
-      React.createElement('input', {
-        type: 'text',
-        className: 'bib-set-hex',
-        'aria-label': t('ui.hexColor', { label: fieldLabel }),
-        'aria-invalid': hexInvalid ? 'true' : 'false',
-        'data-invalid': hexInvalid ? 'true' : 'false',
-        placeholder: '#RRGGBB',
-        spellCheck: false,
-        maxLength: 7,
-        value: hexValue,
-        onChange: function (event) { props.onHexChange(field.id, event && event.target ? event.target.value : ''); },
-        onBlur: function () { props.onHexCommit(field.id); },
-        onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onHexCommit(field.id); } },
+      bibSetInput({
+        layout: 'bib-set-input--hex' + (hexInvalid ? ' bib-set-input--invalid' : ''),
+        fallbackClassName: 'bib-set-hex',
+        attrs: {
+          type: 'text',
+          'aria-label': t('ui.hexColor', { label: fieldLabel }),
+          'aria-invalid': hexInvalid ? 'true' : 'false',
+          'data-invalid': hexInvalid ? 'true' : 'false',
+          placeholder: '#RRGGBB',
+          spellCheck: false,
+          maxLength: 7,
+          value: hexValue,
+          onChange: function (event) { props.onHexChange(field.id, event && event.target ? event.target.value : ''); },
+          onBlur: function () { props.onHexCommit(field.id); },
+          onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onHexCommit(field.id); } },
+        },
       }));
   }
 
@@ -1844,17 +1905,20 @@ function bibSetCustomTextSection(props) {
     }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
       React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('input', {
-          id: 'bib-set-custom-text-input',
-          type: 'text',
-          className: 'bib-set-custom-text-input',
-          placeholder: t('ui.customTextPlaceholder'),
-          maxLength: 64,
-          value: props.customTextDraft !== null ? props.customTextDraft : props.customTextOf(),
-          onChange: function (event) { props.onCustomTextChange(event.target.value); },
-          onBlur: props.onCustomTextCommit,
-          onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
-          'aria-label': t('ui.customTextTitle'),
+        bibSetInput({
+          layout: 'bib-set-input--block',
+          fallbackClassName: 'bib-set-custom-text-input',
+          attrs: {
+            id: 'bib-set-custom-text-input',
+            type: 'text',
+            placeholder: t('ui.customTextPlaceholder'),
+            maxLength: 64,
+            value: props.customTextDraft !== null ? props.customTextDraft : props.customTextOf(),
+            onChange: function (event) { props.onCustomTextChange(event.target.value); },
+            onBlur: props.onCustomTextCommit,
+            onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
+            'aria-label': t('ui.customTextTitle'),
+          },
         }),
         React.createElement('p', { className: 'bib-set-fieldblock-hint' },
           t('ui.customTextCount', { value: props.customTextOf().length })))));
@@ -1864,9 +1928,16 @@ function bibSetCustomTextSection(props) {
 // 最初只服务「订阅窗口百分比方向」（quotaDisplayMode），2026-09-25 起也服务「更新方式」
 // （全自动更新 / 手动更新），因此取值归一改为可注入：默认仍是 normalizeQuotaDisplayMode，
 // 别的用途必须显式传 normalize —— 否则非余额方向的值会被归一成 remaining，出现「两项都没选中」。
-// role=radiogroup + 子项 role=radio + aria-checked + roving tabindex，
-// 方向键 / Home / End 键盘可达（与色板圆点同一套交互约定）。
-// 选中态：background: var(--bib-set-brand-strong)（#4a63e8 同色相深档 × #fff = 4.95:1，
+//
+// 2026-10-13：优先渲染宿主原生 SegmentedControl（半透明轨道 + 白色滑块 + 主色文字，
+// 与宿主自己的「添加方式」等两选一控件完全同一套外观，宿主换皮自动跟随）。
+// 它的语义是 tablist：每个 tab 用 aria-controls 指向 <id>-<value>-panel，调用方必须把
+// 对应的 tabpanel 一起渲染出来（本插件的两处用法都这样做，见 bibSetQuotaDisplaySection
+// 与 bibSetVersionSection）——不渲染就会留下悬空引用。
+//
+// 兜底路径（老宿主没有该组件）仍是插件自绘的两段式：role=radiogroup + 子项 role=radio + aria-checked
+// + roving tabindex，方向键 / Home / End 键盘可达（与色板圆点同一套交互约定）。
+// 兜底选中态：background: var(--bib-set-brand-strong)（#4a63e8 同色相深档 × #fff = 4.95:1，
 // 满足 AGENTS.md 对比度铁律 4.5:1 主句；#4d6bfe 实测只有 4.33:1 达不到）+ #fff + font-weight:600，
 // hover 仍保持该深档、不跟随主题变浅。真实色值由 tests/test-quota-display-mode.js 做真实
 // sRGB 相对亮度计算锁定（不用字符串断言代替）。
@@ -1876,7 +1947,23 @@ function bibSetQuotaMode(props) {
     { value: 'used', label: t('ui.quotaDisplayUsed') },
   ];
   const normalize = typeof props.normalize === 'function' ? props.normalize : normalizeQuotaDisplayMode;
-  const current = normalize(props.value);
+  const normalized = normalize(props.value);
+  // 归一结果必须落在选项集合里：原生控件用「选中项的下标」摆滑块，落在集合外会让
+  // selected = -1（滑块消失、所有 tab 的 tabIndex 都是 -1，整组不可 Tab）。落空时取第一项。
+  const current = options.some(function (option) { return option.value === normalized; })
+    ? normalized
+    : options[0].value;
+  if (BIB_SET_NATIVE_SEGMENTED) {
+    return React.createElement(BIB_SET_NATIVE_SEGMENTED, {
+      id: props.id || 'bib-set-quota-mode',
+      value: current,
+      options: options,
+      label: props.label || t('ui.quotaDisplayModeTitle'),
+      disabled: props.disabled === true,
+      className: props.className,
+      onChange: function (next) { if (props.onSelect) props.onSelect(next); },
+    });
+  }
   const refs = React.useRef({});
   const select = function (value) { if (props.onSelect) props.onSelect(value); };
   const moveTo = function (value) {
@@ -1917,23 +2004,45 @@ function bibSetQuotaMode(props) {
 
 // 「订阅窗口百分比方向」独立设置区：与「时间与日期」「自定义文字」同构（静态卡片头 + 字段块）。
 // 三个订阅窗口字段（5 小时 / 周 / 月）全关时整区隐藏，与其它设置区的显隐规则一致。
+const BIB_SET_QUOTA_MODE_ID = 'bib-set-quota-mode';
 function bibSetQuotaDisplaySection(props) {
   const windowsOn = ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].some(function (id) { return props.fieldOn(id); });
   if (!windowsOn) return null;
+  const native = !!BIB_SET_NATIVE_SEGMENTED;
+  const mode = normalizeQuotaDisplayMode(props.modeOf());
+  const desc = t('ui.quotaDisplayModeDesc');
+  // 原生分段控件是 tablist，用 aria-controls 指向 <id>-<value>-panel。宿主自己的用法是
+  // 「两个 panel 都渲染、非选中项 hidden」，照做：页面上不留悬空引用，说明文案也就近放在控件下面
+  // （与宿主「控件在上、说明在下」的排布一致）。兜底路径没有 tablist，说明仍留在区块头里。
+  const panels = native ? ['remaining', 'used'].map(function (value) {
+    return React.createElement('p', {
+      key: value,
+      id: BIB_SET_QUOTA_MODE_ID + '-' + value + '-panel',
+      role: 'tabpanel',
+      'aria-labelledby': BIB_SET_QUOTA_MODE_ID + '-' + value,
+      className: 'bib-set-fieldblock-hint',
+      hidden: value !== mode,
+    }, desc);
+  }) : null;
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-quota-mode-title' },
     bibSetCardHeader({
       static: true,
       titleId: 'bib-set-quota-mode-title',
       title: t('ui.quotaDisplayModeTitle'),
-      description: t('ui.quotaDisplayModeDesc'),
+      description: native ? undefined : desc,
     }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
       React.createElement('div', { className: 'bib-set-fieldblock' },
         React.createElement(bibSetQuotaMode, {
+          id: BIB_SET_QUOTA_MODE_ID,
           label: t('ui.quotaDisplayModeTitle'),
-          value: props.modeOf(),
+          value: mode,
           onSelect: props.onModeChange,
-        }))));
+          // 布局类：原生控件是 inline-grid，落在列向 flex 里会被 stretch 拉满整行；
+          // 只做 align-self / 最大宽度这类布局声明，外观仍全部交还宿主。
+          className: native ? 'bib-set-segmented' : null,
+        }),
+        panels)));
 }
 
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
@@ -2082,6 +2191,7 @@ function bibSetRestartKind(state) {
 //   以前只有一个按钮，它落到引擎里走的是「检查 + 下载 + 替换」同一条流水线，于是点「检查更新」
 //   等于立即安装、设置页还会被弹回顶部（用户原话：「我刚刚的测试发现，点了一下检查更新，
 //   它就直接装好了」）。语义拆开之后，检查是纯读动作，按钮放在哪里都无害，也就不必再按方式隐藏。
+const BIB_SET_UPDATE_MODE_ID = 'bib-set-update-mode';
 function bibSetVersionSection(props) {
   const state = props.state;
   // 【2026-09-25 血案】宿主进程还没加载到这一版插件代码时（典型场景：包文件已被替换成新版，
@@ -2192,13 +2302,37 @@ function bibSetVersionSection(props) {
       disabled ? null : React.createElement('div', { className: 'bib-set-data-row' },
         React.createElement('div', { className: 'bib-set-data-copy' },
           React.createElement('p', { className: 'bib-set-data-title' }, t('ui.autoUpdateTitle')),
-          React.createElement('p', { className: 'bib-set-data-desc' }, manual ? t('ui.updateModeManualDesc') : t('ui.updateModeAutoDesc'))),
+          // 原生分段控件是 tablist：两种方式的说明各自成为一个 tabpanel（非选中项 hidden），
+          // 供 tab 的 aria-controls 指向。兜底路径没有 tablist，仍是一句随选中项切换的说明。
+          BIB_SET_NATIVE_SEGMENTED
+            ? [
+              React.createElement('p', {
+                key: 'auto',
+                id: BIB_SET_UPDATE_MODE_ID + '-auto-panel',
+                role: 'tabpanel',
+                'aria-labelledby': BIB_SET_UPDATE_MODE_ID + '-auto',
+                className: 'bib-set-data-desc',
+                hidden: manual,
+              }, t('ui.updateModeAutoDesc')),
+              React.createElement('p', {
+                key: 'manual',
+                id: BIB_SET_UPDATE_MODE_ID + '-manual-panel',
+                role: 'tabpanel',
+                'aria-labelledby': BIB_SET_UPDATE_MODE_ID + '-manual',
+                className: 'bib-set-data-desc',
+                hidden: !manual,
+              }, t('ui.updateModeManualDesc')),
+            ]
+            : React.createElement('p', { className: 'bib-set-data-desc' }, manual ? t('ui.updateModeManualDesc') : t('ui.updateModeAutoDesc'))),
         // 更新方式用两段式选择而不是开关：用户拍板「全自动更新 / 手动更新」是二选一，不是开与关。
         // 组件复用订阅窗口方向的两段式（同一套几何与对比度），必须以 createElement 创建（内部有 hooks）。
         React.createElement('div', { className: 'bib-set-data-button-group' },
           React.createElement(bibSetQuotaMode, {
+            id: BIB_SET_UPDATE_MODE_ID,
             label: t('ui.autoUpdateTitle'),
             value: manual ? 'manual' : 'auto',
+            // 更新动作在途时锁住分段控件（与旁边两个按钮的 disabled 同步），避免切换方式与在途写操作打架。
+            disabled: busy,
             // 取值归一必须显式给出：控件默认按「订阅窗口方向」归一，会把 auto/manual 折成 remaining，
             // 结果是两个子项都没选中（2026-09-25 由 tests/test-quota-display-mode.cjs 抓出）。
             normalize: function (value) { return value === 'manual' ? 'manual' : 'auto'; },
@@ -2734,17 +2868,20 @@ function InfoBarSettingsSection() {
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
           React.createElement('div', { className: 'bib-set-search-shell' },
-            React.createElement('input', {
-              type: 'search',
-              className: 'bib-set-search',
-              placeholder: t('ui.searchPlaceholder') || '搜索内容…',
-              value: searchQuery,
-              onChange: function (e) {
-                const value = e && e.target ? e.target.value : '';
-                setSearchQuery(value);
-                if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true, notice: true });
+            bibSetInput({
+              layout: 'bib-set-input--block',
+              fallbackClassName: 'bib-set-search',
+              attrs: {
+                type: 'search',
+                placeholder: t('ui.searchPlaceholder') || '搜索内容…',
+                value: searchQuery,
+                onChange: function (e) {
+                  const value = e && e.target ? e.target.value : '';
+                  setSearchQuery(value);
+                  if (value.trim().length > 0) setGroupOpen({ native: true, plugin: true, notice: true });
+                },
+                'aria-label': t('ui.searchFieldsLabel') || 'Search visible content',
               },
-              'aria-label': t('ui.searchFieldsLabel') || 'Search visible content'
             })),
           React.createElement('span', { className: 'bib-set-count', role: 'status', 'aria-live': 'polite' }, fieldSummary))),
       fieldsBody,
