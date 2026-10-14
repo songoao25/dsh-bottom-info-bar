@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.3...v1.21.4) (2026-10-14)
+
+
+### Bug Fixes
+
+* stream ledger reads and writes so subagent bursts cannot OOM the host ([#241](https://github.com/songoao25/dsh-bottom-info-bar/issues/241)) ([f18ba5c](https://github.com/songoao25/dsh-bottom-info-bar/commit/f18ba5c76f11aef3ff2954392df64f10d62439c7))
+
 ## [1.21.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.2...v1.21.3) (2026-10-14)
 
 
