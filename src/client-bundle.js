@@ -1072,9 +1072,7 @@ function bibSetInstallStyles() {
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
-        --bib-page-title-size: 15px; --bib-page-title-weight: 600; --bib-page-title-line: 22px;
         --bib-sub-label-size: 12px; --bib-sub-label-weight: 600; --bib-sub-label-line: 18px;
-        --bib-panel-pad: 12px;
         --bib-desc-size: 13px; --bib-desc-line: 18px;
         --bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;
         --bib-row-gap: 16px;
@@ -1090,9 +1088,6 @@ function bibSetInstallStyles() {
         --bib-rule: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16));
         --bib-swatch-size: 20px; --bib-swatch-radius: var(--bib-control-radius);
         --bib-menu-dot-size: 12px;
-        --bib-field-gap: 6px; --bib-field-pad-block: 12px;
-        --bib-field-label-size: 13px; --bib-field-label-weight: 500; --bib-field-label-line: 1.5;
-        --bib-field-hint-size: 12px; --bib-field-hint-line: 1.5;
         box-sizing: border-box; max-inline-size: 100%; min-inline-size: 0;
       }
       .bib-settings, .bib-settings * { box-sizing: border-box; }
@@ -1164,8 +1159,6 @@ function bibSetInstallStyles() {
          这样用户不会把一个小箭头旁的文字误认为说明文案。 */
       /* 两个可展开分组是并列的独立入口，留出 16px 呼吸空间，不能像同一列表行挤在一起。 */
       .bib-set-field-list { gap: var(--bib-group-gap); }
-      /* 面板表面（唯一的一套卡片外观）：可折叠分组与静态设置区共用。边框 / 圆角 / 底色只在这里写一遍，
-         展开态的底色变化是分组独有的行为状态，留在分组自己的规则里。 */
       /* 2026-10-14：区块去卡片化。原先每组/每区都是「描边 + 8px 圆角 + 底色」的卡片，
          与姊妹插件的扁平列表（标题 + 右控件 + 分割线）不是一套东西。现在只留一条 1px 顶线
          做区块分界（照姊妹插件的 .cgpt-updates：border-top 1px border-primary + padding-top 16px），
@@ -1178,9 +1171,8 @@ function bibSetInstallStyles() {
       /* 分组说明与行说明同一套排版基线（11.5/16 三级色），不再自带 12/1.5 那一档。 */
       .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-row-hint-size); font-weight: 400; line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }
       /* 设置页小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
-         四级层级（字号/色阶逐级收敛，行式各不相同，第一眼即分得开）：
-           页标题 15/600 主色独占一行 → 分组/卡片标题 14/500 主色（可折叠的带动作）
-           → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色 + 说明另起一行。
+         2026-10-14 收敛为三级（页面标题行已删除）：
+           区块标题 14/500 主色 → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色 + 说明另起一行。
          小节眉故意做成单行眉题（标题与说明同行、说明超长省略），与上下两级的双行堆叠
          形成对比；节与节之间一条细线。 */
       .bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }
@@ -1209,7 +1201,7 @@ function bibSetInstallStyles() {
          既对齐又不越界。 */
       /* 行的两栏语法与姊妹插件（dsh-chatgpt-sub 的 .cgpt-row）逐条一致：
          「标题 + 说明」在左、控件靠右（justify-content: space-between），行间一条 .5px 分割线。
-         控件单列时直接作为第二个子节点；需要竖排（输入框 + 计数）时用 .bib-set-controls 包一层。 */
+         控件单列时直接作为第二个子节点；需要竖排（输入框 + 计数）时用 .bib-set-fieldblock-control 包一层。 */
       .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
       /* 列表首行去上内边距、末行去下内边距与边线（同姊妹插件 .cgpt-row:first-child/:last-child）：
          列表与所属区块齐平，不再在顶部/底部留一段看不见的空白。 */
