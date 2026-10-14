@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.4...v1.21.5) (2026-10-14)
+
+
+### Bug Fixes
+
+* keep ledger history on disk with bounded migration and exports ([#243](https://github.com/songoao25/dsh-bottom-info-bar/issues/243)) ([6406fdd](https://github.com/songoao25/dsh-bottom-info-bar/commit/6406fdd0864fe369f9213ec7f01105cada44730b))
+
 ## [1.21.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.3...v1.21.4) (2026-10-14)
 
 
