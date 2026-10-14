@@ -1067,8 +1067,10 @@ function bibSetInstallStyles() {
         /* 配置区只是详情页里的**一个** section：区块间距取宿主 .X_2TxG_detailSection 的 12px，
            不取 .X_2TxG_detailSections 的 32px（那是区块之间的间距，套进来会凭空多出大段空白）。
            同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
-        --bib-sec-gap: 12px;
-        --bib-sec-inner: 16px;
+        /* 2026-10-14 与姊妹插件统一到宿主自己的区块节奏：
+           .detailSections{gap:32px} → 区块之间 32px；.detailSection{gap:12px} → 区块内部 12px。 */
+        --bib-sec-gap: 32px;
+        --bib-sec-inner: 12px;
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
@@ -1158,13 +1160,16 @@ function bibSetInstallStyles() {
          一整块可点击的表面、标题/状态/动作文字三层信息，以及稳定可见的“展开/收起”。
          这样用户不会把一个小箭头旁的文字误认为说明文案。 */
       /* 两个可展开分组是并列的独立入口，留出 16px 呼吸空间，不能像同一列表行挤在一起。 */
-      .bib-set-field-list { gap: var(--bib-group-gap); }
+      /* 扁平化之后分组就是一条条相邻的行，行间靠 .5px 分割线，不再留 16px 卡片间距
+         （宿主 .rows 也是 gap:0）。 */
+      .bib-set-field-list { gap: 0; }
       /* 2026-10-14：区块去卡片化。原先每组/每区都是「描边 + 8px 圆角 + 底色」的卡片，
          与姊妹插件的扁平列表（标题 + 右控件 + 分割线）不是一套东西。现在只留一条 1px 顶线
          做区块分界（照姊妹插件的 .cgpt-updates：border-top 1px border-primary + padding-top 16px），
          组内/行间的分隔一律靠 .5px 分割线。 */
       .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; }
-      .bib-set-card--panel { border-top: 1px solid var(--dsw-alias-border-primary, rgba(128,128,128,0.2)); padding: 16px 0 0; }
+      /* 区块之间只用间距，不画线：宿主 .detailSections 就是 gap:32px（没有 border）。 */
+      .bib-set-card--panel { border: 0; padding: 0; }
       .bib-set-group-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
@@ -1202,10 +1207,10 @@ function bibSetInstallStyles() {
       /* 行的两栏语法与姊妹插件（dsh-chatgpt-sub 的 .cgpt-row）逐条一致：
          「标题 + 说明」在左、控件靠右（justify-content: space-between），行间一条 .5px 分割线。
          控件单列时直接作为第二个子节点；需要竖排（输入框 + 计数）时用 .bib-set-fieldblock-control 包一层。 */
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
       /* 列表首行去上内边距、末行去下内边距与边线（同姊妹插件 .cgpt-row:first-child/:last-child）：
          列表与所属区块齐平，不再在顶部/底部留一段看不见的空白。 */
-      .bib-set-collapse-inner > .bib-set-row:first-child { padding-top: 0; }
+
       .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }
       .bib-set-row:last-child { border-bottom: 0; }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 0; }
@@ -1217,7 +1222,9 @@ function bibSetInstallStyles() {
          0.5px border-l4 / bg-layer-3 / 13px，与同一页的输入框、时区下拉同高同形。
          原生 Menu 分支不读这条规则（锚点是宿主 Button，外观归宿主）。 */
       .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
-      .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      /* 行内两栏 = 宿主 .rowLine(flex/gap16) + .rowMain(flex:1/column/gap2)：
+         文字块吃掉剩余宽度，控件自然贴右，不再靠 space-between 硬推。 */
+      .bib-set-rowText { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
       .bib-set-rowText--field { min-width: 0; }
       /* 行标题照原生 .X_2TxG_rowId：13.5/500/20。 */
       .bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
@@ -1311,11 +1318,11 @@ function bibSetInstallStyles() {
       .bib-set-fieldblocks { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; }
       /* 参数区（时区 / 自定义文字 / 百分比方向）复用同一条行语法：左「标题 + 说明」、右控件、
          .5px 下边线；末行去线去内边距，与 .X_2TxG_row:last-child 同规则。 */
-      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border-bottom: var(--bib-rule); }
-      .bib-set-fieldblocks > .bib-set-fieldblock:first-child { padding-top: 0; }
-      .bib-set-fieldblocks > .bib-set-fieldblock:last-child { padding-bottom: 0; border-bottom: 0; }
+      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border-bottom: var(--bib-rule); }
+      /* 只保留宿主也有的那条：末行去线。首行/末行去内边距是自创覆写，已删除。 */
+      .bib-set-fieldblocks > .bib-set-fieldblock:last-child { border-bottom: 0; }
       /* 行左侧的「标题 + 说明」两行堆叠（与 .bib-set-rowText 同构）。 */
-      .bib-set-fieldblock-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .bib-set-fieldblock-copy { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
       /* 行右侧的控件列：竖排（控件在下、计数/说明在上或下）时右对齐，单控件时也走这一层。 */
       .bib-set-fieldblock-control { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; min-width: 0; }
@@ -2076,14 +2083,17 @@ function bibSetQuotaDisplaySection(props) {
       hidden: value !== mode,
     }, desc);
   }) : null;
-  // 行语法：左「标题」，右分段控件；说明作为 tabpanel 换行到控件下方（仍是同一行的一部分）。
-  // 兜底路径没有 tablist，说明直接放在标题下面，不额外占一行。
+  // 行语法照宿主 .rowLine / .rowMain：标题与说明都在左侧文字列里，分段控件在右。
+  // 原生分段控件是 tablist，说明就是它的 tabpanel——放在文字列里既满足 aria 契约，
+  // 又与姊妹插件的「更新方式」行同一形态（说明跟着选中项变，不另起一行）。
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-quota-mode-title' },
     React.createElement('div', { className: 'bib-set-fieldblocks' },
       React.createElement('div', { className: 'bib-set-fieldblock' },
         React.createElement('div', { className: 'bib-set-fieldblock-copy' },
           React.createElement('span', { id: 'bib-set-quota-mode-title', className: 'bib-set-fieldblock-label' }, t('ui.quotaDisplayModeTitle')),
-          native ? null : React.createElement('span', { className: 'bib-set-fieldblock-hint' }, desc)),
+          panels === null
+            ? React.createElement('span', { className: 'bib-set-fieldblock-hint' }, desc)
+            : panels),
         React.createElement('div', { className: 'bib-set-fieldblock-control' },
           React.createElement(bibSetQuotaMode, {
             id: BIB_SET_QUOTA_MODE_ID,
@@ -2093,8 +2103,7 @@ function bibSetQuotaDisplaySection(props) {
             // 布局类：原生控件是 inline-grid，落在列向 flex 里会被 stretch 拉满整行；
             // 只做 align-self / 最大宽度这类布局声明，外观仍全部交还宿主。
             className: native ? 'bib-set-segmented' : null,
-          })),
-        panels === null ? null : React.createElement('div', { className: 'bib-set-fieldblock-panel' }, panels))));
+          })))));
 }
 
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
