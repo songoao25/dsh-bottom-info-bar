@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.0...v1.21.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* use the DSH native picker for the language selector ([#233](https://github.com/songoao25/dsh-bottom-info-bar/issues/233)) ([8da5630](https://github.com/songoao25/dsh-bottom-info-bar/commit/8da563046811a9fcd1f0b8fde272c9718ec3d85a))
+
 ## [1.21.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.20.14...v1.21.0) (2026-10-13)
 
 
