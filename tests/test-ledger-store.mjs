@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { EventEmitter } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { openLedgerStore } from '../src/ledger-store.js';
-const moduleUrl = new URL('../src/ledger-store.js', import.meta.url).href;
+const worker = fileURLToPath(new URL('./ledger-store-worker.mjs', import.meta.url));
 const hooks = { account:r=>r.provider, currency:r=>r.currency||'CNY', cost:r=>r.cost??null, safeKey:x=>String(x) };
 const rec={id:'a',ts:Date.parse('2026-01-01T00:00:00Z'),provider:'test',model:'test',input:10,cacheRead:0,cacheWrite:0,output:1,cost:2,currency:'CNY',sessionId:'s'};
 const directories=[];
@@ -24,14 +25,13 @@ const summary={version:1,foldedUpTo:rec.ts+86400000,foldedDayBuckets:{'2026-01-0
 }
 {
  const dir=temp('race'), marker=join(dir,'locked');const s=openLedgerStore(dir,hooks);const r={...rec};delete r.cost;s.append(r);s.close();
- const childCode=`import {openLedgerStore} from ${JSON.stringify(moduleUrl)};import {writeFileSync} from 'node:fs';const hooks={account:r=>r.provider,currency:r=>'CNY',cost:r=>r.cost??null,safeKey:x=>String(x)};const s=openLedgerStore(${JSON.stringify(dir)},hooks);console.log('ready');process.stdin.once('data',()=>{const n=s.backfill(()=>{if(process.argv[1]==='A'){writeFileSync(${JSON.stringify(marker)},'locked');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,750)}return 2},()=> 'CNY','t');console.log('changed',n);s.close()});`;
- const a=spawn(process.execPath,['--input-type=module','-e',childCode,'A']),b=spawn(process.execPath,['--input-type=module','-e',childCode,'B']);let ready=0;let output='';
+ const a=spawn(process.execPath,[worker,'race',dir,'A',marker]),b=spawn(process.execPath,[worker,'race',dir,'B',marker]);let ready=0;let output='';
  const done=[a,b].map(c=>new Promise((resolve,reject)=>{c.stderr.on('data',buf=>process.stderr.write(buf));c.on('error',reject);c.on('exit',code=>code===0?resolve():reject(new Error('child failed '+code)));c.stdout.on('data',buf=>{const text=buf.toString();output+=text;if(text.includes('ready')&&++ready===2){a.stdin.end('go');const timer=setInterval(()=>{if(existsSync(marker)){clearInterval(timer);b.stdin.end('go')}},5)}})}));
  await Promise.all(done);const check=openLedgerStore(dir,hooks);assert.equal(check.providerSpend('test'),2);check.close();assert.match(output,/changed 0/);console.log('PASS two processes backfill one charge once');
 }
 {
  const dir=temp('complexity'), file=join(dir,'usage-records.json'),fd=openSync(file,'w');writeSync(fd,'[{"id":"a","ts":1,"model":"x","provider":"p","input":1,"cacheRead":0,"cacheWrite":0,"output":1,"extra":[');for(let i=0;i<70;i++)writeSync(fd,'{},'.repeat(10000));writeSync(fd,'{}]}]');closeSync(fd);
- const result=spawnSync(process.execPath,['--max-old-space-size=32','--input-type=module','-e',`import {openLedgerStore} from ${JSON.stringify(moduleUrl)};try{openLedgerStore(${JSON.stringify(dir)},${JSON.stringify({})});process.exitCode=2}catch(e){if(e.code!=='BIB_LEDGER_UNAVAILABLE')throw e;console.log(e.message)}`],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/complexity limit/);assert.ok(existsSync(file));const db=new DatabaseSync(join(dir,'usage-ledger.sqlite'));assert.equal(db.prepare("SELECT COUNT(*) n FROM meta WHERE key='migrated'").get().n,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM records').get().n,0);db.close();console.log('PASS complex record fails controllably at 32 MB with original intact and no migration marker');
+ const result=spawnSync(process.execPath,['--max-old-space-size=32',worker,'complexity',dir],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/complexity limit/);assert.ok(existsSync(file));const db=new DatabaseSync(join(dir,'usage-ledger.sqlite'));assert.equal(db.prepare("SELECT COUNT(*) n FROM meta WHERE key='migrated'").get().n,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM records').get().n,0);db.close();console.log('PASS complex record fails controllably at 32 MB with original intact and no migration marker');
 }
 {
  const dir=temp('version'), file=join(dir,'usage-ledger.sqlite'),db=new DatabaseSync(file);db.exec('PRAGMA user_version=2; CREATE TABLE future_private(value TEXT)');db.close();const before=readFileSync(file);assert.throws(()=>openLedgerStore(dir,hooks),/newer plugin/);assert.deepEqual(readFileSync(file),before);const check=new DatabaseSync(file);assert.deepEqual(check.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>r.name),['future_private']);check.close();console.log('PASS newer schema database byte-for-byte unchanged');
@@ -52,8 +52,7 @@ const summary={version:1,foldedUpTo:rec.ts+86400000,foldedDayBuckets:{'2026-01-0
 }
 {
  const dir=temp('crash');const store=openLedgerStore(dir,hooks);store.append(rec);store.close();
- const code=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(join(dir,'usage-ledger.sqlite'))});db.exec("BEGIN IMMEDIATE; UPDATE accounts SET cost=999; DELETE FROM records");if(process.platform==='win32')process.exit(23);else process.kill(process.pid,'SIGKILL');`;
- const crashed=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8'});
+ const crashed=spawnSync(process.execPath,[worker,'crash',dir],{encoding:'utf8'});
  assert.ok(crashed.signal==='SIGKILL'||crashed.status===23,crashed.stderr);
  const recovered=openLedgerStore(dir,hooks);assert.equal(recovered.count(),1);assert.equal(recovered.providerSpend('test'),2);recovered.close();console.log('PASS interrupted transaction restores both record and aggregate without partial charges');
 }
