@@ -13,6 +13,7 @@ For security vulnerabilities, follow [SECURITY.md](SECURITY.md) rather than open
 - `locale/`: plugin display-name and description dictionaries.
 - `tests/`: behavior and packaging checks.
 - `docs/INSTALL.md`: installation, updates and troubleshooting.
+- `docs/UI-STYLE.md`: the settings-page style contract shared with [dsh-chatgpt-sub](https://github.com/songoao25/dsh-chatgpt-sub) (values read from the host's plugin-detail page).
 
 The repository root is the installable package. Generated `lib/` files are committed so a repository-address installation requires no build approval. Edit source files and rebuild; do not edit generated files directly.
 

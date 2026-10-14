@@ -130,13 +130,15 @@ check(
   foundProcessDocs.length === 0,
   foundProcessDocs.length === 0 ? undefined : '发现：' + foundProcessDocs.join(', ')
 )
-const ALLOWED_DOCS = ['INSTALL.md', 'PROVIDER-COMPATIBILITY.md']
+// 2026-10-14：+UI-STYLE.md —— 两个插件共用的设置页样式契约（数值取自宿主插件详情页 CSS），
+// 是给用户/贡献者看的公开文档，不是过程文稿。
+const ALLOWED_DOCS = ['INSTALL.md', 'PROVIDER-COMPATIBILITY.md', 'UI-STYLE.md']
 let extraDocs = []
 try {
   extraDocs = readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !ALLOWED_DOCS.includes(f))
 } catch (err) { extraDocs = ['docs/ 不可读：' + String((err && err.message) || err)] }
 check(
-  '守卫 3b：docs/ 只留用户说明（INSTALL.md / PROVIDER-COMPATIBILITY.md）',
+  '守卫 3b：docs/ 只留用户说明（INSTALL.md / PROVIDER-COMPATIBILITY.md / UI-STYLE.md）',
   extraDocs.length === 0,
   extraDocs.length === 0 ? undefined : '发现：' + extraDocs.join(', ')
 )
