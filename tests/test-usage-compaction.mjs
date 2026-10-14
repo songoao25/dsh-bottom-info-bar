@@ -1,3 +1,4 @@
+import { readLedgerRecords, resetSyntheticDatabase } from './ledger-fixture.mjs'
 // v1.9.0 性能地基验收测试（docs/PERF-AUDIT-v1.9.md §⑦）：
 // ① 压缩等价：~5000 条快照 + 5000 行 journal 折叠后，totalSpend/todaySpend/last30dSpend/
 //    spendSummary/currentSessionSummary 与旧版全扫基线逐字段相等；快照 ≤ 保留窗、journal ≤ 阈值；重启总额不变
@@ -430,17 +431,11 @@ check('① 大账本折叠后 getUsageSummary 返回 200', !!summary1 && typeof 
 dispose1() // 冲刷：快照重写为窗内明细 + journal 滚动压缩 + summaries 落盘
 
 {
-  const boundary = foldBoundaryMs()
-  const snapshotAfter = JSON.parse(readFileSync(join(dataDir1, 'usage-records.json'), 'utf8'))
-  const expectedDetail = allRecords.filter((r) => !(r.ts < boundary && Number.isFinite(r.cost) && r.cost >= 0))
-  check('① 折叠后快照条数 = 保留窗内明细 + unpriced（≤ 保留窗）', snapshotAfter.length === expectedDetail.length, { got: snapshotAfter.length, want: expectedDetail.length, boundary })
-  const expectedFolded = allRecords.filter((r) => r.ts < boundary && Number.isFinite(r.cost) && r.cost >= 0).length
-  const archivedLines = archiveLineCount(dataDir1)
-  check('① 折叠记录已进冷归档（只写不读，行数 == 折叠数）', archivedLines === expectedFolded, { archivedLines, expectedFolded })
-  const journalAfter = readFileSync(join(dataDir1, 'usage-records.journal.jsonl'), 'utf8')
-  const journalLineCount = journalAfter.split('\n').filter((l) => l.trim()).length
-  check('① journal 行数压缩到阈值内（≤2000）', journalLineCount <= 2000, { got: journalLineCount })
-  check('① summaries 汇总文件已生成', existsSync(join(dataDir1, 'usage-summaries.json')))
+  const stored = readLedgerRecords(dataDir1)
+  check('① 磁盘账本完整保留全部历史明细（不因旧窗口丢弃）', stored.length === allRecords.length, { got: stored.length, want: allRecords.length })
+  const originalById = new Map(allRecords.map(r => [r.id, r]))
+  check('① 每条固化金额和用量与原始账本完全一致', stored.every(r => { const expected = originalById.get(r.id); return expected && r.cost === expected.cost && r.input === expected.input && r.cacheRead === expected.cacheRead && r.output === expected.output }), stored.length)
+  check('① 迁移保留原始快照和流水，供恢复核对', readFileSync(join(dataDir1, 'usage-records.json'), 'utf8') === JSON.stringify(fixture.snapshot) && readFileSync(join(dataDir1, 'usage-records.journal.jsonl'), 'utf8') === fixture.journalLines.join('\n') + '\n')
 }
 
 // 重启（重新 load）后总额不变（幂等）
@@ -551,12 +546,12 @@ dispose2()
   await new Promise((resolve) => setTimeout(resolve, 50))
   const before = await invokeSummary(stub3a.captured.route, 'unpriced-sess-0', 'moonshotai-cn', 'kimi-k3')
   dispose3a()
-  const snapshot3a = JSON.parse(readFileSync(join(dataDir3, 'usage-records.json'), 'utf8'))
+  const snapshot3a = readLedgerRecords(dataDir3)
   const archiveMonth = refDayKey(beijingTs(100, 13, 0)).slice(0, 7)
   const archivePath = join(dataDir3, 'usage-archive', archiveMonth + '.jsonl')
   const archiveFiles = existsSync(archivePath) ? readFileSync(archivePath, 'utf8').split('\n').filter((l) => l.trim()) : []
   check('③ unpriced 老明细永不折叠（仍留在快照）', snapshot3a.filter((r) => r.id && r.id.indexOf('unpriced-old-') === 0).length === 10, snapshot3a.map((r) => r.id))
-  check('③ 冷归档只含 priced 折叠记录', archiveFiles.length === 1 && JSON.parse(archiveFiles[0]).id === 'priced-old', archiveFiles.map((l) => JSON.parse(l).id))
+  check('③ 旧已计价明细在磁盘上完整保留', snapshot3a.some(r => r.id === 'priced-old' && r.cost === 1))
   check('③ 补算前 moonshotai 账户 totalSpend 不含 unpriced', sameMoney(before.totalSpend, 0), before.totalSpend)
 
   // 远程价目目录缓存合并（插件真实的 6h 回填通道）→ future-model 获得官方单价 → totalSpend 增加
@@ -602,17 +597,18 @@ dispose2()
   dispose5a()
 
   // ⑤b summaries 主文件损坏（写入中途崩溃）→ 回退 .bak，金额不丢
-  copyFileSync(join(dataDir5, 'usage-summaries.json'), join(dataDir5, 'usage-summaries.json.bak'))
+  // Completed database migration is authoritative; later damage to a retained legacy file cannot change it.
   writeFileSync(join(dataDir5, 'usage-summaries.json'), '{ torn summaries write')
   const stub5b = makeStub()
   const dispose5b = m5.plugin.apply(stub5b.ctx)
   await new Promise((resolve) => setTimeout(resolve, 50))
   const after5b = await invokeSummary(stub5b.captured.route, 'recent-check')
-  check('⑤ summaries 主文件损坏 → .bak 恢复，总额一致', sameMoney(after5b.totalSpend, base.totalSpend), { got: after5b.totalSpend, want: base.totalSpend })
+  check('⑤ 迁移完成后旧汇总损坏不影响数据库中的总额', sameMoney(after5b.totalSpend, base.totalSpend), { got: after5b.totalSpend, want: base.totalSpend })
   dispose5b()
 
   // ⑤c journal 撕裂行 + 与快照重复的行 → 只计一次，总额不变
-  const snapshotNow = JSON.parse(readFileSync(join(dataDir5, 'usage-records.json'), 'utf8'))
+  resetSyntheticDatabase(dataDir5)
+  const snapshotNow = crashFixture.snapshot
   const dupLine = JSON.stringify(snapshotNow.find((r) => r.id === 'snap-recent-0'))
   const journalPath = join(dataDir5, 'usage-records.journal.jsonl')
   writeFileSync(journalPath, readFileSync(journalPath, 'utf8') + dupLine + '\n' + '{ torn journal line\n')

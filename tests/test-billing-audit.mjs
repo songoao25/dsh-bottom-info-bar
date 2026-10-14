@@ -1,3 +1,4 @@
+import { readLedgerRecords } from './ledger-fixture.mjs'
 import { LOCALES } from '../src/locales.js'
 // 计费审计回归（2026-10-05）：DeepSeek 官方价目 / 峰谷口径 / 缓存命中口径 / 去重 / 未计价。
 //
@@ -161,7 +162,7 @@ await drain(stub.captured.listener, opts('dup'), [
 ])
 let summary = await invoke(stub.captured.route, 'dup')
 check('⑫ 多条 usage 快照只记一笔（取最后一笔，不累加）', summary.currentSession && summary.currentSession.tokens === 300 + 400 + 5000, summary.currentSession)
-const journalRecords = () => readFileSync(join(dataDir, 'usage-records.journal.jsonl'), 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+const journalRecords = () => readLedgerRecords(dataDir)
 check('⑩ duplicate usage event 不产生第二条记录', journalRecords().filter((r) => r.sessionId === 'dup').length === 1)
 
 // ⑨ retry = 第二次 llm/stream：两次尝试各自计费（DSH 的 retry 会重新发起请求）

@@ -47,9 +47,9 @@ const builtins = new Set([
   // 自更新（src/self-update.js 的导入）走同一套静态白名单
   'fileURLToPath', 'createSelfUpdater', 'classifyRestart', 'compareSemver',
   // 版本身份（src/version.js 的导入：静态审计跟不进 ESM import，按名单放行）
-  'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
+  'openLedgerStore', 'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
-  'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
+  'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',
   'globalThis', 'webCtx', 'webServer', 'req', 'res', 'dispose',
   'URLSearchParams', 'isFinite',

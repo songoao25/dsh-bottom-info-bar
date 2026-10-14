@@ -35,8 +35,8 @@ check('导出用的下载链接与 objectURL 均被回收',
   && clientSrc.includes('window.URL.revokeObjectURL(url)'), true)
 check('卸载不再扫描 profile 或自动清理账本目录',
   !hostSrc.includes('function bundleStillReferenced()') && !hostSrc.includes('function clearPluginData()'), true)
-check('dispose 只冲刷未落盘记录，不根据卸载状态删除用户数据',
-  hostSrc.includes('if (dirty || summariesDirty) flushSave();') && !hostSrc.includes('clearPluginData();'), true)
+check('dispose 只检查落盘并关闭数据库，不根据卸载状态删除用户数据',
+  hostSrc.includes('ledger.checkpoint();') && hostSrc.includes('ledger.close();') && !hostSrc.includes('clearPluginData();'), true)
 
 // ---------- 运行时判定 ----------
 const tmpRoot = mkdtempSync(join(tmpdir(), 'bib-uninstall-'))

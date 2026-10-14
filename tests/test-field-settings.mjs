@@ -1,3 +1,4 @@
+import { resetSyntheticDatabase } from './ledger-fixture.mjs'
 // v1.9.0 PR2 宿主设置验收：settings.json 读写往返 / 损坏回退 / 白名单拒绝 / density 落盘 /
 // 双重置 / configVersion / 同源防护。
 // 账本类铁律：涉及 DATA_DIR 的测试必须在 import 被测模块前先设 env 指向临时目录
@@ -84,7 +85,7 @@ function newSection(name) {
 async function mount(section) {
   section.mod = await loadPluginFor(section.dir)
   section.stub = makeStub()
-  section.mod.plugin.apply(section.stub.ctx)
+  section.dispose = section.mod.plugin.apply(section.stub.ctx)
   return section
 }
 
@@ -295,6 +296,9 @@ function copySettings(fromDir, toDir) {
   mkdirSync(join(s.dir, 'usage-archive'), { recursive: true })
   writeFileSync(join(s.dir, 'usage-archive', '2026-07.jsonl'), '{"id":"archived","ts":0}\n')
 
+  // Exercise a fresh legacy migration, not a completed SQLite ledger.
+  s.dispose()
+  resetSyntheticDatabase(s.dir)
   // 重启（同目录、全新模块实例）：summaries 与 .bak 均缺失
   const warns = []
   const originalWarn = console.warn
@@ -309,7 +313,7 @@ function copySettings(fromDir, toDir) {
     console.warn = originalWarn
   }
   const restarted = (await invokeRoute(restartRoute, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-chat' } })).body
-  check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('账单汇总文件缺失') !== -1), warns)
+  check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('legacy spend summary is unavailable') !== -1), warns)
   check('D4：客户端可见告警（persistence=snapshot-stale「账单待整理」+ 指向冷归档文案）',
     restarted.persistence.state === 'snapshot-stale' && /usage-archive/.test(restarted.persistence.message || ''), restarted.persistence)
 }

@@ -1,3 +1,4 @@
+import { readLedgerRecords } from './ledger-fixture.mjs'
 // Bottom Info Bar — 静态 host 冒烟测试（不依赖真实 DSH 运行环境）
 // 桩 ctx（credentials/shell/timer/agentDefaultModel/on/inject/interval）→ 调 plugin.apply
 // → 捕获 webServer 路由 → 用假 req/res 逐方法验证 HTTP 分发、记账、同源防护、配置切换、
@@ -372,10 +373,10 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
 }
 
 // ---------- 持久化：冲刷落盘 → 文件存在且含记录 ----------
-const dataFile = join(tmpData, 'usage-records.json')
+const dataFile = join(tmpData, 'usage-ledger.sqlite')
 disposer1() // 触发 flushSave
 {
-  const saved = existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : null
+  const saved = existsSync(dataFile) ? readLedgerRecords(tmpData) : null
   check('记账落盘文件已生成', Array.isArray(saved) && saved.length >= 1)
   check('落盘记录含 s-usage 会话', Array.isArray(saved) && saved.some((r) => r.sessionId === 's-usage' && r.input === 1000 && r.output === 2000))
 }

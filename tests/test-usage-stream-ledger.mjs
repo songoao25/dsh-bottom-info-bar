@@ -1,3 +1,4 @@
+import { readLedgerRecords } from './ledger-fixture.mjs'
 // Stream-to-ledger acceptance tests: a model response is one bill, even when
 // DSH emits multiple usage snapshots; interrupted responses remain auditable.
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
@@ -111,7 +112,7 @@ check('重叠实例写入后两个完整账单都可恢复',
   JSON.stringify({ writerA: writerA.currentSession, writerB: writerB.currentSession }))
 disposeRecovered()
 
-const beforeFailure = JSON.parse(readFileSync(snapshotFile, 'utf8'))
+const beforeFailure = readLedgerRecords(dataDir)
 const interruptedRecord = beforeFailure.find((record) => record.sessionId === 'interrupted')
 const unpricedRecord = beforeFailure.find((record) => record.model === 'unknown-model')
 check('中断账单标为 interrupted', interruptedRecord && interruptedRecord.status === 'interrupted', JSON.stringify(interruptedRecord))
@@ -121,8 +122,8 @@ check('底栏为账单未保存提供明确提示', clientSource.includes("t('ui
 
 // Turn the journal pathname into a directory: appending must fail, and the
 // failed bill must not appear in the visible total or snapshot.
-renameSync(journalFile, journalFile + '.saved')
-mkdirSync(journalFile)
+renameSync(join(dataDir, 'usage-ledger.sqlite'), join(dataDir, 'usage-ledger.sqlite.saved'))
+mkdirSync(join(dataDir, 'usage-ledger.sqlite'))
 const second = makeStub()
 const disposeSecond = plugin.apply(second.ctx)
 await drain(second.captured.listener, 'not-saved', [

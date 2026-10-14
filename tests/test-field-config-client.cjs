@@ -663,7 +663,7 @@ check('设置页搜索工具栏使用系统清除操作与本地化结果数量'
   && clientSrc.includes("t('ui.enabledFieldsCount', { count: fieldsEnabledCount })")
   && clientSrc.includes("t('ui.searchFieldsLabel')"), true);
 check('账单数据支持导出与确认后清除', clientSrc.includes('function bibSetDataCard(props)')
-  && clientSrc.includes("rpc('exportUsageRecords')")
+  && clientSrc.includes("rpc('exportUsageRecords', { metadata: true })")
   && clientSrc.includes("rpc('clearUsageRecords')")
   && clientSrc.includes("window.confirm(t('ui.clearBillingRecordsConfirm'))")
   && clientSrc.includes("t('ui.exportIncomplete', { value: hostText(payload.archiveReadError) })")

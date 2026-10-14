@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   CI:
@@ -16,7 +17,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       - name: Build
         run: npm run build
       # lib/ 是提交入库的构建产物：用户直接把 GitHub 仓库地址粘进 DSH 就能装，
@@ -25,3 +26,19 @@ jobs:
         run: git status --porcelain -- lib | tee /dev/stderr | wc -l | grep -qx 0
       - name: Run tests
         run: node tests/run-all.mjs
+
+  windows-ledger:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Disk ledger regression and low-memory acceptance
+        run: |
+          node tests/test-ledger-store.mjs
+          node tests/test-ledger-wide-record.mjs
+          node tests/test-ledger-download.mjs
+          node tests/test-ledger-memory.mjs
+          node tests/test-usage-ledger.mjs
+          node tests/test-usage-stream-ledger.mjs
