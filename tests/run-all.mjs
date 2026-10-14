@@ -49,6 +49,7 @@ const cases = [
   ['test-session-lineage（Issue #44 父子会话精确归属）', ['tests/test-session-lineage.mjs'], join(root), process.execPath],
   ['test-optional-service-safety（Issue #67 缺少可选服务时不得 500）', ['tests/test-optional-service-safety.mjs'], join(root), process.execPath],
   ['test-usage-compaction（v1.9 压缩等价/会话锁/回填/扫描量/崩溃安全）', ['tests/test-usage-compaction.mjs'], join(root), process.execPath],
+  ['test-ledger-memory（账本读写不整本成串：分块写/压缩等价 + 内存护栏）', ['tests/test-ledger-memory.mjs'], join(root), process.execPath],
   ['test-field-settings（v1.9 PR2 设置落盘/白名单/密度持久/双重置/configVersion）', ['tests/test-field-settings.mjs'], join(root), process.execPath],
   ['test-field-config-client（v1.9 PR2 客户端过滤/零回归着色/注册表一致性）', ['tests/test-field-config-client.cjs'], join(root), process.execPath],
   ['test-field-sections（设置页小节：完整划分 / 文案成对 / 与 group 及显隐零耦合）', ['tests/test-field-sections.cjs'], join(root), process.execPath],
