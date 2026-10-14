@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.1...v1.21.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* match the sibling plugin's flat row layout in the settings page ([#235](https://github.com/songoao25/dsh-bottom-info-bar/issues/235)) ([0483f53](https://github.com/songoao25/dsh-bottom-info-bar/commit/0483f53edf0897ddee958ba440f32873e2e7b765))
+
 ## [1.21.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.0...v1.21.1) (2026-10-14)
 
 
