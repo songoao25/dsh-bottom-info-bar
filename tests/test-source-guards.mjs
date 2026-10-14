@@ -141,17 +141,19 @@ check(
   extraDocs.length === 0 ? undefined : '发现：' + extraDocs.join(', ')
 )
 
-// ---------- 守卫 4：发布元数据不允许被手工修改（仅 PR 场景）----------
+// ---------- 守卫 4：发布元数据只由 Release Please 改（仅 PR 场景）----------
 //
 // 手工 bump 版本号会让 Release Please 找不到「上次发布」的基准，从而把全部历史
 // 当成未发布内容、算出错误的大版本 —— 2026-09-11 的 v2.0.0 事故即由此而来。
+//
+// 2026-10-14：发版 PR 也纳入自动合并（发布链全自动，不再有人工闸门），
+// 所以发版 PR 自己也要被机器看着：只准改版本文件，且两处版本必须一致。
 // 该守卫需要 CI 提供的 git 上下文，本地跑（无 GITHUB_BASE_REF）时自动跳过。
 const baseRef = process.env.GITHUB_BASE_REF || ''
 const headRef = process.env.GITHUB_HEAD_REF || ''
+const RELEASE_VERSION_FILES = ['package.json', 'package-lock.json', 'CHANGELOG.md', '.release-please-manifest.json']
 if (!baseRef) {
   console.log('SKIP  守卫 4：非 PR 场景（无 GITHUB_BASE_REF），跳过发布元数据检查')
-} else if (headRef.startsWith('release-please--')) {
-  console.log('PASS  守卫 4：Release Please 的发布 PR 有权修改版本元数据')
 } else {
   const { execFileSync } = await import('node:child_process')
   const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
@@ -162,7 +164,28 @@ if (!baseRef) {
   } catch (err) {
     console.log('WARN  守卫 4：无法取得基线（' + String(err && err.message).split('\n')[0] + '），跳过本次检查')
   }
-  if (changed) {
+  if (changed && headRef.startsWith('release-please--')) {
+    // 守卫 4a / 4b：发版 PR 自己也要被看着（它现在是自动合并的，没有人再拦）。
+    const unexpected = changed.filter((f) => !RELEASE_VERSION_FILES.includes(f))
+    check(
+      '守卫 4a：发版 PR 只改版本元数据四个文件',
+      unexpected.length === 0,
+      unexpected.length === 0 ? undefined
+        : '多改了：' + unexpected.join(', ') +
+          '\n      发版 PR 由 Release Please 生成，只应含 ' + RELEASE_VERSION_FILES.join(' / ') + '。' +
+          '\n      其它改动请另开代码 PR —— 塞进发版提交等于绕过评审直接发布。'
+    )
+    let pkgVersion = null
+    let manifestVersion = null
+    try { pkgVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version } catch (err) { /* 交给断言报失败 */ }
+    try { manifestVersion = JSON.parse(readFileSync(join(root, '.release-please-manifest.json'), 'utf8'))['.'] } catch (err) { /* 同上 */ }
+    check(
+      '守卫 4b：发版 PR 里 package.json 与 manifest 的新版本一致',
+      Boolean(pkgVersion) && pkgVersion === manifestVersion,
+      'package.json = ' + pkgVersion + '，.release-please-manifest.json = ' + manifestVersion +
+        '\n      两者不一致会让 Release Please 的发布基准错位，可能重演 v2.0.0 误发。'
+    )
+  } else if (changed) {
     // manifest 与 CHANGELOG 整文件锁死（Release Please 只会整体重写它们）。
     // package.json 只锁 version 字段：description / keywords 等非版本字段的
     // 正常改动不该被拦（守卫的意图是防手工 bump 版本号，不是冻结整个文件）。
@@ -185,7 +208,7 @@ if (!baseRef) {
       override = log.includes('[release-metadata-override]')
     } catch (err) { /* 取不到提交信息就当作没有授权，宁可拦住 */ }
     check(
-      '守卫 4：普通 PR 不得手工修改版本元数据（版本号由 Release Please 独占）',
+      '守卫 4c：普通 PR 不得手工修改版本元数据（版本号由 Release Please 独占）',
       touched.length === 0 || override,
       touched.length === 0 ? undefined
         : '被修改：' + touched.join(', ') +

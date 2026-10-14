@@ -33,7 +33,7 @@ Provider credentials belong in DSH settings or the existing local sign-in stores
 
 Use a focused branch and [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Describe the user-visible change, checks performed and remaining verification gaps. External contributions need maintainer review.
 
-Release Please manages versions and release notes. Do not manually change package or manifest version fields outside the established release process. Owner code PRs may auto-merge after required checks; release PRs are excluded and need maintainer confirmation. Tags trigger npm publication. Verify the public registry, `latest` tag, downloadable archive and integrity after publication; a successful workflow alone does not establish availability.
+Release Please manages versions and release notes. Do not manually change package or manifest version fields outside the established release process. Owner PRs — release PRs included — auto-merge once the required checks pass, so the chain runs without a human step (2026-10-14: check, approval, merge and publish are all automatic, and branch protection requires no approving review). What used to be the maintainer's confirmation is now the machine guards in `tests/test-source-guards.mjs`: a normal PR cannot touch version metadata, and a release PR may only touch the four version files and must keep `package.json` and the manifest in agreement. Tags trigger npm publication. Verify the public registry, `latest` tag, downloadable archive and integrity after publication; a successful workflow alone does not establish availability.
 
 README.md is the English entry point; README.zh-CN.md mirrors it in Chinese. Keep installation claims aligned with published packages and DSH's actual supported installation paths. Public repository files are for users and contributors; exclude private instructions, session records, account data and internal audits.
 
@@ -42,7 +42,9 @@ README.md is the English entry point; README.zh-CN.md mirrors it in Chinese. Kee
 This repository follows the personal GitHub project standard: one workflow per responsibility
 (`ci`, `codeql`, `release-please`, `publish-npm`, `verify-npm-release`, `auto-merge-own`),
 a seven-section README with a Chinese mirror, SemVer with tags created only by the release bot,
-and npm publishing through Trusted Publishing (OIDC) with no long-lived token.
+npm publishing through Trusted Publishing (OIDC) with no long-lived token, and a fully automatic
+release chain — release PRs auto-merge, with the machine guards in `tests/test-source-guards.mjs`
+standing in for the human confirmation the standard required before 2026-10-14.
 
 Release secrets (GitHub shows no expiry through its API — read the date on the token page and
 record the renewal here):

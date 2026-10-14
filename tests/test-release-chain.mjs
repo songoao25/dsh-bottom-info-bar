@@ -167,19 +167,33 @@ check(
   '只按时间判断会把 npm 的异步校验队列误判成发布失败'
 )
 
-// ---------- 契约 4：人工闸门必须仍然存在 ----------
+// ---------- 契约 4：全自动发布链（2026-10-14）----------
 //
-// 这条闸门在 auto-merge-own.yml 里，不在本流水线文件中，所以特别容易被误删。
+// 人工闸门（发布 PR 排除在自动合并之外）已在 2026-10-14 按用户拍板撤掉：发布链改成
+// 全自动 —— 自动审核（CI + CodeQL）→ 自动批准（分支保护不要求人工批准）→ 自动合并 → 自动发版。
+// 闸门原来挡的风险改由 tests/test-source-guards.mjs 的机器守卫接管，所以这里同时钉住
+// 「闸门确实撤了」和「守卫确实会被 CI 跑到」。
 const autoMerge = read('.github/workflows/auto-merge-own.yml')
+const autoMergeCondition = autoMerge.split('if: >-')[1]?.split('runs-on:')[0] ?? ''
 check(
-  '契约 4a：发布 PR 仍被排除在自动合并之外（分支名判别）',
-  autoMerge.includes("!startsWith(github.event.pull_request.head.ref, 'release-please--')"),
-  '闸门被移除后，发布 PR 会被静默自动合并 —— 即 v2.0.0 事故的直接成因'
+  '契约 4a：发布 PR 不再被排除在自动合并之外（三道判断都已撤掉）',
+  !/release-please--/.test(autoMergeCondition)
+    && !/autorelease/.test(autoMergeCondition)
+    && !/chore\(main\): release/.test(autoMergeCondition),
+  '条件里仍有发布 PR 排除，发布链就不是全自动'
 )
 check(
-  '契约 4b：发布 PR 仍被排除在自动合并之外（autorelease 标签判别，兜底）',
-  autoMerge.includes("!contains(join(github.event.pull_request.labels.*.name, ','), 'autorelease')"),
-  '标签判别是 release-please 改动分支命名时的兜底'
+  '契约 4b：owner 与 draft 两道判断仍在（别人的 PR、草稿 PR 不自动合）',
+  autoMergeCondition.includes('github.event.pull_request.user.login == github.repository_owner')
+    && autoMergeCondition.includes('github.event.pull_request.draft == false'),
+  '撤闸门不该把「只合 owner 的 PR」一起撤掉'
+)
+check(
+  '契约 4c：接管闸门的机器守卫确实在，且会被 CI 跑到',
+  existsSync(join(root, 'tests/test-source-guards.mjs'))
+    && read('tests/run-all.mjs').includes('test-source-guards.mjs')
+    && read('tests/test-source-guards.mjs').includes('守卫 4a'),
+  '撤掉人工闸门却没有机器守卫，等于重回 v2.0.0 误发的条件'
 )
 
 // ---------- 契约 5：基准钉子必须还在 ----------
