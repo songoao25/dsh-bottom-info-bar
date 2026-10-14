@@ -109,19 +109,30 @@ const LOCALE_NAMESPACE = 'dsh-bottom-info-bar';
 const LOCALES = /*__LOCALES__*/{};
 let t;
 let localeService;
-function pluginLanguagePicker(React, runtime, onError) {
+// 语言选择行：与设置页里的时区选择共用同一条原生控件路径——锚点是宿主原生 Button，
+// 展开的是宿主原生 Menu 卡片（宿主没有 Menu 的老版本才退回 <select>，见 bibSetSelect）。
+// 原先这里是一个裸 <select>：那是操作系统自带的古老控件（灰色直角框 + 系统菜单），
+// 和旁边的原生按钮/输入框明显不是一套东西，所以改成姊妹插件（dsh-chatgpt-sub）同款的原生下拉，
+// 整行的形状/配色/动效都交还宿主维护。语言本身仍只存在本浏览器的 localStorage，不改 DSH 偏好。
+function bibSetLanguagePicker(props) {
+  const runtime = props.runtime;
+  const options = [{ id: 'auto', label: t('language.auto') }].concat(
+    runtime.options().map(function (language) { return { id: language.id, label: language.label }; }));
   return React.createElement('div', { className: 'bib-set-row' },
     React.createElement('div', { className: 'bib-set-rowText' },
       React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
       React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
-    React.createElement('select', {
-      id: 'bib-language', value: runtime.preference(), className: 'bib-set-language',
-      onChange: function (event) {
-        try { runtime.setPreference(event.target.value); onError(null); }
-        catch { onError({ text: function () { return t('language.saveFailed'); } }); }
+    React.createElement(bibSetSelect, {
+      id: 'bib-language',
+      value: runtime.preference(),
+      label: t('language.title'),
+      options: options,
+      fallbackClassName: 'bib-set-language',
+      onChange: function (next) {
+        try { runtime.setPreference(next); props.onError(null); }
+        catch { props.onError({ text: function () { return t('language.saveFailed'); } }); }
       },
-    }, React.createElement('option', { value: 'auto' }, t('language.auto')),
-      runtime.options().map(function (language) { return React.createElement('option', { key: language.id, value: language.id }, language.label); })));
+    }));
 }
 /*__LANGUAGE_RUNTIME__*/
 let languageRuntime;
@@ -1199,7 +1210,10 @@ function bibSetInstallStyles() {
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
          fallback（宿主无 Menu）时控件块仍按 grid-column: 1 / -1 落第二行，见 .bib-set-controls--field。 */
       .bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--bib-row-gap); row-gap: 8px; align-items: start; width: 100%; min-width: 0; }
-      .bib-set-language { max-width: 100%; min-width: 0; font: inherit; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-background-primary, transparent); border: 1px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 5px 8px; }
+      /* 语言下拉的兜底形态（仅老宿主没有原生 Menu 时走）：几何照宿主 .input —— 34px 高 / r12 /
+         0.5px border-l4 / bg-layer-3 / 13px，与同一页的输入框、时区下拉同高同形。
+         原生 Menu 分支不读这条规则（锚点是宿主 Button，外观归宿主）。 */
+      .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-rowText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-rowText--field { min-width: 0; }
       /* 行标题照原生 .X_2TxG_rowId：13.5/500/20。 */
@@ -1294,7 +1308,7 @@ function bibSetInstallStyles() {
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-field-label-size); font-weight: var(--bib-field-label-weight); line-height: var(--bib-field-label-line); color: var(--dsw-alias-label-primary); }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-field-hint-size); line-height: var(--bib-field-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
       .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
-      .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
+      .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible, .bib-set-language:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
       /* 色板：预设色不再描边（描边 + 虚线圈是「手绘控件」的观感），选中用宿主主文字色的双环，
@@ -1426,24 +1440,28 @@ function bibSetButton(props) {
   const destructive = props.destructive ? ' bib-set-btn--destructive' : '';
   const layout = props.className ? ' ' + props.className : '';
   const children = props.children;
+  // id / role / aria-label 原样透传：下拉锚点要靠 id 与左侧可见 <label for> 配对，
+  // 原生按钮的 role/aria-* 也都是调用方给的语义，不该在包装层丢掉。
+  const semantics = {
+    id: props.id,
+    role: props.role,
+    'aria-label': props.ariaLabel,
+    disabled: props.disabled === true,
+    title: props.title,
+    onClick: props.onClick,
+  };
   if (BIB_SET_NATIVE_BUTTON) {
-    return React.createElement(BIB_SET_NATIVE_BUTTON, {
+    return React.createElement(BIB_SET_NATIVE_BUTTON, Object.assign({}, semantics, {
       type: 'button',
       variant: variant,
       size: 'sm',
       className: (destructive + layout).trim() || undefined,
-      disabled: props.disabled === true,
-      title: props.title,
-      onClick: props.onClick,
-    }, children);
+    }), children);
   }
-  return React.createElement('button', {
+  return React.createElement('button', Object.assign({}, semantics, {
     type: 'button',
     className: 'bib-set-btn' + destructive + layout,
-    disabled: props.disabled === true,
-    title: props.title,
-    onClick: props.onClick,
-  }, children);
+  }), children);
 }
 
 // 文本输入：优先用宿主原生 Input（.wrap 的边框 / 底色 / 圆角 / 焦点态都由宿主维护）。
@@ -1519,28 +1537,40 @@ function bibSetPalette(props) {
   return React.createElement('span', { className: 'bib-set-dots', role: 'radiogroup', 'aria-label': props.label }, children);
 }
 
-// 时区选择：原先用浏览器原生 <select>，那是操作系统自带的古老控件（灰色直角框 + 系统菜单），
-// 与 DSH 的观感完全脱节。这里优先用宿主原生 Menu（锚点 = 原生 Button，列表 = 原生菜单卡片），
+// 下拉选择：浏览器原生 <select> 是操作系统自带的古老控件（灰色直角框 + 系统菜单），
+// 与 DSH 的观感完全脱节。这里优先用宿主原生 Menu（锚点 = 原生 outline Button，列表 = 原生菜单卡片），
 // 宿主没有 Menu 时才退回 <select>，保证老版本仍可用。
-function bibSetTimeZonePicker(props) {
+// 时区与语言两处共用这一条路径：锚点/弹层/选中态/关闭行为只有一套实现，
+// 原生分支只给宿主组件挂布局类，形状/配色/hover/焦点态全部由宿主维护。
+//   id / value / label / options([{id,label}]) / fallbackClassName / onChange
+function bibSetSelect(props) {
   const [open, setOpen] = React.useState(false);
   const value = props.value;
+  const options = props.options || [];
   if (!BIB_SET_NATIVE_MENU) {
     return React.createElement('select', {
-      className: 'bib-set-time-zone',
+      id: props.id,
+      className: props.fallbackClassName,
       value: value,
       'aria-label': props.label,
       onChange: function (event) { props.onChange(event.target.value); },
-    }, TIME_ZONE_OPTIONS.map(function (z) { return React.createElement('option', { key: z, value: z }, z); }));
+    }, options.map(function (option) {
+      return React.createElement('option', { key: option.id, value: option.id }, option.label);
+    }));
   }
-  const items = TIME_ZONE_OPTIONS.map(function (z) { return { id: z, label: z }; });
+  let current = null;
+  for (let i = 0; i < options.length; i++) {
+    if (options[i].id === value) current = options[i];
+  }
   const anchor = bibSetButton({
+    id: props.id,
     variant: 'outline',
     className: 'bib-set-select-trigger' + (open ? ' bib-set-select-trigger--open' : ''),
+    ariaLabel: props.label,
     title: props.label,
     onClick: function () { setOpen(!open); },
     children: [
-      React.createElement('span', { key: 'v', className: 'bib-set-select-value' }, value),
+      React.createElement('span', { key: 'v', className: 'bib-set-select-value' }, current ? current.label : String(value)),
       BIB_SET_CHEVRON_ICON
         ? React.createElement(BIB_SET_CHEVRON_ICON, { key: 'c', size: 14, className: 'bib-set-select-chevron' })
         : React.createElement('span', { key: 'c', className: 'bib-set-chevron-glyph bib-set-select-chevron' }),
@@ -1549,13 +1579,23 @@ function bibSetTimeZonePicker(props) {
   return React.createElement(BIB_SET_NATIVE_MENU, {
     open: open,
     anchor: anchor,
-    items: items,
+    items: options.map(function (option) { return { id: option.id, label: option.label }; }),
     selectedId: value,
     onSelect: function (id) { setOpen(false); props.onChange(id); },
     onClose: function () { setOpen(false); },
     align: 'start',
     portal: true,
     className: 'bib-set-select',
+  });
+}
+
+function bibSetTimeZonePicker(props) {
+  return React.createElement(bibSetSelect, {
+    value: props.value,
+    label: props.label,
+    options: TIME_ZONE_OPTIONS.map(function (z) { return { id: z, label: z }; }),
+    fallbackClassName: 'bib-set-time-zone',
+    onChange: props.onChange,
   });
 }
 
@@ -2563,13 +2603,13 @@ function InfoBarSettingsSection() {
     if (status === 'loading') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
-    pluginLanguagePicker(React, languageRuntime, setOpError),
+    React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
         bibSetAlert({ tone: 'info', children: t('ui.loadingInfoBarSettings') }));
     }
     if (status === 'error') {
       return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
         React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
-    pluginLanguagePicker(React, languageRuntime, setOpError),
+    React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
         bibSetAlert({ tone: 'error', children: t('ui.couldNotLoadInfoBar') + (hostText(loadError) || t('ui.pleaseTryAgainLater')) }));
     }
 
@@ -2863,7 +2903,7 @@ function InfoBarSettingsSection() {
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
-    pluginLanguagePicker(React, languageRuntime, setOpError),
+    React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
     React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
@@ -2931,7 +2971,7 @@ function InfoBarSettingsSection() {
   } catch (err) {
     return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       React.createElement('div', { className: 'bib-set-page-head' }, bibSetPageTitle()),
-    pluginLanguagePicker(React, languageRuntime, setOpError),
+    React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
       bibSetAlert({ tone: 'error', children: t('ui.couldNotDisplayInfoBar', { value: bibSetOperationMessage(err) }) }));
   }
 }
