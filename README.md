@@ -17,16 +17,22 @@ Click the bar to switch between **Full** and **Compact**. They differ in exactly
 
 ## Install
 
-Recommended: open the DSH plugin page, add a plugin, and paste this repository URL — no commands needed:
+Recommended: open the DSH plugin page, choose **Add plugin**, and enter the npm package name — DSH fetches the published package from npm, with no commands and no build:
 
 ```
-https://github.com/songoao25/dsh-bottom-info-bar
+dsh-bottom-info-bar
 ```
 
-Prefer the terminal? This installs the same thing from npm:
+Prefer the terminal? The same install from the command line:
 
 ```bash
 dsh plugin --profile web add dsh-bottom-info-bar
+```
+
+To run the newest code from the default branch instead of the latest release, paste the repository URL into the same field:
+
+```
+https://github.com/songoao25/dsh-bottom-info-bar
 ```
 
 Then **restart DSH** — plugins are composed when the host starts, so a page refresh is not enough. In the desktop app, use **Plugins → Add plugin**; its profile is managed by the app and cannot be installed into through the CLI. Other install methods (including Windows PowerShell) and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).

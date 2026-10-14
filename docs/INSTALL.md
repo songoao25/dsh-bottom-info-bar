@@ -8,17 +8,15 @@
 
 ## 安装
 
-### 方式一：NPM 安装（推荐）
+### 方式一：在 DSH 插件页里添加（推荐）
 
-```bash
-dsh plugin --profile web add dsh-bottom-info-bar
+**插件 → 添加插件**，「包名或地址」填 npm 包名：
+
+```
+dsh-bottom-info-bar
 ```
 
-装的是已发布的版本，更新提醒给出的也是这条命令。
-
-### 方式二：在 DSH 插件页里添加
-
-**插件 → 添加插件**，「包名或地址」填 `dsh-bottom-info-bar`。
+装的是 npm 上已发布的版本，与方式二完全相同，只是不用敲命令。
 
 那一栏也可以直接填仓库地址 —— 包就在仓库根目录，所以填地址装的是默认分支的最新代码：
 
@@ -27,6 +25,14 @@ https://github.com/songoao25/dsh-bottom-info-bar
 ```
 
 这种方式不跑构建（`lib/` 已入库），也不需要额外授权。更新就是再执行一次同样的命令。
+
+### 方式二：命令行 NPM 安装
+
+```bash
+dsh plugin --profile web add dsh-bottom-info-bar
+```
+
+装的是已发布的版本，更新提醒给出的也是这条命令。
 
 ### 方式三：一键脚本（产生 `link:` 安装）
 
@@ -116,7 +122,7 @@ dsh plugin --profile web add dsh-bottom-info-bar@latest
 # 重启 DSH
 ```
 
-如果最初填的是 GitHub 地址（方式二），更新就是再执行一次同样的命令：
+如果最初填的是 GitHub 地址（方式一），更新就是再执行一次同样的命令：
 
 ```bash
 dsh plugin --profile web add https://github.com/songoao25/dsh-bottom-info-bar
