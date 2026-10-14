@@ -1,3 +1,4 @@
+import { readLedgerRecords } from './ledger-fixture.mjs'
 // host.js 审计必修项回归（端到端，桩环境，直接 import 源码无需先 build）：
 // ① 余额 seq 竞态：慢请求凭据失败不得覆盖新快照（审计缺陷 #3）
 // ② 余额失败保留旧快照：credentials / no-key 失败仅换 error，data/fetchedAt 保留（审计缺陷 #3）
@@ -261,7 +262,7 @@ globalThis.fetch = async (url, options) => {
   check('异常 usage 清洗后花费为有限正数（不出现 ¥NaN）', ca && ca.costs && Number.isFinite(ca.costs.CNY) && ca.costs.CNY > 0, JSON.stringify(ca && ca.costs))
   check('全部花费汇总保持有限（NaN 未污染）', typeof ra.payload.totalSpend === 'number' && Number.isFinite(ra.payload.totalSpend), 'totalSpend=' + ra.payload.totalSpend)
   disposer() // 冲刷落盘
-  const saved = JSON.parse(readFileSync(join(tmpData, 'usage-records.json'), 'utf8'))
+  const saved = readLedgerRecords(tmpData)
   const rec = saved.find((x) => x.sessionId === 's-abnormal')
   check('落盘异常记录数值已清洗（NaN/Infinity/负数 → 0，output 保留 500）', rec && rec.input === 0 && rec.cacheRead === 0 && rec.cacheWrite === 0 && rec.output === 500, JSON.stringify(rec))
 }

@@ -37,6 +37,7 @@
     "README.md",
     "README.zh-CN.md",
     "docs/INSTALL.md",
+    "docs/LEDGER.md",
     "LICENSE"
   ],
   "scripts": {
@@ -60,5 +61,8 @@
   },
   "peerDependencies": {
     "react": "^18.0.0"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

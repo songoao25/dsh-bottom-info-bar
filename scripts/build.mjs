@@ -17,7 +17,7 @@ const libDir = join(root, 'lib')
 
 await rm(libDir, { recursive: true, force: true })
 await mkdir(libDir, { recursive: true })
-for (const file of ['locales.js', 'host-locale.js', 'self-update.js', 'version.js']) {
+for (const file of ['locales.js', 'host-locale.js', 'self-update.js', 'version.js', 'ledger-store.js']) {
   await copyFile(join(root, 'src', file), join(libDir, file))
 }
 

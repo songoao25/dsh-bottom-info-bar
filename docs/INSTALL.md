@@ -186,3 +186,16 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 | 插件页提示「待批准的构建脚本」 | 装的是 1.15.0 及更早的仓库地址（旧清单带 `prepack`）。改用包名安装，或装包含修复的版本 |
 | 余额显示未配置/刷新失败 | 见 README「常见问题」 |
 | 想彻底回到原生状态 | 卸载 + 重启，系统统计栏自动恢复 |
+
+
+## Ledger compatibility and recovery
+
+The disk-backed ledger requires Node.js 22.13 or newer in the DSH host. Older
+runtimes keep the rest of the plugin available but report the ledger as unavailable;
+they do not silently fall back to the history-sized in-memory implementation.
+
+Legacy JSON snapshots, journals and summaries are imported once with transactional
+rollback. The original files remain in the same local data directory. New writes
+use the database; running an older plugin against these retained files will not
+show records written after migration. Export the current ledger before any manual
+data downgrade. See [Ledger storage and recovery](LEDGER.md).

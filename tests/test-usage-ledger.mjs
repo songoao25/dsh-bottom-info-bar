@@ -1,3 +1,4 @@
+import { readLedgerRecords, resetSyntheticDatabase } from './ledger-fixture.mjs'
 // Durable usage-ledger regression tests:
 // - no silent 3000-record eviction
 // - frozen historical charges survive price-table changes
@@ -73,6 +74,7 @@ dispose()
 
 // Simulate a damaged main snapshot after an interrupted replacement.  The
 // known-good backup and valid journal entries must still reconstruct the bill.
+resetSyntheticDatabase(dataDir)
 writeFileSync(dataFile, '{ not valid JSON')
 writeFileSync(backupFile, JSON.stringify([record('backup-only', 'backup-only', 1, TS_BASE)]))
 writeFileSync(journalFile, [JSON.stringify(record('backup-only', 'backup-only', 1, TS_BASE)), '{ torn line', JSON.stringify(record('journal-only', 'journal-only', 2, TS_BASE + 1))].join('\n') + '\n') // journal-only 较新：本会话窗口仅含自身
@@ -85,12 +87,13 @@ dispose()
 
 // Legacy arrays did not have a stable request id.  The first upgraded run
 // writes one back, so later snapshots and journals can deduplicate safely.
+resetSyntheticDatabase(dataDir)
 writeFileSync(dataFile, JSON.stringify([{ ts: 1787000000000, model: 'deepseek-v4-flash', provider: 'deepseek', sessionId: 'legacy', purpose: '', input: 1, cacheRead: 0, cacheWrite: 0, output: 1 }]))
 writeFileSync(journalFile, '')
 let third = makeStub()
 dispose = plugin.apply(third.ctx)
 dispose()
-const migrated = JSON.parse(readFileSync(dataFile, 'utf8'))
+const migrated = readLedgerRecords(dataDir)
 check('旧 JSON 首次升级自动补稳定账单编号', migrated.length === 1 && typeof migrated[0].id === 'string' && migrated[0].id.indexOf('legacy-') === 0, JSON.stringify(migrated))
 
 rmSync(dataDir, { recursive: true, force: true })

@@ -2165,6 +2165,17 @@ function usageExportCsv(payload) {
 }
 
 function downloadUsageExport(format, payload) {
+  if (payload && payload.downloadUrl === '/_dsh/dsh-bottom-info-bar/downloadUsageRecords') {
+    if (typeof document === 'undefined' || !document.body) throw new Error(t('ui.exportNotSupported'));
+    const link = document.createElement('a');
+    link.href = payload.downloadUrl + '?format=' + (format === 'csv' ? 'csv' : 'json');
+    link.download = 'dsh-bottom-info-bar-billing.' + (format === 'csv' ? 'csv' : 'json');
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    try { link.click(); } finally { if (link.parentNode) link.parentNode.removeChild(link); }
+    return;
+  }
   if (typeof window === 'undefined' || !window.URL || typeof window.URL.createObjectURL !== 'function'
       || typeof window.URL.revokeObjectURL !== 'function' || typeof Blob === 'undefined'
       || typeof document === 'undefined' || !document.body) {
@@ -2814,17 +2825,18 @@ function InfoBarSettingsSection() {
     setOpError(null);
     setNotice(null);
     setDataBusy(true);
-    rpc('exportUsageRecords').then(function (payload) {
+    rpc('exportUsageRecords', { metadata: true }).then(function (payload) {
       if (payload && payload.archiveReadError) {
         throw new Error(t('ui.exportIncomplete', { value: hostText(payload.archiveReadError) }));
       }
       const records = payload && Array.isArray(payload.records) ? payload.records : [];
-      if (records.length === 0) {
+      const count = payload && payload.downloadUrl ? payload.recordCount : records.length;
+      if (count === 0) {
         setNotice({ text: function () { return t('ui.noBillingRecordsToExport'); } });
         return;
       }
       downloadUsageExport(format, payload);
-      setNotice({ text: function () { return t('ui.exportedBillingRecords', { count: records.length, format: format.toUpperCase() }); } });
+      setNotice({ text: function () { return t(payload && payload.downloadUrl ? 'ui.exportDownloadStarted' : 'ui.exportedBillingRecords', { count: count, format: format.toUpperCase() }); } });
     }).catch(function (err) {
       setOpError({ text: function () { return t('ui.exportFailed', { value: hostText(bibSetOperationMessage(err)) }); } });
     }).finally(function () { setDataBusy(false); });
@@ -3788,7 +3800,7 @@ module.exports = {
               ? (unpricedRecords > 0 ? '≈' : '') + (costCNY != null ? '¥' + costCNY.toFixed(3) : '$' + costUSD.toFixed(3))
               : (hasTokens ? symbol + '—' : symbol + (0).toFixed(3));
             const today = usg.todaySpend != null ? t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) }) : '';
-            const month = usg.monthSpend != null ? t('ui.lastDays', { symbol: symbol, value: fmt(usg.monthSpend, 3) }) : '';
+            const month = usg.last30dSpend != null ? t('ui.lastDays', { symbol: symbol, value: fmt(usg.last30dSpend, 3) }) : '';
             const total = usg.totalSpend != null ? t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) }) : '';
             const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
             const costTitle = [t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' })];

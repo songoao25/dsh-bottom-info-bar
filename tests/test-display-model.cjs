@@ -171,6 +171,10 @@ async function createBarHarness(options) {
   };
   return {
     pump: pump,
+    titlesIn: function (tree, rowId) {
+      const host = nodes(tree).find(function (n) { return n.props && n.props.id === rowId; });
+      return host ? nodes(host).map(function (n) { return n.props && n.props.title || ''; }).join('\n') : '';
+    },
     densityOf: function (tree) {
       const root = nodes(tree).filter(function (n) { return n.props && n.props.className === 'bi-root'; })[0];
       return root ? root.props['data-density'] : null;
@@ -201,7 +205,7 @@ const FIELD_CONFIG = function (fields) {
     configVersion: 1,
   };
 };
-const USAGE = { currentSession: { costs: { CNY: 0.123 } }, todaySpend: 1.5, monthSpend: 20.5, totalSpend: 300.5, persistence: { state: 'ok' } };
+const USAGE = { currentSession: { costs: { CNY: 0.123 } }, todaySpend: 1.5, monthSpend: 20.5, last30dSpend: 40.5, totalSpend: 300.5, persistence: { state: 'ok' } };
 const UPDATE_INFO = { current: '1.19.3', latest: '1.19.3', updateStatus: { lastError: null } };
 
 // 每个场景 = 一个 provider 形态 + 该形态下最容易被"模式"误伤的字段清单（expect）。
@@ -280,6 +284,9 @@ const renderOnce = async function (scenario, fields, density) {
 
 (async function () {
 try {
+  const rolling = await renderOnce(SCENARIOS[1], allFieldsOn(), 'full');
+  const rollingText = rolling.harness.titlesIn(rolling.tree, ROW_MAIN);
+  check('近 30 天显示滚动累计而不是本月累计', rollingText.includes('40.500') && !rollingText.includes('20.500'), true);
   for (const scenario of SCENARIOS) {
     const fields = allFieldsOn();
     const full = await renderOnce(scenario, fields, 'full');

@@ -53,6 +53,8 @@ API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode
 
 ## Spend and updates
 
+The ledger requires a DSH runtime with Node.js 22.13 or newer. It keeps records and historical session indexes in a local disk database, reads bounded batches, and streams exports. Existing ledger files are migrated once and retained for recovery; see [Ledger storage and recovery](docs/LEDGER.md).
+
 Every model response records one entry (usage × unit price, locked the moment the response completes) and survives restarts. The plugin checks npm once per DSH start: **automatic updates** (default) download in the background and take effect after you restart, **manual updates** only notify; a bad release can be rolled back from settings. The ledger stores tokens and amounts, never conversation content; data stays under this end's `DSH_HOME` in `dsh-bottom-info-bar/` (default `~/.dsh/dsh-bottom-info-bar/`, overridable via `DSH_BOTTOM_INFO_BAR_DATA_DIR`) and survives uninstall — export or clear it from Billing data if you want a clean slate.
 
 ## Uninstall and roll back
