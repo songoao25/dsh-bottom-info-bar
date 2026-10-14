@@ -17,16 +17,22 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 
 ## 安装
 
-推荐：打开 DSH 的插件页，添加插件，直接粘贴本仓库地址，不用敲命令：
+最推荐：打开 DSH 的插件页 → **添加插件**，在「包名或地址」里填 npm 包名——DSH 会直接从 npm 下载已发布的版本，不用敲命令，也不用构建：
 
 ```
-https://github.com/songoao25/dsh-bottom-info-bar
+dsh-bottom-info-bar
 ```
 
-习惯用终端？这条命令装的是同一个 npm 包：
+习惯用终端？命令行装的是同一个包：
 
 ```bash
 dsh plugin --profile web add dsh-bottom-info-bar
+```
+
+想跑默认分支上的最新代码而不是已发布的版本，就在同一个输入框里填仓库地址：
+
+```
+https://github.com/songoao25/dsh-bottom-info-bar
 ```
 
 然后**重启 DSH**（插件在宿主启动时组合，只刷新页面不够）。桌面客户端请使用**插件 → 添加插件**；它的配置由客户端管理，不能通过命令行安装。其他装法（含 Windows PowerShell）与排障见 [docs/INSTALL.md](docs/INSTALL.md)。
