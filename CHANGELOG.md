@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.2...v1.21.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* align the settings page with the host detail-page contract ([#238](https://github.com/songoao25/dsh-bottom-info-bar/issues/238)) ([a8cda5f](https://github.com/songoao25/dsh-bottom-info-bar/commit/a8cda5f947eb59a343eb0e045a15d26e38b5a27e))
+
 ## [1.21.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.1...v1.21.2) (2026-10-14)
 
 
