@@ -456,7 +456,7 @@ check('横向既不自带内边距（否则与宿主 323.2 错位）也不越界
 // 后者管的是分组卡片 / 色块 / 警示条 / 分段控件槽 / 系统取色井那一类 8px 形状，混用会连带变形。
 check('兜底输入框几何：34px 高 / 12px 圆角（= 宿主 .input 现值），且四类兜底规则都走独立的 --bib-input-radius', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
-  const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-time-zone', '.bib-set-hex'];
+  const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-time-zone', '.bib-set-language', '.bib-set-hex'];
   const usesInputRadius = fallbacks.every(function (selector) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(escaped + '\\s*\\{[^}]*border-radius: var\\(--bib-input-radius\\)').test(install);
@@ -466,6 +466,42 @@ check('兜底输入框几何：34px 高 / 12px 圆角（= 宿主 .input 现值�
     && install.includes('--bib-control-radius: 8px;')
     && install.includes('--bib-btn-radius: var(--bib-control-radius);')
     && usesInputRadius;
+})(), true);
+
+// 2026-10-14：语言选择器从裸 <select> 换成宿主原生 Menu（与姊妹插件 dsh-chatgpt-sub 同款）。
+// 裸 <select> 是操作系统自带控件（灰色直角框 + 系统菜单），夹在原生按钮/输入框中间一眼出戏；
+// 现在锚点是原生 outline Button、列表是原生菜单卡片，形状/配色/hover/焦点态全部由宿主维护。
+// 只允许在「宿主没有原生 Menu」的兜底分支里出现 <select>，且兜底几何照宿主 .input（见上一条）。
+check('语言选择走宿主原生 Menu（锚点 = 原生 Button），裸 <select> 只留老宿主兜底分支', (function () {
+  const lang = extractFunctionFrom(clientSrc, 'bibSetLanguagePicker');
+  const select = extractFunctionFrom(clientSrc, 'bibSetSelect');
+  return lang.includes('React.createElement(bibSetSelect, {')
+    && lang.includes("fallbackClassName: 'bib-set-language'")
+    && lang.includes("htmlFor: 'bib-language'")
+    && lang.includes("runtime.setPreference(next)")
+    && !lang.includes("'select'")
+    && select.includes('if (!BIB_SET_NATIVE_MENU) {')
+    && select.includes("React.createElement('select', {")
+    && select.includes('React.createElement(BIB_SET_NATIVE_MENU, {')
+    && select.includes("ariaLabel: props.label")
+    && select.includes("React.createElement('span', { key: 'v', className: 'bib-set-select-value' }, current ? current.label : String(value))")
+    && (clientSrc.match(/'bib-set-select-trigger'/g) || []).length === 1;
+})(), true);
+check('时区与语言共用同一个下拉实现（锚点/弹层不再各写一份）', (function () {
+  const tz = extractFunctionFrom(clientSrc, 'bibSetTimeZonePicker');
+  return tz.includes('React.createElement(bibSetSelect, {')
+    && tz.includes("fallbackClassName: 'bib-set-time-zone'")
+    && !tz.includes("'select'")
+    && !tz.includes('BIB_SET_NATIVE_MENU');
+})(), true);
+check('下拉触发器的规则体只含布局声明（外观一律交还宿主 Button）', (function () {
+  const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
+  const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
+  const block = cssOnly.match(/\.bib-set-select-trigger\s*\{([^}]*)\}/);
+  if (!block) return false;
+  const FORBIDDEN = /^(?:appearance|background|border|border-radius|color|padding|margin|height|width|font|box-shadow|transition|opacity|filter)/;
+  return block[1].split(';').map(function (d) { return d.trim(); }).filter(Boolean)
+    .every(function (d) { return !FORBIDDEN.test(d); });
 })(), true);
 
 // 可发现性不能靠冗余文案：整块点击面、明确动作和焦点态已经足够。
@@ -745,10 +781,14 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     const layouts = [];
     const reLayout = /layout:\s*'([^']+)'/g;
     while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
-    return fallbacks.length === 4
+    // 6 处 fallbackClassName = 4 个输入框（hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）。
+    // layout 只有输入框用：恰好 4 条，且都在白名单内。
+    return fallbacks.length === 6
       && fallbacks.indexOf('bib-set-search') !== -1
       && fallbacks.indexOf('bib-set-custom-text-input') !== -1
       && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length === 2
+      && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length === 1
+      && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 1
       && layouts.length === 4
       && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
   })(), true);
@@ -990,11 +1030,23 @@ function withFakeDocument(run) {
     return lib.indexOf("['native', 'plugin', 'notice']") !== -1
       && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"') && lib.includes('notice: "group.notice"');
   })(), true);
-  check('310防复发：含 React hooks 的组件 bibSetPalette 必须以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
-    clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1 && clientSrc.indexOf('bibSetPalette({') === -1, true);
+  // 2026-10-14：守卫从 bibSetPalette 扩到设置页全部含 hooks 的组件——新增 bibSetSelect
+  // （语言/时区共用下拉）后，同一条铁律必须覆盖它，否则裸调用会让 hook 记到父组件账上（React #310）。
+  // 判定：名字后紧跟 ( 且前面不是 function 关键字 = 裸调用；同时必须存在 createElement 创建点。
+  const HOOKED_COMPONENTS = ['bibSetPalette', 'bibSetSelect', 'bibSetColorPicker', 'bibSetQuotaMode', 'InfoBarSettingsSection'];
+  const bareCallPattern = function (name) { return new RegExp('(?<!function )(?<![\\w.$])' + name + '\\('); };
+  check('310防复发：含 React hooks 的组件一律以 createElement 创建（禁止裸函数调用，防 hook 记账错乱→React #310）',
+    HOOKED_COMPONENTS.every(function (name) {
+      return clientSrc.indexOf('React.createElement(' + name) !== -1 && !bareCallPattern(name).test(clientSrc);
+    })
+    && clientSrc.indexOf('React.createElement(bibSetPalette, {') !== -1
+    && clientSrc.indexOf('bibSetPalette({') === -1, true);
   check('310防复发：构建产物同样不含裸调用', (function () {
     const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
-    return lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
+    return HOOKED_COMPONENTS.every(function (name) {
+      return lib.indexOf('React.createElement(' + name) !== -1 && !bareCallPattern(name).test(lib);
+    })
+    && lib.indexOf('React.createElement(bibSetPalette, {') !== -1 && lib.indexOf('bibSetPalette({') === -1;
   })(), true);
   // ---------- 语言职责边界 ----------
   check('设置页跟随 DSH 全局语言且不重复提供插件语言开关', clientSrc.includes('const [, setLocaleRevision] = React.useState(0);')
