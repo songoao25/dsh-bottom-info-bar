@@ -229,13 +229,18 @@ check('④ 显隐判定只认这三个窗口字段（subWindow5h / subWindowWeek
   const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
   return body.indexOf("['subWindow5h', 'subWindowWeek', 'subWindowMonth']") !== -1;
 })(), true);
+// 2026-10-14：这一区不再有独立卡片头——标题改成行左侧的标题节点（与姊妹插件的行语法一致），
+// 说明在原生分段控件下是那条 tabpanel 的内容。文案键与 aria 配对关系不变，断言随之改判。
 check('④ 区块标题 / 描述走已种下的文案键', (function () {
-  const headers = quotaUi.headerCalls[0];
-  return headers.title === t('ui.quotaDisplayModeTitle') && headers.description === t('ui.quotaDisplayModeDesc');
+  const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
+  return body.indexOf("t('ui.quotaDisplayModeTitle')") !== -1
+    && body.indexOf("t('ui.quotaDisplayModeDesc')") !== -1;
 })(), true);
-check('④ 区块头为静态卡片头并绑定 aria-labelledby（与时间与日期 / 自定义文字同构）', (function () {
+check('④ 标题节点带 aria-labelledby 的目标 id，section 指向同一个 id', (function () {
   const section = sectionOn(['subWindow5h']);
-  return section.props['aria-labelledby'] === 'bib-set-quota-mode-title' && quotaUi.headerCalls[0].static === true && quotaUi.headerCalls[0].titleId === 'bib-set-quota-mode-title';
+  const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
+  return section.props['aria-labelledby'] === 'bib-set-quota-mode-title'
+    && body.indexOf("{ id: 'bib-set-quota-mode-title', className: 'bib-set-fieldblock-label' }") !== -1;
 })(), true);
 
 const renderMode = function (value, onSelect) {
@@ -376,8 +381,11 @@ check('④-n disabled / className 透传（className 只用于布局收口）', 
 })(), true);
 check('④-n 区块：两个 tabpanel 与 tab 的 id / aria-labelledby 成对，非选中项 hidden', (function () {
   const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'used'; }, onModeChange: function () {} });
-  const fieldblock = section.children[1].children[0];
-  const panels = fieldblock.children[1];
+  // 2026-10-14 行语法：section > .bib-set-fieldblocks > .bib-set-fieldblock >
+  // [copy, control, panel（整行换行的那条 tabpanel）]
+  const fieldblock = section.children[0].children[0];
+  // panel 包在 .bib-set-fieldblock-panel 里：children[0] 才是那两条 tabpanel 的数组
+  const panels = fieldblock.children[2].children[0];
   return Array.isArray(panels) && panels.length === 2
     && panels[0].props.id === 'bib-set-quota-mode-remaining-panel'
     && panels[0].props['aria-labelledby'] === 'bib-set-quota-mode-remaining'
@@ -387,18 +395,24 @@ check('④-n 区块：两个 tabpanel 与 tab 的 id / aria-labelledby 成对，
     && panels[1].props['aria-labelledby'] === 'bib-set-quota-mode-used'
     && panels[1].props.hidden === false;
 })(), true);
-check('④-n 区块：说明文案随 tabpanel 走，区块头不再重复同一句', (function () {
-  const header = quotaNative.headerCalls[0];
+check('④-n 区块：说明只出现在 tabpanel 里，不再另起区块头重复同一句', (function () {
   const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'remaining'; }, onModeChange: function () {} });
-  const panels = section.children[1].children[0].children[1];
-  return header.description === undefined && panels[0].children[0] === t('ui.quotaDisplayModeDesc');
+  const fieldblock = section.children[0].children[0];
+  const panels = fieldblock.children[2].children[0];
+  // 标题走行左侧标题节点；这一区不再有独立卡片头（headerCalls 必须为空）
+  return quotaNative.headerCalls.length === 0
+    && fieldblock.children[0].children[0].children[0] === t('ui.quotaDisplayModeTitle')
+    && panels[0].children[0] === t('ui.quotaDisplayModeDesc');
 })(), true);
 check('④-n 兜底路径零回归：没有 SegmentedControl 时仍是自绘 radiogroup + 区块头说明，且不渲染 tabpanel', (function () {
   const section = sectionOn(['subWindow5h']);
-  const control = section.children[1].children[0].children[0];
-  const panels = section.children[1].children[0].children[1];
+  const fieldblock = section.children[0].children[0];
+  const control = fieldblock.children[1].children[0];
+  const panels = fieldblock.children[2];
   return control.type === 'bibSetQuotaMode'
-    && quotaUi.headerCalls[0].description === t('ui.quotaDisplayModeDesc')
+    // 兜底路径没有 tablist：说明改放在行左侧标题下面，同样不另起区块头
+    && quotaUi.headerCalls.length === 0
+    && fieldblock.children[0].children[1].children[0] === t('ui.quotaDisplayModeDesc')
     && (panels === null || panels === undefined);
 })(), true);
 

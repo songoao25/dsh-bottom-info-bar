@@ -192,17 +192,19 @@ assert.equal(navLabel(), '底部信息栏')
 const switchedAlerts = nodes(render()).filter(node => node.props.role === 'alert').map(text)
 assert.ok(switchedAlerts.includes('「余额」：保存失败：Offline'), JSON.stringify(switchedAlerts))
 states = [{ fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
-assert.match(text(render()), /信息栏/)
+// 2026-10-14：页面内不再自造「信息栏」标题（宿主详情页顶部已渲染插件名与简介）。
+// 这里改判页面自己的行标题跟随语言：中文「语言」/ 英文「Language」。
+assert.match(text(render()), /语言/)
 assert.doesNotMatch(text(render()), /原生统计行字段/)
 assert.match(text(render()), /余额/)
 locale.setLocale('en')
-assert.match(text(render()), /Info Bar/)
+assert.match(text(render()), /Language/)
 
 states = [{ fields: {}, colors: {}, configVersion: 0 }, 'ready', null, null, null, false, false, {}, null, 0, '', false]
 locale.setLocale('zh')
-assert.match(text(render()), /信息栏/)
+assert.match(text(render()), /语言/)
 locale.setLocale('en')
-assert.match(text(render()), /Info Bar/)
+assert.match(text(render()), /Language/)
 assert.doesNotMatch(text(render()), /Choose the DeepSeek Harness interface language|界面语言/)
 locale.setLocale('en')
 console.log('PASS  Plugin configuration page follows DSH global locale without a duplicate language control')
