@@ -358,6 +358,10 @@ check('webServer 路由已注册（prefix /_dsh/dsh-bottom-info-bar）',
   const cs = r.payload && r.payload.currentSession
   check('记账后本会话 tokens = 3000', cs && cs.tokens === 3000, JSON.stringify(cs))
   check('记账后本会话有 CNY 花费', cs && cs.costs && typeof cs.costs.CNY === 'number' && cs.costs.CNY > 0)
+  // Issue #245：宿主必须把该会话最早的记账时刻带给客户端，tooltip 才能如实写"统计自 …"；
+  // 没有这个字段客户端只能含糊其辞，所以在这里钉死。
+  check('记账后本会话带回统计起点 sinceTs（Issue #245）', cs && typeof cs.sinceTs === 'number' && cs.sinceTs > 0,
+    'sinceTs=' + (cs && cs.sinceTs))
   check('全部花费 ≈ 本会话花费（totalSpend 3 位四舍五入 vs 原始值）',
     typeof r.payload.totalSpend === 'number' && Math.abs(r.payload.totalSpend - cs.costs.CNY) < 0.001,
     'totalSpend=' + r.payload.totalSpend + ' costs=' + cs.costs.CNY)

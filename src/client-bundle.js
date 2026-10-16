@@ -3806,6 +3806,10 @@ module.exports = {
             const costTitle = [t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' })];
             if (!priced && hasTokens) costTitle.push(t('ui.pricingNotListedUsingDefaults'));
             else if (priced && unpricedRecords > 0) costTitle.push(t('ui.spendPartlyUnpriced'));
+            // Issue #245：账本从插件开始运行时才有记录，装插件之前跑掉的调用不在里面。
+            // 标签保持「本会话」不动，只在 tooltip 里如实写出统计起点；宿主没给出起点时
+            // 一个字都不编（旧宿主 / 本会话尚无记账都走这条空路径）。
+            if (cs && cs.sinceTs) costTitle.push(t('ui.sessionCostSince', { time: formatDateTime(cs.sinceTs) }));
             groups.push(fieldSpan('sessionCost', 'convo', React.createElement('span', {
               title: costTitle.join('\n') },
               metric(t('ui.session'), costTxt))));

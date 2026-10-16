@@ -4,6 +4,16 @@ The ledger stores usage metadata and frozen charges locally. It does not store
 conversation content or upload billing records. The location remains the plugin's
 existing data directory under `DSH_HOME`, or `DSH_BOTTOM_INFO_BAR_DATA_DIR` when set.
 
+## Coverage
+
+The ledger records calls the Host observes while the plugin is running. Usage that
+happened before the plugin started, or before the ledger was cleared, is never
+invented or estimated: the four spend tallies (this session, today, last 30 days,
+all time) simply start at the first recorded call, and the spend tooltip states
+that start time so a partial figure is not mistaken for a whole session. The
+provider's own balance or bill remains the authoritative number for a full
+session.
+
 ## Memory and durability
 
 `usage-ledger.sqlite` holds records, daily totals, account totals and session

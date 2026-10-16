@@ -24,6 +24,12 @@ check('本会话块在 usg 存在时始终渲染（pushSessionCost 公共小部�
 check('无记账时显示 ¥0.000 回退', clientSrc.includes('symbol + (0).toFixed(3)'), true);
 check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) })"), true);
 check('hover 仍含 全部', clientSrc.includes("t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) })"), true);
+// Issue #245：账本从插件开始运行时才有记录，装插件之前那段不在里面。
+// 标签保持「本会话」不动（v1.21.5 及以前的样子不变），只在 tooltip 里如实写出统计起点；
+// 宿主没给出 sinceTs 时一个字都不加，绝不编造"统计自何时"。
+check('本会话 tooltip 写明统计起点，且起点缺失时不编造（Issue #245）',
+  clientSrc.includes("if (cs && cs.sinceTs) costTitle.push(t('ui.sessionCostSince', { time: formatDateTime(cs.sinceTs) }))")
+  && clientSrc.includes("metric(t('ui.session'), costTxt)"), true);
 
 // 2) 原生统计行不再以 steps > 0 为门槛；简洁模式下保留 DOM 供动画收合
 check('原生统计行由 statsProj 驱动，简洁模式保留 DOM 以支持收合', clientSrc.includes('if (statsProj) {')
