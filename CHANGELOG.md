@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.5...v1.21.6) (2026-10-16)
+
+
+### Bug Fixes
+
+* state the ledger start time in the session cost tooltip ([#245](https://github.com/songoao25/dsh-bottom-info-bar/issues/245)) ([#246](https://github.com/songoao25/dsh-bottom-info-bar/issues/246)) ([27144da](https://github.com/songoao25/dsh-bottom-info-bar/commit/27144da958e0068ad31dde6735c4260143feefed))
+
 ## [1.21.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.4...v1.21.5) (2026-10-14)
 
 
