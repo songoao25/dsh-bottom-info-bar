@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/dsh-bottom-info-bar)](https://www.npmjs.com/package/dsh-bottom-info-bar)
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
 
-A DeepSeek Harness plugin that replaces the stats row under the composer with one line: provider and model, real balance or subscription quota, peak/off-peak pricing, and what this session has cost.
+A DeepSeek Harness plugin that adds an account information row under the composer: provider and model, real balance or subscription quota, peak/off-peak pricing, and what this session has cost.
 
 ![Bottom Info Bar in full mode](assets/bar-full.webp)
 
@@ -13,7 +13,9 @@ A DeepSeek Harness plugin that replaces the stats row under the composer with on
 
 The bar follows the active session and picks one of three readings per provider (mutually exclusive, nothing to switch by hand): **balance** shows the real balance from the provider's own API, **subscription quota** shows each quota window's remaining allowance with its reset countdown, and **cloud billing** shows this month's real spend from the official billing API. On top of that come four spend tallies — this session, today, last 30 days, all time — plus extras such as time and custom text. All four come from the plugin's own ledger, which **starts counting when the plugin first runs**: calls made before that (or before you cleared the ledger) are not included, and hovering the spend writes out the exact start of the count. For the authoritative figure for a whole session, use the provider's own balance or bill. In balance mode, hovering the balance expands it into topped-up and granted balances, so gifted credit is never conflated with the money you paid in.
 
-Click the bar to switch between **Full** and **Compact**. They differ in exactly one way: Full keeps DSH's native stats row, Compact collapses it. Whether a field appears is decided by that field's own switch alone, so the main row reads identically in both.
+On **DSH 0.2.1-rc.1 with the native activity/usage buttons**, the plugin shows its account information on one line and keeps the native clickable statistics on a separate line. Click those buttons to see their details; their display mode follows Harness settings. The plugin row no longer toggles Full/Compact when clicked. The context ring keeps its existing details and plugin settings.
+
+On **older hosts**, clicking the bar still switches between **Full** and **Compact**: Full keeps the legacy statistics row, Compact collapses it. Plugin fields remain identical in both modes. Compatibility is detected from the host's live extension entries, rather than a version string.
 
 ## Install
 
@@ -41,7 +43,7 @@ The context usage ring keeps the native hover tooltip and opens a statistics pan
 
 ## Settings
 
-Everything lives on the plugin page (**Plugins → bottom-info-bar**) and saves as you change it, in three groups, all collapsed by default: **native information** (DSH's own stats row, Full mode only), **plugin information** (everything this bar adds, both modes), and **notices** (one-off update and failure reminders, shown only when there is really something to say).
+Plugin settings live under **Plugins → bottom-info-bar** and save as you change them. **Plugin information** and **notices** keep their field switches and colors. On modern hosts, **native information** explains which statistics Harness owns; obsolete per-field controls are omitted from the page, search results and enabled counts. Their saved values are retained for older hosts. Older hosts still show the native field controls. Resetting plugin fields or colors does not change Harness's native button preferences.
 
 ![Plugin information grouped by billing mode](assets/settings-plugin.webp)
 

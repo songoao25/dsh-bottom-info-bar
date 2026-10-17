@@ -70,7 +70,12 @@ async function createBarHarness(options) {
   };
 
   let dockComponent = null;
+  let nativeEntries = opts.nativeEntries || [];
+  let nativeListener = null;
+  const nativeDisposers = [];
   const slots = {
+    entries: function () { return nativeEntries.map(function (id) { return { options: { id: id } }; }); },
+    subscribe: function (name, callback) { nativeListener = callback; return function () { nativeListener = null; }; },
     inject: function (name, cb) { cb(); return function () {}; },
     register: function (slotOptions, component) {
       if (slotOptions && slotOptions.name === 'conversation.composer.dock') dockComponent = component;
@@ -117,7 +122,10 @@ async function createBarHarness(options) {
     slots: slots,
     locale: fixture.createLocale('zh'),
     get: function (name) { return services[name] || null; },
-    effect: function (fn, label) { if (typeof label === 'string' && label.indexOf(': dictionaries') !== -1) fn(); },
+    effect: function (fn, label) {
+      if (typeof label === 'string' && label.indexOf(': dictionaries') !== -1) fn();
+      if (label === 'dsh-bottom-info-bar: native statistics contract') nativeDisposers.push(fn());
+    },
   });
 
   const expand = function (tree) {
@@ -171,6 +179,9 @@ async function createBarHarness(options) {
   };
   return {
     pump: pump,
+    setNativeEntries: function (ids) { nativeEntries = ids; if (nativeListener) nativeListener(); },
+    disposeNative: function () { nativeDisposers.forEach(function (dispose) { dispose(); }); },
+    nativeSubscribed: function () { return nativeListener !== null; },
     titlesIn: function (tree, rowId) {
       const host = nodes(tree).find(function (n) { return n.props && n.props.id === rowId; });
       return host ? nodes(host).map(function (n) { return n.props && n.props.title || ''; }).join('\n') : '';
@@ -284,6 +295,29 @@ const renderOnce = async function (scenario, fields, density) {
 
 (async function () {
 try {
+  const modern = await createBarHarness({
+    nativeEntries: ['activity', 'usage'],
+    handle: handleFor(SCENARIOS[1], allFieldsOn(), 'compact'),
+    sessionStats: STATS, tokenUsage: TOKENS, contextPressure: PRESSURE,
+    provider: SCENARIOS[1].provider, model: SCENARIOS[1].model,
+  });
+  let modernTree = await modern.pump();
+  check('新版只渲染插件行，旧原生字段完全移除', modern.fieldsIn(modernTree, ROW_NATIVE).length === 0
+    && modern.fieldsIn(modernTree, ROW_MAIN).includes('balance'), true);
+  check('新版插件行没有整栏按钮、切换标题或快捷键，明细按钮独立交互',
+    modernTree.props['data-native-pills'] === 'true' && !modernTree.props.role
+    && !modernTree.props.onClick && !modernTree.props.onKeyDown && !modernTree.props.title, true);
+  modern.setNativeEntries([]);
+  modernTree = await modern.pump();
+  check('原生入口卸载后恢复旧宿主统计和密度行为', modern.fieldsIn(modernTree, ROW_NATIVE).length > 0
+    && modernTree.props.role === 'button', true);
+  modern.setNativeEntries(['activity']);
+  modernTree = await modern.pump();
+  check('晚注册或只启用一个新版按钮也会移除重复行', modern.fieldsIn(modernTree, ROW_NATIVE).length === 0
+    && modernTree.props['data-native-pills'] === 'true', true);
+  modern.disposeNative();
+  check('插件卸载时取消原生注册订阅', modern.nativeSubscribed(), false);
+
   const rolling = await renderOnce(SCENARIOS[1], allFieldsOn(), 'full');
   const rollingText = rolling.harness.titlesIn(rolling.tree, ROW_MAIN);
   check('近 30 天显示滚动累计而不是本月累计', rollingText.includes('40.500') && !rollingText.includes('20.500'), true);

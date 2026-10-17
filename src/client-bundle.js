@@ -248,6 +248,29 @@ function mergeLoadResults(prev, results, selectionKey) {
 // ---------- v1.9.0 PR2：字段显隐/颜色配置（宿主落盘，设置页变更后经 CustomEvent 即时同步） ----------
 // 字段注册表/预设色板由构建从 constants.js 注入（单一来源，宿主白名单同源）
 const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[];
+// DSH 0.2.1 owns its clickable activity/usage entries. Observe their actual
+// registrations rather than guessing a version or copying private components.
+const nativeDockState = { pills: false, listeners: new Set() };
+function hasNativeDockPills(slots) {
+  if (!slots || typeof slots.entries !== 'function') return false;
+  const entries = slots.entries('conversation.composer.dock');
+  return entries.some(function (entry) {
+    const id = entry.options && entry.options.id;
+    return id === 'activity' || id === 'usage';
+  });
+}
+function useNativeDockPills() {
+  const [pills, setPills] = React.useState(nativeDockState.pills);
+  React.useEffect(function () {
+    nativeDockState.listeners.add(setPills);
+    setPills(nativeDockState.pills);
+    return function () { nativeDockState.listeners.delete(setPills); };
+  }, []);
+  return pills;
+}
+function settingsFieldsForHost(pills) {
+  return FIELD_REGISTRY.filter(function (field) { return !pills || field.group !== 'native'; });
+}
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 // v1.6 T7 / v1.7 FR-14：订阅/账单 provider 集合（构建注入，永不变）。以前在 BottomInfoBar 里每次渲染重建
 // 字面量——值从不变，多建的只是垃圾。提到模块级，var 拼法保留（一致性测试按该字面锚点提取）。
@@ -587,6 +610,13 @@ function installStyles() {
       /* 视觉胶囊配色是固定值而非色板变量：色板蓝在深色主题会翻成 #66a3ff，而胶囊的白字对比度是按 #0057ff 实测的，跟随翻转会跌破 4.5:1。 */
       .bi-root { --bi-vision-border: #0044cc; --bi-vision-bg: #0057ff; --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; --bi-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); --bi-extra-h: var(--bi-line); text-align: center; box-sizing: border-box; width: var(--dsh-chat-content-width, 100%); max-width: 100%; padding: 4px 0px 0px; margin: 0 auto; display: flex; flex-direction: column; justify-content: flex-end; align-content: end; align-items: stretch; gap: 0; align-self: center; height: auto; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: var(--bi-line); color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
       .bi-root[data-density-saving="true"] { cursor: progress; }
+      .bi-root[data-native-pills="true"] { cursor: default; }
+      /* Keep native entries in the real outlet: no copied dialog or private API.
+         The plugin occupies one full line; the native pills share the next. */
+      [data-composer-dock]:has(.bi-root[data-native-pills="true"]) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 12px; row-gap: 0; }
+      [data-composer-dock]:has(.bi-root[data-native-pills="true"]) > [data-slot="conversation.composer.dock"] { display: contents; }
+      [data-composer-dock] .bi-root[data-native-pills="true"] { flex: 0 0 100%; width: 100%; min-width: 0; }
+      [data-composer-dock]:has(.bi-root[data-native-pills="true"]) [data-composer-stat] { min-width: 0; max-width: 100%; }
       /* 以 DSH 实际外观属性切换，避免用户在 DSH 内手动选择外观时与系统偏好失配。 */
       body[data-ds-dark-theme] .bi-root { --bi-label-supporting: var(--dsw-alias-label-secondary, #cfd3d6); --bi-state-price-low: #86efac; --bi-state-alert: #ff6961; }
       /* 系统要求增强对比度时，浅色使用更深的同语义色；深色仅提高尚未达到 7:1 的警示红。 */
@@ -1897,6 +1927,14 @@ function bibSetFieldGroups(props) {
   const groups = [];
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
+    if (group === 'native' && props.nativePills) {
+      if (!props.searchActive) groups.push(React.createElement('div', {
+        key: 'native-pills', className: 'bib-set-data-row',
+      }, React.createElement('div', { className: 'bib-set-data-copy' },
+        React.createElement('p', { className: 'bib-set-data-title' }, t('group.native')),
+        React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.nativePillsManagedByHost')))));
+      continue;
+    }
     const groupFields = FIELD_REGISTRY.filter(function (field) { return field.group === group; });
     if (groupFields.length === 0) continue;
     const visibleFields = groupFields.filter(function (field) { return props.matchesSearch(field, props.query); });
@@ -1904,7 +1942,7 @@ function bibSetFieldGroups(props) {
     if (props.searchActive && visibleFields.length === 0) continue;
     const groupLabel = FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group;
     // 组卡只保留名称、分工说明与明确的动作；状态数字会增加阅读负担。
-    const descKey = FIELD_GROUP_DESC_KEYS[group];
+    const descKey = props.nativePills && group === 'plugin' ? 'meta.description' : FIELD_GROUP_DESC_KEYS[group];
     const title = React.createElement('span', { className: 'bib-set-group-head' },
       React.createElement('span', { className: 'bib-set-group-label' }, groupLabel),
       descKey ? React.createElement('span', { className: 'bib-set-group-desc' }, t(descKey)) : null);
@@ -2488,6 +2526,7 @@ function InfoBarSettingsSection() {
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
+  const nativePills = useNativeDockPills();
   function matchesSearch(field, query) {
     if (!query) return true;
     const q = query.trim().toLowerCase();
@@ -2869,9 +2908,10 @@ function InfoBarSettingsSection() {
   // 搜索只负责筛选；输入时两分组自动展开（决策 2），但用户随后仍可明确折叠，
   // 箭头和 aria-expanded 始终反映真实 DOM 状态。
   const searchActive = searchQuery.trim().length > 0;
-  const fieldsEnabledCount = FIELD_REGISTRY.filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsMatchCount = FIELD_REGISTRY.filter(function (f) { return matchesSearch(f, searchQuery); }).length;
+  const fieldsEnabledCount = settingsFieldsForHost(nativePills).filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsMatchCount = settingsFieldsForHost(nativePills).filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const groupsChildren = bibSetFieldGroups({
+    nativePills: nativePills,
     query: searchQuery,
     searchActive: searchActive,
     matchesSearch: matchesSearch,
@@ -3053,7 +3093,26 @@ module.exports = {
       return function () { disposeStyles(); };
     }, 'dsh-bottom-info-bar: styles');
 
-    // ---------- 注册：一体替换（同 id 'stats'） ----------
+    // Watch late registration, removal and remounts; native buttons retain their
+    // own components, settings, dialogs and injected capabilities.
+    const syncNativeDock = function () {
+      const pills = hasNativeDockPills(slots);
+      if (nativeDockState.pills === pills) return;
+      nativeDockState.pills = pills;
+      nativeDockState.listeners.forEach(function (listener) { listener(pills); });
+    };
+    ctx.effect(function () {
+      const stop = typeof slots.subscribe === 'function'
+        ? slots.subscribe('conversation.composer.dock', syncNativeDock) : null;
+      syncNativeDock();
+      return function () {
+        if (typeof stop === 'function') stop();
+        nativeDockState.pills = false;
+        nativeDockState.listeners.forEach(function (listener) { listener(false); });
+      };
+    }, 'dsh-bottom-info-bar: native statistics contract');
+
+    // ---------- 注册：旧宿主替换 stats；新版保留原生 activity / usage ----------
     let density = 'full';
     let toggling = false; // 持久化期间禁止重复切换（只允许 full/compact 两态）
     let densityVersion = 0;
@@ -3142,6 +3201,7 @@ module.exports = {
 
     // ---------- 组件 ----------
     function BottomInfoBar(props) {
+      const nativePills = useNativeDockPills();
       // 原生/会话投影（hooks 无条件调用）
       const statsProj = props.useProjection ? props.useProjection('sessionStats') : undefined;
       const usageProj = props.useProjection ? props.useProjection('tokenUsage') : undefined;
@@ -4140,7 +4200,7 @@ module.exports = {
        const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...attachContextMeter(nodes, contextNode, React.createElement));
 
       let row1 = null;
-      if (statsProj) {
+      if (statsProj && !nativePills) {
         // 每组：{ nodes: React 节点数组（数字用 num 加粗）, text: 纯文本（title 用）, fieldId: 字段 id（着色用） }
         const ng = [];
         // title：可选的原生悬浮说明。整行已有 title（nativeLine），组级 title 让每个指标
@@ -4256,6 +4316,12 @@ module.exports = {
       if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0 && contextNode === null)) {
         return null;
       }
+
+      // Modern DSH owns statistics visibility/detail. This is an informational
+      // row, not a giant button: nested dialogs keep their own keyboard/clicks.
+      if (nativePills) return React.createElement('div', {
+        className: 'bi-root', 'data-native-pills': 'true',
+      }, row2);
 
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra', ref: extraRowRef }, row1);
       const rootCls = 'bi-root';
