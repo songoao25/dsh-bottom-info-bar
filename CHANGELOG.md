@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.8](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.7...v1.21.8) (2026-10-17)
+
+
+### Bug Fixes
+
+* restore native button switches and density toggle on DSH 0.2.1 ([#250](https://github.com/songoao25/dsh-bottom-info-bar/issues/250)) ([655212c](https://github.com/songoao25/dsh-bottom-info-bar/commit/655212ce6a2fbd31bc5ad800eee908570501715c))
+
 ## [1.21.7](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.6...v1.21.7) (2026-10-17)
 
 
