@@ -99,14 +99,19 @@ export const PROVIDER_IDENTITY = {
 //   ② 数据条件（当前 provider 有没有这项数据）—— 由 provider 决定，用户在设置页看不到。
 //
 // 字段「属于谁」（group）只决定它出现在哪里、列在设置页哪个列表里：
-//   native  原生信息：DSH 原生底栏原有的字段 → 渲染进「原生统计行」→ **只在完整模式可见**
+//   native  原生信息：DSH 原生底栏原有的信息 → 旧宿主渲染进「原生统计行」，新宿主是两个原生按钮 → **只在完整模式可见**
 //   plugin  插件信息：本插件新增的字段（含接管过来的上下文圆环）→ 渲染进主行 → **两种模式都可见**
 //   notice  提醒信息：一次性提醒 → 渲染在**主行右端** → **两种模式都可见**，只在真有事时出现
 //
-// 模式（简洁 / 完整）的全部职责只有一条：**原生统计行显示不显示**。
+// 模式（简洁 / 完整）的全部职责只有一条：**原生那一行显示不显示**。
 // 它绝不参与任何字段的显隐判定 —— 因此「这个字段在简洁模式下能不能出现」不是独立问题，看 group 就够了。
-//   group = native → 进原生统计行（.bi-native-row），随 data-density 收合到 0 高度
+//   group = native → 旧宿主进原生统计行（.bi-native-row），新宿主是 Harness 自己的两个按钮行；
+//                    两种形态都随 data-density 收合到 0 高度（新宿主由 [data-composer-stat] 的 CSS 收合）
 //   group = plugin / notice → 进主行（.bi-row2），门控只有 fieldVisible(id) 一条
+//
+// 2026-10-17 用户拍板（新宿主适配第二版）：两个原生按钮（activity / usage）恢复各自的字段开关，
+// 但插件**不复制**按钮本身，只通过样式隐藏/显示 Harness 注册的那两个入口；原生按钮自己的明细弹窗、
+// 注入状态和 Harness 设置全部保持宿主所有。旧宿主仍然渲染旧统计行与旧的七个开关（宿主没有这两个入口）。
 //
 // 反面教训（严禁复发）：2026-09 曾出现 11 处 `if (full) …` / `full && fieldVisible(…)` 的散落门控，
 // 等于给插件字段偷偷加了第二套规则 —— 开关明明开着、简洁模式下却整块消失。用户报的
@@ -128,6 +133,8 @@ export const PROVIDER_IDENTITY = {
 // - colorKind：颜色回退语义（客户端生成 CSS 用）：inherit 继承正文色 | alert 警示红 | period 峰红/谷绿 |
 //   provider 锚点组（正文 + 服务商名主色）| muted 弱提示灰 | meter 原生圆环类（回退原生同款弱提示色 --bi-separator）。
 //   未自定义颜色时回退这些原语义色，默认外观零变化。
+// - noColor：该字段由宿主渲染、插件改不了它的颜色，因此设置页不显示颜色控件（只留显隐开关）。
+//   目前只有新宿主两个原生按钮用；给它们一个可以点、却没有任何效果的色块，等于提供假控件。
 //
 // 关于「计费形态」（余额制 balance / 订阅制 subscription / 账单制 billing）：它由 provider 决定，
 // 不是字段属性，因此不写进注册表 —— 一个字段属于哪种计费形态，看它在 src/client-bundle.js 里由哪个
@@ -165,7 +172,13 @@ export const FIELD_REGISTRY = [
   { id: 'billingSpend', label: "field.billingSpend.label", group: 'plugin', section: 'billing', colorKind: 'inherit', note: "field.billingSpend.note" },
   { id: 'budget', label: "field.budget.label", group: 'plugin', section: 'billing', colorKind: 'inherit', note: "field.budget.note" },
   { id: 'freeQuota', label: "field.freeQuota.label", group: 'plugin', section: 'billing', colorKind: 'inherit', note: "field.freeQuota.note" },
-  // ---------- 原生信息（DSH 原生统计行原有字段；整组只在完整模式可见） ----------
+  // ---------- 原生信息 · 新宿主（DSH 0.2.1）的两个原生按钮 ----------
+  // 新版把旧统计行换成了 Harness 自己的 activity / usage 两个按钮，点开各有明细弹窗。
+  // 这两个开关只控制「显示 / 隐藏对应按钮」，不接管按钮组件、不改它的行为；
+  // 和旧原生行一样，整行只在完整模式可见。旧宿主没有这两个入口，因此不在旧宿主设置页出现。
+  { id: 'nativeActivity', label: "field.nativeActivity.label", group: 'native', colorKind: 'inherit', noColor: true, note: "field.nativeActivity.note" },
+  { id: 'nativeUsage', label: "field.nativeUsage.label", group: 'native', colorKind: 'inherit', noColor: true, note: "field.nativeUsage.note" },
+  // ---------- 原生信息 · 旧宿主（DSH 0.2.0 及更早）统计行的七个字段 ----------
   { id: 'turnsSteps', label: "field.turnsSteps.label", group: 'native', colorKind: 'inherit', note: "field.turnsSteps.note" },
   { id: 'llmTime', label: "field.llmTime.label", group: 'native', colorKind: 'inherit', note: "field.llmTime.note" },
   { id: 'toolTime', label: "field.toolTime.label", group: 'native', colorKind: 'inherit', note: "field.toolTime.note" },
@@ -228,7 +241,9 @@ export const FIELD_SECTIONS = [
 // 订阅窗口三字段走 WINDOW_META 间接门控（windowFieldVisible），锚点三字段走 anchorId 参数门控，
 // 见表下注释与测试里的机制说明——三者都是 fieldVisible，只是写法不同。
 export const FIELD_MODES = {
-  native: ['turnsSteps', 'llmTime', 'toolTime', 'avgTTFT', 'outputSpeed', 'cacheHit', 'tokensIO'],
+  // 前两个是新宿主 Harness 自己注册的按钮（整行两种开关）；后七个是旧宿主统计行的字段。
+  // 两组不会同时渲染：原生入口探测结果决定用哪一组（见 client-bundle 的 nativePills）。
+  native: ['nativeActivity', 'nativeUsage', 'turnsSteps', 'llmTime', 'toolTime', 'avgTTFT', 'outputSpeed', 'cacheHit', 'tokensIO'],
   balance: ['customText', 'anchorGroup', 'mainTime', 'worldTime', 'unmapped', 'noKeyHint', 'balance', 'balanceError', 'period', 'countdown', 'sessionCost', 'usageError'],
   subscription: ['customText', 'subServiceGroup', 'mainTime', 'worldTime', 'expiry', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'subBalance', 'sessionCost'],
   billing: ['customText', 'billingServiceGroup', 'mainTime', 'worldTime', 'billingSpend', 'budget', 'freeQuota'],

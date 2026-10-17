@@ -269,7 +269,36 @@ function useNativeDockPills() {
   return pills;
 }
 function settingsFieldsForHost(pills) {
-  return FIELD_REGISTRY.filter(function (field) { return !pills || field.group !== 'native'; });
+  // 新宿主（Harness 自己的 activity/usage 按钮）：用两个「原生按钮」开关，旧统计行的七个字段不再出现；
+  // 旧宿主没有这两个入口，反过来隐藏它们。两组开关永不混在同一个设置页里。
+  if (pills) return FIELD_REGISTRY.filter(function (field) {
+    return field.group !== 'native' || NATIVE_PILL_FIELDS.some(function (entry) { return entry.fieldId === field.id; });
+  });
+  return FIELD_REGISTRY.filter(function (field) {
+    return !NATIVE_PILL_FIELDS.some(function (entry) { return entry.fieldId === field.id; });
+  });
+}
+// 新宿主原生按钮的字段 id ↔ 宿主 data-composer-stat 值。设置页开关只隐藏对应入口，
+// 不复制、不重注册宿主组件 —— 按钮的弹窗、快捷键与 Harness 设置全部保持宿主所有。
+const NATIVE_PILL_FIELDS = [
+  { fieldId: 'nativeActivity', stat: 'activity' },
+  { fieldId: 'nativeUsage', stat: 'usage' },
+];
+const NATIVE_PILL_HIDDEN_ATTR = 'data-bi-native-hidden';
+// 把字段开关落成 documentElement 属性，交给样式隐藏宿主按钮。
+// 放在模块级而不是组件里：插件信息全部关掉时信息栏根节点不渲染，但原生按钮的开关仍必须生效。
+function applyNativePillVisibility() {
+  if (typeof document === 'undefined' || !document || !document.documentElement) return;
+  // 字面量 fieldVisible(...) 是显示模型测试的锚点：两个开关都必须走同一套显隐判定。
+  const hidden = [];
+  if (!fieldVisible('nativeActivity')) hidden.push('activity');
+  if (!fieldVisible('nativeUsage')) hidden.push('usage');
+  if (hidden.length > 0) document.documentElement.setAttribute(NATIVE_PILL_HIDDEN_ATTR, hidden.join(' '));
+  else document.documentElement.removeAttribute(NATIVE_PILL_HIDDEN_ATTR);
+}
+function clearNativePillVisibility() {
+  if (typeof document === 'undefined' || !document || !document.documentElement) return;
+  document.documentElement.removeAttribute(NATIVE_PILL_HIDDEN_ATTR);
 }
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
 // v1.6 T7 / v1.7 FR-14：订阅/账单 provider 集合（构建注入，永不变）。以前在 BottomInfoBar 里每次渲染重建
@@ -309,6 +338,12 @@ function applyFieldConfigSnapshot(next) {
   fieldConfigVersion += 1;
   fieldConfigListeners.forEach(function (listener) { listener(); });
 }
+// 每次配置快照落地都同步一次原生按钮显隐（监听器只在模块初始化时注册一次，
+// 因此单独抽出的配置切片测试不会因为缺少 helper 而抛错）。
+fieldConfigListeners.add(function () {
+  // 切片测试只抽配置状态机、不带 helper：typeof 守卫让同一段源码在两种求值方式下都安全。
+  if (typeof applyNativePillVisibility === 'function') applyNativePillVisibility();
+});
 
 // 版本守卫（纯函数，供单测）：只有严格更新的快照才应用。
 // - incoming 缺失（旧宿主无 configVersion）→ 接受，兼容不阻断；
@@ -610,13 +645,26 @@ function installStyles() {
       /* 视觉胶囊配色是固定值而非色板变量：色板蓝在深色主题会翻成 #66a3ff，而胶囊的白字对比度是按 #0057ff 实测的，跟随翻转会跌破 4.5:1。 */
       .bi-root { --bi-vision-border: #0044cc; --bi-vision-bg: #0057ff; --bi-label-primary: var(--dsw-alias-label-primary, #333); --bi-label-supporting: #3f444a; --bi-separator: var(--dsw-alias-label-tertiary, rgba(128,128,128,0.5)); --bi-state-price-low: #087f5b; --bi-state-alert: #d92d20; --bi-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); --bi-extra-h: var(--bi-line); text-align: center; box-sizing: border-box; width: var(--dsh-chat-content-width, 100%); max-width: 100%; padding: 4px 0px 0px; margin: 0 auto; display: flex; flex-direction: column; justify-content: flex-end; align-content: end; align-items: stretch; gap: 0; align-self: center; height: auto; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: var(--bi-line); color: var(--bi-label-supporting); font-variant-numeric: tabular-nums; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
       .bi-root[data-density-saving="true"] { cursor: progress; }
-      .bi-root[data-native-pills="true"] { cursor: default; }
-      /* Keep native entries in the real outlet: no copied dialog or private API.
-         The plugin occupies one full line; the native pills share the next. */
+      /* Keep native entries in the real host outlet: no copied dialog or private API.
+         Visual order (user decision 2026-10-17): the native line on top, the plugin line below.
+         DOM order cannot express this because it follows registration priority, so flex order
+         lifts the plugin row to the second line while the native entries keep order 0. */
       [data-composer-dock]:has(.bi-root[data-native-pills="true"]) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 12px; row-gap: 0; }
       [data-composer-dock]:has(.bi-root[data-native-pills="true"]) > [data-slot="conversation.composer.dock"] { display: contents; }
-      [data-composer-dock] .bi-root[data-native-pills="true"] { flex: 0 0 100%; width: 100%; min-width: 0; }
-      [data-composer-dock]:has(.bi-root[data-native-pills="true"]) [data-composer-stat] { min-width: 0; max-width: 100%; }
+      [data-composer-dock] .bi-root[data-native-pills="true"] { flex: 0 0 100%; width: 100%; min-width: 0; order: 1; }
+      [data-composer-dock]:has(.bi-root[data-native-pills="true"]) [data-composer-stat] { order: 0; min-width: 0; max-width: 100%; max-height: calc(22px + var(--dsh-content-font-delta-secondary, 0px)); overflow: hidden; opacity: 1; visibility: visible; transition: max-height 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear, visibility 0s linear 0s; }
+      /* 简洁模式收合原生那一行：和旧宿主统计行同一套节奏（160ms 高度 + 120ms 淡出）。
+         原生按钮由宿主渲染、插件不能包一层容器，因此收合落在每个 [data-composer-stat] 上：
+         高度归零 → 整条 flex 行高随之归零，行序仍是「原生在上、插件在下」。
+         visibility 延迟到高度动画结束后才隐藏，既保留过渡又让隐藏按钮退出 Tab 序与读屏树。 */
+      [data-composer-dock]:has(.bi-root[data-native-pills="true"][data-density="compact"]) [data-composer-stat] { max-height: 0px; opacity: 0; visibility: hidden; pointer-events: none; transition: max-height 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms linear, visibility 0s linear 160ms; }
+      @media (prefers-reduced-motion: reduce) {
+        [data-composer-dock]:has(.bi-root[data-native-pills="true"]) [data-composer-stat] { transition: none; }
+      }
+      /* 两个原生按钮各自的开关：只隐藏对应入口，不碰 Harness 的组件与弹窗。
+         属性挂在 documentElement 上，因此插件行全部关闭、根节点不渲染时开关照样生效。 */
+      [data-bi-native-hidden~="activity"] [data-composer-dock] [data-composer-stat="activity"],
+      [data-bi-native-hidden~="usage"] [data-composer-dock] [data-composer-stat="usage"] { display: none; }
       /* 以 DSH 实际外观属性切换，避免用户在 DSH 内手动选择外观时与系统偏好失配。 */
       body[data-ds-dark-theme] .bi-root { --bi-label-supporting: var(--dsw-alias-label-secondary, #cfd3d6); --bi-state-price-low: #86efac; --bi-state-alert: #ff6961; }
       /* 系统要求增强对比度时，浅色使用更深的同语义色；深色仅提高尚未达到 7:1 的警示红。 */
@@ -1248,6 +1296,8 @@ function bibSetInstallStyles() {
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
          fallback（宿主无 Menu）时控件块仍按 grid-column: 1 / -1 落第二行，见 .bib-set-controls--field。 */
       .bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--bib-row-gap); row-gap: 8px; align-items: start; width: 100%; min-width: 0; }
+      /* 只有开关、没有颜色控件的行（新宿主两个原生按钮）：去掉空的第三列，避免多出一段栏间距。 */
+      .bib-set-row-main--switch-only { grid-template-columns: minmax(0, 1fr) auto; }
       /* 语言下拉的兜底形态（仅老宿主没有原生 Menu 时走）：几何照宿主 .input —— 34px 高 / r12 /
          0.5px border-l4 / bg-layer-3 / 13px，与同一页的输入框、时区下拉同高同形。
          原生 Menu 分支不读这条规则（锚点是宿主 Button，外观归宿主）。 */
@@ -1806,8 +1856,11 @@ function bibSetFieldRow(field, props) {
 
   // 决策 1：行内右侧 = 开关 + 一个色块。宿主没有原生 Menu 时才退回旧的行内控件组
   // （色板圆点 + 系统取色器色井 + hex 输入）——这是兜底路径，不是死代码。
-  let colorControl;
-  if (BIB_SET_NATIVE_MENU) {
+  // noColor 字段（新宿主两个原生按钮）只给开关：颜色由 Harness 自己决定，插件不提供假色块。
+  let colorControl = null;
+  if (field.noColor === true) {
+    colorControl = null;
+  } else if (BIB_SET_NATIVE_MENU) {
     colorControl = React.createElement(bibSetColorPicker, {
       key: 'color-picker',
       fieldId: field.id,
@@ -1856,7 +1909,7 @@ function bibSetFieldRow(field, props) {
       }));
   }
 
-  const rowMain = React.createElement('div', { className: 'bib-set-row-main' },
+  const rowMain = React.createElement('div', { className: 'bib-set-row-main' + (field.noColor === true ? ' bib-set-row-main--switch-only' : '') },
     React.createElement('div', { className: 'bib-set-rowText bib-set-rowText--field' },
       React.createElement('div', { className: 'bib-set-rowTitle' }, fieldLabel),
       React.createElement('div', { className: 'bib-set-rowDesc' }, descParts)),
@@ -1925,24 +1978,21 @@ function bibSetFieldBlocks(visibleFields, props) {
 
 function bibSetFieldGroups(props) {
   const groups = [];
+  // 设置页只列「当前宿主真正有效」的开关：新宿主 = 两个原生按钮开关；旧宿主 = 旧统计行七个字段。
+  const hostFields = settingsFieldsForHost(props.nativePills);
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
-    if (group === 'native' && props.nativePills) {
-      if (!props.searchActive) groups.push(React.createElement('div', {
-        key: 'native-pills', className: 'bib-set-data-row',
-      }, React.createElement('div', { className: 'bib-set-data-copy' },
-        React.createElement('p', { className: 'bib-set-data-title' }, t('group.native')),
-        React.createElement('p', { className: 'bib-set-data-desc' }, t('ui.nativePillsManagedByHost')))));
-      continue;
-    }
-    const groupFields = FIELD_REGISTRY.filter(function (field) { return field.group === group; });
+    const groupFields = hostFields.filter(function (field) { return field.group === group; });
     if (groupFields.length === 0) continue;
     const visibleFields = groupFields.filter(function (field) { return props.matchesSearch(field, props.query); });
     // 搜索无命中的组整组不渲染（空状态由上层统一给出）
     if (props.searchActive && visibleFields.length === 0) continue;
     const groupLabel = FIELD_GROUP_LABELS[group] ? t(FIELD_GROUP_LABELS[group]) : group;
     // 组卡只保留名称、分工说明与明确的动作；状态数字会增加阅读负担。
-    const descKey = props.nativePills && group === 'plugin' ? 'meta.description' : FIELD_GROUP_DESC_KEYS[group];
+    // 新宿主原生组只有两个「原生按钮」开关，说明文字必须换成按钮版（旧说明讲的是统计行七个字段）。
+    const descKey = group === 'native' && props.nativePills
+      ? 'group.native.desc.pills'
+      : (props.nativePills && group === 'plugin' ? 'meta.description' : FIELD_GROUP_DESC_KEYS[group]);
     const title = React.createElement('span', { className: 'bib-set-group-head' },
       React.createElement('span', { className: 'bib-set-group-label' }, groupLabel),
       descKey ? React.createElement('span', { className: 'bib-set-group-desc' }, t(descKey)) : null);
@@ -3092,6 +3142,11 @@ module.exports = {
       const disposeStyles = installStyles();
       return function () { disposeStyles(); };
     }, 'dsh-bottom-info-bar: styles');
+
+    // 卸载时把宿主按钮的隐藏属性摘掉：插件不在了，Harness 自己的两个按钮必须恢复原样。
+    ctx.effect(function () {
+      return function () { clearNativePillVisibility(); };
+    }, 'dsh-bottom-info-bar: native pill switches');
 
     // Watch late registration, removal and remounts; native buttons retain their
     // own components, settings, dialogs and injected capabilities.
@@ -4313,15 +4368,42 @@ module.exports = {
       // D6 用户拍板：全部字段隐藏 = 底栏彻底移除——不渲染任何 DOM（无空行/占位高度/悬空分隔符），
       // density 点击因无 DOM 而天然无副作用、不报错。两条路径：①配置层面所有字段都被关闭；
       // ②渲染层面（数据条件导致）原生行/主行/圆环全空。
-      if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible) || (row1 === null && nodes.length === 0 && contextNode === null)) {
+      // 新宿主原生组不在插件行里渲染（是 Harness 自己的两个按钮），因此不计入「插件底栏是否有内容」；
+      // 它们的开关由 documentElement 属性单独生效，底栏整行移除时也照样能隐藏按钮。
+      const removalRegistry = nativePills
+        ? FIELD_REGISTRY.filter(function (field) { return field.group !== 'native'; })
+        : FIELD_REGISTRY;
+      if (infoBarShouldRemoveAll(removalRegistry, fieldVisible) || (row1 === null && nodes.length === 0 && contextNode === null)) {
         return null;
       }
 
-      // Modern DSH owns statistics visibility/detail. This is an informational
-      // row, not a giant button: nested dialogs keep their own keyboard/clicks.
+      // Modern DSH keeps the real native buttons and their dialogs in the host outlet.
+      // This row is still the Full/Compact switch: clicking any plugin field toggles the
+      // density (the user decision from 2026-10-17), while the native buttons above keep
+      // their own click behavior. Nested plugin controls stop propagation themselves.
       if (nativePills) return React.createElement('div', {
-        className: 'bi-root', 'data-native-pills': 'true',
-      }, row2);
+        className: 'bi-root',
+        'data-native-pills': 'true',
+        onClick: function () { props.onToggleDensity(); },
+        onKeyDown: function (event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            props.onToggleDensity();
+          }
+        },
+        role: 'button',
+        tabIndex: 0,
+        'aria-labelledby': 'dsh-bottom-info-bar-primary',
+        'aria-describedby': 'dsh-bottom-info-bar-action',
+        'aria-pressed': full,
+        'aria-busy': isDensitySaving,
+        'aria-disabled': isDensitySaving,
+        'data-density': displayDensity,
+        'data-density-saving': isDensitySaving,
+        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
+      }, row2,
+      React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
+        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
 
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra', ref: extraRowRef }, row1);
       const rootCls = 'bi-root';
