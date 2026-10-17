@@ -114,7 +114,10 @@ check('把实测高度写进 --bi-extra-h', clientSrc.includes("setProperty('--b
 check('用 ResizeObserver 跟随折行/缩放', clientSrc.includes('new ResizeObserver(sync)'), true);
 check('React shim 缺 useLayoutEffect 时退回 useEffect', clientSrc.includes("typeof React.useLayoutEffect === 'function' ? React.useLayoutEffect : React.useEffect"), true);
 check('测量在渲染早退之前（hooks 顺序稳定）',
-  clientSrc.indexOf('const row1Present = row1 !== null;') < clientSrc.indexOf('if (infoBarShouldRemoveAll(FIELD_REGISTRY, fieldVisible)'), true);
+  clientSrc.indexOf('const row1Present = row1 !== null;') < clientSrc.indexOf('if (infoBarShouldRemoveAll(removalRegistry, fieldVisible)'), true);
+check('移除判定按宿主过滤原生字段（新宿主原生按钮不算插件行内容）',
+  clientSrc.includes('const removalRegistry = nativePills')
+  && clientSrc.includes("FIELD_REGISTRY.filter(function (field) { return field.group !== 'native'; })"), true);
 
 // ---------- 6) 上下文圆环不得被单独挤到下一行（2026-09-24 用户报「圆圈单独占一行并居中」） ----------
 // 根因：圆环原本作为主行的独立 flex 子项追加在末尾，行满换行时它独占一行。

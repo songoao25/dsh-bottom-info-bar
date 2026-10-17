@@ -343,6 +343,10 @@ export const LOCALES = {
     "field.budget.note": "服务商支持时显示已使用的预算比例。",
     "field.freeQuota.label": "免费额度",
     "field.freeQuota.note": "服务商提供免费额度时显示剩余额度和重置时间。",
+    "field.nativeActivity.label": "会话统计",
+    "field.nativeActivity.note": "显示 Harness 原生的会话统计按钮（轮次、步数、输出速度）。点击按钮可查看明细；只在完整模式显示。",
+    "field.nativeUsage.label": "用量统计",
+    "field.nativeUsage.note": "显示 Harness 原生的用量按钮（Token 总量、缓存命中）。点击按钮可查看明细；只在完整模式显示。",
     "field.turnsSteps.label": "轮次与步数",
     "field.turnsSteps.note": "显示本会话对话的轮次和步数。",
     "field.llmTime.label": "模型耗时",
@@ -386,6 +390,7 @@ export const LOCALES = {
     "group.plugin": "插件信息",
     "group.notice": "提醒信息",
     "group.native.desc": "DSH 原生底栏自带的字段，列在原生统计行；这一行只在完整模式显示。",
+    "group.native.desc.pills": "Harness 原生的两个按钮，可以分别显示或隐藏；点击按钮查看明细。它们只在完整模式显示。",
     "group.plugin.desc": "本插件新增的字段（含接管过来的上下文圆环），归在主行里；简洁与完整都显示。",
     "group.notice.desc": "更新、失败等一次性提醒。当下真有事要提醒就出现，与模式无关。",
     "section.identity.label": "服务商与模型",
@@ -420,8 +425,7 @@ export const LOCALES = {
     "language.title": "语言",
     "language.description": "跟随 DSH，或在此浏览器中单独选择本插件的语言。",
     "language.auto": "跟随 DSH",
-    "language.saveFailed": "语言选择未能保存，请允许本地存储后重试。",
-    "ui.nativePillsManagedByHost": "由 DeepSeek Harness 管理。点击底部的会话统计或用量按钮查看明细，显示方式跟随 Harness 设置。旧版逐字段开关和配色不再适用于这些按钮。"
+    "language.saveFailed": "语言选择未能保存，请允许本地存储后重试。"
   },
   "zh-hant": {
     "color.blue": "藍",
@@ -494,6 +498,10 @@ export const LOCALES = {
     "field.llmTime.note": "顯示模型推理累計耗時。",
     "field.mainTime.label": "主時間",
     "field.mainTime.note": "顯示主時區的時間；時區在「時間與日期」中調整。",
+    "field.nativeActivity.label": "會話統計",
+    "field.nativeActivity.note": "顯示 Harness 原生的會話統計按鈕（輪次、步數、輸出速度）。點擊按鈕可查看明細；只在完整模式顯示。",
+    "field.nativeUsage.label": "用量統計",
+    "field.nativeUsage.note": "顯示 Harness 原生的用量按鈕（Token 總量、快取命中）。點擊按鈕可查看明細；只在完整模式顯示。",
     "field.noKeyHint.label": "缺少金鑰提示",
     "field.noKeyHint.note": "缺少 API Key 時顯示去填寫的提示。",
     "field.outputSpeed.label": "輸出速率",
@@ -536,6 +544,7 @@ export const LOCALES = {
     "field.worldTime.note": "顯示另一時區的時間。",
     "group.native": "原生資訊",
     "group.native.desc": "DSH 原生底欄自帶的欄位，列在原生統計行；這一行只在完整模式顯示。",
+    "group.native.desc.pills": "Harness 原生的兩個按鈕，可以分別顯示或隱藏；點擊按鈕查看明細。它們只在完整模式顯示。",
     "group.notice": "提醒資訊",
     "group.notice.desc": "更新、失敗等一次性提醒。當下真有事要提醒就出現，與模式無關。",
     "group.plugin": "外掛資訊",
@@ -844,8 +853,7 @@ export const LOCALES = {
     "ui.worldTime": "世界時間",
     "ui.worldTimeZone": "世界時間時區",
     "ui.xiaomiMiMo": "小米 MiMo",
-    "ui.zhipu": "智譜",
-    "ui.nativePillsManagedByHost": "由 DeepSeek Harness 管理。點擊底部的對話統計或用量按鈕查看明細，顯示方式跟隨 Harness 設定。舊版逐欄位開關與配色不再適用於這些按鈕。"
+    "ui.zhipu": "智譜"
   },
   "en": {
     "meta.title": "Bottom Info Bar",
@@ -1191,6 +1199,10 @@ export const LOCALES = {
     "field.budget.note": "Shown when the provider reports a budget percentage.",
     "field.freeQuota.label": "Free quota",
     "field.freeQuota.note": "Shown when the provider offers a free allowance, with the remaining amount and reset time.",
+    "field.nativeActivity.label": "Session stats",
+    "field.nativeActivity.note": "Shows Harness’s native session-stats button (turns, steps, output speed). Click it for details; shown only in Full mode.",
+    "field.nativeUsage.label": "Usage",
+    "field.nativeUsage.note": "Shows Harness’s native usage button (token total, cache hit). Click it for details; shown only in Full mode.",
     "field.turnsSteps.label": "Turns and steps",
     "field.turnsSteps.note": "Shows turns and steps in this session.",
     "field.llmTime.label": "Model time",
@@ -1234,6 +1246,7 @@ export const LOCALES = {
     "group.plugin": "Plugin information",
     "group.notice": "Notices",
     "group.native.desc": "Fields the DSH bar already had. They live in the native stats row, which only Full mode shows.",
+    "group.native.desc.pills": "Harness’s two native buttons. Show or hide each one; click a button for details. They appear only in Full mode.",
     "group.plugin.desc": "Fields this plugin adds, the adopted context ring included. They live in the main row, shown in both modes.",
     "group.notice.desc": "One-off notices such as updates and failures. They appear whenever there is really something to say, whatever the mode.",
     "section.identity.label": "Provider and model",
@@ -1268,8 +1281,7 @@ export const LOCALES = {
     "language.title": "Language",
     "language.description": "Follow DSH or choose a language for this plugin in this browser.",
     "language.auto": "Follow DSH",
-    "language.saveFailed": "Could not save the language preference. Allow local storage and try again.",
-    "ui.nativePillsManagedByHost": "Managed by DeepSeek Harness. Click the session statistics or usage buttons below the composer for details; their display follows Harness settings. Legacy per-field switches and colors do not apply to these buttons."
+    "language.saveFailed": "Could not save the language preference. Allow local storage and try again."
   },
   "ja": {
     "meta.title": "下部情報バー",
@@ -1615,6 +1627,10 @@ export const LOCALES = {
     "field.budget.note": "プロバイダーから予算の割合が返される場合に表示します。",
     "field.freeQuota.label": "無料枠",
     "field.freeQuota.note": "無料枠がある場合に、残量とリセット時刻を表示します。",
+    "field.nativeActivity.label": "セッション統計",
+    "field.nativeActivity.note": "Harness が元から備えるセッション統計ボタン（ターン数、ステップ数、出力速度）を表示します。ボタンをクリックすると詳細を確認できます。完全表示モードでのみ表示されます。",
+    "field.nativeUsage.label": "使用量",
+    "field.nativeUsage.note": "Harness が元から備える使用量ボタン（トークン合計、キャッシュヒット）を表示します。ボタンをクリックすると詳細を確認できます。完全表示モードでのみ表示されます。",
     "field.turnsSteps.label": "ターン数とステップ数",
     "field.turnsSteps.note": "このセッションのターン数とステップ数を表示します。",
     "field.llmTime.label": "モデル処理時間",
@@ -1658,6 +1674,7 @@ export const LOCALES = {
     "group.plugin": "プラグイン情報",
     "group.notice": "お知らせ",
     "group.native.desc": "DSH のバーに元からある項目です。標準統計行にあり、完全表示モードでのみ表示されます。",
+    "group.native.desc.pills": "Harness が元から備える 2 つのボタンです。それぞれ表示・非表示を切り替えられ、ボタンをクリックすると詳細を確認できます。完全表示モードでのみ表示されます。",
     "group.plugin.desc": "このプラグインが追加する項目です。引き継いだコンテキストリングも含みます。メイン行にあり、両方のモードで表示されます。",
     "group.notice.desc": "更新や失敗など、その時だけのお知らせです。伝えることがある場合はモードにかかわらず表示されます。",
     "section.identity.label": "プロバイダーとモデル",
@@ -1692,8 +1709,7 @@ export const LOCALES = {
     "language.title": "言語",
     "language.description": "DSH の言語に合わせるか、このブラウザーでプラグインの言語を個別に選びます。",
     "language.auto": "DSH に合わせる",
-    "language.saveFailed": "言語設定を保存できませんでした。ローカルストレージを許可して再試行してください。",
-    "ui.nativePillsManagedByHost": "DeepSeek Harness が管理します。入力欄の下にあるセッション統計や使用量のボタンをクリックすると詳細を確認できます。表示方法は Harness の設定に従います。旧版の項目別スイッチや配色はこれらのボタンには適用されません。"
+    "language.saveFailed": "言語設定を保存できませんでした。ローカルストレージを許可して再試行してください。"
   },
   "ko": {
     "meta.title": "하단 정보 표시줄",
@@ -2039,6 +2055,10 @@ export const LOCALES = {
     "field.budget.note": "제공업체가 예산 비율을 알려 주면 표시합니다.",
     "field.freeQuota.label": "무료 한도",
     "field.freeQuota.note": "무료 한도가 있으면 잔여량과 초기화 시간을 표시합니다.",
+    "field.nativeActivity.label": "세션 통계",
+    "field.nativeActivity.note": "Harness 기본 세션 통계 버튼(턴, 단계, 출력 속도)을 표시합니다. 버튼을 클릭하면 세부 정보를 볼 수 있으며 전체 모드에서만 표시됩니다.",
+    "field.nativeUsage.label": "사용량",
+    "field.nativeUsage.note": "Harness 기본 사용량 버튼(토큰 합계, 캐시 적중)을 표시합니다. 버튼을 클릭하면 세부 정보를 볼 수 있으며 전체 모드에서만 표시됩니다.",
     "field.turnsSteps.label": "턴과 단계",
     "field.turnsSteps.note": "이 세션의 턴 수와 단계 수를 표시합니다.",
     "field.llmTime.label": "모델 처리 시간",
@@ -2082,6 +2102,7 @@ export const LOCALES = {
     "group.plugin": "플러그인 정보",
     "group.notice": "알림",
     "group.native.desc": "DSH 표시줄에 원래 있던 항목입니다. 기본 통계 행에 있으며 전체 모드에서만 표시합니다.",
+    "group.native.desc.pills": "Harness 기본 버튼 두 개입니다. 각각 표시하거나 숨길 수 있고, 버튼을 클릭하면 세부 정보를 볼 수 있습니다. 전체 모드에서만 표시됩니다.",
     "group.plugin.desc": "이 플러그인이 추가한 항목입니다. 이어받은 컨텍스트 원도 포함합니다. 기본 행에 있으며 두 모드 모두 표시합니다.",
     "group.notice.desc": "업데이트와 오류 같은 일시적 알림입니다. 실제로 알릴 내용이 있으면 모드와 관계없이 표시합니다.",
     "section.identity.label": "제공업체와 모델",
@@ -2116,8 +2137,7 @@ export const LOCALES = {
     "language.title": "언어",
     "language.description": "DSH 언어를 따르거나 이 브라우저에서 플러그인 언어를 별도로 선택하세요.",
     "language.auto": "DSH 따르기",
-    "language.saveFailed": "언어 설정을 저장할 수 없습니다. 로컬 저장소를 허용하고 다시 시도하세요.",
-    "ui.nativePillsManagedByHost": "DeepSeek Harness에서 관리합니다. 입력창 아래의 세션 통계 또는 사용량 버튼을 클릭하면 상세 정보를 볼 수 있으며 표시 방식은 Harness 설정을 따릅니다. 이전 버전의 항목별 스위치와 색상은 이 버튼에 적용되지 않습니다."
+    "language.saveFailed": "언어 설정을 저장할 수 없습니다. 로컬 저장소를 허용하고 다시 시도하세요."
   },
   "es": {
     "meta.title": "Barra de información inferior",
@@ -2463,6 +2483,10 @@ export const LOCALES = {
     "field.budget.note": "Se muestra cuando el proveedor indica un porcentaje de presupuesto.",
     "field.freeQuota.label": "Cuota gratuita",
     "field.freeQuota.note": "Se muestra cuando el proveedor ofrece una cuota gratuita, con el importe restante y el momento de restablecimiento.",
+    "field.nativeActivity.label": "Estadísticas de la sesión",
+    "field.nativeActivity.note": "Muestra el botón nativo de Harness con las estadísticas de la sesión (turnos, pasos, velocidad de salida). Púlsalo para ver los detalles; solo aparece en modo completo.",
+    "field.nativeUsage.label": "Uso",
+    "field.nativeUsage.note": "Muestra el botón nativo de uso de Harness (total de tokens, aciertos de caché). Púlsalo para ver los detalles; solo aparece en modo completo.",
     "field.turnsSteps.label": "Turnos y pasos",
     "field.turnsSteps.note": "Muestra los turnos y pasos de esta sesión.",
     "field.llmTime.label": "Tiempo del modelo",
@@ -2506,6 +2530,7 @@ export const LOCALES = {
     "group.plugin": "Información del plugin",
     "group.notice": "Avisos",
     "group.native.desc": "Campos que ya tenía la barra de DSH. Se muestran en la fila de estadísticas nativa, visible solo en modo completo.",
+    "group.native.desc.pills": "Los dos botones nativos de Harness. Puedes mostrar u ocultar cada uno; pulsa un botón para ver los detalles. Solo aparecen en modo completo.",
     "group.plugin.desc": "Campos que añade este plugin, incluido el anillo de contexto integrado. Se muestran en la fila principal, visible en ambos modos.",
     "group.notice.desc": "Avisos puntuales como actualizaciones y errores. Aparecen cuando hay algo que comunicar, sea cual sea el modo.",
     "section.identity.label": "Proveedor y modelo",
@@ -2540,8 +2565,7 @@ export const LOCALES = {
     "language.title": "Idioma",
     "language.description": "Sigue el idioma de DSH o elige uno para este plugin en este navegador.",
     "language.auto": "Seguir DSH",
-    "language.saveFailed": "No se pudo guardar el idioma preferido. Permite el almacenamiento local e inténtalo de nuevo.",
-    "ui.nativePillsManagedByHost": "DeepSeek Harness gestiona estas estadísticas. Pulsa los botones de estadísticas de sesión o uso bajo el cuadro de entrada para ver los detalles; su presentación sigue los ajustes de Harness. Los interruptores y colores antiguos por campo no se aplican a estos botones."
+    "language.saveFailed": "No se pudo guardar el idioma preferido. Permite el almacenamiento local e inténtalo de nuevo."
   },
   "pt": {
     "meta.title": "Barra de informações inferior",
@@ -2887,6 +2911,10 @@ export const LOCALES = {
     "field.budget.note": "Exibido quando o provedor informa uma porcentagem do orçamento.",
     "field.freeQuota.label": "Cota gratuita",
     "field.freeQuota.note": "Exibido quando o provedor oferece uma cota gratuita, com a quantidade restante e o horário de redefinição.",
+    "field.nativeActivity.label": "Estatísticas da sessão",
+    "field.nativeActivity.note": "Mostra o botão nativo de estatísticas da sessão do Harness (turnos, etapas, velocidade de saída). Clique no botão para ver os detalhes; aparece apenas no modo completo.",
+    "field.nativeUsage.label": "Uso",
+    "field.nativeUsage.note": "Mostra o botão nativo de uso do Harness (total de tokens, acertos do cache). Clique no botão para ver os detalhes; aparece apenas no modo completo.",
     "field.turnsSteps.label": "Turnos e etapas",
     "field.turnsSteps.note": "Mostra os turnos e etapas desta sessão.",
     "field.llmTime.label": "Tempo do modelo",
@@ -2930,6 +2958,7 @@ export const LOCALES = {
     "group.plugin": "Informações do plugin",
     "group.notice": "Avisos",
     "group.native.desc": "Campos que a barra do DSH já tinha. Ficam na linha de estatísticas nativa, visível apenas no modo completo.",
+    "group.native.desc.pills": "Os dois botões nativos do Harness. Mostre ou oculte cada um; clique em um botão para ver os detalhes. Eles aparecem apenas no modo completo.",
     "group.plugin.desc": "Campos adicionados por este plugin, incluindo o anel de contexto integrado. Ficam na linha principal, visível nos dois modos.",
     "group.notice.desc": "Avisos pontuais, como atualizações e falhas. Aparecem quando há algo a informar, independentemente do modo.",
     "section.identity.label": "Provedor e modelo",
@@ -2964,8 +2993,7 @@ export const LOCALES = {
     "language.title": "Idioma",
     "language.description": "Siga o idioma do DSH ou escolha um idioma para este plugin neste navegador.",
     "language.auto": "Seguir DSH",
-    "language.saveFailed": "Não foi possível salvar a preferência de idioma. Permita o armazenamento local e tente novamente.",
-    "ui.nativePillsManagedByHost": "Gerenciado pelo DeepSeek Harness. Clique nos botões de estatísticas da sessão ou uso abaixo da caixa de entrada para ver os detalhes; a exibição segue as configurações do Harness. Os antigos controles e cores por campo não se aplicam a esses botões."
+    "language.saveFailed": "Não foi possível salvar a preferência de idioma. Permita o armazenamento local e tente novamente."
   },
   "fr": {
     "meta.title": "Barre d’informations inférieure",
@@ -3311,6 +3339,10 @@ export const LOCALES = {
     "field.budget.note": "Affiché lorsque le fournisseur indique un pourcentage de budget.",
     "field.freeQuota.label": "Quota gratuit",
     "field.freeQuota.note": "Affiché lorsque le fournisseur propose un quota gratuit, avec le montant restant et l’heure de réinitialisation.",
+    "field.nativeActivity.label": "Statistiques de session",
+    "field.nativeActivity.note": "Affiche le bouton natif des statistiques de session de Harness (tours, étapes, vitesse de sortie). Cliquez dessus pour voir les détails ; il n’apparaît qu’en mode complet.",
+    "field.nativeUsage.label": "Utilisation",
+    "field.nativeUsage.note": "Affiche le bouton natif d’utilisation de Harness (total de jetons, succès du cache). Cliquez dessus pour voir les détails ; il n’apparaît qu’en mode complet.",
     "field.turnsSteps.label": "Tours et étapes",
     "field.turnsSteps.note": "Affiche les tours et étapes de cette session.",
     "field.llmTime.label": "Temps du modèle",
@@ -3354,6 +3386,7 @@ export const LOCALES = {
     "group.plugin": "Informations du plugin",
     "group.notice": "Avis",
     "group.native.desc": "Champs déjà présents dans la barre DSH. Ils se trouvent dans la ligne native des statistiques, visible uniquement en mode complet.",
+    "group.native.desc.pills": "Les deux boutons natifs de Harness. Affichez ou masquez chacun d’eux ; cliquez sur un bouton pour voir les détails. Ils n’apparaissent qu’en mode complet.",
     "group.plugin.desc": "Champs ajoutés par ce plugin, y compris l’anneau de contexte repris. Ils se trouvent dans la ligne principale, visible dans les deux modes.",
     "group.notice.desc": "Avis ponctuels comme les mises à jour et les erreurs. Ils apparaissent uniquement lorsqu’il y a quelque chose à signaler, quel que soit le mode.",
     "section.identity.label": "Fournisseur et modèle",
@@ -3388,8 +3421,7 @@ export const LOCALES = {
     "language.title": "Langue",
     "language.description": "Suivre DSH ou choisir une langue pour ce plugin dans ce navigateur.",
     "language.auto": "Suivre DSH",
-    "language.saveFailed": "Impossible d’enregistrer la préférence de langue. Autorisez le stockage local et réessayez.",
-    "ui.nativePillsManagedByHost": "Géré par DeepSeek Harness. Cliquez sur les boutons de statistiques de session ou d’utilisation sous la zone de saisie pour voir les détails ; leur affichage suit les réglages de Harness. Les anciens interrupteurs et couleurs par champ ne s’appliquent pas à ces boutons."
+    "language.saveFailed": "Impossible d’enregistrer la préférence de langue. Autorisez le stockage local et réessayez."
   },
   "de": {
     "meta.title": "Untere Infoleiste",
@@ -3735,6 +3767,10 @@ export const LOCALES = {
     "field.budget.note": "Wird angezeigt, wenn der Anbieter einen Budgetprozentsatz meldet.",
     "field.freeQuota.label": "Freikontingent",
     "field.freeQuota.note": "Wird angezeigt, wenn der Anbieter ein Freikontingent anbietet, mit Restmenge und Zurücksetzungszeit.",
+    "field.nativeActivity.label": "Sitzungsstatistik",
+    "field.nativeActivity.note": "Zeigt die native Sitzungsstatistik-Schaltfläche von Harness (Gesprächsrunden, Schritte, Ausgabegeschwindigkeit). Klicken Sie darauf, um Details zu sehen; sie erscheint nur im vollständigen Modus.",
+    "field.nativeUsage.label": "Nutzung",
+    "field.nativeUsage.note": "Zeigt die native Nutzungsschaltfläche von Harness (Token-Gesamtmenge, Cache-Treffer). Klicken Sie darauf, um Details zu sehen; sie erscheint nur im vollständigen Modus.",
     "field.turnsSteps.label": "Gesprächsrunden und Schritte",
     "field.turnsSteps.note": "Zeigt Gesprächsrunden und Schritte dieser Sitzung.",
     "field.llmTime.label": "Modellzeit",
@@ -3778,6 +3814,7 @@ export const LOCALES = {
     "group.plugin": "Plugin-Informationen",
     "group.notice": "Hinweise",
     "group.native.desc": "Felder, die bereits in der DSH-Leiste vorhanden waren. Sie stehen in der nativen Statistikzeile, die nur im vollständigen Modus erscheint.",
+    "group.native.desc.pills": "Die beiden nativen Schaltflächen von Harness. Jede lässt sich einzeln ein- oder ausblenden; klicken Sie auf eine Schaltfläche, um Details zu sehen. Sie erscheinen nur im vollständigen Modus.",
     "group.plugin.desc": "Felder, die dieses Plugin ergänzt, einschließlich des übernommenen Kontextrings. Sie stehen in der Hauptzeile, die in beiden Modi erscheint.",
     "group.notice.desc": "Einmalige Hinweise wie Updates und Fehler. Sie erscheinen nur bei einem tatsächlichen Anlass, unabhängig vom Modus.",
     "section.identity.label": "Anbieter und Modell",
@@ -3812,8 +3849,7 @@ export const LOCALES = {
     "language.title": "Sprache",
     "language.description": "DSH folgen oder in diesem Browser eine Sprache für dieses Plugin wählen.",
     "language.auto": "DSH folgen",
-    "language.saveFailed": "Spracheinstellung konnte nicht gespeichert werden. Lokalen Speicher erlauben und erneut versuchen.",
-    "ui.nativePillsManagedByHost": "Von DeepSeek Harness verwaltet. Die Schaltflächen für Sitzungsstatistik und Nutzung unter dem Eingabefeld öffnen die Details; ihre Darstellung folgt den Harness-Einstellungen. Bisherige Schalter und Farben für einzelne Felder gelten für diese Schaltflächen nicht."
+    "language.saveFailed": "Spracheinstellung konnte nicht gespeichert werden. Lokalen Speicher erlauben und erneut versuchen."
   },
   "it": {
     "meta.title": "Barra informazioni inferiore",
@@ -4159,6 +4195,10 @@ export const LOCALES = {
     "field.budget.note": "Mostrato quando il fornitore comunica una percentuale di budget.",
     "field.freeQuota.label": "Quota gratuita",
     "field.freeQuota.note": "Mostrato quando il fornitore offre una quota gratuita, con quantità rimanente e orario di ripristino.",
+    "field.nativeActivity.label": "Statistiche della sessione",
+    "field.nativeActivity.note": "Mostra il pulsante nativo delle statistiche della sessione di Harness (turni, passaggi, velocità di output). Fai clic sul pulsante per i dettagli; compare solo in modalità completa.",
+    "field.nativeUsage.label": "Utilizzo",
+    "field.nativeUsage.note": "Mostra il pulsante nativo dell’utilizzo di Harness (totale token, riscontri cache). Fai clic sul pulsante per i dettagli; compare solo in modalità completa.",
     "field.turnsSteps.label": "Turni e passaggi",
     "field.turnsSteps.note": "Mostra i turni e i passaggi di questa sessione.",
     "field.llmTime.label": "Tempo del modello",
@@ -4202,6 +4242,7 @@ export const LOCALES = {
     "group.plugin": "Informazioni del plugin",
     "group.notice": "Avvisi",
     "group.native.desc": "Campi già presenti nella barra DSH. Si trovano nella riga delle statistiche native, mostrata solo in modalità completa.",
+    "group.native.desc.pills": "I due pulsanti nativi di Harness. Puoi mostrare o nascondere ciascuno; fai clic su un pulsante per i dettagli. Compaiono solo in modalità completa.",
     "group.plugin.desc": "Campi aggiunti da questo plugin, incluso l’anello del contesto adottato. Si trovano nella riga principale, mostrata in entrambe le modalità.",
     "group.notice.desc": "Avvisi occasionali come aggiornamenti ed errori. Appaiono solo quando c’è qualcosa da segnalare, in qualsiasi modalità.",
     "section.identity.label": "Fornitore e modello",
@@ -4236,8 +4277,7 @@ export const LOCALES = {
     "language.title": "Lingua",
     "language.description": "Segui DSH o scegli una lingua per questo plugin in questo browser.",
     "language.auto": "Segui DSH",
-    "language.saveFailed": "Impossibile salvare la preferenza della lingua. Consenti l’archiviazione locale e riprova.",
-    "ui.nativePillsManagedByHost": "Gestito da DeepSeek Harness. Fai clic sui pulsanti delle statistiche di sessione o dell’utilizzo sotto il campo di input per vedere i dettagli; la visualizzazione segue le impostazioni di Harness. I precedenti interruttori e colori per campo non si applicano a questi pulsanti."
+    "language.saveFailed": "Impossibile salvare la preferenza della lingua. Consenti l’archiviazione locale e riprova."
   },
   "ru": {
     "meta.title": "Нижняя информационная панель",
@@ -4583,6 +4623,10 @@ export const LOCALES = {
     "field.budget.note": "Показывается, когда провайдер сообщает процент бюджета.",
     "field.freeQuota.label": "Бесплатная квота",
     "field.freeQuota.note": "Показывается при наличии бесплатной квоты у провайдера: остаток и время сброса.",
+    "field.nativeActivity.label": "Статистика сеанса",
+    "field.nativeActivity.note": "Показывает встроенную кнопку статистики сеанса Harness (ходы, шаги, скорость вывода). Нажмите на кнопку, чтобы открыть подробности; отображается только в полном режиме.",
+    "field.nativeUsage.label": "Использование",
+    "field.nativeUsage.note": "Показывает встроенную кнопку использования Harness (общее число токенов, попадания в кэш). Нажмите на кнопку, чтобы открыть подробности; отображается только в полном режиме.",
     "field.turnsSteps.label": "Ходы и шаги",
     "field.turnsSteps.note": "Показывает ходы и шаги этой сессии.",
     "field.llmTime.label": "Время модели",
@@ -4626,6 +4670,7 @@ export const LOCALES = {
     "group.plugin": "Информация плагина",
     "group.notice": "Уведомления",
     "group.native.desc": "Поля, уже имевшиеся на панели DSH. Они находятся во встроенной строке статистики, видимой только в полном режиме.",
+    "group.native.desc.pills": "Две встроенные кнопки Harness. Каждую можно показать или скрыть; нажмите на кнопку, чтобы открыть подробности. Они отображаются только в полном режиме.",
     "group.plugin.desc": "Поля, добавляемые плагином, включая встроенное кольцо контекста. Они находятся в основной строке и видны в обоих режимах.",
     "group.notice.desc": "Разовые уведомления, например об обновлениях и ошибках. Появляются, когда есть что сообщить, в любом режиме.",
     "section.identity.label": "Провайдер и модель",
@@ -4660,8 +4705,7 @@ export const LOCALES = {
     "language.title": "Язык",
     "language.description": "Используйте язык DSH или выберите язык плагина в этом браузере.",
     "language.auto": "Как в DSH",
-    "language.saveFailed": "Не удалось сохранить выбранный язык. Разрешите локальное хранилище и повторите попытку.",
-    "ui.nativePillsManagedByHost": "Управляется DeepSeek Harness. Нажмите кнопки статистики сеанса или использования под полем ввода, чтобы открыть подробности; отображение зависит от настроек Harness. Старые переключатели и цвета отдельных полей к этим кнопкам не применяются."
+    "language.saveFailed": "Не удалось сохранить выбранный язык. Разрешите локальное хранилище и повторите попытку."
   },
   "hi": {
     "meta.title": "निचला जानकारी बार",
@@ -5007,6 +5051,10 @@ export const LOCALES = {
     "field.budget.note": "प्रदाता के बजट का प्रतिशत बताने पर दिखाया जाता है।",
     "field.freeQuota.label": "मुफ़्त कोटा",
     "field.freeQuota.note": "प्रदाता के मुफ़्त कोटा देने पर शेष मात्रा और रीसेट समय दिखाता है।",
+    "field.nativeActivity.label": "सत्र के आँकड़े",
+    "field.nativeActivity.note": "Harness का मूल सत्र-आँकड़े बटन दिखाता है (बारी, चरण, आउटपुट गति)। विवरण देखने के लिए बटन पर क्लिक करें; यह केवल पूरे मोड में दिखाई देता है।",
+    "field.nativeUsage.label": "उपयोग",
+    "field.nativeUsage.note": "Harness का मूल उपयोग बटन दिखाता है (कुल टोकन, कैश हिट)। विवरण देखने के लिए बटन पर क्लिक करें; यह केवल पूरे मोड में दिखाई देता है।",
     "field.turnsSteps.label": "बारी और चरण",
     "field.turnsSteps.note": "इस सत्र की बारियाँ और चरण दिखाता है।",
     "field.llmTime.label": "मॉडल समय",
@@ -5050,6 +5098,7 @@ export const LOCALES = {
     "group.plugin": "प्लगइन की जानकारी",
     "group.notice": "सूचनाएँ",
     "group.native.desc": "DSH बार में पहले से मौजूद फ़ील्ड। ये मूल आँकड़ों की पंक्ति में हैं, जो केवल पूरे मोड में दिखाई देती है।",
+    "group.native.desc.pills": "Harness के दो मूल बटन। हर एक को अलग से दिखाया या छिपाया जा सकता है; विवरण के लिए बटन पर क्लिक करें। ये केवल पूरे मोड में दिखाई देते हैं।",
     "group.plugin.desc": "इस प्लगइन के जोड़े हुए फ़ील्ड, जिसमें अपनाया गया संदर्भ घेरा भी है। ये मुख्य पंक्ति में हैं और दोनों मोड में दिखाई देते हैं।",
     "group.notice.desc": "अपडेट और विफलता जैसी एक बार की सूचनाएँ। जब बताने के लिए सच में कुछ हो तो मोड की परवाह किए बिना दिखाई देती हैं।",
     "section.identity.label": "प्रदाता और मॉडल",
@@ -5084,8 +5133,7 @@ export const LOCALES = {
     "language.title": "भाषा",
     "language.description": "DSH की भाषा अपनाएँ या इस ब्राउज़र में इस प्लगइन के लिए अलग भाषा चुनें।",
     "language.auto": "DSH की भाषा अपनाएँ",
-    "language.saveFailed": "भाषा की पसंद सहेज नहीं सके। स्थानीय संग्रहण की अनुमति दें और फिर कोशिश करें।",
-    "ui.nativePillsManagedByHost": "इसे DeepSeek Harness प्रबंधित करता है। विवरण देखने के लिए इनपुट बॉक्स के नीचे सत्र के आँकड़ों या उपयोग के बटन पर क्लिक करें; उनका प्रदर्शन Harness की सेटिंग के अनुसार होता है। पुराने अलग-अलग फ़ील्ड के स्विच और रंग इन बटनों पर लागू नहीं होते।"
+    "language.saveFailed": "भाषा की पसंद सहेज नहीं सके। स्थानीय संग्रहण की अनुमति दें और फिर कोशिश करें।"
   },
   "id": {
     "meta.title": "Bilah Info Bawah",
@@ -5431,6 +5479,10 @@ export const LOCALES = {
     "field.budget.note": "Ditampilkan jika penyedia melaporkan persentase anggaran.",
     "field.freeQuota.label": "Kuota gratis",
     "field.freeQuota.note": "Ditampilkan jika penyedia memberi kuota gratis, beserta jumlah tersisa dan waktu pengaturan ulang.",
+    "field.nativeActivity.label": "Statistik sesi",
+    "field.nativeActivity.note": "Menampilkan tombol statistik sesi bawaan Harness (giliran, langkah, kecepatan keluaran). Klik tombolnya untuk melihat rincian; hanya tampil dalam mode Lengkap.",
+    "field.nativeUsage.label": "Penggunaan",
+    "field.nativeUsage.note": "Menampilkan tombol penggunaan bawaan Harness (total token, kecocokan cache). Klik tombolnya untuk melihat rincian; hanya tampil dalam mode Lengkap.",
     "field.turnsSteps.label": "Giliran dan langkah",
     "field.turnsSteps.note": "Menampilkan giliran dan langkah dalam sesi ini.",
     "field.llmTime.label": "Waktu model",
@@ -5474,6 +5526,7 @@ export const LOCALES = {
     "group.plugin": "Informasi plugin",
     "group.notice": "Pemberitahuan",
     "group.native.desc": "Bidang yang sudah ada pada bilah DSH, di baris statistik bawaan yang hanya terlihat dalam mode Lengkap.",
+    "group.native.desc.pills": "Dua tombol bawaan Harness. Tampilkan atau sembunyikan masing-masing; klik tombolnya untuk melihat rincian. Keduanya hanya tampil dalam mode Lengkap.",
     "group.plugin.desc": "Bidang yang ditambahkan plugin, termasuk lingkaran konteks; di baris utama yang terlihat dalam kedua mode.",
     "group.notice.desc": "Pemberitahuan sesekali seperti pembaruan dan kegagalan; muncul saat ada informasi yang perlu disampaikan dalam mode apa pun.",
     "section.identity.label": "Penyedia dan model",
@@ -5508,7 +5561,6 @@ export const LOCALES = {
     "language.title": "Bahasa",
     "language.description": "Ikuti DSH atau pilih bahasa plugin ini di peramban ini.",
     "language.auto": "Ikuti DSH",
-    "language.saveFailed": "Pilihan bahasa tidak dapat disimpan. Izinkan penyimpanan lokal dan coba lagi.",
-    "ui.nativePillsManagedByHost": "Dikelola oleh DeepSeek Harness. Klik tombol statistik sesi atau penggunaan di bawah kotak input untuk melihat rinciannya; tampilannya mengikuti pengaturan Harness. Sakelar dan warna per bidang versi lama tidak berlaku untuk tombol ini."
+    "language.saveFailed": "Pilihan bahasa tidak dapat disimpan. Izinkan penyimpanan lokal dan coba lagi."
   }
 };

@@ -105,12 +105,19 @@ async function createBarHarness(options) {
   };
 
   const noop = function () {};
+  // documentElement 是原生按钮开关的落点：插件把字段开关写成 data-bi-native-hidden 属性。
+  const documentElement = {
+    attributes: {},
+    setAttribute: function (name, value) { this.attributes[name] = String(value); },
+    removeAttribute: function (name) { delete this.attributes[name]; },
+    getAttribute: function (name) { return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null; },
+  };
   let plugin = null;
   vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'lib', 'client.js'), 'utf8'), {
     console: console,
     AbortController: AbortController,
     fetch: fetchStub,
-    document: { addEventListener: noop, removeEventListener: noop, visibilityState: 'visible' },
+    document: { addEventListener: noop, removeEventListener: noop, visibilityState: 'visible', documentElement: documentElement },
     window: {
       setTimeout: function () { return 0; }, clearTimeout: noop,
       setInterval: function () { return 0; }, clearInterval: noop,
@@ -190,6 +197,11 @@ async function createBarHarness(options) {
       const root = nodes(tree).filter(function (n) { return n.props && n.props.className === 'bi-root'; })[0];
       return root ? root.props['data-density'] : null;
     },
+    rootOf: function (tree) {
+      return nodes(tree).filter(function (n) { return n.props && n.props.className === 'bi-root'; })[0] || null;
+    },
+    // 原生按钮的字段开关写入 documentElement 的属性
+    nativeHidden: function () { return documentElement.getAttribute('data-bi-native-hidden'); },
     // 某一行（主行 / 原生行）真正显示出来的文字
     textIn: function (tree, rowId) {
       const host = nodes(tree).filter(function (n) { return n.props && n.props.id === rowId; })[0];
@@ -304,9 +316,15 @@ try {
   let modernTree = await modern.pump();
   check('新版只渲染插件行，旧原生字段完全移除', modern.fieldsIn(modernTree, ROW_NATIVE).length === 0
     && modern.fieldsIn(modernTree, ROW_MAIN).includes('balance'), true);
-  check('新版插件行没有整栏按钮、切换标题或快捷键，明细按钮独立交互',
-    modernTree.props['data-native-pills'] === 'true' && !modernTree.props.role
-    && !modernTree.props.onClick && !modernTree.props.onKeyDown && !modernTree.props.title, true);
+  check('新版插件行恢复整栏切换：role / 键盘 / 提示 / 密度与无障碍状态齐全',
+    modernTree.props['data-native-pills'] === 'true' && modernTree.props.role === 'button'
+    && typeof modernTree.props.onClick === 'function' && typeof modernTree.props.onKeyDown === 'function'
+    && typeof modernTree.props.title === 'string'
+    && modernTree.props['data-density'] === 'compact' && modernTree.props['aria-pressed'] === false
+    && modernTree.props['aria-labelledby'] === ROW_MAIN
+    && modernTree.props['aria-describedby'] === 'dsh-bottom-info-bar-action', true);
+  check('新版插件行的整栏点击切换带可关闭的键盘语义（Enter / 空格）',
+    modernTree.props.onKeyDown({ key: 'Enter', preventDefault: function () {} }) === undefined, true);
   modern.setNativeEntries([]);
   modernTree = await modern.pump();
   check('原生入口卸载后恢复旧宿主统计和密度行为', modern.fieldsIn(modernTree, ROW_NATIVE).length > 0
@@ -317,6 +335,32 @@ try {
     && modernTree.props['data-native-pills'] === 'true', true);
   modern.disposeNative();
   check('插件卸载时取消原生注册订阅', modern.nativeSubscribed(), false);
+
+  // 两个原生按钮各自的开关：字段关闭 → documentElement 属性 → 样式只隐藏对应入口。
+  const pillSwitches = await createBarHarness({
+    nativeEntries: ['activity', 'usage'],
+    handle: handleFor(SCENARIOS[1], allFieldsOn({ nativeActivity: false }), 'full'),
+    sessionStats: STATS, tokenUsage: TOKENS, contextPressure: PRESSURE,
+    provider: SCENARIOS[1].provider, model: SCENARIOS[1].model,
+  });
+  await pillSwitches.pump();
+  check('关闭「会话统计」开关只隐藏 activity 原生入口', pillSwitches.nativeHidden() === 'activity', true);
+  const bothPillsOff = await createBarHarness({
+    nativeEntries: ['activity', 'usage'],
+    handle: handleFor(SCENARIOS[1], allFieldsOn({ nativeActivity: false, nativeUsage: false }), 'full'),
+    sessionStats: STATS, tokenUsage: TOKENS, contextPressure: PRESSURE,
+    provider: SCENARIOS[1].provider, model: SCENARIOS[1].model,
+  });
+  await bothPillsOff.pump();
+  check('两个原生按钮都关闭时隐藏属性同时列出 activity 与 usage', bothPillsOff.nativeHidden() === 'activity usage', true);
+  const pillSwitchesOn = await createBarHarness({
+    nativeEntries: ['activity', 'usage'],
+    handle: handleFor(SCENARIOS[1], allFieldsOn(), 'full'),
+    sessionStats: STATS, tokenUsage: TOKENS, contextPressure: PRESSURE,
+    provider: SCENARIOS[1].provider, model: SCENARIOS[1].model,
+  });
+  await pillSwitchesOn.pump();
+  check('默认（两个开关都开）不写隐藏属性，宿主按钮原样显示', pillSwitchesOn.nativeHidden() === null, true);
 
   const rolling = await renderOnce(SCENARIOS[1], allFieldsOn(), 'full');
   const rollingText = rolling.harness.titlesIn(rolling.tree, ROW_MAIN);
