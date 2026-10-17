@@ -193,6 +193,33 @@ const bibSetFieldBlocks = (function () {
     && bibSetFieldBlocks([], {}).length === 0, true);
 }
 
+// Modern native pills are host-owned, so the plugin must not offer inert
+// per-field controls, include them in search counts, or reset their preferences.
+{
+  const React = { createElement(type, props, ...children) { return { type, props: props || {}, children }; } };
+  const groups = new Function('React', 't', 'FIELD_REGISTRY', 'FIELD_GROUP_ORDER', 'FIELD_GROUP_LABELS',
+    'FIELD_GROUP_DESC_KEYS', 'bibSetDisclosure', 'bibSetFieldBlocks',
+    'return (' + extractFunctionFrom(clientSrc, 'bibSetFieldGroups') + ');')(
+      React, t, FIELD_REGISTRY, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS,
+      { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' },
+      'disclosure', bibSetFieldBlocks);
+  const props = { nativePills: true, matchesSearch: () => true, groupOpenOf: () => true, onGroupToggle: () => {} };
+  const modern = groups(props);
+  check('新版原生组解释按钮和设置归属，不渲染旧字段开关',
+    textOf(modern).includes(t('ui.nativePillsManagedByHost'))
+    && !rowIdsOf(modern).some(id => FIELD_REGISTRY.some(f => f.id === id && f.group === 'native')), true);
+  const legacy = groups({ ...props, nativePills: false });
+  check('旧宿主原生组的七个字段设置全部保留',
+    FIELD_REGISTRY.filter(f => f.group === 'native').every(f => rowIdsOf(legacy).includes(f.id)), true);
+  const fieldsForHost = new Function('FIELD_REGISTRY', 'return (' + extractFunctionFrom(clientSrc, 'settingsFieldsForHost') + ');')(FIELD_REGISTRY);
+  check('新版搜索和启用计数只含有效字段，保留上下文圆环设置',
+    fieldsForHost(true).length === FIELD_REGISTRY.length - 7
+    && fieldsForHost(true).some(f => f.id === 'contextUsage')
+    && fieldsForHost(false).length === FIELD_REGISTRY.length, true);
+  check('新版搜索无结果时不夹入无关原生说明',
+    !textOf(groups({ ...props, searchActive: true, matchesSearch: () => false })).includes(t('ui.nativePillsManagedByHost')), true);
+}
+
 // ---------- ⑤ 入库产物一致（lib/ 是构建产物，必须已重建） ----------
 check('lib/client.js 已重建：含注入后的小节常量与小节渲染入口（CI 另有一致性检查）',
   libSrc.includes('dsh-bottom-info-bar')

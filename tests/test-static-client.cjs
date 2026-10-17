@@ -32,7 +32,7 @@ check('本会话 tooltip 写明统计起点，且起点缺失时不编造（Issu
   && clientSrc.includes("metric(t('ui.session'), costTxt)"), true);
 
 // 2) 原生统计行不再以 steps > 0 为门槛；简洁模式下保留 DOM 供动画收合
-check('原生统计行由 statsProj 驱动，简洁模式保留 DOM 以支持收合', clientSrc.includes('if (statsProj) {')
+check('旧宿主统计由 statsProj 驱动，新版不渲染重复统计行', clientSrc.includes('if (statsProj && !nativePills) {')
   && clientSrc.includes("className: 'bi-density-extra'"), true);
 check('原生统计行不含 steps > 0 门槛', !clientSrc.includes('statsProj.steps > 0'), true);
 

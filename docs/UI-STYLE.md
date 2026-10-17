@@ -70,3 +70,24 @@ row's text column instead of adding an extra line.
 Each plugin locks its half of the contract in its own test suite
 (`tests/test-field-config-client.cjs` here, `tests/test-alpha4-client-contract.mjs` in the
 sibling). Change the host, change both.
+
+## Native statistics integration (measured 2026-10-17)
+
+Installed macOS DSH `0.2.1-rc.1` keeps the settings geometry above: section gap
+32px, inner gap 12px, row gap 16px, row title 13.5px/500/20px and description
+11.5px/16px. These values were re-read from the installed plugin-manager bundle.
+
+The composer now registers `activity` and `usage` in `conversation.composer.dock`
+instead of the legacy `stats` entry. The plugin observes the public registry and
+its change subscription. It leaves both native entries in their original outlet,
+so their injected state, dialogs and native display preferences remain host-owned.
+Only the duplicate legacy statistics row is suppressed. The plugin account row
+occupies a full line; the native entries share a second line. No native button
+classes, colors, dialog implementations or hashed class names are overridden.
+
+On these hosts the plugin row is informational, not a density-toggle button.
+Its existing context meter remains independently clickable. The settings page
+replaces obsolete native per-field switches/colors with an ownership explanation;
+search and enabled counts exclude those inactive fields. Saved legacy values
+remain intact. Hosts without either native entry retain the old row, controls
+and density toggle. Disabling/unloading the plugin leaves native entries alone.
