@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.7](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.6...v1.21.7) (2026-10-17)
+
+
+### Bug Fixes
+
+* preserve native statistics dialogs on DSH 0.2.1 ([#248](https://github.com/songoao25/dsh-bottom-info-bar/issues/248)) ([50fe742](https://github.com/songoao25/dsh-bottom-info-bar/commit/50fe7424c99eea32d176233f15fc9682c98c7040))
+
 ## [1.21.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.5...v1.21.6) (2026-10-16)
 
 
