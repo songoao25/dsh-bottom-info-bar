@@ -5,6 +5,12 @@
 [![npm version](https://img.shields.io/npm/v/dsh-bottom-info-bar)](https://www.npmjs.com/package/dsh-bottom-info-bar)
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
 
+### Join the DeepThinking beta group
+
+<img src="assets/wechat-group.png" width="200" alt="WeChat group DeepThinking QR code">
+
+Bugs, questions and feature requests get answered fastest in the group — scan the code, say what you hit or what you want next, and it moves up the queue. The QR code expires periodically; open an issue if it has stopped working.
+
 A DeepSeek Harness plugin that adds an account information row under the composer: provider and model, real balance or subscription quota, peak/off-peak pricing, and what this session has cost.
 
 ![Bottom Info Bar in full mode](assets/bar-full.webp)
@@ -76,7 +82,5 @@ The plugin includes English, Simplified and Traditional Chinese, Japanese, Korea
 ## License
 
 [MIT](LICENSE) © 2026 songoao25
-
-Questions or ideas? Join our WeChat group **DeepThinking** — [QR code](assets/wechat-group.png).
 
 Holiday pricing includes the official 2026 Chinese holiday leave ranges. Later calendars must be updated after the annual State Council notice; unlisted years use the weekday/weekend rule. Make-up working weekends remain off-peak. Frozen historical costs are unchanged.
