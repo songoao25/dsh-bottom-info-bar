@@ -5,6 +5,12 @@
 [![npm 版本](https://img.shields.io/npm/v/dsh-bottom-info-bar)](https://www.npmjs.com/package/dsh-bottom-info-bar)
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
 
+### 加入内测群 DeepThinking
+
+<img src="assets/wechat-group.png" width="200" alt="微信群 DeepThinking 二维码">
+
+问题和需求群里反馈解决得最快——扫码进内测群，直接说遇到的问题或者想要的功能，我们会优先安排。二维码有有效期，扫不动了就在 issue 里说一声。
+
 DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏——服务商与模型、真实余额或订阅额度、高峰/空闲定价，以及本会话已经花了多少。
 
 ![信息栏完整模式](assets/bar-full.zh-CN.webp)
@@ -76,9 +82,5 @@ https://github.com/songoao25/dsh-bottom-info-bar
 ## 许可证
 
 [MIT](LICENSE) © 2026 songoao25
-
-有问题或想法？扫码加入微信群 **DeepThinking**：
-
-<img src="assets/wechat-group.png" width="180" alt="微信群 DeepThinking 二维码">
 
 节假日计价已覆盖国务院公布的 2026 年中国放假调休日期。后续年份需在年度通知公布后更新日历；未收录年份使用周一至周五/周末规则。调休上班的周末仍为空闲价，已冻结的历史费用保持不变。
