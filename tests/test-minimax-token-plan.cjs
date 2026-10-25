@@ -232,6 +232,8 @@ async function main() {
   check('④ 负数 remaining 单独出现 → parse null', parse({ model_remains: [{ current_interval_remaining_percent: -5 }] }), null)
   check('④ >100 remaining → used 0', parse({ model_remains: [{ current_interval_remaining_percent: 150 }] }).windows[0].usedPercent, 0)
   check('④ 字符串 "0" → used 100', parse({ model_remains: [{ current_interval_remaining_percent: '0' }] }).windows[0].usedPercent, 100)
+  check('④ 5h/周同时剩余 0 → 两个窗口都 100% 已用（整组不消失）',
+    parse({ model_remains: [{ current_interval_remaining_percent: 0, current_weekly_remaining_percent: 0 }] }).windows.map(function (w) { return w.usedPercent }).join(','), '100,100')
 
   // ================= ⑤ base_resp / 结构异常 =================
   check('⑤ base_resp 1004 → parse null', parse({ base_resp: { status_code: 1004 }, model_remains: [{ current_interval_remaining_percent: 50 }] }), null)

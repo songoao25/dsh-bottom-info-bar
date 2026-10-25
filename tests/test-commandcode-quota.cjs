@@ -95,6 +95,28 @@ check('完整响应：秒级和 ISO 重置时间', full && full.windows.map((w) 
 check('完整响应：总剩余 credits', full && full.balance, 67)
 check('完整响应：余额单位为 credits', full && full.balanceUnit, 'credits')
 
+// 额度耗尽：cap=used、monthlyCredits=0 时窗口必须保留并显示 100% 已用（0% 剩余），
+// 不能像旧 OpenCode 那样把耗尽状态当成异常吞掉（2026-10-25 审计）。
+const exhaustedCredits = {
+  success: true,
+  data: {
+    credits: {
+      planId: 'individual-pro-v1',
+      monthlyCredits: 0,
+      purchasedCredits: 0,
+      freeCredits: 0,
+      windowLimits: {
+        fiveHour: { cap: 100, used: 100, resetAt: '1789284984' },
+        weekly: { cap: 1000, used: 1000, resetAt: '2026-09-19T08:26:46Z' },
+      },
+    },
+  },
+}
+const exhausted = parseCommandCodeUsage(exhaustedCredits, fullSubscription, WINDOW_LABELS)
+check('耗尽：5 小时 / 周 / 月窗口仍保留', exhausted && exhausted.windows.map((w) => w.key), ['five_hour', 'seven_day', 'monthly'])
+check('耗尽：三个窗口都是 100% 已用（0% 剩余）', exhausted && exhausted.windows.map((w) => w.usedPercent), [100, 100, 100])
+check('耗尽：月度余额 0 仍是可渲染数字，不丢', exhausted && exhausted.balance, 0)
+
 // Issue #221: windowLimits is a sibling of credits in the current API response.
 // Synthetic amounts deliberately differ from the report's account data.
 const topLevelCredits = {

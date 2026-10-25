@@ -416,6 +416,40 @@ try {
       mainText.indexOf('GPT 5 Codex') !== -1 && mainText.indexOf('Plus') === -1, true);
   }
 
+  // 订阅额度耗尽：三个窗口都必须是 0%，不能因为「没有剩余额度」而整组消失。
+  // 2026-10-25 用户报「周额度用完后信息栏就不显示了」；根因在 host 解析（status:'rate-limited' 被
+  // 当成错误跳过），这里锁客户端侧：即便窗口值是 100% 已用，也照常渲染 0% 与「低」告警。
+  {
+    const exhaustedScenario = {
+      name: '订阅制 · 额度全部耗尽',
+      provider: 'opencode-go', model: 'deepseek-v4.1-flash', modelName: 'DeepSeek V4.1 Flash',
+      reply: function (method) {
+        if (method === 'getPricing') return jsonOk({ provider: 'opencode-go', model: 'deepseek-v4.1-flash', modelDisplay: 'DeepSeek V4.1 Flash', mode: 'flat', period: 'offpeak', prices: {}, nextSwitch: null });
+        if (method === 'getBillingMode') return jsonOk({ provider: 'opencode-go', model: 'deepseek-v4.1-flash', mode: 'subscription' });
+        if (method === 'getSubscriptionSnapshot') {
+          return jsonOk({
+            provider: 'opencode-go', source: 'opencode-go', plan: 'OpenCode Go', error: null,
+            windows: [
+              { key: 'five_hour', label: '5 小时', usedPercent: 100, resetsAt: NOW + 3 * 60 * MINUTE },
+              { key: 'seven_day', label: '周', usedPercent: 100, resetsAt: NOW + 5 * DAY },
+              { key: 'monthly', label: '月', usedPercent: 100, resetsAt: NOW + 20 * DAY },
+            ],
+          });
+        }
+        return null;
+      },
+    };
+    const rendered = await renderOnce(exhaustedScenario, allFieldsOn(), 'compact');
+    const fields = rendered.harness.fieldsIn(rendered.tree, ROW_MAIN);
+    const text = rendered.harness.textIn(rendered.tree, ROW_MAIN);
+    check('额度耗尽：三个窗口字段都仍渲染（整组不消失）',
+      ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].every(function (id) { return fields.indexOf(id) !== -1; }), true);
+    check('额度耗尽：三个窗口都显示 0%（不是隐藏）', (text.match(/0%/g) || []).length === 3, true);
+    check('额度耗尽：三个窗口都带「低」告警', (text.match(/低/g) || []).length === 3, true);
+    check('额度耗尽：仍显示订阅服务名与模型；渲染文本 → ' + text,
+      text.indexOf('OpenCode Go') !== -1 && text.indexOf('DeepSeek V4.1 Flash') !== -1, true);
+  }
+
   // 内置账号未登录：走「账号未登录」引导，而不是套用 API Key 的「未配置 DEEPSEEK_API_KEY」
   {
     const accountScenario = {

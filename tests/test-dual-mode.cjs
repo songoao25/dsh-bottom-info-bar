@@ -63,6 +63,7 @@ const accountForProvider = extractFn('accountForProvider'); // v1.7：新增账�
 const billingSourceFor = extractFn('billingSourceFor'); // v1.7：账单源映射审计
 const openCodeGoWindowKey = extractFn('openCodeGoWindowKey'); // parseOpenCodeGoUsage 的依赖
 const normalizeResetAt = extractFn('normalizeResetAt'); // parseOpenCodeGoUsage 的依赖
+const openCodeGoWindowStatus = extractFn('openCodeGoWindowStatus'); // parseOpenCodeGoUsage 的依赖（耗尽状态归一）
 const parseOpenCodeGoUsage = extractFn('parseOpenCodeGoUsage');
 // 合并语义住在 mergeSnapshotResult（订阅/账单共用），mergeSubscriptionResult 只是定 fallbackCode 的薄委托——
 // 两个一起抽出来，委托在求值作用域内能解析到本体（与 openCodeGoWindowKey 等依赖同 pattern）。
@@ -154,14 +155,43 @@ check('OpenCode Go 百分比取整', ogParsed.windows[0].usedPercent, 9);
 check('OpenCode Go resetsAt ISO → 毫秒', ogParsed.windows[0].resetsAt, Date.parse('2026-08-14T07:20:04.810Z'));
 check('OpenCode Go 固定套餐名', ogParsed.plan, 'OpenCode Go');
 
-// status 非 ok 的处理：非 ok 窗口跳过，ok 窗口保留
+// 额度耗尽不是错误：OpenCode 用 status:'rate-limited' 标记（2026-10-25 修复用户报的
+// 「周额度归零后窗口消失」）。耗尽窗口必须保留，并按 100% 已用 / 0% 剩余显示；
+// 接口给的 percent 在耗尽态不可信（实测可能只有 5 之类），不能拿来当剩余额度。
+const ogExhausted = { usage: {
+  rolling: { status: 'ok', percent: 9, resetsAt: '2026-08-14T07:20:04.810Z' },
+  weekly: { status: 'rate-limited', percent: 5, resetsAt: '2026-08-17T00:00:00.810Z' },
+  monthly: { status: 'ok', percent: 6, resetsAt: '2026-09-09T00:41:03.810Z' },
+} };
+const ogParsedExhausted = parseOpenCodeGoUsage(ogExhausted);
+check('rate-limited 周窗口保留（不再因非 ok 消失）', ogParsedExhausted.windows.length, 3);
+check('rate-limited 周窗口按 100% 已用（0% 剩余）显示，不采用接口低 percent', ogParsedExhausted.windows[1].usedPercent, 100);
+check('rate-limited 周窗口仍带重置时刻', ogParsedExhausted.windows[1].resetsAt, Date.parse('2026-08-17T00:00:00.810Z'));
+check('rate-limited 不污染同响应里的正常窗口', ogParsedExhausted.windows[0].usedPercent === 9 && ogParsedExhausted.windows[2].usedPercent === 6, true);
+
+const ogAllExhausted = { usage: {
+  rolling: { status: 'rate-limited', percent: 5, resetsAt: 1785000000000 },
+  weekly: { status: 'rate-limited', percent: 0, resetsAt: 1785000000000 },
+  monthly: { status: 'rate-limited', percent: 37, resetsAt: null },
+} };
+const ogParsedAllExhausted = parseOpenCodeGoUsage(ogAllExhausted);
+check('三个窗口全部耗尽仍返回三窗口（整组不消失）', ogParsedAllExhausted.windows.length, 3);
+check('三个窗口全部耗尽都显示 100% 已用', ogParsedAllExhausted.windows.map(function (w) { return w.usedPercent; }).join(','), '100,100,100');
+check('rate-limited 大小写/下划线变体也按耗尽处理',
+  parseOpenCodeGoUsage({ usage: { weekly: { status: ' RATE_LIMITED ', percent: 12 } } }).windows[0].usedPercent, 100);
+check('status 缺失但 percent=100 仍保留（兼容省略 status 的响应）',
+  parseOpenCodeGoUsage({ usage: { weekly: { percent: 100 } } }).windows[0].usedPercent, 100);
+check('status 缺失且 percent 缺失 → 跳过（不编造额度）',
+  parseOpenCodeGoUsage({ usage: { weekly: { resetsAt: 1785000000000 } } }).windows.length, 0);
+
+// status 非 ok 且非耗尽（接口异常 / 未知状态）仍跳过，不冒充额度
 const ogPartial = { usage: {
   rolling: { status: 'error', percent: 9, resetsAt: null },
   weekly: { status: 'ok', percent: 12, resetsAt: 1785000000000 },
   monthly: { status: 'limit', percent: 6, resetsAt: null },
 } };
 const ogParsedPartial = parseOpenCodeGoUsage(ogPartial);
-check('status 非 ok 窗口跳过（rolling/monthly 剔除）', ogParsedPartial.windows.length, 1);
+check('status 非 ok 且非耗尽窗口跳过（rolling/monthly 剔除）', ogParsedPartial.windows.length, 1);
 check('仅保留 ok 窗口（weekly）', ogParsedPartial.windows[0].key, 'seven_day');
 check('毫秒级数值 resetsAt 原样保留', ogParsedPartial.windows[0].resetsAt, 1785000000000);
 
@@ -271,6 +301,10 @@ check('host 含 getBillingMode RPC', hostSrc.includes('getBillingMode: function'
 check('host 含 getSubscriptionSnapshot RPC', hostSrc.includes('getSubscriptionSnapshot: function'), true);
 check('host 不再保留 billingMode 手动配置', !hostSrc.includes('billingMode: config.billingMode') && !hostSrc.includes("billingMode: 'auto'"), true);
 check('host 双模式纯函数可提取（模块级）', typeof parseOpenCodeGoUsage === 'function' && typeof detectBillingMode === 'function' && typeof mergeSubscriptionResult === 'function', true);
+// 成功但零窗口不能覆盖旧快照（智谱 Issue #85 先例）：opencode fetch 已加同样的守卫。
+const openCodeFetchSrc = hostSrc.slice(hostSrc.indexOf('async function fetchOpenCodeGoUsage'), hostSrc.indexOf('// Command Code 凭据'));
+check('host OpenCode 成功但零窗口按 parse 失败处理（防空快照静默覆盖旧数据）',
+  openCodeFetchSrc.includes("if (parsed.windows.length === 0) return { error: { kind: 'parse'"), true);
 
 // ---- 8) 会话级实时模型同步 ----
 // host 端 getBillingMode 纯本地：会话选择由客户端已订阅的模型目录提供，不需要轮询。
