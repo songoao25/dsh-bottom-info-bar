@@ -475,8 +475,21 @@ function normalizeResetAt(value) {
   return null
 }
 
+// OpenCode Go usage 的窗口状态：'ok' = 正常；'rate-limited' = 该窗口额度已耗尽（不是错误）。
+// 2026-10-25 修复：此前把所有非 'ok' 状态一律跳过，于是周额度归零时窗口反而从信息栏消失——
+// 最需要提示用户的状态被当成异常丢了。已知接口只返回 ok / rate-limited（第三方实现 OmniRoute
+// 的 UsageStatus 同此）；把耗尽状态归一为「已用 100%」，接口给的 percent 不再可信（实测可能
+// 是 5 之类的低值）。未知/错误状态仍跳过，避免把坏数据当成额度显示。
+function openCodeGoWindowStatus(value) {
+  if (typeof value !== 'string') return 'ok'
+  const normalized = value.trim().toLowerCase().replace(/[^a-z]/g, '')
+  if (normalized === '' || normalized === 'ok') return 'ok'
+  if (normalized === 'ratelimited') return 'exhausted'
+  return 'error'
+}
+
 // 解析 OpenCode Go usage 响应：usage.rolling / weekly / monthly → 统一窗口数组
-// status 非 'ok' 的窗口跳过（如额度超限 / 接口异常）；结构异常返回 null
+// 结构异常返回 null；耗尽窗口保留为 100% 已用（0% 剩余），不因额度归零而消失。
 function parseOpenCodeGoUsage(body, windowLabels) {
   if (!body || typeof body !== 'object') return null
   const usage = body.usage
@@ -485,8 +498,9 @@ function parseOpenCodeGoUsage(body, windowLabels) {
   for (const apiKey of ['rolling', 'weekly', 'monthly']) {
     const win = usage[apiKey]
     if (!win || typeof win !== 'object') continue
-    if (win.status !== 'ok') continue
-    const percent = parsePercent(win.percent)
+    const status = openCodeGoWindowStatus(win.status)
+    if (status === 'error') continue
+    const percent = status === 'exhausted' ? 100 : parsePercent(win.percent)
     if (percent == null) continue
     const key = openCodeGoWindowKey(apiKey)
     windows.push({
@@ -2414,6 +2428,9 @@ export default {
         const body = await res.json();
         const parsed = parseOpenCodeGoUsage(body, windowLabels);
         if (!parsed) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
+        // 成功但零窗口 = 上游 schema 漂移或状态全不认识。按失败处理，让 merge 保留上一份
+        // 好快照；否则空窗口会以「成功」覆盖旧数据，整组额度静默消失（与智谱 Issue #85 同一先例）。
+        if (parsed.windows.length === 0) return { error: { kind: 'parse', code: 'request.parse', message: t('error.request.parse') } };
         return { data: { provider: 'opencode-go', plan: parsed.plan, windows: parsed.windows } };
       } catch (err) {
         return { error: { kind: 'exception', message: String((err && err.message) || err) } };

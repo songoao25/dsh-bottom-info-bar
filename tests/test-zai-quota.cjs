@@ -236,12 +236,23 @@ check('⑥ 异常结构：limits 缺失 → 空窗口（有套餐名）', parseZ
 check('⑥ 异常结构：limits 非数组 → 空窗口', parseZaiQuota({ data: { level: 'lite', limits: 'oops' } }, WINDOW_LABELS), { plan: '智谱 Lite', windows: [] })
 check('⑥ 不传 windowLabels → 回退模块兜底字典', parseZaiQuota({ data: { limits: [{ type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 100, currentValue: 1 }] } }).windows[0].label, '5 小时')
 
-// ================= ⑦ i18n 与客户端兜底 =================
-ok('⑦ locales：host.hour / ui.weekly / ui.monthly 三键齐备', ["host.hour", "ui.weekly", "ui.monthly"].every(function (k) { return localeSrc.indexOf('"' + k + '"') >= 0 }))
-ok('⑦ locales：空窗口错误文案全部语言齐备', Object.values(require('./locale-fixture.cjs').dictionaries).every(dictionary => typeof dictionary['error.subscription.zhipu-unrecognized'] === 'string' && dictionary['error.subscription.zhipu-unrecognized'].length > 0))
+// ================= ⑦ 额度耗尽（remaining=0）必须保留 100% 已用，不得消失 =================
+const exhaustedZai = parseZaiQuota({
+  data: { level: 'lite', limits: [
+    { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 2000, currentValue: 2000, remaining: 0, percentage: 100, nextResetTime: 1789284984350 },
+    { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 10000, currentValue: 10000, remaining: 0, percentage: 100, nextResetTime: 1789871510984 },
+  ] },
+}, WINDOW_LABELS)
+check('⑦ 耗尽：5 小时 / 周两个窗口都仍保留', exhaustedZai && exhaustedZai.windows.map(function (w) { return w.key }), ['five_hour', 'seven_day'])
+check('⑦ 耗尽：两个窗口都是 100% 已用（0% 剩余）', exhaustedZai && exhaustedZai.windows.map(function (w) { return w.usedPercent }), [100, 100])
+check('⑦ 耗尽：重置时刻仍保留', exhaustedZai && exhaustedZai.windows[0].resetsAt, 1789284984350)
+
+// ================= ⑧ i18n 与客户端兜底 =================
+ok('⑧ locales：host.hour / ui.weekly / ui.monthly 三键齐备', ["host.hour", "ui.weekly", "ui.monthly"].every(function (k) { return localeSrc.indexOf('"' + k + '"') >= 0 }))
+ok('⑧ locales：空窗口错误文案全部语言齐备', Object.values(require('./locale-fixture.cjs').dictionaries).every(dictionary => typeof dictionary['error.subscription.zhipu-unrecognized'] === 'string' && dictionary['error.subscription.zhipu-unrecognized'].length > 0))
 // 客户端简洁模式兜底：resetsAt 全为 null 时必须退回按时长选最短窗口，否则额度整组静默消失
 const clientSrc = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
-ok('⑦ 客户端：简洁模式无重置时刻时仍选窗（不复用只认 resetsAt 的旧写法）',
+ok('⑧ 客户端：简洁模式无重置时刻时仍选窗（不复用只认 resetsAt 的旧写法）',
   clientSrc.indexOf('windowsWithReset.length > 0 ? windowsWithReset : windows') >= 0)
 
 console.log('\n' + (fail === 0 ? '全部通过' : fail + ' 项失败') + '：' + pass + ' passed, ' + fail + ' failed')

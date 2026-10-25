@@ -186,6 +186,11 @@ const xmBalance = { data: { token_balance: 800000, token_limit: 1000000, plan_na
 const xmBalanceParsed = parseXiaomiTokenPlanBalance(xmBalance);
 check('小米 tokenPlan balance：已用 20%（剩余 80%）', xmBalanceParsed.windows[0].usedPercent, 20);
 check('小米 tokenPlan balance：套餐名 Pro', xmBalanceParsed.plan, 'Pro');
+// 额度耗尽：percent=100 / token_balance=0 时必须保留 100% 已用（0% 剩余），不能消失
+const xmExhaustedUsage = parseXiaomiTokenPlanUsage({ data: { monthUsage: { percent: 100 }, plan_name: 'Pro' } });
+check('小米 usage 耗尽：窗口仍保留且 100% 已用', xmExhaustedUsage && xmExhaustedUsage.windows.length === 1 && xmExhaustedUsage.windows[0].usedPercent, 100);
+const xmExhaustedBalance = parseXiaomiTokenPlanBalance({ data: { token_balance: 0, token_limit: 1000000, plan_name: 'Pro' } });
+check('小米 balance 耗尽：窗口仍保留且 100% 已用', xmExhaustedBalance && xmExhaustedBalance.windows[0].usedPercent, 100);
 // 按量 balance（字符串金额 + data 包装）
 const xmPayg = { data: { balance: '12.5000', charge_balance: '10.0000', granted_balance: '2.5000', plan: 'PAYG' } };
 const xmPaygParsed = parseXiaomiPaygBalance(xmPayg);
