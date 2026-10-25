@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.9](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.8...v1.21.9) (2026-10-25)
+
+
+### Bug Fixes
+
+* keep exhausted subscription quota windows visible ([#253](https://github.com/songoao25/dsh-bottom-info-bar/issues/253)) ([076cdc7](https://github.com/songoao25/dsh-bottom-info-bar/commit/076cdc7186df28937092b41c5617f82f3610c917))
+
 ## [1.21.8](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.7...v1.21.8) (2026-10-17)
 
 
