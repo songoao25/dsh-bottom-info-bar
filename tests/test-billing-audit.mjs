@@ -52,6 +52,13 @@ for (const [model, expected] of [
   }
 }
 
+const balanceKey = eval('(' + slice(/function balanceProviderKey\(pid\) \{[\s\S]*?\n    \}/, 'balanceProviderKey') + ')');
+function billingSourceFor() { return null }
+function subscriptionSourceFor() { return null }
+function balanceAccountForProvider() { return null }
+check('Ark recognized without a balance adapter', balanceKey('volcengine-ark') === '');
+check('Unknown provider stays unsupported', balanceKey('unknown-provider') === null);
+
 const OFF = Date.parse('2026-10-05T20:00:00+08:00') // 国庆假期 → 空闲
 const PEAK = Date.parse('2026-10-08T10:00:00+08:00') // 节后工作日 10:00 → 高峰
 const flash = (o) => Object.assign({ provider: 'deepseek-official', model: 'deepseek-flash', ts: OFF, cacheWrite: 0 }, o)
