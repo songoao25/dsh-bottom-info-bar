@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.9...v1.21.10) (2026-10-29)
+
+
+### Bug Fixes
+
+* recognize Volcengine Ark and price DeepSeek Flash models ([#257](https://github.com/songoao25/dsh-bottom-info-bar/issues/257)) ([7f05de1](https://github.com/songoao25/dsh-bottom-info-bar/commit/7f05de1d97b1ebea476b3a07cfdf7f5429314ec6))
+
 ## [1.21.9](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.8...v1.21.9) (2026-10-25)
 
 
