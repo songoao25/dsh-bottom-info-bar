@@ -28,3 +28,7 @@
 ## 维护约束
 
 `src/constants.js` 中的 `DSH_PRESET_PROVIDERS` 是测试锁定的宿主兼容性基线。DSH 增加预置 provider 时，必须先为它在 `PROVIDER_IDENTITY` 指定账户归属和在需要时指定默认账本币种；测试不允许它悄悄退化为未知服务商。
+
+### Volcengine Ark
+
+Custom provider `volcengine-ark` is recognized without an account balance API. Built-in pricing covers `deepseek-v4-1-flash-economy-261017` and `deepseek-v4-1-flash-261017`, using Beijing weekday peak windows (09:00–12:00, 14:00–18:00) at request completion. Prices verified against [Ark pricing](https://www.volcengine.com/docs/ark/model-pricing) on 2026-10-29. Cache storage fees are excluded. Historical account assignments and stored costs are unchanged; previously unpriced records are not backfilled. Other custom provider IDs and model aliases require separate pricing entries.

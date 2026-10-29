@@ -40,6 +40,18 @@ const B = eval('(() => { const BEIJING_OFFSET_MS = 8 * 3600 * 1000;\n'
   + periodBlock + '\n' + pricingBlock + '\n' + entryBlock + '\n' + costBlock
   + '\nreturn { PRICING, currentPeriod, pricingEntryFor, costOf }; })()')
 
+for (const [model, expected] of [
+  ['deepseek-v4-1-flash-economy-261017', [0.016, 0.8, 3.2]],
+  ['deepseek-v4-1-flash-261017', [0.02, 1, 4]],
+]) {
+  for (const [ts, factor] of [['2026-10-29T10:00:00+08:00', 2], ['2026-10-31T10:00:00+08:00', 1]]) {
+    for (const [i, field] of ['cacheRead', 'input', 'output'].entries()) {
+      const record = { provider: 'volcengine-ark', model, ts: Date.parse(ts), input: 0, output: 0, cacheRead: 0, cacheWrite: 0, [field]: 1e6 };
+      check(`Ark ${model} ${ts} ${field}`, close(B.costOf(record), expected[i] * factor));
+    }
+  }
+}
+
 const OFF = Date.parse('2026-10-05T20:00:00+08:00') // 国庆假期 → 空闲
 const PEAK = Date.parse('2026-10-08T10:00:00+08:00') // 节后工作日 10:00 → 高峰
 const flash = (o) => Object.assign({ provider: 'deepseek-official', model: 'deepseek-flash', ts: OFF, cacheWrite: 0 }, o)
