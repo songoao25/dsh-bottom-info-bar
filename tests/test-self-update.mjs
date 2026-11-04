@@ -1194,7 +1194,7 @@ ok('host / client 接线：三分类唯一实现在引擎，旧页面仍认 rest
   const host = readFileSync(join(root, 'src', 'host.js'), 'utf8')
   const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
   // host：分类只从引擎取（不在 host 里再写一份版本比较），payload 同时给出新字段与兼容字段
-  assert.match(host, /import \{ classifyRestart, createSelfUpdater \} from '\.\/self-update\.js'/)
+  assert.match(host, /import \{ classifyRestart, createSelfUpdater, selfUpdateDelayMs \} from '\.\/self-update\.js'/)
   assert.match(host, /const restartKind = classifyRestart\(\{/)
   assert.match(host, /restartKind: restartKind,/)
   assert.match(host, /restartDirection: delta > 0 \? 'update' : \(delta < 0 \? 'rollback' : null\)/,

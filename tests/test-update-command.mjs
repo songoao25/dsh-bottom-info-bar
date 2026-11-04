@@ -324,7 +324,7 @@ check(
 // ---------- ④ 提醒自愈：本地副本更新完，available 必须自己变 false ----------
 const pkgDir = mkdtempSync(join(tmpdir(), 'bib-pkg-'))
 mkdirSync(join(pkgDir, 'src'), { recursive: true })
-for (const file of ['host.js', 'ledger-store.js', 'constants.js', 'host-locale.js', 'locales.js', 'self-update.js', 'version.js']) {
+for (const file of ['host.js', 'ledger-store.js', 'constants.js', 'host-locale.js', 'locales.js', 'self-update.js', 'startup-trace.js', 'version.js']) {
   copyFileSync(join(root, 'src', file), join(pkgDir, 'src', file))
 }
 const setInstalledVersion = (version) => writeFileSync(
@@ -347,14 +347,18 @@ const versionHost = await openUpdateInfoHost({ moduleUrl: pathToFileURL(join(pkg
 const fetchesAfterStartup = npmFetches
 
 const beforeUpdate = await versionHost.call()
+const fetchesAfterFirstRead = npmFetches
 check(
   '版本提醒：npm 有新版 → available=true，且带回两端版本号',
   beforeUpdate && beforeUpdate.available === true && beforeUpdate.current === '1.16.0' && beforeUpdate.latest === '1.16.1',
   beforeUpdate && { available: beforeUpdate.available, current: beforeUpdate.current, latest: beforeUpdate.latest }
 )
 await versionHost.call()
+check('版本提醒：启动阶段零 npm 请求，第一次读取只查一次（issue #260）',
+  fetchesAfterStartup === 0 && fetchesAfterFirstRead === 1,
+  '启动阶段 fetch ' + fetchesAfterStartup + ' 次，首次读取新增 ' + (fetchesAfterFirstRead - fetchesAfterStartup) + ' 次')
 check('版本提醒：TTL 内重复读取不再请求 npm（不打扰 registry）',
-  npmFetches === fetchesAfterStartup, '启动后新增 fetch 次数 ' + (npmFetches - fetchesAfterStartup))
+  npmFetches === fetchesAfterFirstRead, '首次读取后新增 fetch 次数 ' + (npmFetches - fetchesAfterFirstRead))
 
 // 用户跑完更新命令（或 npm 装上新版）之后：本地那一份的版本号变了
 setInstalledVersion('1.16.1')
@@ -365,7 +369,7 @@ check(
   afterUpdate && { available: afterUpdate.available, current: afterUpdate.current, latest: afterUpdate.latest }
 )
 check('版本提醒：已安装版本每次从磁盘重读（TTL 内也没多发 npm 请求）',
-  npmFetches === fetchesAfterStartup, '启动后新增 fetch 次数 ' + (npmFetches - fetchesAfterStartup))
+  npmFetches === fetchesAfterFirstRead, '首次读取后新增 fetch 次数 ' + (npmFetches - fetchesAfterFirstRead))
 versionHost.dispose()
 rmSync(pkgDir, { recursive: true, force: true })
 

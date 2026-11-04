@@ -31,6 +31,26 @@ import { PACKAGE_NAME, UPDATE_REGISTRY_ORIGIN, compareSemver, parseSemver } from
 // 下游（测试）从本模块取版本 API：名字不变，转交 version.js（唯一的定义处）。
 export { PACKAGE_NAME, compareSemver, parseSemver }
 
+// 启动后第一次自动检查/安装的等待时间。
+// 2026-11-04 issue #260：DSH NEXT 桌面端只加载本插件时，host 在启动后 8–10 秒停止 accept 新连接；
+// 自更新原本恰好落在 8 秒，是插件在这个窗口里唯一的网络 + 写文件动作，因此把它整体移出启动窗口：
+// 默认 30 秒（宿主 boot 通常 10 秒内完成）再叠加 0–5 秒抖动，避免多个插件同一秒集中请求。
+// DSH_BOTTOM_INFO_BAR_SELF_UPDATE_DELAY_MS 只用于测试/诊断覆盖，钳在 [0, 6h]，非法值回落默认值。
+export const SELF_UPDATE_DEFAULT_DELAY_MS = 30000
+export const SELF_UPDATE_JITTER_MS = 5000
+export const SELF_UPDATE_MAX_DELAY_MS = 6 * 60 * 60 * 1000
+
+export function selfUpdateDelayMs(env, random) {
+  const raw = env && env.DSH_BOTTOM_INFO_BAR_SELF_UPDATE_DELAY_MS
+  const parsed = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN
+  const base = Number.isInteger(parsed) && parsed >= 0
+    ? Math.min(parsed, SELF_UPDATE_MAX_DELAY_MS)
+    : SELF_UPDATE_DEFAULT_DELAY_MS
+  const sample = typeof random === 'function' ? Number(random()) : 0
+  const fraction = Number.isFinite(sample) ? Math.min(Math.max(sample, 0), 1) : 0
+  return base + Math.floor(fraction * SELF_UPDATE_JITTER_MS)
+}
+
 // 允许被自更新替换的路径：正好是 package.json 的 files 字段声明的分发内容。
 // 白名单而非黑名单——新增一种分发内容时必须显式加进来，不允许"顺手"写到别处。
 const PAYLOAD_ROOTS = ['lib/', 'locale/', 'docs/']
