@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.10...v1.21.11) (2026-11-04)
+
+
+### Bug Fixes
+
+* keep startup off the host's critical IO path ([#260](https://github.com/songoao25/dsh-bottom-info-bar/issues/260)) ([#261](https://github.com/songoao25/dsh-bottom-info-bar/issues/261)) ([0fe191d](https://github.com/songoao25/dsh-bottom-info-bar/commit/0fe191d5c941ed8f2865b56f9e8f2e48d65e72a5))
+
 ## [1.21.10](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.9...v1.21.10) (2026-10-29)
 
 
