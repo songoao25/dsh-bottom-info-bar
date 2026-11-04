@@ -27,6 +27,7 @@ const cases = [
   ['test-release-version（package/manifest/changelog 一致性）', ['tests/test-release-version.mjs'], join(root), process.execPath],
   ['test-release-chain（发布链条契约：标签格式/路径/闸门/钉子必须两边一致）', ['tests/test-release-chain.mjs'], join(root), process.execPath],
   ['test-source-guards（源码守卫：裸服务访问 / 记忆文件唯一性 / 发布元数据不可手工改）', ['tests/test-source-guards.mjs'], join(root), process.execPath],
+  ['test-startup-policy（issue #260：启动不预热 / 自更新延后 / 诊断采样器契约）', ['tests/test-startup-policy.mjs'], join(root), process.execPath],
   ['smoke-static-host', ['tests/smoke-static-host.mjs'], join(root), process.execPath],
   ['test-alpha4-client-contract（alpha.4 client manifest/slots/React）', ['tests/test-alpha4-client-contract.mjs'], join(root), process.execPath],
   ['test-static-client（src/client-bundle.js）', ['tests/test-static-client.cjs'], join(root), process.execPath],

@@ -65,8 +65,12 @@ check('host 的 getUpdateInfo 每次重读已安装版本并重算可用性',
   && host.includes('const latest = await latestVersion()')
   && host.includes('const current = packageVersion()')
   && host.includes('available: !!latest && compareSemver(latest, current) > 0'))
-check('host 启动时预热一次版本查询（失败不影响信息栏）',
-  host.includes('预热一次 npm 版本查询') && /\n    latestVersion\(\)\n/.test(host))
+// issue #260：apply() 在宿主启动关键路径上，不能再主动发 npm 请求；第一次查询由
+// 信息栏/设置页的 RPC 触发（getUpdateInfo 已覆盖），本用例只钉「启动路径不得预热」。
+check('host 不在启动路径预热版本查询（issue #260）',
+  !host.includes('预热一次 npm 版本查询')
+  && !/^[ \t]*latestVersion\(\)[ \t]*$/m.test(host)
+  && host.includes('const latest = await latestVersion()'))
 check('host 查询失败时保留上一次已知版本（不闪提醒）',
   host.includes('if (value !== null) updateLatestCache.value = value'))
 check('host 版本查询留了 TTL 测试覆盖口（生产不设置）',
