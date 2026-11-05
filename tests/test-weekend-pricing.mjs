@@ -1,14 +1,16 @@
 // DeepSeek 周末峰谷规则：2026-08-23 00:00（北京时间）起，周六日全天空闲价。
 // 直接提取正式源码的纯函数，覆盖生效边界、周末及跨周倒计时。
 import { readFileSync } from 'node:fs'
+import { currentPeriod } from '../src/accounting.js'
 
+// 峰谷判定已下沉到 src/accounting.js（issue #260，host 与账本 worker 共用同一份）。
+// 这里只从 host.js 提取面向展示的 nextPeriodLabel，并把 currentPeriod 注入其求值作用域。
 const source = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
-const block = source.match(/const WEEKEND_OFFPEAK_EFFECTIVE_AT = [\s\S]*?(?=\n    \/\/ ---------- 当前模型识别 ----------)/)
-if (!block) throw new Error('未找到周末峰谷判定逻辑')
-// 判定块引用模块级 BEIJING_OFFSET_MS：从源码同一处取值注入求值作用域，数值只定义一次。
+const nextBlock = source.match(/    function nextSwitchAt\(nowMs\) \{[\s\S]*?(?=\n    \/\/ ---------- 当前模型识别 ----------)/)
+if (!nextBlock) throw new Error('未找到周末峰谷倒计时逻辑')
 const offsetMatch = source.match(/const BEIJING_OFFSET_MS = ([^;\n]+)/)
 if (!offsetMatch) throw new Error('未找到 BEIJING_OFFSET_MS 定义')
-const { currentPeriod, nextPeriodLabel } = eval(`(() => { const BEIJING_OFFSET_MS = ${offsetMatch[1]};${block[0]}\nreturn { currentPeriod, nextPeriodLabel }; })()`)
+const { nextPeriodLabel } = new Function('BEIJING_OFFSET_MS', 'currentPeriod', nextBlock[0] + '\nreturn { nextPeriodLabel }')(eval(offsetMatch[1]), currentPeriod)
 
 let failures = 0
 function check(label, actual, expected) {

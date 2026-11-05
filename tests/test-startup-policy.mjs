@@ -195,4 +195,25 @@ check('startup trace module is built into lib/ and imported by the host entry', 
   )
 })
 
+// ---------- 4) issue #260：宿主主线程不再同步碰 sqlite ----------
+check('host no longer owns the synchronous ledger store (sqlite moved to a worker thread)', () => {
+  const hostSource = readFileSync(join(root, 'src', 'host.js'), 'utf8')
+  assert.ok(!/from '\.\/ledger-store\.js'/.test(hostSource), 'host must not import the synchronous ledger store')
+  assert.ok(!/openLedgerStore\s*\(/.test(hostSource), 'host must not call openLedgerStore')
+  assert.ok(!/DatabaseSync/.test(hostSource), 'host must not reference node:sqlite')
+  assert.match(hostSource, /from '\.\/ledger-client\.js'/, 'host must talk to the ledger through the async worker client')
+  assert.match(hostSource, /createLedgerClient\(/, 'host must create the worker-backed ledger client')
+})
+
+check('ledger worker and shared accounting engine are built into lib/', () => {
+  const buildSource = readFileSync(join(root, 'scripts', 'build.mjs'), 'utf8')
+  for (const file of ['accounting.js', 'ledger-client.js', 'ledger-worker.js']) {
+    assert.ok(buildSource.includes("'" + file + "'"), 'scripts/build.mjs must copy ' + file)
+    assert.ok(existsSync(join(root, 'lib', file)), 'lib/' + file + ' must exist after the build')
+  }
+  const workerSource = readFileSync(join(root, 'src', 'ledger-worker.js'), 'utf8')
+  assert.match(workerSource, /openLedgerStore\(/, 'the worker owns the synchronous store')
+  assert.match(workerSource, /createAccounting\(\)/, 'the worker prices records with the shared accounting engine')
+})
+
 console.log(`startup policy OK (${checks.length} checks)`)

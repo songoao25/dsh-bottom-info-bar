@@ -38,10 +38,11 @@ const summary={version:1,foldedUpTo:rec.ts+86400000,foldedDayBuckets:{'2026-01-0
 }
 {
  const host=readFileSync(new URL('../src/host.js',import.meta.url),'utf8');const start=host.indexOf('    let activeExports = 0;'),end=host.indexOf('    // ---------- RPC 路由',start);const block=host.slice(start,end);let opened=0,closed=0;
- const store={warning:null,exportSnapshot(){opened++;return {recordCount:1,rows:(function*(){yield {payload:JSON.stringify(rec)}})(),close(){closed++}}}};
- const stream=new Function('requireLedger',block+'\nreturn streamUsageExport;')(()=>store);
+ // 账本现在在 worker 线程里：streamUsageExport 通过异步 client 分页导出（issue #260）。
+ const store={warning:null,async exportStart(){opened++;return {id:'export-'+opened,recordCount:1}},async exportNext(_id){return {rows:[JSON.stringify(rec)],done:true}},async exportEnd(){closed++}};
+ const stream=new Function('requireLedger',block+'\nreturn streamUsageExport;')(()=>Promise.resolve(store));
  class Res extends EventEmitter{writeHead(){this.headersSent=true}write(){return false}end(){this.ended=true}}
- const a=new Res(),b=new Res(),c=new Res();const one=stream({},a,'json').catch(e=>e),two=stream({},b,'csv').catch(e=>e);await assert.rejects(stream({},c,'json'),e=>e.status===409);assert.equal(opened,2);a.destroyed=true;a.emit('close');await one;assert.equal(closed,1);const next=new Res(),three=stream({},next,'json').catch(e=>e);assert.equal(opened,3);b.destroyed=true;b.emit('close');next.destroyed=true;next.emit('close');await Promise.all([two,three]);assert.equal(closed,3);
+ const a=new Res(),b=new Res(),c=new Res();const one=stream({},a,'json').catch(e=>e),two=stream({},b,'csv').catch(e=>e);await assert.rejects(stream({},c,'json'),e=>e.status===409);assert.equal(opened,2);a.destroyed=true;a.emit('close');await one;assert.equal(closed,1);const next=new Res(),three=stream({},next,'json').catch(e=>e);for(let i=0;i<50&&opened<3;i++)await new Promise(r=>setTimeout(r,2));assert.equal(opened,3);b.destroyed=true;b.emit('close');next.destroyed=true;next.emit('close');await Promise.all([two,three]);assert.equal(closed,3);
  class FastRes extends Res {constructor(){super();this.text=''}write(t){this.text+=t;return true}end(t){this.text+=t;this.ended=true}}
  const good=new FastRes();await stream({},good,'json');assert.equal(JSON.parse(good.text).recordCount,1);assert.equal(closed,4);console.log('PASS export limit, backpressure cancellation, slot release and JSON download');
 }

@@ -303,16 +303,19 @@ function copySettings(fromDir, toDir) {
   const warns = []
   const originalWarn = console.warn
   console.warn = function (...args) { warns.push(args.join(' ')) }
-  let restartRoute = null
+  let restarted = null
+  let disposeRestart = null
   try {
     const mod2 = await import('../src/host.js?settings=' + encodeURIComponent(s.dir) + '&round=2')
     const stub2 = makeStub()
-    mod2.default.apply(stub2.ctx)
-    restartRoute = stub2.captured.route
+    disposeRestart = mod2.default.apply(stub2.ctx)
+    // 账本懒启动（issue #260）：旧数据迁移发生在第一次真正用账本的 RPC，因此 warn 要在
+    // 这次调用仍在打补丁的窗口内捕获。
+    restarted = (await invokeRoute(stub2.captured.route, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-chat' } })).body
   } finally {
     console.warn = originalWarn
   }
-  const restarted = (await invokeRoute(restartRoute, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-chat' } })).body
+  if (typeof disposeRestart === 'function') await disposeRestart()
   check('D4：缺失+已折叠触发显式控制台 warn（非静默）', warns.some((w) => w.indexOf('legacy spend summary is unavailable') !== -1), warns)
   check('D4：客户端可见告警（persistence=snapshot-stale「账单待整理」+ 指向冷归档文案）',
     restarted.persistence.state === 'snapshot-stale' && /usage-archive/.test(restarted.persistence.message || ''), restarted.persistence)

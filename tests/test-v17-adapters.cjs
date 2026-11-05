@@ -12,6 +12,9 @@ const fs = require('fs');
 const { createHmac, createHash } = require('node:crypto');
 
 const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
+// 记账引擎（账户映射等）已下沉到 src/accounting.js（issue #260）；提取时同时扫描两份源码。
+const accountingSrc = fs.readFileSync(__dirname + '/../src/accounting.js', 'utf8');
+const srcAll = hostSrc + '\n' + accountingSrc;
 const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 const constantsSrc = fs.readFileSync(__dirname + '/../src/constants.js', 'utf8');
 
@@ -22,14 +25,14 @@ function extractConst(name) {
   return eval('(' + m[1] + ')');
 }
 function extractFn(name) {
-  const re = new RegExp('function ' + name + '\\n    \\(([\\s\\S]*?)\\n    \\}', 'm');
-  const re2 = new RegExp('function ' + name + '\\(([\\s\\S]*?)\\n    \\}', 'm');
-  let m = hostSrc.match(re) || hostSrc.match(re2);
+  const re = new RegExp('function ' + name + '\\n(?: {0,4})\\(([\\s\\S]*?)\\n(?: {0,4})\\}', 'm');
+  const re2 = new RegExp('function ' + name + '\\(([\\s\\S]*?)\\n(?: {0,4})\\}', 'm');
+  let m = srcAll.match(re) || srcAll.match(re2);
   if (!m) throw new Error('未找到 function ' + name);
-  const start = hostSrc.indexOf('function ' + name);
+  const start = srcAll.indexOf('function ' + name);
   let depth = 0, i = start, inStr = null;
-  while (i < hostSrc.length) {
-    const c = hostSrc[i];
+  while (i < srcAll.length) {
+    const c = srcAll[i];
     if (inStr) {
       if (c === '\\') { i += 2; continue; }
       if (c === inStr) inStr = null;
@@ -39,7 +42,7 @@ function extractFn(name) {
     else if (c === '}') { depth--; if (depth === 0) break; }
     i++;
   }
-  const body = hostSrc.slice(start, i + 1);
+  const body = srcAll.slice(start, i + 1);
   return eval('(' + body + ')');
 }
 function extractClientFnBody(name) {

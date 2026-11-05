@@ -14,6 +14,35 @@ that start time so a partial figure is not mistaken for a whole session. The
 provider's own balance or bill remains the authoritative number for a full
 session.
 
+## Execution model: worker thread (issue #260)
+
+The SQLite connection is owned by a dedicated worker thread (`src/ledger-worker.js`);
+the host's main thread never opens or queries `node:sqlite` synchronously. The host
+talks to the worker through an async client (`src/ledger-client.js`) and awaits it like
+any other async dependency. Two consequences matter:
+
+- The ledger opens lazily on the first operation that needs it (usage summary, a bill
+  write, price backfill) instead of during plugin apply. A slow disk, a locked file or
+  a wedged SQLite call therefore cannot block the host event loop, which keeps accepting
+  connections and serving the rest of DSH. This is the mitigation for the desktop freeze
+  reported in issue #260, where the host stopped accepting new TCP connections right
+  after startup while only this plugin was enabled.
+- If the worker fails to open or stops answering, spend reporting degrades with the
+  existing visible persistence warning; balance, pricing and the rest of the info bar
+  keep working. A failed bill write is reported as "spend record was not saved" instead
+  of pretending the bill was persisted.
+
+The worker also owns legacy migration and unpriced backfill (both are pure ledger work
+that used to run synchronously on the host main thread). Pricing and account mapping
+come from the shared `src/accounting.js` engine, so the worker and the main thread
+compute identical amounts; remote price-catalog merges are forwarded to the worker
+before it re-runs the backfill.
+
+Opening is bounded: the client waits at most 20 seconds for the worker to answer, and a
+worker that is known to be wedged marks the ledger unavailable for the rest of the
+session instead of leaving requests hanging. `DSH_BOTTOM_INFO_BAR_LEDGER=off` disables
+the ledger entirely as a diagnostic A/B switch; the rest of the info bar keeps working.
+
 ## Memory and durability
 
 `usage-ledger.sqlite` holds records, daily totals, account totals and session
@@ -53,9 +82,10 @@ additional live writers. Missing historical summary data produces a visible
 warning; exports are refused rather than claiming an incomplete bill is complete.
 
 Large first migrations and price backfills still take time proportional to the
-records examined. Memory is bounded, but the current implementation performs
-these operations synchronously. A synthetic low-memory test is not acceptance of
-every DSH desktop startup time or Windows crash report.
+records examined and memory stays bounded, but they now run inside the ledger
+worker, so the host main thread stays responsive while they finish. A synthetic
+low-memory test is not acceptance of every DSH desktop startup time or Windows
+crash report.
 
 ## Export and clear
 
@@ -76,10 +106,12 @@ the next startup. Uninstalling or disabling the plugin does not delete records.
 
 ## Runtime and downgrade boundary
 
-The ledger requires a DSH host with Node.js 22.13 or newer and its built-in
-`node:sqlite` module. No separately compiled database driver is installed. If the
-runtime cannot provide it, balance and other plugin features can load, but spend
-is marked unavailable instead of reporting a fabricated zero.
+The ledger requires a DSH host with Node.js 22.13 or newer, its built-in
+`node:sqlite` module and `worker_threads` (the database runs in a worker thread, see
+[Execution model](#execution-model-worker-thread-issue-260)). No separately compiled
+database driver is installed. If the runtime cannot provide these, balance and other
+plugin features can load, but spend is marked unavailable instead of reporting a
+fabricated zero.
 
 The old plugin cannot read database writes made after migration. Export the
 current ledger before manually reverting its data format; retained legacy files

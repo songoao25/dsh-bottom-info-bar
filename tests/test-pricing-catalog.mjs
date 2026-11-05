@@ -12,6 +12,8 @@ function check(label, ok) {
 }
 
 const host = readFileSync(join(root, 'src/host.js'), 'utf8')
+// 价目表与作用域键解析已下沉到 src/accounting.js（issue #260）。
+const accounting = readFileSync(join(root, 'src/accounting.js'), 'utf8')
 
 // 1) 框架构件齐全
 check('host 含远程价目 URL 常量', host.includes("REMOTE_PRICING_URL ="), true)
@@ -31,11 +33,11 @@ check('聚合商币种登记表存在（OpenRouter=USD）', host.includes("PROVI
 check('账单来源版本标记 provider-reported', host.includes("'provider-reported-'"), true)
 
 // 4) 服务商作用域键（同名模型跨币种计费域）
-check('host 支持作用域键回退链（provider:model → model）', host.includes("const scopedKey = provider + ':' + model")
-  && host.includes('Object.hasOwn(PRICING, scopedKey)')
-  && host.includes('Object.hasOwn(PRICING, model)'), true)
+check('记账引擎支持作用域键回退链（provider:model → model）', accounting.includes("const scopedKey = provider + ':' + model")
+  && accounting.includes('Object.hasOwn(PRICING, scopedKey)')
+  && accounting.includes('Object.hasOwn(PRICING, model)'), true)
 check('目录允许作用域键（sanitizer 含冒号白名单）', host.includes('[A-Za-z0-9._:-]'), true)
-check('Kimi 国内域以 moonshotai-cn: 作用域收录（防串币种）', host.includes("'moonshotai-cn:kimi-k3'"), true)
+check('Kimi 国内域以 moonshotai-cn: 作用域收录（防串币种）', accounting.includes("'moonshotai-cn:kimi-k3'"), true)
 
 // 2) 目录文件本体
 const catalogPath = join(root, 'catalog/pricing.json')

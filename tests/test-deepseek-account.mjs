@@ -34,15 +34,18 @@ function check(name, cond, detail) {
 
 // ---------- 纯函数层：从源码抽取，不依赖导出面 ----------
 const hostSrc = readFileSync(join(root, 'src', 'host.js'), 'utf8')
+// 账户映射已下沉到 src/accounting.js（issue #260）；纯函数提取同时扫描两份源码。
+const accountingSrc = readFileSync(join(root, 'src', 'accounting.js'), 'utf8')
+const srcAll = hostSrc + '\n' + accountingSrc
 function extractFn(name) {
-  const start = hostSrc.indexOf('function ' + name + '(')
+  const start = srcAll.indexOf('function ' + name + '(')
   if (start < 0) throw new Error('未找到函数 ' + name)
   let depth = 0
-  for (let i = hostSrc.indexOf('{', start); i < hostSrc.length; i += 1) {
-    if (hostSrc[i] === '{') depth += 1
-    else if (hostSrc[i] === '}') {
+  for (let i = srcAll.indexOf('{', start); i < srcAll.length; i += 1) {
+    if (srcAll[i] === '{') depth += 1
+    else if (srcAll[i] === '}') {
       depth -= 1
-      if (depth === 0) return hostSrc.slice(start, i + 1)
+      if (depth === 0) return srcAll.slice(start, i + 1)
     }
   }
   throw new Error('函数体不闭合 ' + name)

@@ -185,7 +185,7 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 | 插件页报「这个包没有声明组合包」（英文界面：declares no bundle） | 装到的是一个「仓库根不是包」的仓库——那是包移到仓库根之前的本仓库。插件页里改填包名 `dsh-bottom-info-bar`，或用包含该修复的版本上的仓库地址 |
 | 插件页提示「待批准的构建脚本」 | 装的是 1.15.0 及更早的仓库地址（旧清单带 `prepack`）。改用包名安装，或装包含修复的版本 |
 | 余额显示未配置/刷新失败 | 见 README「常见问题」 |
-| 桌面端启动约 10 秒后宿主不再响应新连接（余额、插件市场、新建会话全失效，退出被 SIGKILL） | 先按下方「启动诊断」跑对照实验并把日志发到 issue #260。该现象发生在宿主侧，插件已把启动期的网络与文件活动整体移出启动窗口，但根因还需要用户侧数据确认 |
+| 桌面端启动约 10 秒后宿主不再响应新连接（余额、插件市场、新建会话全失效，退出被 SIGKILL） | 这是 issue #260 的宿主侧现象。新版本已把 sqlite 账本整体移出宿主主线程（worker 线程 + 首次使用时才打开），先升级再复测；若仍复现，按下方「启动诊断」做 `DSH_BOTTOM_INFO_BAR_LEDGER=off` 对照并把日志发到 issue #260 |
 | 想彻底回到原生状态 | 卸载 + 重启，系统统计栏自动恢复 |
 
 
@@ -198,8 +198,11 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 | `DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off` | 完全关闭自更新（含启动检查）。用来对照「自更新完全不是触发点」 |
 | `DSH_BOTTOM_INFO_BAR_STARTUP_TRACE=1` | 打开启动采样：apply 之后 2/8/15/30/60 秒各打一行 `[dsh-bottom-info-bar] startup-trace {...}`，含 pid、已打开 fd 数（仅 Linux）、活动 handle 数、距 apply 的毫秒数；事件循环滞后 ≥200ms 时额外打一行 `event-loop-lag`。只写 stderr，不落盘、不联网 |
 | `DSH_BOTTOM_INFO_BAR_SELF_UPDATE_DELAY_MS=<毫秒>` | 覆盖自更新首次检查的基准延迟（默认 30000；只用于诊断/测试，会被钳到 0–6 小时） |
+| `DSH_BOTTOM_INFO_BAR_LEDGER=off` | 完全关闭账本（花费统计不可用，余额/价目/信息栏照常）。用于对照「卡死是否与 sqlite 有关」：关掉后仍卡 → 与账本无关 |
 
 启动方式：在启动 DSH 之前把变量放进环境（例如 `DSH_BOTTOM_INFO_BAR_STARTUP_TRACE=1 dsh web --profile web`；桌面端请通过桌面应用的启动脚本或系统服务环境注入）。按 `t+8000` 前后几行是否出现 `event-loop-lag`、`fds` 是否单调上涨，即可区分「插件同步阻塞主线程」「插件 fd 泄漏」「宿主自身 IO 停摆」三种情况。
+
+新版本默认把账本放在 worker 线程里、首次用到时才打开，宿主主线程不再有同步 sqlite 调用；`startup-trace` 一路正常但仍卡，说明问题在宿主/桌面壳侧，请把日志发到 issue #260，插件侧会带着这些数据去对应的桌面壳仓库跟进。
 
 
 ## Ledger compatibility and recovery

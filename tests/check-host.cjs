@@ -50,6 +50,8 @@ const builtins = new Set([
   'createStartupTrace',
   // 版本身份（src/version.js 的导入：静态审计跟不进 ESM import，按名单放行）
   'openLedgerStore', 'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
+  // 记账引擎与账本 worker 客户端（issue #260：价目/账户映射下沉、sqlite 移出主线程）
+  'createAccounting', 'createLedgerClient', 'accountForProvider', 'safeMapKey', 'currentPeriod',
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
   'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',

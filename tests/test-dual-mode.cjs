@@ -6,6 +6,10 @@ const { t } = require('./locale-fixture.cjs');
 const fs = require('fs');
 
 const hostSrc = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
+// 记账引擎（价目/峰谷/账户映射）已下沉到 src/accounting.js（issue #260）；
+// 纯函数提取同时扫描两份源码，避免测试跟着实现搬家而失效。
+const accountingSrc = fs.readFileSync(__dirname + '/../src/accounting.js', 'utf8');
+const srcAll = hostSrc + '\n' + accountingSrc;
 const clientSrc = fs.readFileSync(__dirname + '/../src/client-bundle.js', 'utf8');
 // v1.6 整改：从 constants.js 读取单一生源的 SUBSCRIPTION_PROVIDERS
 const constantsSrc = fs.readFileSync(__dirname + '/../src/constants.js', 'utf8');
@@ -15,14 +19,14 @@ const SUBSCRIPTION_PROVIDERS = eval('(' + constantsMatch[1] + ')');
 
 // 提取纯函数（与 test-spend-accounting.js 同法：括号计数提取 + eval）
 function extractFn(name) {
-  const re = new RegExp('function ' + name + '\\n    \\(([\\s\\S]*?)\\n    \\}', 'm');
-  const re2 = new RegExp('function ' + name + '\\(([\\s\\S]*?)\\n    \\}', 'm');
-  let m = hostSrc.match(re) || hostSrc.match(re2);
+  const re = new RegExp('function ' + name + '\\n(?: {0,4})\\(([\\s\\S]*?)\\n(?: {0,4})\\}', 'm');
+  const re2 = new RegExp('function ' + name + '\\(([\\s\\S]*?)\\n(?: {0,4})\\}', 'm');
+  let m = srcAll.match(re) || srcAll.match(re2);
   if (!m) throw new Error('未找到 function ' + name);
-  const start = hostSrc.indexOf('function ' + name);
+  const start = srcAll.indexOf('function ' + name);
   let depth = 0, i = start, inStr = null;
-  while (i < hostSrc.length) {
-    const c = hostSrc[i];
+  while (i < srcAll.length) {
+    const c = srcAll[i];
     if (inStr) {
       if (c === '\\') { i += 2; continue; }
       if (c === inStr) inStr = null;
@@ -32,7 +36,7 @@ function extractFn(name) {
     else if (c === '}') { depth--; if (depth === 0) break; }
     i++;
   }
-  const body = hostSrc.slice(start, i + 1);
+  const body = srcAll.slice(start, i + 1);
   return eval('(' + body + ')');
 }
 // 提取单行 const 字面量（数组/对象/标量，允许行尾 // 注释；host.js 常量行尾无分号）
