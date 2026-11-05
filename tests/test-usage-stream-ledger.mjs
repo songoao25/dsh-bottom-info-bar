@@ -100,8 +100,8 @@ await Promise.all([
   drain(first.captured.listener, 'writer-a', [{ type: 'usage', usage: { inputTokens: 7, outputTokens: 3 } }, { type: 'finish' }]),
   drain(parallel.captured.listener, 'writer-b', [{ type: 'usage', usage: { inputTokens: 11, outputTokens: 4 } }, { type: 'finish' }]),
 ])
-disposeParallel()
-dispose()
+await disposeParallel()
+await dispose()
 const recovered = makeStub()
 const disposeRecovered = plugin.apply(recovered.ctx)
 const writerA = await usageSummary(recovered.captured.route, 'writer-a')
@@ -110,7 +110,7 @@ check('重叠实例写入后两个完整账单都可恢复',
   writerA.currentSession && writerA.currentSession.tokens >= 10 && writerB.currentSession && writerB.currentSession.tokens >= 15
   && writerA.currentSession.costs.CNY > 0 && writerB.currentSession.costs.CNY > 0 && writerA.totalSpend === writerB.totalSpend,
   JSON.stringify({ writerA: writerA.currentSession, writerB: writerB.currentSession }))
-disposeRecovered()
+await disposeRecovered()
 
 const beforeFailure = readLedgerRecords(dataDir)
 const interruptedRecord = beforeFailure.find((record) => record.sessionId === 'interrupted')
@@ -133,7 +133,7 @@ await drain(second.captured.listener, 'not-saved', [
 summary = await usageSummary(second.captured.route, 'not-saved')
 check('流水写入失败明确下发状态', summary.persistence && summary.persistence.state === 'journal-failed', JSON.stringify(summary.persistence))
 check('流水写入失败不把金额计入内存总账', summary.currentSession === null, JSON.stringify(summary.currentSession))
-disposeSecond()
+await disposeSecond()
 
 rmSync(dataDir, { recursive: true, force: true })
 console.log(failures === 0 ? '\n结果：全部 PASS' : '\n结果：' + failures + ' 项 FAIL')

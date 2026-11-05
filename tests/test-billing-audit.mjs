@@ -26,19 +26,21 @@ function check(name, condition, detail) {
 function close(a, b, eps) { return typeof a === 'number' && Math.abs(a - b) <= (eps === undefined ? 1e-9 : eps) }
 
 // ---------------------------------------------------------------- 第一段：纯价格数学
+// 价目/峰谷/计价实现已下沉到 src/accounting.js（issue #260）：host 与账本 worker 共用同一份实现。
+// 这里直接实例化同一模块，避免测试绑定实现文件的摆放位置。
+const accountingModule = await import('../src/accounting.js')
+const accounting = accountingModule.createAccounting()
+const B = {
+  PRICING: accounting.PRICING,
+  currentPeriod: accountingModule.currentPeriod,
+  pricingEntryFor: accounting.pricingEntryFor,
+  costOf: accounting.costOf,
+}
 function slice(re, label) {
   const m = src.match(re)
   if (!m) throw new Error('无法从 src/host.js 提取 ' + label)
   return m[0]
 }
-const periodBlock = slice(/\/\/ ---------- 北京时间峰谷判定 ----------[\s\S]*?(?=\n    \/\/ ---------- 当前模型识别 ----------)/, '峰谷判定块')
-const pricingBlock = slice(/const PRICING = \{[\s\S]*?\n    \};\n(?=    function modelCurrency)/, 'PRICING')
-const entryBlock = slice(/function pricingEntryFor\(provider, model\) \{[\s\S]*?\n    \}/, 'pricingEntryFor')
-const costBlock = slice(/function costOf\(record, forceOffpeak\) \{[\s\S]*?\n    \}/, 'costOf')
-
-const B = eval('(() => { const BEIJING_OFFSET_MS = 8 * 3600 * 1000;\n'
-  + periodBlock + '\n' + pricingBlock + '\n' + entryBlock + '\n' + costBlock
-  + '\nreturn { PRICING, currentPeriod, pricingEntryFor, costOf }; })()')
 
 for (const [model, expected] of [
   ['deepseek-v4-1-flash-economy-261017', [0.016, 0.8, 3.2]],

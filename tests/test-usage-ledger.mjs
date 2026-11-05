@@ -70,7 +70,7 @@ let result = await invoke(first.captured.route, 'getUsageSummary', { sessionId: 
 check('超过 3000 条的历史账本完整加载', result.status === 200 && result.payload.sessions === 3006, String(result.payload && result.payload.sessions))
 check('有 id 的快照与日志重复记录只计算一次', result.payload.totalSpend === 6.147, String(result.payload.totalSpend))
 check('历史账单使用发生时固化的 cost，而非当前定价表重算', result.payload.currentSession && result.payload.currentSession.costs.CNY === 3.14159, JSON.stringify(result.payload.currentSession))
-dispose()
+await dispose()
 
 // Simulate a damaged main snapshot after an interrupted replacement.  The
 // known-good backup and valid journal entries must still reconstruct the bill.
@@ -83,7 +83,7 @@ dispose = plugin.apply(second.ctx)
 result = await invoke(second.captured.route, 'getUsageSummary', { sessionId: 'journal-only', selection: { provider: 'deepseek', model: 'deepseek-v4-flash' } })
 check('主快照损坏时从备份与日志恢复，而非整账归零', result.status === 200 && result.payload.sessions === 2 && result.payload.totalSpend === 3, JSON.stringify(result.payload))
 check('损坏日志仅跳过坏行，后续完整记录仍可读取', result.payload.currentSession && result.payload.currentSession.costs.CNY === 2, JSON.stringify(result.payload.currentSession))
-dispose()
+await dispose()
 
 // Legacy arrays did not have a stable request id.  The first upgraded run
 // writes one back, so later snapshots and journals can deduplicate safely.
@@ -92,7 +92,9 @@ writeFileSync(dataFile, JSON.stringify([{ ts: 1787000000000, model: 'deepseek-v4
 writeFileSync(journalFile, '')
 let third = makeStub()
 dispose = plugin.apply(third.ctx)
-dispose()
+// 账本现在懒启动（issue #260）：迁移发生在第一次真正用账本的 RPC，先触发一次再读数据库。
+await invoke(third.captured.route, 'getUsageSummary', { sessionId: '', selection: { provider: 'deepseek', model: 'deepseek-v4-flash' } })
+await dispose()
 const migrated = readLedgerRecords(dataDir)
 check('旧 JSON 首次升级自动补稳定账单编号', migrated.length === 1 && typeof migrated[0].id === 'string' && migrated[0].id.indexOf('legacy-') === 0, JSON.stringify(migrated))
 

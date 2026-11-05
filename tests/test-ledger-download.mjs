@@ -41,6 +41,6 @@ try {
   console.log('PASS  authenticated real HTTP streaming downloads preserve all 2000 records, Unicode/quoted CSV, and refuse unauthenticated or unbounded legacy responses')
 } finally {
   await new Promise(resolve => server.close(resolve))
-  dispose(); globalThis.fetch = realFetch
+  await dispose(); globalThis.fetch = realFetch
   rmSync(dir, { recursive: true, force: true })
 }

@@ -53,6 +53,7 @@ const cases = [
   ['test-ledger-memory（30 万条未计价/独立会话 + 受限内存启动/并发/重启）', ['tests/test-ledger-memory.mjs'], join(root), process.execPath],
   ['test-ledger-store（迁移/冻结日/并发回填/复杂度/新版兼容/导出背压）', ['tests/test-ledger-store.mjs'], join(root), process.execPath],
   ['test-ledger-wide-record（大记录回填/旧导出有界拒绝）', ['tests/test-ledger-wide-record.mjs'], join(root), process.execPath],
+  ['test-ledger-client（issue #260：账本 worker 客户端/分页/降级/懒启动）', ['tests/test-ledger-client.mjs'], join(root), process.execPath],
   ['test-ledger-download（真实HTTP认证/完整下载/大账兼容拒绝）', ['tests/test-ledger-download.mjs'], join(root), process.execPath],
   ['test-field-settings（v1.9 PR2 设置落盘/白名单/密度持久/双重置/configVersion）', ['tests/test-field-settings.mjs'], join(root), process.execPath],
   ['test-field-config-client（v1.9 PR2 客户端过滤/零回归着色/注册表一致性）', ['tests/test-field-config-client.cjs'], join(root), process.execPath],

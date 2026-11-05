@@ -7,6 +7,8 @@ For security vulnerabilities, follow [SECURITY.md](SECURITY.md) rather than open
 ## Structure
 
 - `src/host.js`: provider data, usage accounting and RPC.
+- `src/accounting.js`: pricing table, peak/off-peak calendar, currency and account mapping shared by the host and the ledger worker.
+- `src/ledger-client.js` / `src/ledger-worker.js`: the async bridge that keeps the synchronous SQLite ledger off the host main thread (issue #260).
 - `src/client-bundle.js`: the info bar and plugin configuration page.
 - `src/locales.js` and `src/host-locale.js`: translated copy and host presentation.
 - `scripts/build.mjs`: generates the host and client bundles in `lib/`.

@@ -3,6 +3,7 @@
 // 用法：node tests/test-spend-accounting.js
 const fs = require('fs');
 const src = fs.readFileSync(__dirname + '/../src/host.js', 'utf8');
+const accountingSrc = fs.readFileSync(__dirname + '/../src/accounting.js', 'utf8');
 
 // 提取记账相关纯函数，在桩环境验证（不执行 apply）
 function extractFn(name) {
@@ -30,7 +31,8 @@ function extractFn(name) {
 }
 
 // 关键：成本计算依赖 PRICING，从正式源码提取定价表
-const PRICING = eval('(' + src.match(/const PRICING = ([\s\S]*?);\n    function modelCurrency/)[1] + ')');
+// 价目表已下沉到 src/accounting.js（issue #260）：内置表仍是唯一来源。
+const PRICING = eval('(' + accountingSrc.match(/export const BUILTIN_PRICING = (\{[\s\S]*?\n\});/)[1] + ')');
 
 let pass = 0, fail = 0;
 function check(label, actual, expected) {
