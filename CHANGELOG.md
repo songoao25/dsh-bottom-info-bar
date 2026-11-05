@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.11...v1.21.12) (2026-11-05)
+
+
+### Bug Fixes
+
+* run the usage ledger in a worker thread (issue [#260](https://github.com/songoao25/dsh-bottom-info-bar/issues/260)) ([#263](https://github.com/songoao25/dsh-bottom-info-bar/issues/263)) ([2e5d012](https://github.com/songoao25/dsh-bottom-info-bar/commit/2e5d0128641c6158ce532a5a146551aa633664e0))
+
 ## [1.21.11](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.10...v1.21.11) (2026-11-04)
 
 
