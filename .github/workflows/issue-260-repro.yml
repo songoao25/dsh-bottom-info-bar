@@ -87,6 +87,31 @@ jobs:
           PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
         run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
 
+      - name: Smoke-test collect-260.sh (healthy control)
+        run: |
+          COLLECT_HOME="$RUNNER_TEMP/next-collect-home"
+          XDG="$RUNNER_TEMP/collect-config"
+          mkdir -p "$XDG/DSH NEXT/home"
+          mkdir -p "$COLLECT_HOME/profiles/desktop/node_modules"
+          python3 - "$COLLECT_HOME" <<'SEED'
+          import json, sys
+          home = sys.argv[1]
+          manifest = {
+            "name": "dsh-profile-desktop", "private": True, "dependencies": {},
+            "dsh": {"desktopNextPlugins": 1, "desktopNextScheduleBundle": 2,
+                    "desktopNextOnboarding": {"version": 1, "outcome": "completed"},
+                    "profile": {"bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]}},
+          }
+          open(home + "/profiles/desktop/package.json", "w").write(json.dumps(manifest, indent=2) + "\n")
+          open(home + "/profiles/desktop/cordis.patch.yml", "w").write("[]\n")
+          SEED
+          echo '{"home": "'"$COLLECT_HOME"'"}' > "$XDG/DSH NEXT/home/desktop-next-last-home.json"
+          chmod 600 "$XDG/DSH NEXT/home/desktop-next-last-home.json"
+          export XDG_CONFIG_HOME="$XDG"
+          COLLECT_APP_ARGS="--no-sandbox" dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" bash .github/repro260/collect-260.sh /opt/dsh-next/dsh-desktop-next "$COLLECT_HOME"
+          ls -la /tmp/issue260-*/evidence.tar.gz
+          tar -tzf /tmp/issue260-*/evidence.tar.gz | head -20
+
       - name: Summarize
         if: always()
         run: |
@@ -99,7 +124,9 @@ jobs:
         if: always()
         with:
           name: issue-260-repro-logs
-          path: repro-out
+          path: |
+            repro-out
+            /tmp/issue260-*/evidence.tar.gz
           retention-days: 14
           if-no-files-found: warn
 

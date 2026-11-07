@@ -15,6 +15,8 @@
 set -u
 APP="${1:?用法: collect-260.sh <DSH NEXT 可执行文件> <隔离 home>}"
 HOME_DIR="${2:?用法: collect-260.sh <DSH NEXT 可执行文件> <隔离 home>}"
+# 可选：额外启动参数（例如容器/CI 里需要 --no-sandbox；普通桌面用户不用设）
+read -r -a APP_ARGS <<< "${COLLECT_APP_ARGS:-}"
 OUT="$(mktemp -d /tmp/issue260-XXXXXX)" || exit 1
 echo "OUT=$OUT"
 START=$(date +%s%3N)
@@ -144,7 +146,7 @@ gcc -shared -fPIC -O2 -o "$OUT/ppoll-hook.so" "$OUT/ppoll-hook.c" -ldl || die "h
 echo "hook built"
 
 DSH_DESKTOP_NEXT_HOME="$HOME_DIR" LD_PRELOAD="$OUT/ppoll-hook.so" PPOLL_HOOK_OUT="$OUT/hook.log" \
-  "$APP" >"$OUT/app.log" 2>&1 &
+  "$APP" "${APP_ARGS[@]}" >"$OUT/app.log" 2>&1 &
 APP_PID=$!
 echo "app pid=$APP_PID"
 trap 'kill -TERM "$APP_PID" 2>/dev/null' EXIT
