@@ -48,6 +48,8 @@ const builtins = new Set([
   'fileURLToPath', 'createSelfUpdater', 'classifyRestart', 'compareSemver', 'selfUpdateDelayMs',
   // 启动诊断采样器（src/startup-trace.js 的导入）
   'createStartupTrace',
+  // 启动模式闸门（src/boot-policy.js 的导入，issue #260）
+  'parseBootMode', 'createStartupGate', 'BOOT_MODE_ENV', 'BOOT_MODES', 'DEFERRED_FALLBACK_MS',
   // 版本身份（src/version.js 的导入：静态审计跟不进 ESM import，按名单放行）
   'openLedgerStore', 'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
   // 记账引擎与账本 worker 客户端（issue #260：价目/账户映射下沉、sqlite 移出主线程）
