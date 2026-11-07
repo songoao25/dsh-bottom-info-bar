@@ -249,6 +249,12 @@ jobs:
                 dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
               VARIANT=on RUNS=3 NEXT_HOME=/tmp/home-on OUT_DIR=/work/repro-out/arch-on PLUGIN_SRC=/plugin \
                 dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+              export APP_EXTRA_ARGS=""
+              export DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off
+              VARIANT=off RUNS=2 NEXT_HOME=/tmp/home-gui-off OUT_DIR=/work/repro-out/arch-gui-off \
+                dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
+              VARIANT=on RUNS=3 NEXT_HOME=/tmp/home-gui-on OUT_DIR=/work/repro-out/arch-gui-on PLUGIN_SRC=/plugin \
+                dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
             '
 
       - uses: actions/upload-artifact@v4
