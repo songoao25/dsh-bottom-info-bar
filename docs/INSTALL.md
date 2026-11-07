@@ -199,8 +199,12 @@ dsh plugin --profile web remove dsh-bottom-info-bar
 | `DSH_BOTTOM_INFO_BAR_STARTUP_TRACE=1` | 打开启动采样：apply 之后 2/8/15/30/60 秒各打一行 `[dsh-bottom-info-bar] startup-trace {...}`，含 pid、已打开 fd 数（仅 Linux）、活动 handle 数、距 apply 的毫秒数；事件循环滞后 ≥200ms 时额外打一行 `event-loop-lag`。只写 stderr，不落盘、不联网 |
 | `DSH_BOTTOM_INFO_BAR_SELF_UPDATE_DELAY_MS=<毫秒>` | 覆盖自更新首次检查的基准延迟（默认 30000；只用于诊断/测试，会被钳到 0–6 小时） |
 | `DSH_BOTTOM_INFO_BAR_LEDGER=off` | 完全关闭账本（花费统计不可用，余额/价目/信息栏照常）。用于对照「卡死是否与 sqlite 有关」：关掉后仍卡 → 与账本无关 |
+| `DSH_BOTTOM_INFO_BAR_BOOT=deferred` | 只注册路由，把价目/余额/订阅/账单/模型目录等启动刷新推迟到「页面第一个 RPC」或 20 秒兜底。用于对照「卡死是否与插件启动刷新的时机有关」 |
+| `DSH_BOTTOM_INFO_BAR_BOOT=inert` | `apply()` 什么都不注册（只保留启动采样）。二分用：inert 仍卡 → 问题不在插件运行逻辑；inert 不卡 → 再按启动步骤逐层加回 |
 
 启动方式：在启动 DSH 之前把变量放进环境（例如 `DSH_BOTTOM_INFO_BAR_STARTUP_TRACE=1 dsh web --profile web`；桌面端请通过桌面应用的启动脚本或系统服务环境注入）。按 `t+8000` 前后几行是否出现 `event-loop-lag`、`fds` 是否单调上涨，即可区分「插件同步阻塞主线程」「插件 fd 泄漏」「宿主自身 IO 停摆」三种情况。
+
+`DSH_BOTTOM_INFO_BAR_BOOT` 是 issue #260 的二分开关：`deferred` 让插件在 apply 阶段只注册 Web 路由，后台刷新等页面第一个 RPC（或 20 秒兜底）再启动；`inert` 则让 `apply()` 什么都不做。两者都只影响本插件，默认 `normal` 与之前行为一致。
 
 新版本默认把账本放在 worker 线程里、首次用到时才打开，宿主主线程不再有同步 sqlite 调用；`startup-trace` 一路正常但仍卡，说明问题在宿主/桌面壳侧，请把日志发到 issue #260，插件侧会带着这些数据去对应的桌面壳仓库跟进。
 
