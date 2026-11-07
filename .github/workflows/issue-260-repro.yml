@@ -1,0 +1,94 @@
+name: "issue-260 repro"
+
+# Temporary branch-only harness for issue #260. Deleted once the root cause is known.
+on:
+  push:
+    branches: [repro/issue-260]
+  workflow_dispatch:
+
+concurrency:
+  group: issue-260-repro
+  cancel-in-progress: true
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install debug tooling and Electron runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdb iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 \
+            libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64
+          sudo sysctl -w kernel.yama.ptrace_scope=0 || true
+          node -v
+          uname -a
+
+      - name: Download and extract DSH NEXT 2.0.21-next (linux-x64)
+        run: |
+          curl -fL --retry 3 -o /tmp/dsh-next.tgz \
+            https://github.com/anywhere-labs/deepseek-harness-desktop/releases/download/v2.0.21-next/DSH-NEXT-2.0.21-next-linux-x64.tar.gz
+          mkdir -p /opt/dsh-next
+          tar -xzf /tmp/dsh-next.tgz -C /opt/dsh-next --strip-components=1
+          ls /opt/dsh-next | head
+          echo '--- missing shared libraries (if any) ---'
+          ldd /opt/dsh-next/dsh-desktop-next | grep 'not found' || true
+
+      - name: Prepare plugin package (npm 1.21.12)
+        run: |
+          mkdir -p /tmp/plugin
+          npm pack dsh-bottom-info-bar@1.21.12 --pack-destination /tmp/plugin
+          tar -xzf /tmp/plugin/dsh-bottom-info-bar-1.21.12.tgz -C /tmp/plugin
+          ls /tmp/plugin/package | head
+
+      - name: Control run - profile without the plugin
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-home-off
+          OUT_DIR: ${{ github.workspace }}/repro-out/off
+          VARIANT: "off"
+          RUNS: "2"
+        run: node .github/repro260/driver.mjs
+
+      - name: Repro run - profile with dsh-bottom-info-bar 1.21.12
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-home-on
+          OUT_DIR: ${{ github.workspace }}/repro-out/on
+          VARIANT: "on"
+          RUNS: "3"
+          PLUGIN_SRC: /tmp/plugin/package
+          DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
+          DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
+        run: node .github/repro260/driver.mjs
+
+      - name: Summarize
+        if: always()
+        run: |
+          for f in "${{ github.workspace }}"/repro-out/*/*-summary.json; do
+            echo "=== $f ==="
+            cat "$f" || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-260-repro-logs
+          path: repro-out
+          retention-days: 14
+          if-no-files-found: warn
