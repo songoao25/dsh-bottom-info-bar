@@ -198,3 +198,63 @@ jobs:
             /tmp/weston.log
           retention-days: 14
           if-no-files-found: warn
+
+  arch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download DSH NEXT and pack the plugin on the host
+        run: |
+          curl -fL --retry 3 -o /tmp/dsh-next.tgz \
+            https://github.com/anywhere-labs/deepseek-harness-desktop/releases/download/v2.0.21-next/DSH-NEXT-2.0.21-next-linux-x64.tar.gz
+          mkdir -p /tmp/plugin
+          npm pack dsh-bottom-info-bar@1.21.12 --pack-destination /tmp/plugin
+          tar -xzf /tmp/plugin/dsh-bottom-info-bar-1.21.12.tgz -C /tmp/plugin
+          mkdir -p "$GITHUB_WORKSPACE/repro-out"
+
+      - name: Run both variants inside Arch Linux (glib 2.90 like the reporter)
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v /tmp/dsh-next.tgz:/dsh-next.tgz:ro \
+            -v /tmp/plugin/package:/plugin:ro \
+            -w /work \
+            -e COMPUTER_USE=on \
+            archlinux:latest bash -lc '
+              set -e
+              pacman -Syu --noconfirm --quiet
+              pacman -S --noconfirm --quiet --needed nodejs npm gcc dbus xorg-server-xvfb xorg-xauth \
+                at-spi2-core gtk3 nss alsa-lib libxcomposite libxdamage libxfixes libxrandr \
+                libxkbcommon libcups pango cairo libxss libxtst libxi libx11 libegl mesa wayland
+              mkdir -p /opt/dsh-next
+              tar -xzf /dsh-next.tgz -C /opt/dsh-next --strip-components=1
+              node -v
+              gcc -shared -fPIC -O2 -o /tmp/ppoll-hook.so .github/repro260/ppoll-hook.c -ldl
+              export APP_DIR=/opt/dsh-next
+              export APP_RESOURCES=/opt/dsh-next/resources
+              export ELECTRON_BIN=/opt/dsh-next/dsh-desktop-next
+              export ARCH=x64
+              export LD_PRELOAD=/tmp/ppoll-hook.so
+              export PPOLL_HOOK_OUT=/tmp/ppoll-hook.log
+              export DSH_BOTTOM_INFO_BAR_SELF_UPDATE=off
+              export DSH_BOTTOM_INFO_BAR_STARTUP_TRACE=1
+              export XDG_RUNTIME_DIR=/tmp/xdg; mkdir -p /tmp/xdg; chmod 700 /tmp/xdg
+              VARIANT=off RUNS=2 NEXT_HOME=/tmp/home-off OUT_DIR=/work/repro-out/arch-off \
+                dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+              VARIANT=on RUNS=3 NEXT_HOME=/tmp/home-on OUT_DIR=/work/repro-out/arch-on PLUGIN_SRC=/plugin \
+                dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+            '
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-260-arch-logs
+          path: repro-out
+          retention-days: 14
+          if-no-files-found: warn
