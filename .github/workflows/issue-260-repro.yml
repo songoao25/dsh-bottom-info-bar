@@ -102,3 +102,99 @@ jobs:
           path: repro-out
           retention-days: 14
           if-no-files-found: warn
+
+  wayland:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install tooling, Electron and Wayland runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdb gcc iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 \
+            libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64 \
+            weston xwayland dbus dbus-x11 at-spi2-core libatspi2.0-0t64 fonts-liberation
+          sudo sysctl -w kernel.yama.ptrace_scope=0 || true
+
+      - name: Download and extract DSH NEXT 2.0.21-next (linux-x64)
+        run: |
+          curl -fL --retry 3 -o /tmp/dsh-next.tgz \
+            https://github.com/anywhere-labs/deepseek-harness-desktop/releases/download/v2.0.21-next/DSH-NEXT-2.0.21-next-linux-x64.tar.gz
+          mkdir -p /opt/dsh-next
+          tar -xzf /tmp/dsh-next.tgz -C /opt/dsh-next --strip-components=1
+
+      - name: Build the LD_PRELOAD poll tracer
+        run: gcc -shared -fPIC -O2 -o /tmp/ppoll-hook.so .github/repro260/ppoll-hook.c -ldl
+
+      - name: Prepare plugin package (npm 1.21.12)
+        run: |
+          mkdir -p /tmp/plugin
+          npm pack dsh-bottom-info-bar@1.21.12 --pack-destination /tmp/plugin
+          tar -xzf /tmp/plugin/dsh-bottom-info-bar-1.21.12.tgz -C /tmp/plugin
+
+      - name: Wayland control run (no plugin)
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-wl-home-off
+          OUT_DIR: ${{ github.workspace }}/repro-out/wl-off
+          VARIANT: "off"
+          RUNS: "2"
+          COMPUTER_USE: "on"
+          LD_PRELOAD: /tmp/ppoll-hook.so
+          PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
+        run: |
+          export XDG_RUNTIME_DIR=/tmp/xdg-wayland
+          mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --socket=wayland-0 --width=1280 --height=800 --idle-time=0 > /tmp/weston.log 2>&1 &
+          sleep 3
+          export WAYLAND_DISPLAY=wayland-0
+          unset DISPLAY
+          export APP_EXTRA_ARGS="--ozone-platform=wayland"
+          dbus-run-session -- node .github/repro260/gui-driver.mjs
+
+      - name: Wayland repro run (plugin 1.21.12)
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-wl-home-on
+          OUT_DIR: ${{ github.workspace }}/repro-out/wl-on
+          VARIANT: "on"
+          RUNS: "3"
+          PLUGIN_SRC: /tmp/plugin/package
+          COMPUTER_USE: "on"
+          DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
+          DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
+          LD_PRELOAD: /tmp/ppoll-hook.so
+          PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
+        run: |
+          export XDG_RUNTIME_DIR=/tmp/xdg-wayland
+          mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --socket=wayland-0 --width=1280 --height=800 --idle-time=0 > /tmp/weston.log 2>&1 &
+          sleep 3
+          export WAYLAND_DISPLAY=wayland-0
+          unset DISPLAY
+          export APP_EXTRA_ARGS="--ozone-platform=wayland"
+          dbus-run-session -- node .github/repro260/gui-driver.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-260-wayland-logs
+          path: |
+            repro-out
+            /tmp/weston.log
+          retention-days: 14
+          if-no-files-found: warn

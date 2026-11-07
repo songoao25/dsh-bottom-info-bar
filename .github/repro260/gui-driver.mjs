@@ -120,7 +120,8 @@ async function runOnce(run) {
   const startedAt = Date.now()
   const result = { run, variant: VARIANT, probes: [], hosts: [], app: null, wedge: false, errors: [] }
   const appLog = join(OUT, `${VARIANT}-gui-run${run}.app.log`)
-  const app = spawn(ELECTRON, ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'], {
+  const extraArgs = (env.APP_EXTRA_ARGS || '').split(' ').filter(Boolean)
+  const app = spawn(ELECTRON, ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', ...extraArgs], {
     cwd: APP_DIR,
     env: {
       ...process.env,
