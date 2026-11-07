@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gdb iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 \
+            gdb gcc iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 \
             libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
             libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 \
             libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64 \
@@ -43,6 +43,9 @@ jobs:
           ls /opt/dsh-next | head
           echo '--- missing shared libraries (if any) ---'
           ldd /opt/dsh-next/dsh-desktop-next | grep 'not found' || true
+
+      - name: Build the LD_PRELOAD poll tracer
+        run: gcc -shared -fPIC -O2 -o /tmp/ppoll-hook.so .github/repro260/ppoll-hook.c -ldl
 
       - name: Prepare plugin package (npm 1.21.12)
         run: |
@@ -62,6 +65,8 @@ jobs:
           VARIANT: "off"
           RUNS: "2"
           COMPUTER_USE: "on"
+          LD_PRELOAD: /tmp/ppoll-hook.so
+          PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
         run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
 
       - name: GUI repro run - profile with dsh-bottom-info-bar 1.21.12
@@ -78,6 +83,8 @@ jobs:
           DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
           DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
           COMPUTER_USE: "on"
+          LD_PRELOAD: /tmp/ppoll-hook.so
+          PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
         run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
 
       - name: Summarize

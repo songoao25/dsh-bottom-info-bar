@@ -7,7 +7,7 @@
  * driver.mjs this exercises the shell's IPC, the page load and plugin RPCs.
  */
 import { execFileSync, spawn } from 'node:child_process'
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { join } from 'node:path'
 
@@ -110,7 +110,13 @@ function hostPidFromPort(port) {
 }
 
 async function runOnce(run) {
+  // Fresh data directory and shell config for every run: a stale log would make
+  // the driver believe a previous run's Host is still there.
+  rmSync(HOME, { recursive: true, force: true })
+  mkdirSync(HOME, { recursive: true, mode: 0o700 })
   prepare()
+  const hookLog = '/tmp/ppoll-hook.log'
+  try { rmSync(hookLog, { force: true }) } catch {}
   const startedAt = Date.now()
   const result = { run, variant: VARIANT, probes: [], hosts: [], app: null, wedge: false, errors: [] }
   const appLog = join(OUT, `${VARIANT}-gui-run${run}.app.log`)
@@ -181,6 +187,12 @@ async function runOnce(run) {
     try { app.kill('SIGKILL') } catch {}
   }
   sh('pkill', ['-f', HOME])
+  try {
+    const shellLog = readFileSync(join(HOME, 'logs', 'desktop-next.log'), 'utf8')
+    writeFileSync(join(OUT, `${VARIANT}-gui-run${run}.desktop-next.log`), shellLog)
+    result.shellLogTail = shellLog.slice(-8000)
+  } catch (error) { result.errors.push(`shell log: ${error}`) }
+  try { cpSync(hookLog, join(OUT, `${VARIANT}-gui-run${run}.hook.log`)) } catch {}
   writeFileSync(appLog, `--- stdout ---\n${appOut}\n--- stderr ---\n${appErr}`)
   result.appStderrTail = appErr.slice(-4000)
   result.appStdoutTail = appOut.slice(-2000)
