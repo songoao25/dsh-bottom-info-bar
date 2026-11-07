@@ -485,6 +485,24 @@ jobs:
           PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
         run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
 
+      - name: Stress - 12 real GUI cold starts (full shell window)
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-home-stress-gui
+          OUT_DIR: ${{ github.workspace }}/repro-out/stress-gui
+          VARIANT: "on"
+          RUNS: "12"
+          PLUGIN_SRC: /tmp/plugin/package
+          COMPUTER_USE: "on"
+          DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
+          DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
+          LD_PRELOAD: /tmp/ppoll-hook.so
+          PPOLL_HOOK_OUT: /tmp/ppoll-hook.log
+        run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
