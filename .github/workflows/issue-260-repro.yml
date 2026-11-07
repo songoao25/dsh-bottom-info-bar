@@ -29,7 +29,7 @@ jobs:
             libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
             libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 \
             libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64 \
-            xvfb dbus dbus-x11 at-spi2-core libatspi2.0-0t64
+            xvfb xauth dbus dbus-x11 at-spi2-core libatspi2.0-0t64 fonts-liberation
           sudo sysctl -w kernel.yama.ptrace_scope=0 || true
           node -v
           uname -a
@@ -51,7 +51,7 @@ jobs:
           tar -xzf /tmp/plugin/dsh-bottom-info-bar-1.21.12.tgz -C /tmp/plugin
           ls /tmp/plugin/package | head
 
-      - name: Control run - profile without the plugin
+      - name: GUI control run - profile without the plugin
         env:
           APP_DIR: /opt/dsh-next
           APP_RESOURCES: /opt/dsh-next/resources
@@ -62,9 +62,9 @@ jobs:
           VARIANT: "off"
           RUNS: "2"
           COMPUTER_USE: "on"
-        run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+        run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
 
-      - name: Repro run - profile with dsh-bottom-info-bar 1.21.12
+      - name: GUI repro run - profile with dsh-bottom-info-bar 1.21.12
         env:
           APP_DIR: /opt/dsh-next
           APP_RESOURCES: /opt/dsh-next/resources
@@ -78,7 +78,7 @@ jobs:
           DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
           DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
           COMPUTER_USE: "on"
-        run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+        run: dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" node .github/repro260/gui-driver.mjs
 
       - name: Summarize
         if: always()
