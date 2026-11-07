@@ -175,9 +175,13 @@ HOST_PID=""
 for t in 8 10 12 14 16 18 20; do
   while [ $(( $(date +%s%3N) - START )) -lt $(( t * 1000 )) ]; do sleep 0.2; done
   code=$(probe)
-  echo "probe t=${t}s -> ${code}"
+  echo "probe t=${t}s -> ${code}" | tee -a "$OUT/probes.txt"
   if [ -z "$HOST_PID" ]; then
-    HOST_PID=$(ss -ltnp 2>/dev/null | grep "127.0.0.1:$PORT " | sed -nE 's/.*pid=([0-9]+).*/\\1/p' | head -1)
+    HOST_PID=$(ss -ltnp 2>/dev/null | grep -F ":$PORT" | sed -nE 's/.*pid=([0-9]+).*/\1/p' | head -1)
+    if [ -z "$HOST_PID" ] && command -v pgrep >/dev/null 2>&1; then
+      HOST_PID=$(pgrep -f "$HOME_DIR/profiles/desktop" 2>/dev/null | tail -1)
+    fi
+    ss -ltnp > "$OUT/ss-ltnp.txt" 2>&1 || true
   fi
 done
 
@@ -197,7 +201,7 @@ dump_proc() {
 
 if [ -n "$HOST_PID" ]; then
   echo "host pid=$HOST_PID"
-  dump_proc "$HOST_PID" "$OUT/wedged"
+  dump_proc "$HOST_PID" "$OUT/snapshot"
 fi
 
 cp "$LOG" "$OUT/desktop-next.log" 2>/dev/null || true
