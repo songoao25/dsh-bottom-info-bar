@@ -258,3 +258,69 @@ jobs:
           path: repro-out
           retention-days: 14
           if-no-files-found: warn
+
+  extras:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Electron runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdb gcc iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64 dbus dbus-x11 at-spi2-core libatspi2.0-0t64
+
+      - name: Download DSH NEXT
+        run: |
+          curl -fL --retry 3 -o /tmp/dsh-next.tgz \
+            https://github.com/anywhere-labs/deepseek-harness-desktop/releases/download/v2.0.21-next/DSH-NEXT-2.0.21-next-linux-x64.tar.gz
+          mkdir -p /opt/dsh-next
+          tar -xzf /tmp/dsh-next.tgz -C /opt/dsh-next --strip-components=1
+
+      - name: Pack the reporter's other 14 plugins (installed but not in bundles)
+        run: |
+          PLUGINS="@agents-anywhere/dsh-bridge-next dshmarket dsh-better-sidebar @copylee/dsh-better-display dsh-auto-memory dsh-ds-balance dsh-persona-dafeiyu @michengai/dsh-skills-manager @max-null/dsh-chinese-thinking dsh-improved-inline-edit dsh-anim-settings dsh-netmon dsh-codex-effort-slider dsh-opencode-palette"
+          for p in $PLUGINS; do
+            dest="/tmp/extras/$p"
+            mkdir -p "$(dirname "$dest")"
+            tmp=$(mktemp -d)
+            ( cd "$tmp" && npm pack "$p" --silent >/dev/null 2>&1 && tar -xzf ./*.tgz && mv package "$dest" ) || echo "skip $p"
+            rm -rf "$tmp"
+          done
+          ls /tmp/extras | head
+
+      - name: Prepare plugin package (npm 1.21.12)
+        run: |
+          mkdir -p /tmp/plugin
+          npm pack dsh-bottom-info-bar@1.21.12 --pack-destination /tmp/plugin
+          tar -xzf /tmp/plugin/dsh-bottom-info-bar-1.21.12.tgz -C /tmp/plugin
+
+      - name: Run with 15 installed plugins, only 3 bundles (reporter's minimal repro state)
+        env:
+          APP_DIR: /opt/dsh-next
+          APP_RESOURCES: /opt/dsh-next/resources
+          ELECTRON_BIN: /opt/dsh-next/dsh-desktop-next
+          ARCH: x64
+          NEXT_HOME: ${{ runner.temp }}/next-home-extras
+          OUT_DIR: ${{ github.workspace }}/repro-out/extras
+          VARIANT: "on"
+          RUNS: "3"
+          PLUGIN_SRC: /tmp/plugin/package
+          COMPUTER_USE: "on"
+          EXTRA_PLUGINS_SRC: /tmp/extras
+          EXTRA_PLUGINS: "@agents-anywhere/dsh-bridge-next,dshmarket,dsh-better-sidebar,@copylee/dsh-better-display,dsh-auto-memory,dsh-ds-balance,dsh-persona-dafeiyu,@michengai/dsh-skills-manager,@max-null/dsh-chinese-thinking,dsh-improved-inline-edit,dsh-anim-settings,dsh-netmon,dsh-codex-effort-slider,dsh-opencode-palette"
+          DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
+          DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
+        run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue-260-extras-logs
+          path: repro-out
+          retention-days: 14
+          if-no-files-found: warn

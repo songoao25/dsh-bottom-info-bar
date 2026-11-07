@@ -22,7 +22,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const real = (path) => { try { return realpathSync(path) } catch { return path } }
 const env = process.env
@@ -57,9 +57,25 @@ function sh(cmd, args) {
   }
 }
 
+function installExtras(deps) {
+  const src = env.EXTRA_PLUGINS_SRC
+  const names = (env.EXTRA_PLUGINS || '').split(',').map((item) => item.trim()).filter(Boolean)
+  if (!src || names.length === 0) return
+  for (const name of names) {
+    const from = join(src, name)
+    if (!existsSync(join(from, 'package.json'))) { console.log(`[driver] missing extra plugin ${name}`); continue }
+    const dest = join(PROFILE, 'node_modules', name)
+    mkdirSync(dirname(dest), { recursive: true })
+    cpSync(from, dest, { recursive: true })
+    deps[name] = '*'
+  }
+}
+
 function prepareHome() {
   rmSync(HOME, { recursive: true, force: true })
   mkdirSync(join(PROFILE, 'node_modules'), { recursive: true })
+  const deps = {}
+  installExtras(deps)
   const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
   if (VARIANT === 'on') {
     if (!PLUGIN || !existsSync(join(PLUGIN, 'package.json'))) throw new Error(`missing plugin package: ${PLUGIN}`)
@@ -70,7 +86,7 @@ function prepareHome() {
   writeFileSync(join(PROFILE, 'package.json'), JSON.stringify({
     name: 'dsh-profile-desktop',
     private: true,
-    dependencies: {},
+    dependencies: deps,
     dsh: {
       desktopNextPlugins: 1,
       desktopNextScheduleBundle: 2,
