@@ -71,9 +71,16 @@ function prepareHome() {
     name: 'dsh-profile-desktop',
     private: true,
     dependencies: {},
-    dsh: { profile: { bundles } },
+    dsh: {
+      desktopNextPlugins: 1,
+      desktopNextScheduleBundle: 2,
+      desktopNextOnboarding: { version: 1, outcome: 'completed' },
+      profile: { bundles },
+    },
   }, null, 2) + '\n')
-  writeFileSync(join(PROFILE, 'cordis.patch.yml'), '[]\n')
+  writeFileSync(join(PROFILE, 'cordis.patch.yml'), env.COMPUTER_USE === 'on'
+    ? '- id: computer-use-cua-driver-native\n  disabled: false\n'
+    : '[]\n')
 }
 
 function snapshotProc(pid) {

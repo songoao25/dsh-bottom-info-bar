@@ -28,7 +28,8 @@ jobs:
             gdb iproute2 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libdrm2 \
             libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
             libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libpango-1.0-0 \
-            libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64
+            libcairo2 libxss1 libxtst6 libx11-xcb1 libegl1 libglib2.0-0t64 \
+            xvfb dbus dbus-x11 at-spi2-core libatspi2.0-0t64
           sudo sysctl -w kernel.yama.ptrace_scope=0 || true
           node -v
           uname -a
@@ -60,7 +61,8 @@ jobs:
           OUT_DIR: ${{ github.workspace }}/repro-out/off
           VARIANT: "off"
           RUNS: "2"
-        run: node .github/repro260/driver.mjs
+          COMPUTER_USE: "on"
+        run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
 
       - name: Repro run - profile with dsh-bottom-info-bar 1.21.12
         env:
@@ -75,7 +77,8 @@ jobs:
           PLUGIN_SRC: /tmp/plugin/package
           DSH_BOTTOM_INFO_BAR_SELF_UPDATE: "off"
           DSH_BOTTOM_INFO_BAR_STARTUP_TRACE: "1"
-        run: node .github/repro260/driver.mjs
+          COMPUTER_USE: "on"
+        run: dbus-run-session -- xvfb-run -a node .github/repro260/driver.mjs
 
       - name: Summarize
         if: always()
