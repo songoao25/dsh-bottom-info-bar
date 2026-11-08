@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.14](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.13...v1.21.14) (2026-11-08)
+
+
+### Bug Fixes
+
+* **readme:** use badgen for npm download badges ([#269](https://github.com/songoao25/dsh-bottom-info-bar/issues/269)) ([a04e497](https://github.com/songoao25/dsh-bottom-info-bar/commit/a04e49716ce295f24408675b157a042a5bac23ee))
+
 ## [1.21.13](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.12...v1.21.13) (2026-11-08)
 
 
