@@ -3,6 +3,10 @@
 [**English**](README.md) | **中文**
 
 [![npm 版本](https://img.shields.io/npm/v/dsh-bottom-info-bar)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![npm 下载量](https://img.shields.io/npm/dt/dsh-bottom-info-bar?label=downloads)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![npm 月下载量](https://img.shields.io/npm/dm/dsh-bottom-info-bar?label=downloads%2Fmonth)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![GitHub 星标](https://img.shields.io/github/stars/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/stargazers)
+[![GitHub Fork](https://img.shields.io/github/forks/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/forks)
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
 
 ### 加入内测群 DeepThinking
