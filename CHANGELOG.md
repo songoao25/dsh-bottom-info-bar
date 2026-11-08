@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.13](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.12...v1.21.13) (2026-11-08)
+
+
+### Documentation
+
+* **readme:** add live GitHub and npm stats badges ([#267](https://github.com/songoao25/dsh-bottom-info-bar/issues/267)) ([1059457](https://github.com/songoao25/dsh-bottom-info-bar/commit/1059457fd066d14fa01170a043b73d3cc6a6204a))
+
 ## [1.21.12](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.11...v1.21.12) (2026-11-05)
 
 
