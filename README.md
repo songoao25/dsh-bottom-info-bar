@@ -3,6 +3,10 @@
 **English** | [**中文**](README.zh-CN.md)
 
 [![npm version](https://img.shields.io/npm/v/dsh-bottom-info-bar)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![npm downloads](https://img.shields.io/npm/dt/dsh-bottom-info-bar?label=downloads)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![npm monthly downloads](https://img.shields.io/npm/dm/dsh-bottom-info-bar?label=downloads%2Fmonth)](https://www.npmjs.com/package/dsh-bottom-info-bar)
+[![GitHub stars](https://img.shields.io/github/stars/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/forks)
 [![License: MIT](https://img.shields.io/github/license/songoao25/dsh-bottom-info-bar)](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/LICENSE)
 
 ### Join the DeepThinking beta group
