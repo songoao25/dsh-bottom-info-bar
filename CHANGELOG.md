@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.21.15](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.14...v1.21.15) (2026-11-09)
+
+
+### Bug Fixes
+
+* restore Xiaomi MiMo balance lookup ([#271](https://github.com/songoao25/dsh-bottom-info-bar/issues/271)) ([7da2d78](https://github.com/songoao25/dsh-bottom-info-bar/commit/7da2d78e75bf19bb90e441108c076c9cf36d792b))
+
 ## [1.21.14](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.13...v1.21.14) (2026-11-08)
 
 
