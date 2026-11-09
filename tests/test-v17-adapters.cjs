@@ -194,15 +194,37 @@ const xmExhaustedUsage = parseXiaomiTokenPlanUsage({ data: { monthUsage: { perce
 check('小米 usage 耗尽：窗口仍保留且 100% 已用', xmExhaustedUsage && xmExhaustedUsage.windows.length === 1 && xmExhaustedUsage.windows[0].usedPercent, 100);
 const xmExhaustedBalance = parseXiaomiTokenPlanBalance({ data: { token_balance: 0, token_limit: 1000000, plan_name: 'Pro' } });
 check('小米 balance 耗尽：窗口仍保留且 100% 已用', xmExhaustedBalance && xmExhaustedBalance.windows[0].usedPercent, 100);
-// 按量 balance（字符串金额 + data 包装）
+// 官方账单查询 OpenAPI：/v1/platform/balance
+const xmPlatformBalance = {
+  object: 'balance',
+  is_available: true,
+  balance_infos: [{
+    currency: 'CNY',
+    cash_balance: '100.50',
+    gift_balance: '20.00',
+    frozen_balance: '0.00',
+    credit_limit: '500.00',
+    credit_available: '380.00',
+    total_available: '500.50',
+  }],
+};
+const xmPlatformParsed = parseXiaomiPaygBalance(xmPlatformBalance);
+check('小米官方余额：total_available 500.5 CNY', xmPlatformParsed.total === 500.5 && xmPlatformParsed.currency, 'CNY');
+check('小米官方余额：cash 100.5 / gift 20', xmPlatformParsed.toppedUp + xmPlatformParsed.granted, 120.5);
+check('小米官方余额：frozen 0 / creditAvailable 380', xmPlatformParsed.frozen + xmPlatformParsed.creditAvailable, 380);
+check('小米按量端点已切换官方 OpenAPI', hostSrc.includes("balanceAPI: 'https://api.xiaomimimo.com/v1/platform/balance'"), true);
+check('小米按量不再请求旧端点', hostSrc.includes("balanceAPI: 'https://api.xiaomimimo.com/v1/user/balance'"), false);
+// 旧形态仍可解析，便于滚动升级期保留最后可用快照。
 const xmPayg = { data: { balance: '12.5000', charge_balance: '10.0000', granted_balance: '2.5000', plan: 'PAYG' } };
 const xmPaygParsed = parseXiaomiPaygBalance(xmPayg);
-check('小米按量：total 12.5 CNY', xmPaygParsed.total, 12.5);
-check('小米按量：topUp 10 / granted 2.5', xmPaygParsed.toppedUp + xmPaygParsed.granted, 12.5);
-check('小米按量：币种 CNY', xmPaygParsed.currency, 'CNY');
+check('小米旧余额形态：total 12.5 CNY', xmPaygParsed.total, 12.5);
+check('小米旧余额形态：topUp 10 / granted 2.5', xmPaygParsed.toppedUp + xmPaygParsed.granted, 12.5);
+check('小米旧余额形态：币种 CNY', xmPaygParsed.currency, 'CNY');
 // 非法 → null
 check('小米 usage：结构异常 → null', parseXiaomiTokenPlanUsage({}), null);
 check('小米按量：无 balance → null', parseXiaomiPaygBalance({ data: {} }), null);
+check('小米官方余额：balance_infos 空数组 → null', parseXiaomiPaygBalance({ balance_infos: [] }), null);
+check('小米官方余额：total_available 非法 → null', parseXiaomiPaygBalance({ balance_infos: [{ total_available: '500oops' }] }), null);
 
 // 智谱余额同时返回两个字段时，优先使用合法的 availableBalance；坏值不能把可用的 balance 一起拖成空。
 check('智谱余额：availableBalance 损坏时回退 balance', parseZaiBalance({ success: true, code: 200, data: { availableBalance: '12oops', balance: '8.5' } }).balance, 8.5);
