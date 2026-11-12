@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.2...v1.24.3) (2026-11-12)
+
+
+### Bug Fixes
+
+* publish the 1.24.2 recovery notice on the plugin page ([#286](https://github.com/songoao25/dsh-bottom-info-bar/issues/286)) ([946facb](https://github.com/songoao25/dsh-bottom-info-bar/commit/946facb72b48e7246fdb77329908683c8330fb4a))
+
 ## [1.24.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.1...v1.24.2) (2026-11-12)
 
 
