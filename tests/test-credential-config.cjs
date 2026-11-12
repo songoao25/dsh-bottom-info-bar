@@ -252,10 +252,14 @@ async function main() {
   check('A8 labelKey 必须在 zh/en 字典存在', catalog.filter(function (entry) {
     return typeof entry.labelKey === 'string' && (typeof zhDict[entry.labelKey] !== 'string' || typeof enDict[entry.labelKey] !== 'string')
   }).map(function (entry) { return entry.labelKey }), [])
-  const ENTRY_KEYS = ['id', 'labelKey', 'label', 'mode', 'providers', 'credentials', 'oauthRecord', 'official', 'verification', 'noteKey']
+  const ENTRY_KEYS = ['id', 'labelKey', 'label', 'mode', 'providers', 'credentials', 'detectRefs', 'oauthRecord', 'official', 'verification', 'noteKey']
   check('A9 目录条目不允许未知字段', catalog.map(function (entry) {
     return Object.keys(entry).filter(function (key) { return ENTRY_KEYS.indexOf(key) < 0 })
   }).reduce(function (acc, list) { return acc.concat(list) }, []), [])
+  check('A9b detectRefs 若存在必须是环境变量名形态的字符串数组', catalog.map(function (entry) {
+    if (entry.detectRefs === undefined) return true
+    return Array.isArray(entry.detectRefs) && entry.detectRefs.every(function (ref) { return isEnvName(ref) })
+  }).filter(function (good) { return good !== true }).length, 0)
   check('A10 providers 是字符串数组', catalog.map(function (entry) { return Array.isArray(entry.providers) }).filter(function (isArray) { return isArray !== true }), [])
   check('A11 providers 内不重复', catalog.map(function (entry) { return new Set(entry.providers || []).size === (entry.providers || []).length }).filter(function (good) { return good !== true }).length, 0)
   const badProviders = []
@@ -320,7 +324,7 @@ async function main() {
     ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', 'KIMI_API_KEY'].every(function (ref) {
       return inlineRefs.indexOf(ref) >= 0
     }), JSON.stringify(inlineRefs))
-  check('A25 host 的 CREDENTIAL_CONFIG_REFS 与目录 ref 去重结果逐项一致', C.CREDENTIAL_CONFIG_REFS, allRefs)
+  check('A25 host 的 CREDENTIAL_CONFIG_REFS 与目录 inline ref 去重结果逐项一致（白名单只收 inline，2026-11-12 收紧）', C.CREDENTIAL_CONFIG_REFS, inlineRefs)
   ok('A26 host 白名单确实由 CREDENTIAL_CATALOG.reduce 派生（源码守卫）',
     hostSrc.indexOf('const CREDENTIAL_CONFIG_REFS = CREDENTIAL_CATALOG.reduce(') >= 0
     && hostSrc.indexOf("import { CREDENTIAL_CATALOG") >= 0)
@@ -384,15 +388,19 @@ async function main() {
     [null, null, null])
   check('B16 宿主上限常量 = 512', CREDENTIAL_VALUE_MAX_LEN, 512)
 
-  // ================= C) ref 白名单（目录派生） =================
-  check('C1 目录内全部 ref 都可写', allRefs.map(function (ref) { return baseHost.api.credentialConfigRef({ ref: ref }) }), allRefs)
+  // ================= C) ref 白名单（目录派生，只收 inline） =================
+  check('C1 目录 inline ref 都可写、非 inline ref 一律拒绝（推理 Key 走 DSH 设置 → 模型，不开放第二入口）',
+    allRefs.map(function (ref) {
+      const accepted = baseHost.api.credentialConfigRef({ ref: ref })
+      return inlineRefs.indexOf(ref) >= 0 ? accepted === ref : accepted === null
+    }).filter(function (good) { return good !== true }).length, 0)
   check('C2 目录外 ref 拒绝', ['DEEPSEEK_API_KEY', 'NOT_IN_CATALOG', 'KIMI_API_KEY/x', ' kimi ', 'KIMI_API_KEY ', 'kimi_api_key'].map(function (ref) {
     return baseHost.api.credentialConfigRef({ ref: ref })
   }), [null, null, null, null, null, null])
   check('C3 非字符串 / 缺参拒绝',
     [baseHost.api.credentialConfigRef({ ref: 42 }), baseHost.api.credentialConfigRef({ ref: null }), baseHost.api.credentialConfigRef(), baseHost.api.credentialConfigRef(null)],
     [null, null, null, null])
-  check('C4 白名单条数 = 目录去重 ref 数', C.CREDENTIAL_CONFIG_REFS.length, allRefs.length)
+  check('C4 白名单条数 = 目录 inline 去重 ref 数', C.CREDENTIAL_CONFIG_REFS.length, inlineRefs.length)
 
   // ================= D) describeCredentialConfig =================
   function describeStub(ref) {
@@ -407,17 +415,39 @@ async function main() {
     readRecord: function () { return { payload: { access: OAUTH_TOKEN } } },
   })
   const described = await describeHost.api.describeCredentialConfig()
-  check('D1 describeCredentialConfig 顶层字段固定', Object.keys(described).sort(), ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin'])
-  check('D2 items 是目录 ref 的扁平视图', described.items.map(function (item) { return item.ref }), allRefs)
+  check('D1 describeCredentialConfig 顶层字段固定', Object.keys(described).sort(), ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'total'])
+  check('D2 items 是目录 inline ref 的扁平视图', described.items.map(function (item) { return item.ref }), inlineRefs)
   check('D3 items 每项字段固定为 ref/configured/source/writable',
     described.items.map(function (item) { return Object.keys(item).sort().join(',') }).filter(function (keys) { return keys !== 'configured,ref,source,writable' }), [])
   check('D4 items 状态来自 describe', [described.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0],
     described.items.filter(function (i) { return i.ref === 'MINIMAX_API_KEY' })[0]],
     [{ ref: 'KIMI_API_KEY', configured: true, source: 'file', writable: true },
       { ref: 'MINIMAX_API_KEY', configured: true, source: 'env', writable: false }])
-  check('D5 groups 只包含有 inline 凭据的目录条目', described.groups.map(function (g) { return g.id }), inlineEntries.map(function (entry) { return entry.id }))
-  check('D6 groups 每项字段固定为 id/labelKey/label/mode/credentials',
-    described.groups.map(function (g) { return Object.keys(g).sort().join(',') }).filter(function (keys) { return keys !== 'credentials,id,label,labelKey,mode' }), [])
+  // D5（2026-11-12）：groups 仍只含 inline 组，但按「bound 优先、同内保持目录顺序」排序。
+  // stub 里 KIMI_API_KEY / MINIMAX_API_KEY 已配置 → kimi-coding、minimax bound=true 排前面。
+  const expectedGroupOrder = ['kimi-coding', 'minimax', 'alibaba', 'xiaomi-token-plan', 'command-code', 'opencode-go']
+  check('D5 groups 只含 inline 组且按 bound 优先排序（同内保持目录顺序）', described.groups.map(function (g) { return g.id }), expectedGroupOrder)
+  check('D5b bound/total 与逐组 bound 值',
+    [described.bound, described.total, described.groups.map(function (g) { return g.bound })],
+    [2, 6, [true, true, false, false, false, false]])
+  check('D6 groups 每项字段固定为 bound/id/labelKey/label/mode/credentials',
+    described.groups.map(function (g) { return Object.keys(g).sort().join(',') }).filter(function (keys) { return keys !== 'bound,credentials,id,label,labelKey,mode' }), [])
+  // D6b（2026-11-12）：detectRefs 命中即 bound —— 用户没填 Token Plan Key，但 DSH 设置 → 模型
+  // 里配了小米推理 Key（stub describe 命中 XIAOMI_API_KEY），xiaomi-token-plan 仍算「已绑定」。
+  const detectStub = function (ref) {
+    if (ref === 'XIAOMI_API_KEY') return { configured: true, source: 'env', writable: false }
+    return { configured: false, source: null, writable: true }
+  }
+  const detectHost = makeHostApi(C, {
+    describe: detectStub,
+    set: async function () {},
+    unset: async function () {},
+    readRecord: function () { return { payload: { access: OAUTH_TOKEN } } },
+  })
+  const detectDescribed = await detectHost.api.describeCredentialConfig()
+  const detectXiaomi = detectDescribed.groups.filter(function (g) { return g.id === 'xiaomi-token-plan' })[0]
+  check('D6b detectRefs 命中推理 Key → 该组 bound=true（inline 凭据全未配置）',
+    [detectXiaomi.bound, detectXiaomi.credentials.every(function (c) { return c.configured === false })], [true, true])
   const alibabaGroup = described.groups.filter(function (g) { return g.id === 'alibaba' })[0]
   const opencodeGroup = described.groups.filter(function (g) { return g.id === 'opencode-go' })[0]
   check('D7 有品牌字典键的组用 labelKey、label=null',
@@ -497,7 +527,7 @@ async function main() {
   const readRes = await readHost.api.getCredentialConfig()
   check('D28 getCredentialConfig 返回与 describeCredentialConfig 等价', readRes, await readHost.api.describeCredentialConfig())
   check('D29 getCredentialConfig 顶层字段固定',
-    Object.keys(readRes).sort(), ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin'])
+    Object.keys(readRes).sort(), ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'total'])
 
   // ================= E) ROUTES：set / clear =================
   const ERROR_CODES = ['invalid-ref', 'invalid-value', 'write-unsupported', 'write-failed']
@@ -561,7 +591,7 @@ async function main() {
   const successHost = makeStoreHost()
   const saved = await run(successHost, 'setCredential', { ref: 'KIMI_API_KEY', value: '  ' + KIMI_VALUE + '  ' })
   check('E14 成功返回 ok:true 且带完整状态视图', [saved.ok, Object.keys(saved).sort()],
-    [true, ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok']])
+    [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
   check('E15 成功时 set 收到白名单 ref + trim 后值', successHost.calls.set, [['KIMI_API_KEY', KIMI_VALUE]])
   check('E16 成功返回的状态里该项 configured=true（保存后立即可见）',
     saved.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured, true)
@@ -617,7 +647,7 @@ async function main() {
   const clearKickAt = clearHost.calls.kick.length
   const clearOk = await run(clearHost, 'clearCredential', { ref: 'KIMI_API_KEY' })
   check('E31 清除成功 → ok:true + 完整状态视图', [clearOk.ok, Object.keys(clearOk).sort()],
-    [true, ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok']])
+    [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
   check('E32 unset 收到白名单 ref', clearHost.calls.unset, ['KIMI_API_KEY'])
   check('E33 清除后 configured=false 且刷新对应源', [clearOk.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured,
     clearHost.calls.markRequested.slice(clearMarkAt), clearHost.calls.kick.slice(clearKickAt)], [false, ['kimi-coding'], [['kimi-coding', 'kimi-coding']]])
@@ -682,7 +712,13 @@ async function main() {
     }
   })
   const rows = rowsFromCatalog({ groups: hostGroups, kimiLogin: { configured: true }, canWrite: true })
-  check('G3 rows 按 groups 顺序拍平且只含 inline 凭据', rows.map(function (row) { return row.ref }), inlineRefs)
+  check('G3 rows 按 groups 顺序（bound 优先）拍平且只含 inline 凭据', rows.map(function (row) { return row.ref }),
+    ['kimi-coding', 'minimax', 'alibaba', 'xiaomi-token-plan', 'command-code', 'opencode-go'].map(function (id) {
+      return inlineRefs.filter(function (ref) {
+        const entry = catalog.filter(function (e) { return e.id === id })[0]
+        return entry && entry.credentials.some(function (c) { return c.ref === ref && c.inline === true })
+      })
+    }).reduce(function (acc, list) { return acc.concat(list) }, []))
   const alibabaRow = rows.filter(function (row) { return row.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0]
   check('G4 行显示名 = 组品牌 + 凭据标签，状态来自 host',
     [alibabaRow.providerLabel, alibabaRow.labelText, alibabaRow.hintText, alibabaRow.configured],

@@ -21,7 +21,11 @@ export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cl
 //   mode          subscription | balance | billing（与信息栏三种口径一致）
 //   providers     关联的 DSH provider id（用于一致性测试与排障；成本类 provider 可留空）
 //   credentials   [{ ref, labelKey?, hintKey?, inline }]，inline=true 表示需要用户在本插件设置页
-//                 额外准备（DSH 设置 → 模型 里通常没有这一项）；inline=false 只在目录里登记
+//                 额外准备（DSH 设置 → 模型 里通常没有这一项）；inline=false 只在目录里登记。
+//                 2026-11-12 收紧口径：推理 Key 能复用的一律 inline=false —— 用户在 DSH 设置 → 模型
+//                 里填过一次就能直接查额度，插件设置页不再提供第二遍输入（不做重复入口）。
+//   detectRefs    可选：目录登记的「DSH 设置 → 模型 里可能已有的推理 Key」。host 逐个查已配置状态，
+//                 命中即视为「已绑定」——设置页折叠卡摘要与信息栏引导态都按它判定，不在别处硬编码。
 //   oauthRecord   可选：宿主已有的登录态凭据记录（llm-pi-ai/<provider>），插件只读复用
 //   official      true=官方文档/官方接口；false=社区逆向或半官方端点
 //   verification  live=有官方文档且被真实账号验证过；third-party=按官方文档/官方源码/多份社区实现实现；
@@ -34,6 +38,7 @@ export const CREDENTIAL_CATALOG = [
     providers: ['qwen-token-plan', 'qwen-token-plan-cn', 'qwen-token-plan-individual'],
     official: true,
     verification: 'unverified',
+    detectRefs: ['QWEN_TOKEN_PLAN_API_KEY', 'QWEN_TOKEN_PLAN_CN_API_KEY'],
     credentials: [
       { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', labelKey: 'ui.credentialAlibabaIdLabel', hintKey: 'ui.credentialAlibabaIdHint', inline: true },
       { ref: 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', labelKey: 'ui.credentialAlibabaSecretLabel', hintKey: 'ui.credentialAlibabaHint', inline: true },
@@ -74,8 +79,10 @@ export const CREDENTIAL_CATALOG = [
       { ref: 'XIAOMI_TOKEN_PLAN_CN_API_KEY', inline: true },
       { ref: 'XIAOMI_TOKEN_PLAN_SGP_API_KEY', inline: true },
       { ref: 'XIAOMI_TOKEN_PLAN_AMS_API_KEY', inline: true },
-      { ref: 'XIAOMI_API_KEY', inline: true },
+      // XIAOMI_API_KEY 是按量余额的推理 Key（DSH 设置 → 模型 里配），不进插件设置页。
+      { ref: 'XIAOMI_API_KEY', inline: false },
     ],
+    detectRefs: ['XIAOMI_API_KEY', 'XIAOMI_TOKEN_PLAN_CN_API_KEY', 'XIAOMI_TOKEN_PLAN_SGP_API_KEY', 'XIAOMI_TOKEN_PLAN_AMS_API_KEY'],
   },
   {
     id: 'zhipu',
@@ -84,10 +91,13 @@ export const CREDENTIAL_CATALOG = [
     providers: ['zai', 'zai-coding-cn'],
     official: false,
     verification: 'third-party',
+    // 两个 Key 都是推理 Key（DSH 设置 → 模型 里 zai / zai-coding-cn 的模型 Key），查额度直接复用：
+    // 插件设置页不再提供第二遍输入，只靠 detectRefs 识别「已绑定」。
     credentials: [
-      { ref: 'ZAI_API_KEY', inline: true },
-      { ref: 'ZAI_CODING_CN_API_KEY', inline: true },
+      { ref: 'ZAI_API_KEY', inline: false },
+      { ref: 'ZAI_CODING_CN_API_KEY', inline: false },
     ],
+    detectRefs: ['ZAI_API_KEY', 'ZAI_CODING_CN_API_KEY'],
   },
   {
     id: 'command-code',
@@ -138,6 +148,7 @@ export const CREDENTIAL_CATALOG = [
     official: true,
     verification: 'third-party',
     credentials: [{ ref: 'MOONSHOT_API_KEY', inline: false }],
+    detectRefs: ['MOONSHOT_API_KEY'],
   },
   {
     id: 'openrouter',
@@ -147,6 +158,7 @@ export const CREDENTIAL_CATALOG = [
     official: true,
     verification: 'third-party',
     credentials: [{ ref: 'OPENROUTER_API_KEY', inline: false }],
+    detectRefs: ['OPENROUTER_API_KEY'],
   },
   {
     id: 'stepfun',
@@ -156,6 +168,7 @@ export const CREDENTIAL_CATALOG = [
     official: true,
     verification: 'third-party',
     credentials: [{ ref: 'STEPFUN_API_KEY', inline: false }],
+    detectRefs: ['STEPFUN_API_KEY'],
   },
   {
     id: 'together',
@@ -165,6 +178,7 @@ export const CREDENTIAL_CATALOG = [
     official: true,
     verification: 'third-party',
     credentials: [{ ref: 'TOGETHER_API_KEY', inline: false }],
+    detectRefs: ['TOGETHER_API_KEY'],
   },
   {
     id: 'fireworks',
@@ -174,6 +188,7 @@ export const CREDENTIAL_CATALOG = [
     official: true,
     verification: 'third-party',
     credentials: [{ ref: 'FIREWORKS_API_KEY', inline: false }],
+    detectRefs: ['FIREWORKS_API_KEY'],
   },
   {
     id: 'cloudflare',
@@ -186,6 +201,7 @@ export const CREDENTIAL_CATALOG = [
       { ref: 'CLOUDFLARE_API_KEY', inline: false },
       { ref: 'CLOUDFLARE_ACCOUNT_ID', inline: false },
     ],
+    detectRefs: ['CLOUDFLARE_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'],
   },
   {
     id: 'huggingface',
@@ -198,6 +214,7 @@ export const CREDENTIAL_CATALOG = [
       { ref: 'HF_TOKEN', inline: false },
       { ref: 'HUGGING_FACE_HUB_TOKEN', inline: false },
     ],
+    detectRefs: ['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'],
   },
   {
     id: 'amazon-bedrock',
