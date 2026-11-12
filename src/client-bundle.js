@@ -1410,7 +1410,10 @@ function bibSetInstallStyles() {
       .bib-set-fieldblock-panel { flex: 1 0 100%; }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
       .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
-      .bib-set-custom-text-input:focus-visible, .bib-set-time-zone:focus-visible, .bib-set-language:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
+      /* v1.24.0：额度凭据输入框与自定义文字同一套自绘外观（宿主没有原生 Input 时走这里）。
+         独立声明块而不是合并选择器：几何守卫按类逐个检查 --bib-input-radius。 */
+      .bib-set-credential-input { box-sizing: border-box; width: 260px; max-width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-custom-text-input:focus-visible, .bib-set-credential-input:focus-visible, .bib-set-time-zone:focus-visible, .bib-set-language:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
       /* 色板：预设色不再描边（描边 + 虚线圈是「手绘控件」的观感），选中用宿主主文字色的双环，
@@ -2197,10 +2200,150 @@ function bibSetQuotaDisplaySection(props) {
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
 // 不要在 InfoBarSettingsSection 的 return 里再插一段（体系统一化：加东西改 1 处）。
 // 每行 render(ctx) 收到同一个上下文包；返回 null 的区不占位（与原来直写 null 一致）。
+
+// ---------- v1.24.0：额度凭据设置区（阿里 AccessKey / Kimi Key）----------
+// 目的：用户不看发布说明，也能在插件页里把「查额度需要的只读凭据」配好。
+// 值由 host 侧写进 DSH 凭据存储（ctx.credentials.set → 本机 .credentials.yaml，0600），
+// 插件自己的 settings.json 里不留明文，界面保存后也不再回显。
+// v1.24.0：额度凭据目录（构建时从 src/constants.js 注入；新增额度来源只改那张表）
+const CREDENTIAL_CATALOG = /*__CREDENTIAL_CATALOG__*/[];
+
+function bibSetCredentialSourceLabel(source) {
+  // 来源取自 DSH 凭据服务的 describe()：file / env / project-env / user-env（后两者是 .env 文件）
+  if (source === 'file') return t('ui.credentialSourceFile');
+  if (source === 'env') return t('ui.credentialSourceEnv');
+  if (source === 'project-env') return t('ui.credentialSourceProjectEnv');
+  if (source === 'user-env') return t('ui.credentialSourceUserEnv');
+  if (typeof source === 'string' && source.length > 0) return source;
+  return t('ui.credentialSourceOther');
+}
+
+// 把「设置页要渲染的凭据行」从 host 返回的 groups 拍平；老宿主还没实现该接口时，
+// 退回目录表本身（状态未知、写入不可用），至少把「需要配什么」告诉用户。
+function bibSetCredentialRowsFromCatalog(state) {
+  const rows = [];
+  const groups = state && Array.isArray(state.groups) ? state.groups : [];
+  if (groups.length > 0) {
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      const credentials = group && Array.isArray(group.credentials) ? group.credentials : [];
+      for (let j = 0; j < credentials.length; j++) {
+        const c = credentials[j];
+        if (!c || typeof c.ref !== 'string') continue;
+        rows.push({
+          ref: c.ref,
+          providerLabel: (typeof group.labelKey === 'string' && group.labelKey.length > 0) ? t(group.labelKey) : (typeof group.label === 'string' && group.label.length > 0 ? group.label : t('ui.subscription')),
+          labelText: (typeof c.labelKey === 'string' && c.labelKey.length > 0) ? t(c.labelKey) : null,
+          hintText: (typeof c.hintKey === 'string' && c.hintKey.length > 0) ? t(c.hintKey) : t('ui.credentialGenericHint'),
+          configured: c.configured === true,
+          source: c.source || null,
+          writable: c.writable !== false,
+          kimiLoginReused: false,
+        });
+      }
+    }
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].ref === 'KIMI_API_KEY' && !rows[i].configured && state && state.kimiLogin && state.kimiLogin.configured === true) {
+        rows[i].kimiLoginReused = true;
+      }
+    }
+    return rows;
+  }
+  for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
+    const entry = CREDENTIAL_CATALOG[i];
+    const credentials = entry && Array.isArray(entry.credentials) ? entry.credentials : [];
+    for (let j = 0; j < credentials.length; j++) {
+      const c = credentials[j];
+      if (!c || c.inline !== true || typeof c.ref !== 'string') continue;
+      rows.push({
+        ref: c.ref,
+        providerLabel: (typeof entry.labelKey === 'string' && entry.labelKey.length > 0) ? t(entry.labelKey) : (typeof entry.label === 'string' && entry.label.length > 0 ? entry.label : t('ui.subscription')),
+        labelText: (typeof c.labelKey === 'string' && c.labelKey.length > 0) ? t(c.labelKey) : null,
+        hintText: (typeof c.hintKey === 'string' && c.hintKey.length > 0) ? t(c.hintKey) : t('ui.credentialGenericHint'),
+        configured: false,
+        source: null,
+        writable: false,
+        kimiLoginReused: false,
+      });
+    }
+  }
+  return rows;
+}
+
+function bibSetCredentialsSection(props) {
+  const state = props.credentialState;
+  // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
+  // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
+  const loaded = state !== null;
+  const canWrite = loaded && state.canWrite === true;
+  const drafts = props.credentialDrafts || {};
+  const feedback = props.credentialFeedback;
+  const rows = bibSetCredentialRowsFromCatalog(state);
+  const blocks = rows.map(function (row) {
+    const busy = props.credentialBusyRef === row.ref;
+    const draft = typeof drafts[row.ref] === 'string' ? drafts[row.ref] : '';
+    const labelId = 'bib-set-credential-' + row.ref + '-label';
+    // 标签单一来源：有专属 labelKey 用专属文案，否则用通用模板键（{provider} · {ref}），
+    // 不在客户端拼接字符串 —— 文案改一处即可，也不会绕开 locale 测试的键覆盖检查。
+    const labelText = row.labelText || t('ui.credentialGenericLabel', { provider: row.providerLabel, ref: row.ref });
+    const statusText = row.kimiLoginReused
+      ? t('ui.credentialKimiLoginReused')
+      : (row.configured
+        ? t('ui.credentialConfigured', { source: bibSetCredentialSourceLabel(row.source) })
+        : t('ui.credentialNotConfigured'));
+    return React.createElement('div', { key: row.ref, className: 'bib-set-fieldblock' },
+      React.createElement('div', { className: 'bib-set-fieldblock-copy' },
+        React.createElement('span', { id: labelId, className: 'bib-set-fieldblock-label' }, labelText),
+        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, row.hintText),
+        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, statusText)),
+      React.createElement('div', { className: 'bib-set-fieldblock-control' },
+        bibSetInput({
+          layout: 'bib-set-input--field',
+          fallbackClassName: 'bib-set-credential-input',
+          attrs: {
+            id: 'bib-set-credential-' + row.ref,
+            type: 'password',
+            autoComplete: 'new-password',
+            spellCheck: false,
+            maxLength: 512,
+            placeholder: t('ui.credentialPlaceholder'),
+            value: draft,
+            disabled: !canWrite || busy,
+            onChange: function (event) { props.onCredentialDraft(row.ref, event && event.target ? event.target.value : ''); },
+            'aria-labelledby': labelId,
+          },
+        }),
+        React.createElement('div', { className: 'bib-set-data-button-group' },
+          bibSetButton({
+            disabled: !canWrite || busy || draft.trim().length === 0,
+            onClick: function () { props.onCredentialSave(row.ref); },
+            children: t('ui.credentialSave'),
+          }),
+          row.configured ? bibSetButton({
+            disabled: !canWrite || busy,
+            onClick: function () { props.onCredentialClear(row.ref); },
+            children: t('ui.credentialClear'),
+          }) : null)));
+  });
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-credentials-title',
+      title: t('ui.credentialsTitle'),
+      description: t('ui.credentialsDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-fieldblocks' }, blocks),
+    loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
+    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
+    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')),
+    feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null);
+}
+
 const BIB_SET_SECTIONS = [
   { id: 'timeDate', render: function (deps) { return bibSetTimeDateSection({ fieldOn: deps.fieldOn, timeZonesOf: deps.timeZonesOf, onTimeZoneChange: deps.setTimeZone }); } },
   { id: 'customText', render: function (deps) { return bibSetCustomTextSection({ fieldOn: deps.fieldOn, customTextDraft: deps.customTextDraft, customTextOf: deps.customTextOf, onCustomTextChange: deps.onCustomTextChange, onCustomTextCommit: deps.commitCustomText }); } },
   { id: 'quota', render: function (deps) { return bibSetQuotaDisplaySection({ fieldOn: deps.fieldOn, modeOf: deps.quotaDisplayModeOf, onModeChange: deps.setQuotaDisplayMode }); } },
+  { id: 'credentials', render: function (deps) { return bibSetCredentialsSection({ credentialState: deps.credentialState, credentialDrafts: deps.credentialDrafts, credentialBusyRef: deps.credentialBusyRef, credentialFeedback: deps.credentialFeedback, onCredentialDraft: deps.onCredentialDraft, onCredentialSave: deps.onCredentialSave, onCredentialClear: deps.onCredentialClear }); } },
   { id: 'data', render: function (deps) { return bibSetDataCard({ busy: deps.busy, onExport: deps.runExport, onClear: deps.runClearRecords }); } },
   { id: 'version', render: function (deps) { return bibSetVersionSection({ state: deps.updateState, error: deps.updateError, busy: deps.updateBusy, phase: deps.updatePhase, onToggleAuto: deps.onToggleUpdateAuto, onCheck: deps.onCheckUpdate, onInstall: deps.onInstallUpdate, onForce: deps.onForceUpdate, onRollback: deps.onRollbackUpdate }); } },
 ];
@@ -2710,6 +2853,59 @@ function InfoBarSettingsSection() {
     });
   }
 
+  // ---------- v1.24.0：额度凭据（阿里 AccessKey / Kimi Key）----------
+  // 只保存到 DSH 凭据存储；读状态与动作结果都不含明文，保存成功后清空输入框。
+  const [credentialState, setCredentialState] = React.useState(null);
+  const [credentialDrafts, setCredentialDrafts] = React.useState({});
+  const [credentialBusyRef, setCredentialBusyRef] = React.useState(null);
+  const [credentialFeedback, setCredentialFeedback] = React.useState(null);
+  React.useEffect(function () {
+    let active = true;
+    rpc('getCredentialConfig').then(function (res) {
+      if (active && res && Array.isArray(res.items)) setCredentialState(res);
+    }).catch(function () {
+      // 旧宿主没有该接口：区块照常显示，但写入能力标为不可用，避免给出假按钮。
+      if (active) setCredentialState({ items: [], canWrite: false });
+    });
+    return function () { active = false; };
+  }, []);
+  function credentialErrorText(code) {
+    if (code === 'invalid-value') return t('ui.credentialInvalidValue');
+    if (code === 'write-unsupported') return t('ui.credentialWriteUnsupported');
+    return t('ui.credentialWriteFailed');
+  }
+  function runCredentialAction(ref, factory, successKey) {
+    setCredentialBusyRef(ref);
+    setCredentialFeedback(null);
+    return factory().then(function (res) {
+      setCredentialBusyRef(null);
+      if (res && res.ok) {
+        setCredentialState(res);
+        setCredentialFeedback({ tone: 'info', text: t(successKey) });
+        // 信息栏监听该事件后立即重拉，不用等 30 秒轮询才看到新额度。
+        bibSetDispatchLedgerChanged();
+      } else {
+        setCredentialFeedback({ tone: 'error', text: credentialErrorText(res && res.code) });
+      }
+      return res;
+    }).catch(function (err) {
+      setCredentialBusyRef(null);
+      setCredentialFeedback({ tone: 'error', text: bibSetOperationMessage(err) });
+    });
+  }
+  function onCredentialDraft(ref, value) {
+    setCredentialDrafts(function (prev) { const next = Object.assign({}, prev); next[ref] = value; return next; });
+  }
+  function onCredentialSave(ref) {
+    const value = typeof credentialDrafts[ref] === 'string' ? credentialDrafts[ref].trim() : '';
+    if (value.length === 0) return Promise.resolve();
+    return runCredentialAction(ref, function () { return rpc('setCredential', { ref: ref, value: value }); }, 'ui.credentialSaved').then(function (res) {
+      if (res && res.ok) setCredentialDrafts(function (prev) { const next = Object.assign({}, prev); next[ref] = ''; return next; });
+    });
+  }
+  function onCredentialClear(ref) {
+    return runCredentialAction(ref, function () { return rpc('clearCredential', { ref: ref }); }, 'ui.credentialCleared');
+  }
   const beginOp = React.useCallback(function () {
     savingCountRef.current += 1;
     setSaving(true);
@@ -3085,6 +3281,13 @@ function InfoBarSettingsSection() {
       onInstallUpdate: onInstallUpdate,
       onForceUpdate: onForceUpdate,
       onRollbackUpdate: onRollbackUpdate,
+      credentialState: credentialState,
+      credentialDrafts: credentialDrafts,
+      credentialBusyRef: credentialBusyRef,
+      credentialFeedback: credentialFeedback,
+      onCredentialDraft: onCredentialDraft,
+      onCredentialSave: onCredentialSave,
+      onCredentialClear: onCredentialClear,
     }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
     resetDialog);

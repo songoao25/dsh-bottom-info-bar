@@ -12,7 +12,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
 // v1.9.0 PR2：字段注册表/预设色名单一来源（ESM 直接 import，构建时把 constants.js 一并复制进 lib/）
-import { FIELD_REGISTRY, PRESET_COLOR_NAMES, PROVIDER_IDENTITY } from './constants.js'
+import { CREDENTIAL_CATALOG, FIELD_REGISTRY, PRESET_COLOR_NAMES, PROVIDER_IDENTITY } from './constants.js'
 // 版本身份与语义化比较的唯一来源（包名/registry 地址/包版本/semver 比较，见 src/version.js）
 import { PACKAGE_DIR, PACKAGE_FILE, UPDATE_REGISTRY_URL, compareSemver, packageVersion } from './version.js'
 // 自更新引擎（宿主没有「更新」动作，插件自己更新自己；见 docs/DECISIONS-AUTO-UPDATE.md）
@@ -1398,6 +1398,21 @@ const KIMI_CODING_BASE_URLS = ['https://api.kimi.com/coding/v1', 'https://api.ki
 // KIMI_API_KEY 是 DSH 自己 kimi-coding provider 的 API Key 环境变量名；其余按社区/别名兜底。
 // 末尾两个名字用于 DSH 把订阅 OAuth 登录态存进凭据服务时按 provider id/别名取 access_token（未验证）。
 const KIMI_CODING_CREDENTIAL_NAMES = ['KIMI_API_KEY', 'KIMI_CODING_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_CODE_API_KEY', 'kimi-coding']
+
+// v1.24.0：设置页可写入的额度凭据白名单 —— 由 constants.js 的 CREDENTIAL_CATALOG 派生（单一生源），
+// 只认同表里登记过的环境变量名，只写 DSH 凭据存储。新增额度来源时改目录表，不在这里加 if。
+const CREDENTIAL_CONFIG_REFS = CREDENTIAL_CATALOG.reduce(function (refs, entry) {
+  const list = entry && Array.isArray(entry.credentials) ? entry.credentials : []
+  for (let i = 0; i < list.length; i++) {
+    const ref = list[i] && typeof list[i].ref === 'string' ? list[i].ref : ''
+    if (ref.length > 0 && refs.indexOf(ref) < 0) refs.push(ref)
+  }
+  return refs
+}, [])
+const CREDENTIAL_VALUE_MAX_LEN = 512
+// DSH 里 Kimi Code 订阅登录态存在该凭据记录（scope='llm-pi-ai'，id='kimi-coding'；pi-ai 的 grant 形态）
+const KIMI_CODING_RECORD_KEY = 'llm-pi-ai/kimi-coding'
+
 
 function alibabaSha256Hex(value) {
   return createHash('sha256').update(value).digest('hex')
@@ -3088,8 +3103,22 @@ export default {
     // ---------- v1.22.0：Kimi For Coding 订阅额度（GET /coding/v1/usages，Bearer API Key） ----------
     // 官方没有公开文档，但三份独立实现（cc-switch / hermes / quota-bar）都用同一数据面端点；
     // CN 站 api.kimi.com，国际站 api.kimi.ai。先 CN 后国际，任一返回可识别窗口即用。
-    // DSH 里 Kimi For Coding 有两种登录：API Key（KIMI_API_KEY）与订阅 OAuth（设备码登录）。
-    // 凭据服务按名字解析：字符串直接用；对象形态（OAuth 存 access_token）也从常见字段里取。
+    // DSH 里 Kimi For Coding 有两种登录：API Key（KIMI_API_KEY）与订阅 OAuth（设置 → 模型 里的设备码登录）。
+    // OAuth 登录态由宿主存在凭据记录 llm-pi-ai/kimi-coding（pi-ai grant：{ type:'oauth', access, refresh, expires }），
+    // 这里只读 access 用于额度查询，不替宿主续期：过期就交给下一次模型请求去刷新。
+    async function readKimiCodingRecordToken() {
+      try {
+        if (typeof ctx.credentials.readRecord !== 'function') return null;
+        const record = await ctx.credentials.readRecord(KIMI_CODING_RECORD_KEY);
+        if (!record || typeof record !== 'object') return null;
+        const payload = record.payload && typeof record.payload === 'object' ? record.payload : record;
+        const access = typeof payload.access === 'string' && payload.access.length > 0 ? payload.access : null;
+        if (!access) return null;
+        const expires = typeof payload.expires === 'number' ? payload.expires : null;
+        if (expires != null && expires <= Date.now()) return null;
+        return access;
+      } catch (err) { return null; }
+    }
     async function resolveKimiCodingKey() {
       for (let i = 0; i < KIMI_CODING_CREDENTIAL_NAMES.length; i++) {
         const name = KIMI_CODING_CREDENTIAL_NAMES[i]
@@ -3107,7 +3136,8 @@ export default {
         const value = processEnvValue(KIMI_CODING_CREDENTIAL_NAMES[i])
         if (value) return value
       }
-      return null
+      // 最后兜底：复用 DSH「设置 → 模型」里的 Kimi Code 订阅登录（用户零配置即可看额度）。
+      return await readKimiCodingRecordToken()
     }
 
     async function fetchKimiCodingUsage() {
@@ -3271,6 +3301,113 @@ export default {
         if (value) return value;
       }
       return null;
+    }
+
+    // ---------- v1.24.0：设置页「额度凭据」读写（阿里 AccessKey / Kimi Key） ----------
+    // 只允许白名单里的引用名；值只写 DSH 凭据存储（ctx.credentials.set → 本机 .credentials.yaml，
+    // 由宿主维护、权限 0600），不写插件自己的 settings.json，也不回显任何已保存的值。
+    // 目的：用户不看发布说明，也能在插件设置页里把阿里/Kimi 的额度凭据配好。
+    function credentialConfigRef(args) {
+      const ref = args && typeof args === 'object' && typeof args.ref === 'string' ? args.ref : '';
+      return CREDENTIAL_CONFIG_REFS.indexOf(ref) >= 0 ? ref : null;
+    }
+    function credentialConfigValue(args) {
+      const raw = args && typeof args === 'object' && typeof args.value === 'string' ? args.value.trim() : '';
+      if (raw.length === 0 || raw.length > CREDENTIAL_VALUE_MAX_LEN) return null;
+      // 凭据是单行 token：拒绝空白与控制字符，避免把换行/引号写坏 YAML 值
+      if (!/^[\x21-\x7E]+$/.test(raw)) return null;
+      return raw;
+    }
+    // 单个 ref 的状态：能用 describe 就用（宿主能给出来源与可写性），否则回退 resolve。
+    async function describeCredentialRef(ref) {
+      const item = { ref: ref, configured: false, source: null, writable: false };
+      try {
+        if (typeof ctx.credentials.describe === 'function') {
+          const described = await ctx.credentials.describe(ref);
+          if (described && typeof described === 'object') {
+            item.configured = described.configured === true;
+            item.source = typeof described.source === 'string' ? described.source : null;
+            item.writable = described.writable !== false;
+          }
+        } else {
+          const resolved = await ctx.credentials.resolve(ref);
+          item.configured = !!(resolved && resolved.value);
+          item.source = resolved && typeof resolved.source === 'string' ? resolved.source : null;
+          item.writable = typeof ctx.credentials.set === 'function';
+        }
+      } catch (err) { /* 读不到按未配置展示：设置页不能 500 */ }
+      return item;
+    }
+    // 设置页「额度凭据」的状态：items 是扁平视图，groups 是按 CREDENTIAL_CATALOG 分组的可渲染视图，
+    // 只有 inline:true 的凭据需要用户在本插件里填（其余走 DSH 设置 → 模型 / 本机登录）。
+    async function describeCredentialConfig() {
+      const statusByRef = Object.create(null);
+      const items = [];
+      for (let i = 0; i < CREDENTIAL_CONFIG_REFS.length; i++) {
+        const item = await describeCredentialRef(CREDENTIAL_CONFIG_REFS[i]);
+        statusByRef[item.ref] = item;
+        items.push(item);
+      }
+      const groups = [];
+      for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
+        const entry = CREDENTIAL_CATALOG[i];
+        const credentials = Array.isArray(entry.credentials) ? entry.credentials.filter(function (c) { return c && c.inline === true; }) : [];
+        if (credentials.length === 0) continue;
+        groups.push({
+          id: entry.id,
+          labelKey: typeof entry.labelKey === 'string' ? entry.labelKey : null,
+          label: typeof entry.label === 'string' ? entry.label : null,
+          mode: typeof entry.mode === 'string' ? entry.mode : null,
+          credentials: credentials.map(function (c) {
+            return Object.assign({
+              ref: c.ref,
+              labelKey: typeof c.labelKey === 'string' ? c.labelKey : null,
+              hintKey: typeof c.hintKey === 'string' ? c.hintKey : null,
+            }, statusByRef[c.ref] || { ref: c.ref, configured: false, source: null, writable: false });
+          }),
+        });
+      }
+      let kimiLogin = { configured: false };
+      try {
+        // 用「能读出一个未过期的 access token」为准：记录存在但已过期时，界面上说「已复用」
+        // 会立刻被查询结果打脸（resolveKimiCodingKey 不返回过期 token）。
+        const accessToken = await readKimiCodingRecordToken();
+        kimiLogin = { configured: !!accessToken };
+      } catch (err) { /* 登录态读不到就当没有：不影响手填 Key */ }
+      return {
+        items: items,
+        groups: groups,
+        footnoteKey: 'ui.credentialFootnote',
+        canWrite: typeof ctx.credentials.set === 'function' && typeof ctx.credentials.unset === 'function',
+        kimiLogin: kimiLogin,
+      };
+    }
+    // 保存/清除后立刻重查「受这个凭据影响的订阅源」（失败有上一份快照兜底，不影响保存结果）。
+    // 订阅源与 provider 的关系来自 CREDENTIAL_CATALOG + PROVIDER_IDENTITY，不在代码里再写一张表。
+    async function refreshSubscriptionAfterCredential(ref) {
+      const seen = Object.create(null);
+      const jobs = [];
+      for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
+        const entry = CREDENTIAL_CATALOG[i];
+        if (!entry || entry.mode !== 'subscription') continue;
+        const credentials = Array.isArray(entry.credentials) ? entry.credentials : [];
+        const matched = credentials.some(function (c) { return c && c.ref === ref; });
+        if (!matched) continue;
+        const providers = Array.isArray(entry.providers) ? entry.providers : [];
+        for (let p = 0; p < providers.length; p++) {
+          const sourceKey = subscriptionSourceFor(providers[p]);
+          if (!sourceKey || seen[sourceKey]) continue;
+          seen[sourceKey] = true;
+          jobs.push({ sourceKey: sourceKey, providerId: providers[p] });
+        }
+      }
+      for (let i = 0; i < jobs.length; i++) {
+        try {
+          subscriptionEngine.markRequested(jobs[i].sourceKey);
+          subscriptionSourceProvider[jobs[i].sourceKey] = jobs[i].providerId;
+          await subscriptionEngine.kick(jobs[i].sourceKey, jobs[i].providerId);
+        } catch (err) { /* 刷新失败不影响保存结果，下一轮轮询再试 */ }
+      }
     }
 
     // v1.7 FR-9：小米 MiMo Token Plan 订阅源（按地区路由 baseUrl + 凭据，地区互不串数据）
@@ -4677,6 +4814,38 @@ export default {
         const result = selfUpdater ? selfUpdater.rollback() : { restored: false, reason: 'disabled' }
         return Object.assign({}, await updateStatePayload(), { rollback: result })
       },
+      // v1.24.0：额度凭据（阿里 AccessKey / Kimi Key）——插件设置页直接保存/清除。
+      // 只读状态永远可用；写入只走白名单引用名，错误用稳定 code 回给客户端翻译。
+      getCredentialConfig: async function () {
+        return describeCredentialConfig();
+      },
+      setCredential: async function (args) {
+        const ref = credentialConfigRef(args);
+        if (!ref) return { ok: false, code: 'invalid-ref' };
+        if (typeof ctx.credentials.set !== 'function') return { ok: false, code: 'write-unsupported' };
+        const value = credentialConfigValue(args);
+        if (!value) return { ok: false, code: 'invalid-value' };
+        try {
+          await ctx.credentials.set(ref, value);
+        } catch (err) {
+          // 宿主原始报错可能带路径/细节：只回稳定 code，不把原文透给界面。
+          return { ok: false, code: 'write-failed' };
+        }
+        await refreshSubscriptionAfterCredential(ref);
+        return Object.assign({ ok: true }, await describeCredentialConfig());
+      },
+      clearCredential: async function (args) {
+        const ref = credentialConfigRef(args);
+        if (!ref) return { ok: false, code: 'invalid-ref' };
+        if (typeof ctx.credentials.unset !== 'function') return { ok: false, code: 'write-unsupported' };
+        try {
+          await ctx.credentials.unset(ref);
+        } catch (err) {
+          return { ok: false, code: 'write-failed' };
+        }
+        await refreshSubscriptionAfterCredential(ref);
+        return Object.assign({ ok: true }, await describeCredentialConfig());
+      },
       getBalanceSnapshot: async function (args) {
         const sel = selectionFromArgs(args);
         // force：客户端刚打开/刷新网页时的强制刷新——当场重查服务商，不等 60s 周期缓存
@@ -4919,7 +5088,7 @@ export default {
     // connection 服务统一完成，插件不能根据 Origin/Host 自行判断。
     // 更新四件套都走 POST：installUpdate / runUpdateCheck 会替换包内文件，setUpdateAuto 与
     // rollbackUpdate 会改状态，checkUpdate 会写「上次检查时间」并触发一次网络查询。
-    const MUTATING = { getBalanceSnapshot: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true, checkUpdate: true, enterUpdatePage: true, installUpdate: true, runUpdateCheck: true, setUpdateAuto: true, rollbackUpdate: true };
+    const MUTATING = { getBalanceSnapshot: true, setInfoDensity: true, getSubscriptionSnapshot: true, getBillingStatus: true, setFieldConfig: true, resetFieldConfig: true, resetFieldColors: true, clearUsageRecords: true, checkUpdate: true, enterUpdatePage: true, installUpdate: true, runUpdateCheck: true, setUpdateAuto: true, rollbackUpdate: true, setCredential: true, clearCredential: true };
     function invalidArgument(message) {
       const err = new Error(message);
       err.status = 400;

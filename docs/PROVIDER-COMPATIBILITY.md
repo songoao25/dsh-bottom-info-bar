@@ -27,6 +27,8 @@
 
 ## 维护约束
 
+`src/constants.js` 中的 `CREDENTIAL_CATALOG` 是额度数据源的单一生源：host 的可写凭据白名单、设置页「额度凭据」区、测试的覆盖守卫都从它派生；新增一个来源只改这张表 + fetch/parse，不要在别处再硬编码凭据名。适配新服务商的选型顺序、凭据规则与验收清单见 [CONTRIBUTING.md 的 “Quota data source adapters”](../CONTRIBUTING.md#quota-data-source-adapters)。
+
 `src/constants.js` 中的 `DSH_PRESET_PROVIDERS` 是测试锁定的宿主兼容性基线。DSH 增加预置 provider 时，必须先为它在 `PROVIDER_IDENTITY` 指定账户归属和在需要时指定默认账本币种；测试不允许它悄悄退化为未知服务商。
 
 ### Volcengine Ark
@@ -35,8 +37,8 @@ Custom provider `volcengine-ark` is recognized without an account balance API. B
 
 ### 阿里 Token Plan（百炼 Credits 订阅）
 
-Provider id `qwen-token-plan`、`qwen-token-plan-individual`（国际站 `ap-southeast-1`）与 `qwen-token-plan-cn`（中国站 `cn-beijing`），信息栏显示名统一为 Qwen Token Plan；两个站点的额度快照各自独立，不串账。额度没有 API Key 数据面端点：推理套餐 Key（`sk-sp-…`）只能推理，读不到额度，所以改用阿里云 AccessKey（`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`，RAM 用户即可），走两条只读链路——一是官方 OpenAPI `GetSubscriptionStats`（按席位汇总总/剩余 Credits，系统策略 `AliyunTokenPlanReadOnlyAccess` 即可），二是官方 CLI 同款链路（AK/SK 换控制台临时令牌，再从控制台网关取月度已用百分比与重置时间，需要额外自定义策略授予 `modelstudio:GenerateCLIAccessToken`）。任一链路成功即显示对应窗口；都失败时按“未配置 / 凭据或权限不足 / 未订阅 / 无法识别”给可操作提示，并保留上一份成功快照，不显示 0%。两条链路都只读，不读浏览器 Cookie，也不写远端状态。验证程度：签名与解析按官方文档、官方 CLI 源码实现并有单测覆盖，但尚未用真实订阅账号做端到端实测——个人版 `GetSubscriptionStats` 的返回形态与国际站网关组合以实机为准。
+Provider id `qwen-token-plan`、`qwen-token-plan-individual`（国际站 `ap-southeast-1`）与 `qwen-token-plan-cn`（中国站 `cn-beijing`），信息栏显示名统一为 Qwen Token Plan；两个站点的额度快照各自独立，不串账。额度没有 API Key 数据面端点：推理套餐 Key（`sk-sp-…`）只能推理，读不到额度，所以改用阿里云 AccessKey（`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`，RAM 用户即可），走两条只读链路——一是官方 OpenAPI `GetSubscriptionStats`（按席位汇总总/剩余 Credits，系统策略 `AliyunTokenPlanReadOnlyAccess` 即可），二是官方 CLI 同款链路（AK/SK 换控制台临时令牌，再从控制台网关取月度已用百分比与重置时间，需要额外自定义策略授予 `modelstudio:GenerateCLIAccessToken`）。任一链路成功即显示对应窗口；都失败时按“未配置 / 凭据或权限不足 / 未订阅 / 无法识别”给可操作提示，并保留上一份成功快照，不显示 0%。凭据可以在插件设置页的「额度凭据」里直接填（写入 DSH 凭据存储，不写插件配置），也可以走环境变量。两条链路都只读，不读浏览器 Cookie，也不写远端状态。验证程度：签名与解析按官方文档、官方 CLI 源码实现并有单测覆盖，但尚未用真实订阅账号做端到端实测——个人版 `GetSubscriptionStats` 的返回形态与国际站网关组合以实机为准。
 
 ### Kimi For Coding
 
-Provider id `kimi-coding`，凭据是订阅的专属 API Key（`KIMI_API_KEY`，DSH 里 kimi-coding 的凭据名；回退 `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY`），以 Bearer 调 `GET https://api.kimi.com/coding/v1/usages`，国内站失败时自动回退国际站 `https://api.kimi.ai/coding/v1/usages`；显示 5 小时与周两个窗口，401/403 按凭据失效提示，不显示 0%。Kimi 没有公开的官方文档，端点与字段来自三份独立社区实现的一致口径，属于非官方文档接口，可能随上游变化；解析失败时保留上一份快照并提示无法识别。验证程度：解析层有单测覆盖，端点本身未在本机用真实 Key 实测。
+Provider id `kimi-coding`，凭据是订阅的专属 API Key（`KIMI_API_KEY`，DSH 里 kimi-coding 的凭据名；回退 `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY`），以 Bearer 调 `GET https://api.kimi.com/coding/v1/usages`，国内站失败时自动回退国际站 `https://api.kimi.ai/coding/v1/usages`；显示 5 小时与周两个窗口，401/403 按凭据失效提示，不显示 0%。Key 同样可以在插件设置页的「额度凭据」里填。Kimi 没有公开的官方文档，端点与字段来自三份独立社区实现的一致口径，属于非官方文档接口，可能随上游变化；解析失败时保留上一份快照并提示无法识别。验证程度：解析层有单测覆盖，端点本身未在本机用真实 Key 实测。

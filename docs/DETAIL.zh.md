@@ -2,5 +2,6 @@
 - 按服务商自动选择余额、订阅额度或云账单口径，不用手动切换
 - 花费分本会话、今天、近 30 天和累计四档，数据只保存在本机
 - 点击信息栏中的字段，在完整和简洁两种显示之间切换
+- 已适配服务商的额度凭据（阿里 AccessKey、Kimi/MiniMax/小米/智谱/Command Code 等）可在插件设置页「额度凭据」里直接填，不用改环境变量
 
 设置与排障见 [安装文档](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/docs/INSTALL.md)。

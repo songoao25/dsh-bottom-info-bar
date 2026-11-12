@@ -47,6 +47,7 @@ const cases = [
   ['test-kimi-coding-plan（Kimi For Coding：窗口解析/双站回退/多种凭据形态/失败降级）', ['tests/test-kimi-coding-plan.cjs'], join(root), process.execPath],
   ['test-quota-display-mode（订阅窗口百分比方向：默认 remaining / 切换 used / 落盘与回滚）', ['tests/test-quota-display-mode.cjs'], join(root), process.execPath],
   ['test-minimax-e2e（独立装置：真实 apply + 桩 ctx + 拦截 fetch 的双站点路由/错误码/快照降级）', ['tests/test-minimax-e2e.mjs'], join(root), process.execPath],
+  ['test-credential-config（设置页额度凭据目录：目录契约/值校验/ROUTES 读写/Kimi OAuth 复用/客户端渲染）', ['tests/test-credential-config.cjs'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.cjs'], join(root), process.execPath],
   ['test-usage-ledger（耐久账本与历史价格）', ['tests/test-usage-ledger.mjs'], join(root), process.execPath],
   ['test-session-lineage（Issue #44 父子会话精确归属）', ['tests/test-session-lineage.mjs'], join(root), process.execPath],
