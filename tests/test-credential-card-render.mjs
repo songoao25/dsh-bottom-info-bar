@@ -107,15 +107,12 @@ function credentialInputIds(view) {
   return view.findAll(function (node) { return node.type === 'input' && typeof node.props.id === 'string' && node.props.id.indexOf('bib-set-credential-') === 0 })
     .map(function (node) { return node.props.id.slice('bib-set-credential-'.length) })
 }
-// 体系折叠头：bibSetDisclosure 的 button[aria-controls=<contentId>]
-function disclosureHead(view, contentId) {
-  return view.findAll(function (node) { return node.type === 'button' && node.props['aria-controls'] === contentId })[0]
+// 卡头：与其它折叠区块同款的可点 button[aria-controls=bib-set-credentials-body]
+function cardHeaderButton(view) {
+  return view.findAll(function (node) { return node.type === 'button' && node.props['aria-controls'] === 'bib-set-credentials-body' })[0]
 }
 function collapseBox(view, contentId) {
   return view.findAll(function (node) { return node.props && node.props.id === contentId })[0]
-}
-function staticHeader(view) {
-  return view.findAll(function (node) { return node.type === 'div' && typeof node.props.className === 'string' && node.props.className.indexOf('bib-set-card-header') >= 0 })[0]
 }
 
 // ---- 四轮渲染：状态缺 → 到达 → 又缺 → 到达。hooks 计数漂移（#310 场景）在这里直接炸 ----
@@ -134,22 +131,28 @@ check('R1 四轮渲染（状态缺→到达→又缺→到达）不抛 hooks 契
 
 const tt = hook.api.t
 
-// ---- 卡片态：卡片头是各区块同款 static 头（div，非 button），摘要进 description ----
-const headerNode = staticHeader(renderer.root)
-const headerText = headerNode ? flattenInstanceText(headerNode) : ''
+// ---- 卡片态（2026-11-12 用户拍板：默认折叠，与「原生信息 / 插件信息」同行为）----
+const headerBtn = cardHeaderButton(renderer.root)
+const bodyBox = collapseBox(renderer.root, 'bib-set-credentials-body')
+const headerText = headerBtn ? flattenInstanceText(headerBtn) : ''
 const summaryText = tt('ui.credentialSummaryBound', { count: 1, names: tt('ui.qwenTokenPlan') })
-check('R2 卡片头为 static 头（非折叠按钮）且摘要（已绑定 N 个服务商）在说明位',
-  [!!headerNode, typeof headerNode.props.onClick, headerText.indexOf(summaryText) >= 0],
-  [true, 'undefined', true])
-check('R2b 阿里两行凭据直接渲染、无需任何展开交互（卡内已无组折叠）',
-  credentialInputIds(renderer.root), ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET'])
-check('R2c 复用推理 Key 的服务商（Kimi/MiniMax）绝不出现在卡里',
+check('R2 卡头为可点折叠头且默认收起，摘要（已绑定 N 个服务商）在说明位',
+  [!!headerBtn, headerBtn.props['aria-expanded'], bodyBox.props.hidden, headerText.indexOf(summaryText) >= 0],
+  [true, false, true, true])
+check('R2b 默认收起时内容容器为 hidden（填写行只存在于隐藏容器内，不占默认视野）',
+  [bodyBox.props.hidden, credentialInputIds(renderer.root)],
+  [true, ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
+TestRenderer.act(function () { headerBtn.props.onClick() })
+check('R2c 展开后阿里两行凭据出现（aria-expanded 翻转 + 内容可见）',
+  [headerBtn.props['aria-expanded'], bodyBox.props.hidden, credentialInputIds(renderer.root)],
+  [true, false, ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
+check('R2d 复用推理 Key 的服务商（Kimi/MiniMax）绝不出现在卡里',
   ['KIMI_API_KEY', 'MINIMAX_API_KEY'].map(function (ref) { return credentialInputIds(renderer.root).indexOf(ref) >= 0 }),
   [false, false])
 
-// ---- 未绑定态：说明位切换为「未检测到已绑定的额度凭据」，输入行仍在（用户要填的就是它） ----
+// ---- 未绑定态：说明位切换为「未检测到已绑定的额度凭据」，展开态下填写行保持可见 ----
 TestRenderer.act(function () { renderer.update(sectionEl(NONE_STATE)) })
-const noneHeaderText = staticHeader(renderer.root) ? flattenInstanceText(staticHeader(renderer.root)) : ''
+const noneHeaderText = flattenInstanceText(cardHeaderButton(renderer.root))
 check('R3 未绑定时摘要切换为「未检测到」且阿里填写行保持可见',
   [noneHeaderText.indexOf(tt('ui.credentialSummaryNone')) >= 0, credentialInputIds(renderer.root).length],
   [true, 2])

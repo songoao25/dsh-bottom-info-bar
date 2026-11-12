@@ -68,7 +68,7 @@ check('空闲价为浅色与深色主题分别使用高对比绿色', clientSrc.
   && clientSrc.includes('--bi-state-price-low: #86efac'), true);
 check('低余额、低额度、刷新失败和阻断错误为浅色与深色主题分别使用高对比红色', clientSrc.includes('--bi-state-alert: #d92d20')
   && clientSrc.includes('--bi-state-alert: #ff6961')
-  && clientSrc.includes('.bi-err, .bi-stale { color: var(--bi-state-alert); font-weight: 600; }')
+  && clientSrc.includes('.bi-err, .bi-stale { display: inline-flex; align-items: center; box-sizing: border-box; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 16px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); color: var(--bi-state-alert); font-weight: 600;')
   && clientSrc.includes('.bi-root b.bi-alert-num, .bi-root b.bi-quota-low { color: var(--bi-state-alert); font-weight: 700; }'), true);
 check('主题颜色以 DSH 实际外观属性切换，并在增强对比度下提供独立色阶', clientSrc.includes('body[data-ds-dark-theme] .bi-root')
   && clientSrc.includes('@media (prefers-contrast: more)')

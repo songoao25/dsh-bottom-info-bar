@@ -39,13 +39,14 @@ check('原生统计行隐藏组不占版式（visCount 门控分隔符）', clie
   && clientSrc.includes("key: 'nsep' + i, className: 'bi-sep'"), true);
 check('本会话花费过滤在公共小部件内部（余额制/订阅制共用）', clientSrc.includes("if (fieldVisible('sessionCost')) {")
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
-check('所有可见信息都由字段开关控制（含更新两枚短标记，没有任何绕过开关的节点）',
+check('所有可见信息都由字段开关或数据条件控制（提醒类无开关，其余全部经字段开关）',
   !clientSrc.includes('const CORE_FIELD_IDS = new Set')
-  && clientSrc.includes("fieldVisible('refreshFailure')") && clientSrc.includes("fieldVisible('persistWarning')")
-  // 2026-09-25：更新提醒 / 更新失败提醒进入信息栏，但各自挂在「提醒信息」组的独立开关上，
-  // 且必须走 fieldSpan（着色体系）而不是裸节点 —— 否则关掉开关也藏不住。断言钉死两条门控。
-  && clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
-  && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  // 2026-11-12：提醒字段不再有开关 —— 显隐只由数据条件决定，不得再出现 fieldVisible 门控；
+  // 两枚更新短标记必须走 fieldSpan（着色体系）而不是裸节点。
+  && !clientSrc.includes("fieldVisible('refreshFailure')") && !clientSrc.includes("fieldVisible('persistWarning')")
+  && !clientSrc.includes("fieldVisible('updateNotice')") && !clientSrc.includes("fieldVisible('updateFailure')")
+  && clientSrc.includes("if (restartVersion) {")
+  && clientSrc.includes("if (updateFailed) {")
   && clientSrc.includes("fieldSpan('updateNotice',"), true);
 
 // ---------- ② 默认配置渲染与旧版一致（未知/缺省一律显示） ----------
@@ -86,8 +87,9 @@ check('每个字段含 id/label/group/colorKind', FIELD_REGISTRY.every((f) => ty
   && typeof f.group === 'string' && FIELD_GROUP_ORDER.includes(f.group)
   && ['inherit', 'alert', 'period', 'provider', 'muted', 'meter'].includes(f.colorKind)), true);
 check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.anchor === true).map((f) => f.id).join(',') === 'anchorGroup,subServiceGroup,billingServiceGroup', true);
-check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure']
-  .every((id) => FIELD_REGISTRY.find((f) => f.id === id).suggestKeep === true), true);
+check('提醒字段已整体移出注册表（无开关化：显隐只由数据条件决定，2026-11-12）',
+  ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure', 'unmapped']
+    .every((id) => FIELD_REGISTRY.find((f) => f.id === id) === undefined), true);
 // 默认开关的单一真相源是注册表的 defaultOff：宿主 defaultFieldSettings 只读它，
 // 不再手抄一份「哪些是新字段」的名单（抄一份名单＝漏改一处就静默变成默认打开，没人发现）。
 // 只有「用户不主动打开就不该出现」的三条默认关闭：自定义文字 / 主时间 / 世界时间。
@@ -97,9 +99,9 @@ check('默认关闭的字段恰为自定义文字与主/世界时间（defaultOf
 check('每个会渲染的注册字段都在信息栏渲染层被引用', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
-check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定（提醒信息在最后）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin', 'notice'])
+check('分组：原生信息 / 插件信息两类且顺序固定（提醒组已随开关一起移除）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
   && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息'
-  && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
+  && FIELD_GROUP_LABELS.notice === undefined, true);
 check('分组：原生组 = 新宿主两个按钮开关 + 旧宿主七个统计字段（两个宿主互斥，整组只在完整模式出现）',
   FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'nativeActivity,nativeUsage,turnsSteps,llmTime,toolTime,avgTTFT,outputSpeed,cacheHit,tokensIO', true);
@@ -107,14 +109,13 @@ check('分组：原生组 = 新宿主两个按钮开关 + 旧宿主七个统计�
 // 所以按插件组对待 —— 归原生组会让它在简洁模式下消失（因为原生组整组只在完整模式可见）。
 check('分组：上下文圆环归入插件组（它住在主行，两种模式都可见）',
   FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
-check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
-  === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);
+check('分组：提醒组已移除（不再有任何字段归 notice）', FIELD_REGISTRY.every((f) => f.group !== 'notice'), true);
 check('分组：插件组 20 条（19 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 20
   && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
-check('分组：三组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
-  ['group.native.desc', 'group.plugin.desc', 'group.notice.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
+check('分组：两组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
+  ['group.native.desc', 'group.plugin.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
   && t('group.native.desc').includes('完整模式')
-  && clientSrc.includes('const FIELD_GROUP_DESC_KEYS = { native: '), true);
+  && clientSrc.includes("const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc' }"), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
@@ -1067,10 +1068,11 @@ function withFakeDocument(run) {
     && clientSrc.includes('const removalRegistry = nativePills')
     && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
-  check('D6：构建产物含注入的三组分组常量（设置页渲染不落空）', (function () {
+  check('D6：构建产物含注入的两类分组常量（设置页渲染不落空；提醒组已移除）', (function () {
     const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
-    return lib.indexOf("['native', 'plugin', 'notice']") !== -1
-      && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"') && lib.includes('notice: "group.notice"');
+    return lib.indexOf("['native', 'plugin']") !== -1
+      && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"')
+      && !lib.includes('"group.notice"');
   })(), true);
   // 2026-10-14：守卫从 bibSetPalette 扩到设置页全部含 hooks 的组件——新增 bibSetSelect
   // （语言/时区共用下拉）后，同一条铁律必须覆盖它，否则裸调用会让 hook 记到父组件账上（React #310）。

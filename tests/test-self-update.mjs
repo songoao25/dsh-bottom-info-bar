@@ -857,8 +857,8 @@ ok('client 接线：设置页有版本与更新区，信息栏只在待重启 / 
   assert.match(client, /const updateFailed = !!\(updateStatus && updateStatus\.lastError\)/)
   // 两枚标记各自挂在「提醒信息」组的独立开关上（2026-09-25 用户拍板 4c）：
   // 必须是两条独立门控，不能合并成一个总开关，也不能受简洁/完整模式影响。
-  assert.match(client, /if \(restartVersion && fieldVisible\('updateNotice'\)\) \{/)
-  assert.match(client, /if \(updateFailed && fieldVisible\('updateFailure'\)\) \{/)
+  assert.match(client, /if \(restartVersion\) \{/)
+  assert.match(client, /if \(updateFailed\) \{/)
   assert.doesNotMatch(client, /if \(restartVersion \|\| updateFailed\) \{/, '两枚标记不得共用一个总开关')
   assert.doesNotMatch(client, /(restartVersion|updateFailed)[\s\S]{0,80}(full|compact) &&/, '更新标记不得受简洁/完整模式门控')
   // 不许引导用户去复制命令：自更新已接管，旧提示词只在收到更新命令时使用

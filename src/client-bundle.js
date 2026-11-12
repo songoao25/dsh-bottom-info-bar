@@ -118,21 +118,24 @@ function bibSetLanguagePicker(props) {
   const runtime = props.runtime;
   const options = [{ id: 'auto', label: t('language.auto') }].concat(
     runtime.options().map(function (language) { return { id: language.id, label: language.label }; }));
-  return React.createElement('div', { className: 'bib-set-row' },
-    React.createElement('div', { className: 'bib-set-rowText' },
-      React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
-      React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
-    React.createElement(bibSetSelect, {
-      id: 'bib-language',
-      value: runtime.preference(),
-      label: t('language.title'),
-      options: options,
-      fallbackClassName: 'bib-set-language',
-      onChange: function (next) {
-        try { runtime.setPreference(next); props.onError(null); }
-        catch { props.onError({ text: function () { return t('language.saveFailed'); } }); }
-      },
-    }));
+  // 2026-11-12 卡片化统一：语言选择是独立一张设置卡（与其它区块同一张面），
+  // 不再是悬在页面顶部的裸行 —— 整页每个区块共用同一套卡面（fill/stroke/radius-xl）。
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('language.title') },
+    React.createElement('div', { className: 'bib-set-row' },
+      React.createElement('div', { className: 'bib-set-rowText' },
+        React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
+        React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
+      React.createElement(bibSetSelect, {
+        id: 'bib-language',
+        value: runtime.preference(),
+        label: t('language.title'),
+        options: options,
+        fallbackClassName: 'bib-set-language',
+        onChange: function (next) {
+          try { runtime.setPreference(next); props.onError(null); }
+          catch { props.onError({ text: function () { return t('language.saveFailed'); } }); }
+        },
+      })));
 }
 /*__LANGUAGE_RUNTIME__*/
 let languageRuntime;
@@ -697,7 +700,11 @@ function installStyles() {
       /* 状态标签用 600；核心数值才用 700，避免颜色、字重双重过度强调。 */
       .bi-peak    { color: var(--bi-state-alert); font-weight: 600; }
       .bi-offpeak { color: var(--bi-state-price-low); font-weight: 600; }
-      .bi-err, .bi-stale { color: var(--bi-state-alert); font-weight: 600; }
+      /* 状态标签统一软底胶囊（2026-11-12 重设计，与 DSH 原生状态徽章同语言）：
+         底色由文字色派生（color-mix currentColor 14%）—— 字段自定义色照常生效（改色时底色跟着走），
+         明暗主题都不引入新的前景/背景配对；去掉旧 1px 描边胶囊，色块自成形，更轻、更原生。
+         高度锁 16px 与信息栏行高对齐；超长引导文案缩略、完整说明保留在 title 悬停。 */
+      .bi-err, .bi-stale { display: inline-flex; align-items: center; box-sizing: border-box; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 16px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); color: var(--bi-state-alert); font-weight: 600; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
       .bi-muted{ color: var(--bi-label-supporting); }
       /* 低余额/低额度是数值的状态修饰，而非独立组件：无框“低”字避免制造第二个视觉焦点。 */
       .bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }
@@ -707,13 +714,11 @@ function installStyles() {
          （test-update-check 有「无下划线」的专项断言）。 */
       .bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }
       /* 自更新状态短标记：只在「已下载待重启」或「上次自动更新失败」时出现，重启/修复后自动消失。
-         与 .bi-update 区分：它不需要用户点击，所以用默认光标 + 1px currentColor 描边成胶囊，
-         明确「这是状态标签，不是可点链接」。
-         反色铁律：只描边、不加背景色，文字仍落在信息栏自身底色上（与 .bi-err 同色同底），
-         不引入任何新的前景/背景配对，明暗主题都沿用既有已验证的对比度。 */
-      .bi-update-badge{ margin-left: 6px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-weight: 600; color: var(--bi-state-alert); cursor: default; }
-      /* 失败态比「待重启」（可预期的正常流程）更需要被看见：同色加到 700，靠字重分层而非换颜色。 */
-      .bi-update-badge--error{ font-weight: 700; }
+         与 .bi-update 区分：它不需要用户点击，用默认光标 + 软底胶囊（同 .bi-err 语法），
+         明确「这是状态标签，不是可点链接」。失败态用更高浓度底色分层，不换颜色不加字重。 */
+      .bi-update-badge{ margin-left: 6px; display: inline-flex; align-items: center; box-sizing: border-box; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 16px; padding: 0 7px; border: 0; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); color: var(--bi-state-alert); font-weight: 600; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: default; }
+      /* 失败态比「待重启」（可预期的正常流程）更需要被看见：底色浓度分层（24% vs 14%）。 */
+      .bi-update-badge--error{ background: color-mix(in srgb, currentColor 24%, transparent); }
       /* 视觉能力是模型属性，不是告警：电光蓝实色、白字；高度收紧到字形范围内，避免压过同一行文字。 */
       /* 服务商、圆点、视觉胶囊在同一 20px flex 行内居中，避免混用文字基线造成上下漂移。 */
       .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: var(--bi-line); vertical-align: top; }
@@ -988,7 +993,7 @@ const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
 // 三组的分工说明（2026-09-25 用户拍板新增第三组「提醒信息」）：只在这里给「整组一句」，
 // 不在每个字段上重复解释 —— 字段行的小字继续只讲「什么条件下会出现」。
 // 这一句也是唯一说明「开关与显示模式的关系」的地方，不另设模式开关。
-const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' };
+const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc' };
 // 设置页小节（顺序 + 标题 + 一句话说明），构建时从 src/constants.js 注入。
 // 只有「插件信息」这一组有 section；native / notice 两个组本来就只有一块，不设小节。
 const FIELD_SECTIONS = /*__FIELD_SECTIONS__*/[];
@@ -2330,6 +2335,9 @@ const bibCredentialsErrorBoundary = (typeof React === 'object' && React && typeo
 // 行用 v1.24.0 的 fieldblock 基线（copy=标签+说明+状态，control=原生 Input+保存/清除）。
 // 不自绘任何体系外的折叠头、组标题或展开按钮。
 function bibCredentialsCard(props) {
+  // 默认折叠（2026-11-12 用户拍板）：与「原生信息 / 插件信息」等折叠区块同一行为 ——
+  // 卡头可点、右侧展开箭头，摘要（已绑定 / 未检测到）常驻说明位。
+  const [open, setOpen] = React.useState(false);
   const state = props.credentialState;
   // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
   // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
@@ -2400,18 +2408,22 @@ function bibCredentialsCard(props) {
     return nodes;
   }
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
+    // 卡头与其它折叠区块同款（可点 + 展开箭头），不用 static 头 —— 摘要进说明位。
     bibSetCardHeader({
-      static: true,
       titleId: 'bib-set-credentials-title',
       title: t('ui.credentialsTitle'),
       description: summary,
+      expanded: open,
+      onToggle: function () { setOpen(function (v) { return !v; }); },
+      contentId: 'bib-set-credentials-body',
     }),
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
-    React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(groups)),
-    loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
-    feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')));
+    React.createElement('div', { id: 'bib-set-credentials-body', hidden: !open },
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
+      React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(groups)),
+      loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
+      feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote'))));
 }
 
 // 设置页区块入口保持普通函数（render(deps) 内联调用）：hooks 全部在 bibCredentialsCard
@@ -3310,7 +3322,7 @@ function InfoBarSettingsSection() {
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
-    React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
+    React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('ui.visibleFields') },
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
           React.createElement('div', { className: 'bib-set-search-shell' },
@@ -4112,25 +4124,19 @@ module.exports = {
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
-          if (fieldVisible('unmapped')) {
-            trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
-              React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
-          }
+          trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
+            React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
         }
         // 已纳入兼容性基线、但服务商没有公开的账户余额/配额接口：保留服务商、模型和
         // 本地 token 账本，不把“没有公开接口”误说成“插件未适配”。
         else if (bal && bal.accountDataUnavailable) {
-          if (fieldVisible('unmapped')) {
-            trailingErrorGroups.push(fieldSpan('unmapped', 'account-data-unavailable',
-              React.createElement('span', { className: 'bi-muted', title: t('ui.accountDataUnavailableDetail') }, t('ui.accountDataUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('unmapped', 'account-data-unavailable',
+            React.createElement('span', { className: 'bi-muted', title: t('ui.accountDataUnavailableDetail') }, t('ui.accountDataUnavailable'))));
         }
         // 配置引导（未配置 API Key / 内置账号未登录）：与数据展示互斥，占 noKeyHint 槽位
         else if (configHint) {
-          if (fieldVisible('noKeyHint')) {
-            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
-              React.createElement('span', { className: 'bi-err', title: configHint.title }, configHint.text)));
-          }
+          trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+            React.createElement('span', { className: 'bi-err', title: configHint.title }, configHint.text)));
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';
           const balTitle = bal.estimate
@@ -4147,21 +4153,17 @@ module.exports = {
             )));
           }
           // host 快照失败（bal.error）或本次 RPC 失败（errors.balance）→ 均保留旧数据 + 降级标记
-          if (fieldVisible('balanceError') && (bal.error || errors.balance)) {
+          if (bal.error || errors.balance) {
             trailingErrorGroups.push(fieldSpan('balanceError', 'balerr',
               React.createElement('span', { className: 'bi-stale', title: t('ui.balanceIsTemporarilyUnavailableShowing') }, t('ui.refreshFailed'))));
           }
         } else if (bal && bal.error) {
-          if (fieldVisible('balanceError')) {
-            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+            React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
         } else if (errors.balance) {
           // 本次 RPC 失败且无旧数据：只降级余额块，其余端点数据照常渲染
-          if (fieldVisible('balanceError')) {
-            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+            React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
         }
 
         // 时段：仅峰谷价服务商显示"高峰价/空闲价"（flat/unknown 服务商不显示；hover 展示具体价格）
@@ -4225,7 +4227,7 @@ module.exports = {
               title: costTitle.join('\n') },
               metric(t('ui.session'), costTxt))));
           }
-        } else if (errs.usage && fieldVisible('usageError')) {
+        } else if (errs.usage) {
           trailingErrorGroups.push(fieldSpan('usageError', 'usageerr',
             React.createElement('span', { className: 'bi-err', title: t('ui.spendIsTemporarilyUnavailableChat') }, t('ui.spendUnavailable'))));
         }
@@ -4279,7 +4281,7 @@ module.exports = {
             metric(t('ui.expires'), formatDate(sub.expiryAt)))));
         }
         if (!sub) {
-          if (errors.sub && fieldVisible('refreshFailure')) {
+          if (errors.sub) {
             // 本次 RPC 失败且无旧数据：显示失败信息而非永久"加载中…"
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'suberr',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
@@ -4300,7 +4302,7 @@ module.exports = {
           // 需要插件页专属凭据的服务商（阿里 AK/SK、MiniMax Subscription Key 等）直接给出路径，
           // 不再只留一个悬停才看得见的"刷新失败"。
           const setupHint = subscriptionSetupHint(sub.error);
-          if (setupHint && fieldVisible('noKeyHint')) {
+          if (setupHint) {
             trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
               React.createElement('span', { className: 'bi-err', title: setupHint.title }, setupHint.text)));
             return;
@@ -4309,17 +4311,15 @@ module.exports = {
           // 失败原因不能只放进 title —— 触屏宿主（DSH Go）没有悬停，用户只会看到裸"刷新失败"
           // 而无法自助（Issue #274：已授权 ChatGPT 却只显示刷新失败）。可见文本直接给
           // 「未找到登录凭证」引导（原悬停文案提升为可见），完整说明保留在 title。
-          if (sub.error.kind === 'no-key' && fieldVisible('noKeyHint')) {
+          if (sub.error.kind === 'no-key') {
             const noKeySource = sub.source || (visibleBillingMode && visibleBillingMode.provider);
             trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
               React.createElement('span', { className: 'bi-err', title: subscriptionFailureHint(sub.error, noKeySource) },
                 t('ui.noSignInCredentialsFound', { serviceName: subscriptionServiceName(noKeySource) }))));
             return;
           }
-          if (fieldVisible('refreshFailure')) {
-            trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
-          }
+          trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
+            React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           return;
         }
         // v1.8：充值余额模式——无额度窗口但有 balance 字段（如智谱普通 API 余额用户）
@@ -4336,7 +4336,7 @@ module.exports = {
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
           if (!isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
-          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+          if ((sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4389,7 +4389,7 @@ module.exports = {
             groups.push(React.createElement('span', { key: 'subwin', title: titleLines.join('\n') }, ...winNodes));
           }
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 均保留旧数据 + 降级标记
-          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+          if ((sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4423,7 +4423,7 @@ module.exports = {
         const bill = renderedState.billing;
         const errors = renderedState.errors || {};
         if (!bill) {
-          if (errors.billing && fieldVisible('refreshFailure')) {
+          if (errors.billing) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billerr',
               React.createElement('span', { className: 'bi-stale', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
           }
@@ -4432,10 +4432,8 @@ module.exports = {
         const d = bill.data;
         const hasSpend = !!(d && (d.currentPeriodSpend != null || d.usage != null));
         if (bill.error && !hasSpend) {
-          if (fieldVisible('refreshFailure')) {
-            trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
-              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
-          }
+          trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
+            React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           return;
         }
         if (hasSpend) {
@@ -4464,7 +4462,7 @@ module.exports = {
           if (nodes.length > 0) {
             groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
           }
-          if (fieldVisible('refreshFailure') && (bill.error || errors.billing)) {
+          if ((bill.error || errors.billing)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
               React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4521,13 +4519,13 @@ module.exports = {
       if (errors.billingMode) failedLabels.push(t('ui.mode'));
       if (errors.sub) failedLabels.push(t('ui.subscriptionQuota'));
       if (errors.billing) failedLabels.push(t('ui.billing'));
-      if (failedLabels.length > 0 && fieldVisible('refreshFailure')) {
+      if (failedLabels.length > 0) {
         trailingErrorGroups.push(fieldSpan('refreshFailure', 'degraded',
           React.createElement('span', { className: 'bi-stale', key: 'degraded',
             title: failedLabels.join(t('ui.listSeparator')) + t('ui.temporarilyUnavailableKeepingTheLast') }, t('ui.refreshFailed'))));
       }
       const persistence = renderedState.usage && renderedState.usage.persistence;
-      if (persistence && persistence.state && persistence.state !== 'ok' && fieldVisible('persistWarning')) {
+      if (persistence && persistence.state && persistence.state !== 'ok') {
         const snapshotOnly = persistence.state === 'snapshot-stale';
         trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {
           className: snapshotOnly ? 'bi-stale' : 'bi-err',
@@ -4557,7 +4555,7 @@ module.exports = {
            ? t('ui.updatePendingRestart', { version: restartVersion })
            : t('ui.updateDowngradePending', { version: restartVersion, running: restartRunning }));
        const updateFailed = !!(updateStatus && updateStatus.lastError);
-       if (restartVersion && fieldVisible('updateNotice')) {
+       if (restartVersion) {
          trailingErrorGroups.push(fieldSpan('updateNotice', 'updatebadge', React.createElement('span', {
            key: 'updateBadge',
            className: 'bi-update-badge',
@@ -4566,7 +4564,7 @@ module.exports = {
            onKeyDown: function (event) { event.stopPropagation(); },
          }, t('ui.updateRestartBadge'))));
        }
-       if (updateFailed && fieldVisible('updateFailure')) {
+       if (updateFailed) {
          trailingErrorGroups.push(fieldSpan('updateFailure', 'updatefailed', React.createElement('span', {
            key: 'updateFailureBadge',
            className: 'bi-update-badge bi-update-badge--error',

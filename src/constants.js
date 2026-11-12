@@ -413,30 +413,16 @@ export const FIELD_REGISTRY = [
   { id: 'outputSpeed', label: "field.outputSpeed.label", group: 'native', colorKind: 'inherit', note: "field.outputSpeed.note" },
   { id: 'cacheHit', label: "ui.cacheHit", group: 'native', colorKind: 'inherit', note: "field.cacheHit.note" },
   { id: 'tokensIO', label: "field.tokensIO.label", group: 'native', colorKind: 'inherit', note: "field.tokensIO.note" },
-  // ---------- 提醒信息（第三个列表，2026-09-25 用户拍板从插件组独立） ----------
-  // 独立成组的理由：提醒是「一次性事件」而不是「常驻信息」，诉求与插件信息相反 ——
-  // 想看花费但不想被红字打扰的人，必须能只关提醒而不动信息。
-  // 三条铁律：① 两种模式都显示（主行右端）；② 只在真有事时出现，没事零占位；③ 开关只管开与关，与模式互不读写。
-  // 更新提醒 / 更新失败提醒（自更新体系，见 docs/DECISIONS-AUTO-UPDATE.md）
-  { id: 'updateNotice', label: "field.updateNotice.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.updateNotice.note" },
-  { id: 'updateFailure', label: "field.updateFailure.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.updateFailure.note" },
-  // 数据类提醒
-  { id: 'balanceError', label: "field.balanceError.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.balanceError.note" },
-  { id: 'usageError', label: "field.usageError.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.usageError.note" },
-  { id: 'refreshFailure', label: "field.refreshFailure.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.refreshFailure.note" },
-  { id: 'persistWarning', label: "field.persistWarning.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.persistWarning.note" },
-  // 配置类提醒
-  { id: 'noKeyHint', label: "field.noKeyHint.label", group: 'notice', suggestKeep: true, colorKind: 'alert', note: "field.noKeyHint.note" },
-  { id: 'unmapped', label: "field.unmapped.label", group: 'notice', colorKind: 'muted', note: "field.unmapped.note" },
 ]
 
 // 字段分组在设置页的展示顺序与标题（经构建注入客户端）。
-// 顺序与信息栏的实际版式一致：原生行在上、主行在下、提醒贴主行右端。
-export const FIELD_GROUP_ORDER = ['native', 'plugin', 'notice']
+// 顺序与信息栏的实际版式一致：原生行在上、主行在下。
+// 提醒信息不再有开关（2026-11-12 用户拍板）：提醒只由数据条件触发
+// （真有事才出现，没事零占位），不需要也不应该提供「关掉提醒」的入口。
+export const FIELD_GROUP_ORDER = ['native', 'plugin']
 export const FIELD_GROUP_LABELS = {
   native: "group.native",
   plugin: "group.plugin",
-  notice: "group.notice",
 }
 
 // ---------- 设置页小节（只影响设置页的阅读分组，不影响信息栏里的任何东西） ----------
@@ -474,6 +460,8 @@ export const FIELD_MODES = {
   balance: ['customText', 'anchorGroup', 'mainTime', 'worldTime', 'unmapped', 'noKeyHint', 'balance', 'balanceError', 'period', 'countdown', 'sessionCost', 'usageError'],
   subscription: ['customText', 'subServiceGroup', 'mainTime', 'worldTime', 'expiry', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'subBalance', 'sessionCost'],
   billing: ['customText', 'billingServiceGroup', 'mainTime', 'worldTime', 'billingSpend', 'budget', 'freeQuota'],
+  // 公共尾部（提醒 + 圆环）三种模式共用。提醒（refreshFailure/persistWarning/updateNotice/
+  // updateFailure）没有用户开关 —— 显隐只由各自的数据条件决定（2026-11-12 起移除提醒开关组）。
   trailing: ['refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure', 'contextUsage'],
 }
 
