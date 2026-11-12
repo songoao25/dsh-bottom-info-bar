@@ -7,6 +7,7 @@ import vm from 'node:vm'
 import React from 'react'
 import TestRenderer from 'react-test-renderer'
 import { CREDENTIAL_CATALOG } from '../src/constants.js'
+import * as CONSTANTS from '../src/constants.js'
 
 const projectRoot = join(new URL('.', import.meta.url).pathname, '..')
 let clientSrc = readFileSync(join(projectRoot, 'src', 'client-bundle.js'), 'utf8')
@@ -15,6 +16,24 @@ const localesMarker = 'export const LOCALES ='
 const LOCALES = JSON.parse(localesSrc.slice(localesSrc.indexOf(localesMarker) + localesMarker.length).trim().replace(/;$/, ''))
 clientSrc = clientSrc.replace('const LOCALES = /*__LOCALES__*/{};', 'const LOCALES = ' + JSON.stringify(LOCALES) + ';')
 clientSrc = clientSrc.replace('const CREDENTIAL_CATALOG = /*__CREDENTIAL_CATALOG__*/[];', 'const CREDENTIAL_CATALOG = ' + JSON.stringify(CREDENTIAL_CATALOG) + ';')
+// 字段注册表等构建期注入（fieldGroups 分组渲染需要）—— 与 src/client-bundle.js 的声明逐字对应
+function injectConst(src, name, value) {
+  const decl = 'const ' + name + ' = /*__' + name + '__*/' + (name === 'FIELD_GROUP_LABELS' ? '{}' : '[]') + ';'
+  if (src.indexOf(decl) === -1) throw new Error('marker not found: ' + name)
+  return src.replace(decl, 'const ' + name + ' = ' + JSON.stringify(value) + ';')
+}
+clientSrc = injectConst(clientSrc, 'FIELD_REGISTRY', CONSTANTS.FIELD_REGISTRY)
+clientSrc = injectConst(clientSrc, 'FIELD_GROUP_ORDER', CONSTANTS.FIELD_GROUP_ORDER)
+clientSrc = injectConst(clientSrc, 'FIELD_GROUP_LABELS', CONSTANTS.FIELD_GROUP_LABELS)
+clientSrc = injectConst(clientSrc, 'FIELD_SECTIONS', CONSTANTS.FIELD_SECTIONS)
+clientSrc = injectConst(clientSrc, 'PRESET_COLORS', CONSTANTS.PRESET_COLORS)
+if (clientSrc.indexOf('var SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];') >= 0) {
+  clientSrc = clientSrc.replace('var SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];', 'var SUBSCRIPTION_PROVIDERS = ' + JSON.stringify(CONSTANTS.SUBSCRIPTION_PROVIDERS || []) + ';')
+}
+if (clientSrc.indexOf('var BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];') >= 0) {
+  clientSrc = clientSrc.replace('var BILLING_PROVIDERS = /*__BILLING_PROVIDERS__*/[];', 'var BILLING_PROVIDERS = ' + JSON.stringify(CONSTANTS.BILLING_PROVIDERS || []) + ';')
+}
+clientSrc = clientSrc.replace('/*__HOST_TEXT__*/', 'function localizeHostText(message) { return typeof message === "string" ? message : ""; }')
 const rtSrc = readFileSync(join(projectRoot, 'src', 'language-runtime.js'), 'utf8')
 const rtMarker = 'export function createLanguageRuntime'
 clientSrc = clientSrc.replace('/*__LANGUAGE_RUNTIME__*/', () => rtSrc.slice(rtSrc.indexOf(rtMarker)).trim().replace(/;$/, '').replace(/^export /, ''))
@@ -62,6 +81,7 @@ function nodeToHTML(node) {
   if (node === null || node === undefined || node === false || node === true) return ''
   if (typeof node === 'string' || typeof node === 'number') return esc(node)
   if (Array.isArray(node)) return node.map(nodeToHTML).join('')
+  // toJSON 格式：{ type, props, children } —— children 在顶层（文本节点 type 为 null）
   if (!node.type) return nodeToHTML(node.children)
   const p = node.props || {}
   const attrs = []
@@ -75,13 +95,15 @@ function nodeToHTML(node) {
     if (/^(aria-|data-)/.test(k)) { attrs.push(k + '="' + esc(v) + '"'); continue }
     if (['id', 'title', 'type', 'value', 'placeholder', 'role', 'lang', 'dir'].includes(k)) attrs.push(k + '="' + esc(v) + '"')
   }
-  const inner = nodeToHTML(p.children)
+  const inner = nodeToHTML(node.children)
   if (VOID.has(node.type)) return '<' + node.type + (attrs.length ? ' ' + attrs.join(' ') : '') + '>'
   return '<' + node.type + (attrs.length ? ' ' + attrs.join(' ') : '') + '>' + inner + '</' + node.type + '>'
 }
 function renderToHTML(element) {
+  let inst = null
+  TestRenderer.act(function () { inst = TestRenderer.create(element) })
   let json = null
-  TestRenderer.act(function () { json = TestRenderer.create(element).toJSON() })
+  TestRenderer.act(function () { json = inst.toJSON() })
   return nodeToHTML(json)
 }
 function clickFirst(element, finder) {
@@ -139,7 +161,7 @@ const versionState = {
 
 const sections = {
   language: renderToHTML(React.createElement(A.bibSetLanguagePicker, { runtime: { options: () => [{ id: 'zh', label: '简体中文' }, { id: 'en', label: 'English' }], preference: () => 'auto', setPreference() {} }, onError() {} })),
-  fieldGroups: renderToHTML(React.createElement(A.bibSetFieldGroups, fieldGroupsProps)),
+  fieldGroups: renderToHTML(React.createElement('div', null, React.createElement(A.bibSetFieldGroups, fieldGroupsProps))),
   timeDate: renderToHTML(React.createElement(A.bibSetTimeDateSection, { fieldOn: () => true, timeZonesOf: () => ({ main: 'Asia/Shanghai', world: 'UTC' }), onTimeZoneChange() {} })),
   customText: renderToHTML(React.createElement(A.bibSetCustomTextSection, { fieldOn: () => true, customTextDraft: null, customTextOf: () => '专注模式', onCustomTextChange() {}, onCustomTextCommit() {} })),
   quota: renderToHTML(React.createElement(A.bibSetQuotaDisplaySection, { fieldOn: () => true, modeOf: () => 'remaining', onModeChange() {} })),
@@ -226,9 +248,10 @@ ${settingsCss ? '<style data-settings-css>' + settingsCss + '</style>' : ''}
   ${label('设置页 · 额度凭据 · 展开态（点击卡头后）')}
   <div class="frame bib-set-root bib-settings">${sections.credExpanded}</div>
 
-  ${label('设置页 · 显示内容卡（搜索 + 分组 + 恢复默认）', '原生信息组展开、插件信息组收起')}
+  ${label('设置页 · 显示内容卡（一级卡头 + 搜索 + 分组 + 恢复默认）', '原生信息组展开、插件信息组收起；卡头与账单数据等区块同层级')}
   <div class="frame bib-set-root bib-settings">
-    <section class="bib-set-card bib-set-card--panel" aria-label="显示内容">
+    <section class="bib-set-card bib-set-card--panel" aria-label="要显示的信息">
+      <div class="bib-set-card-header bib-set-card-header--static"><span class="bib-set-card-header-main"><span id="bib-set-visible-fields-title" class="bib-set-card-title" role="heading" aria-level="2">要显示的信息</span></span><span class="bib-set-card-desc">信息栏里每一项内容的显示开关与配色都在这里，按组折叠管理。</span></div>
       <div class="bib-set-toolbar"><div class="bib-set-search-row"><div class="bib-set-search-shell">
         <input class="bib-set-search" type="search" placeholder="搜索要显示的内容…">
       </div></div></div>
@@ -247,5 +270,6 @@ ${settingsCss ? '<style data-settings-css>' + settingsCss + '</style>' : ''}
   </div>
 </div>
 </body></html>`
+console.log('section lengths:', Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, v.length])))
 writeFileSync('/tmp/bib-design-overview.html', html)
 console.log('written /tmp/bib-design-overview.html, styles captured:', capturedStyles.map((s) => s.length).join(','))

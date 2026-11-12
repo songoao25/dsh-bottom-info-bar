@@ -3324,6 +3324,14 @@ function InfoBarSettingsSection() {
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
     React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('ui.visibleFields') },
+      // 卡头（2026-11-12）：与「账单数据 / 版本」等区块同一套「一级标题 + 汇总说明」，
+      // 整页层级拉齐 —— 之前这张卡只有搜索行和分组，缺一级标题，观感上高一级低一级不成体系。
+      bibSetCardHeader({
+        static: true,
+        titleId: 'bib-set-visible-fields-title',
+        title: t('ui.visibleFields'),
+        description: t('ui.visibleFieldsDesc'),
+      }),
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
           React.createElement('div', { className: 'bib-set-search-shell' },
