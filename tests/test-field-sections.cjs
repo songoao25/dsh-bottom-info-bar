@@ -103,12 +103,12 @@ check('构建脚本从 constants.js 提取并注入 FIELD_SECTIONS',
 check('「插件信息」组经统一入口渲染小节（分组 → 小节 → 行，只有一条路径）',
   /function bibSetFieldGroups\(props\) \{[\s\S]*?bibSetFieldBlocks\(visibleFields, props\)/.test(clientSrc)
   && clientSrc.split('function bibSetFieldBlocks(visibleFields, props)').length === 2, true);
-check('小节样式齐备（块 / 分隔线 / 标题 / 说明，且复用既有排版令牌）',
+check('小节样式齐备（块 / 标题 / 说明，且复用既有排版令牌；节间只留白无线）',
   clientSrc.includes('.bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }')
-  && clientSrc.includes('.bib-set-subsection + .bib-set-subsection { border-top: var(--bib-rule); }')
-  && clientSrc.includes('.bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }')
+  && clientSrc.includes('.bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 16px var(--bib-row-pad-inline) 2px; }')
   && clientSrc.includes('.bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }')
-  && clientSrc.includes('.bib-set-subsection-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-sub-label-size); font-weight: 400; line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-tertiary); }'), true);
+  && clientSrc.includes('.bib-set-subsection-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-sub-label-size); font-weight: 400; line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-tertiary); }')
+  && !clientSrc.includes('.bib-set-subsection + .bib-set-subsection'), true);
 // 小节是纯阅读分组：宿主（校验字段白名单 / 记账 / 渲染信息栏）不该知道小节的任何事。
 check('宿主与小节零耦合（host.js 里根本不出现 section）', hostSrc.includes('section'), false);
 check('信息栏渲染层不拿 section 当显隐条件（开关是唯一裁判）',

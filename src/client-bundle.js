@@ -1145,27 +1145,34 @@ function bibSetInstallStyles() {
         /* 配置区只是详情页里的**一个** section：区块间距取宿主 .X_2TxG_detailSection 的 12px，
            不取 .X_2TxG_detailSections 的 32px（那是区块之间的间距，套进来会凭空多出大段空白）。
            同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
-        /* 2026-10-14 与姊妹插件统一到宿主自己的区块节奏：
-           .detailSections{gap:32px} → 区块之间 32px；.detailSection{gap:12px} → 区块内部 12px。 */
-        --bib-sec-gap: 32px;
-        --bib-sec-inner: 12px;
+        /* 2026-11-12 设计体系迁移（DSH 0.2.2 settings-form 实测）：
+           原生设置表单已经卡片化 —— tUAPGa_rowCard { .5px settings-card-stroke / settings-card-fill /
+           radius-xl / 12px 14px 内衬 }，卡片列表 rows { gap:8px }，字段 .field { 列向 gap:6px }，
+           行与行、组与组之间**没有任何分隔线**，分层全靠留白与卡片表面。
+           本页随之整体迁移：区块 = 设置卡（fill + stroke + radius-xl），行间只留白，废除全部发丝线。 */
+        --bib-sec-gap: 24px;      /* 卡片之间（页面留白） */
+        --bib-sec-inner: 12px;    /* 卡片内部（标题/行/提示条之间的节奏） */
+        --bib-card-fill: var(--dsw-alias-settings-card-fill, var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.05)));
+        --bib-card-stroke: var(--dsw-alias-settings-card-stroke, var(--dsw-alias-border-l4, rgba(128,128,128,0.22)));
+        --bib-card-radius: var(--dsw-radius-xl, 20px);
+        --bib-card-pad-block: 14px; --bib-card-pad-inline: 16px;
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
         --bib-sub-label-size: 12px; --bib-sub-label-weight: 600; --bib-sub-label-line: 18px;
         --bib-desc-size: 13px; --bib-desc-line: 18px;
-        --bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;
+        --bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;
         --bib-row-gap: 16px;
         --bib-row-label-size: 13.5px; --bib-row-label-weight: 500; --bib-row-label-line: 20px;
         --bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;
         --bib-control-radius: 8px;
         --bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius); --bib-btn-pad-inline: 10px; --bib-btn-size: 12px; --bib-btn-line: 18px;
-        /* 兜底输入框（老宿主取不到 primitives）：几何照宿主 settings-form fields.module.css 的 .input
-           —— 34px / r12 / 0 12px / 13px。圆角必须单独取 --dsw-radius-md（12px），**不能**跟
-           --bib-control-radius（8px）走：后者管的是卡片分组、色块、警示条、分段控件槽、系统取色井
-           那一类「8px 形状」，两者形状不同，共用一个变量会连带变形。 */
-        --bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 12px; --bib-input-size: 13px;
-        --bib-rule: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16));
+        /* 兜底输入框（老宿主取不到 primitives）：几何照宿主 0.2.2 settings-form fields.module.css 的 .input
+           —— 32px / r12 / 0 10px / 14px / .5px border-l4 / bg-layer-1（2026-11-12 复测 tUAPGa_input）。
+           圆角必须单独取 --dsw-radius-md（12px），**不能**跟 --bib-control-radius（8px）走：后者管的是
+           行 hover 填充、色块、警示条、分段控件槽那类「8px 形状」，两者形状不同。 */
+        --bib-input-height: 32px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 10px; --bib-input-size: 14px;
+        --bib-input-bg: var(--dsw-alias-bg-layer-1, transparent);
         --bib-swatch-size: 20px; --bib-swatch-radius: var(--bib-control-radius);
         --bib-menu-dot-size: 12px;
         box-sizing: border-box; max-inline-size: 100%; min-inline-size: 0;
@@ -1181,35 +1188,22 @@ function bibSetInstallStyles() {
       .bib-settings, .bib-set-field-list, [data-dsh-bib-hide-scrollbars="true"] { scrollbar-width: none; -ms-overflow-style: none; }
       .bib-settings::-webkit-scrollbar, .bib-set-field-list::-webkit-scrollbar, [data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       /* 区块说明：原生 pageIntro 的 13/20 二级色（宿主 .X_2TxG_pageIntro）。 */
-      /* 搜索行：左侧输入框吃满剩余宽度，右侧计数用 auto 轨道。
-         计数框原来是写死的 104px + nowrap，文案一变长就会被切——改成 auto 轨道，永不裁切。 */
+      /* 搜索行：独立一张安静的面（卡片内首行），不再画下边线 —— 行间分层只靠留白。 */
       .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }
-      /* 搜索也是一行：下边线与其它行同规则，整页保持「一条条分割线」的读法。 */
-      .bib-set-search-row { display: block; width: 100%; min-width: 0; min-height: var(--bib-input-height); padding: 0 0 var(--bib-row-pad-block); border-bottom: var(--bib-rule); }
+      .bib-set-search-row { display: block; width: 100%; min-width: 0; min-height: var(--bib-input-height); padding: 0 0 8px; }
       .bib-set-search-shell { position: relative; width: 100%; min-width: 0; }
-      .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: var(--bib-input-height); min-height: var(--bib-input-height); padding: 0 30px 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: var(--bib-input-height); min-height: var(--bib-input-height); padding: 0 30px 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-      /* ===== 区块：完全照宿主插件详情页（dsh-client-ui-plugin-manager 的 X_2TxG_*）=====
-         .X_2TxG_detailSections { flex-direction:column; gap:32px }   → .bib-settings 的 32px
-         .X_2TxG_detailSection  { flex-direction:column; gap:12px }   → .bib-set-card
-         .X_2TxG_sectionHead    { align-items:baseline; gap:10px; padding:0 } → .bib-set-card-header
-         .X_2TxG_sectionTitle   { 14/500/20 }                         → .bib-set-card-title
-         .X_2TxG_sectionCount   { 12/18 二级色 }                       → .bib-set-card-desc / .bib-set-count
-         .X_2TxG_rows           { flex-direction:column; gap:0; padding:0 }    → .bib-set-field-list
-         .X_2TxG_row            { padding:12px 2px; border-bottom:.5px solid border-l2 } → .bib-set-row
-         .X_2TxG_row:last-child { border-bottom:0 }
-         .X_2TxG_rowLine        { align-items:center; gap:16px }        → .bib-set-row-main 的列间距
-         .X_2TxG_rowId          { 13.5/500/20 }                        → .bib-set-rowTitle
-         ===== 实测数字（2026-09-22，宿主 0.1.7-alpha.1）=====
-         .X_2TxG_row{padding:12px 2px; border-bottom:.5px solid var(--dsw-alias-border-l2)}
-         .X_2TxG_row:last-child{border-bottom:0}
-         .X_2TxG_rowLine{align-items:center; gap:16px; min-width:0}
-         .X_2TxG_rowMain{flex-direction:column; flex:1; gap:2px; min-width:0}
-         .X_2TxG_rowId{font-size:13.5px; font-weight:500; line-height:20px}
-         注意：行**没有** margin:0 -8px，也**没有**圆角和 hover 填充——那是插件列表的
-         .X_2TxG_card 那一套，不是详情页的行。 */
+      /* ===== 区块：2026-11-12 迁移到 DSH 0.2.2 原生设置表单的卡片语法（tUAPGa_rowCard）=====
+         原生设置表单（模型/凭据/服务器等配置页）现在是一张张设置卡：
+           rowCard { border:.5px settings-card-stroke; background:settings-card-fill;
+                     border-radius:radius-xl(20px); padding:12px 14px; 内部 column gap:12px }
+           rows    { 列向 gap:8px，无分隔线 }
+         行与行、组与组之间没有任何线 —— 分层靠卡片表面 + 留白。本页所有顶层区块跟随该语法：
+         .bib-set-card--panel 即一张设置卡；内部行保留两栏语法但废除发丝线，
+         行自带 8px 纵向留白与 8px 圆角 hover 填充（宿主 --dsw-alias-interactive-bg-hover）。 */
       .bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: visible; border: 0; background: transparent; border-radius: 0; }
       .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -1246,51 +1240,39 @@ function bibSetInstallStyles() {
          做区块分界（照姊妹插件的 .cgpt-updates：border-top 1px border-primary + padding-top 16px），
          组内/行间的分隔一律靠 .5px 分割线。 */
       .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; }
-      /* 区块之间只用间距，不画线：宿主 .detailSections 就是 gap:32px（没有 border）。 */
-      .bib-set-card--panel { border: 0; padding: 0; }
+      /* 区块即设置卡：表面/描边/圆角/内衬全部取宿主 rowCard 同款 token（值见 token 层注释）。
+         卡片自身不再画任何线 —— 区块与区块之间只有 --bib-sec-gap 的留白。 */
+      .bib-set-card--panel { border: 0.5px solid var(--bib-card-stroke); background: var(--bib-card-fill); border-radius: var(--bib-card-radius); padding: var(--bib-card-pad-block) var(--bib-card-pad-inline); }
       .bib-set-group-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
       /* 分组说明与行说明同一套排版基线（11.5/16 三级色），不再自带 12/1.5 那一档。 */
       .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-row-hint-size); font-weight: 400; line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }
-      /* 设置页小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
-         2026-10-14 收敛为三级（页面标题行已删除）：
-           区块标题 14/500 主色 → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色 + 说明另起一行。
-         小节眉故意做成单行眉题（标题与说明同行、说明超长省略），与上下两级的双行堆叠
-         形成对比；节与节之间一条细线。 */
+      /* 小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
+         三级层级不变：卡片标题 14/500 主色 → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色。
+         节与节之间不再画线，只靠眉题上方的留白分组（12px 眉题 + 8px 行距）。 */
       .bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-      .bib-set-subsection + .bib-set-subsection { border-top: var(--bib-rule); }
-      .bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }
+      .bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 16px var(--bib-row-pad-inline) 2px; }
       .bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }
       .bib-set-subsection-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-sub-label-size); font-weight: 400; line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-tertiary); }
       /* 分组头也是一行：左「名称 + 分工说明」、右「展开/收起 + 箭头」，几何与 .bib-set-row 同源
-         （12px 2px 内边距 + .5px 下边线），整块仍是可点击面。 */
-      .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
-      .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
+         （8px 10px 内边距 + 8px 圆角），整块仍是可点击面；行间不再画线。 */
+      .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
+      .bib-set-group-fallback-head:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
-      /* 末组不再多一条收尾线（与 .X_2TxG_row:last-child 同规则）。 */
-      .bib-set-group:last-child .bib-set-group-fallback-head { border-bottom: 0; }
       /* 展开/收起不再用品牌蓝：宿主自己的 DisclosureRow 是三级色起、hover 升二级色，
          姊妹插件的行里也没有任何彩色文字。统一成中性色，hover 时提一级。 */
       .bib-set-group-action { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }
       .bib-set-group-fallback-head:hover .bib-set-group-action { color: var(--dsw-alias-label-primary); }
       .bib-set-group-action .bib-set-chevron { color: currentColor; }
       .bib-set-group .bib-set-body { padding: 0; }
-      /* 行 = 原生详情页的 .X_2TxG_row：padding 12px 2px、下边线 .5px、最后一行无线、
-         无圆角、无 hover 填充、无负外边距。
-         之前照插件列表的 .X_2TxG_card 写成「margin 0 -8px + padding 8px + r12」，又被
-         overflow:hidden 的折叠容器裁掉右侧控件；后来改成「行不越界 + 内容左右各内缩 8px」，
-         虽然不裁了，却把整行文字推离了宿主的 323.2 左边界。现在按详情页行的真实值来，
-         既对齐又不越界。 */
-      /* 行的两栏语法与姊妹插件（dsh-chatgpt-sub 的 .cgpt-row）逐条一致：
-         「标题 + 说明」在左、控件靠右（justify-content: space-between），行间一条 .5px 分割线。
-         控件单列时直接作为第二个子节点；需要竖排（输入框 + 计数）时用 .bib-set-fieldblock-control 包一层。 */
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
-      /* 列表首行去上内边距、末行去下内边距与边线（同姊妹插件 .cgpt-row:first-child/:last-child）：
-         列表与所属区块齐平，不再在顶部/底部留一段看不见的空白。 */
-
-      .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }
-      .bib-set-row:last-child { border-bottom: 0; }
+      /* 行 = 设置卡内的标准行：两栏语法不变（左「标题 + 说明」、右控件），但废除 .5px 下边线 ——
+         行与行之间只有行自带的 8px 纵向留白（两行相邻 = 16px 呼吸）。
+         行是可交互面：8px 圆角 + hover 浅填充（宿主 --dsw-alias-interactive-bg-hover，
+         ≈6% 墨色，与原生设置卡的行 hover 同款），指针扫过时行自己浮起来。 */
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
+      .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: var(--bib-row-pad-block); }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 0; }
       /* 字段行 = 单行网格：「标签」col1、「开关」col2、「色块」col3。不再有第二行
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
@@ -1301,7 +1283,7 @@ function bibSetInstallStyles() {
       /* 语言下拉的兜底形态（仅老宿主没有原生 Menu 时走）：几何照宿主 .input —— 34px 高 / r12 /
          0.5px border-l4 / bg-layer-3 / 13px，与同一页的输入框、时区下拉同高同形。
          原生 Menu 分支不读这条规则（锚点是宿主 Button，外观归宿主）。 */
-      .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       /* 行内两栏 = 宿主 .rowLine(flex/gap16) + .rowMain(flex:1/column/gap2)：
          文字块吃掉剩余宽度，控件自然贴右，不再靠 space-between 硬推。 */
       .bib-set-rowText { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
@@ -1396,11 +1378,10 @@ function bibSetInstallStyles() {
          .field 列向 + gap 6 + padding 12px 0；相邻字段块之间 .5px 细线；label 13/500；
          输入框 34px / r8 / 0 12px；hint 12/1.5。全部度量走 --bib-* token。 */
       .bib-set-fieldblocks { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; }
-      /* 参数区（时区 / 自定义文字 / 百分比方向）复用同一条行语法：左「标题 + 说明」、右控件、
-         .5px 下边线；末行去线去内边距，与 .X_2TxG_row:last-child 同规则。 */
-      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border-bottom: var(--bib-rule); }
-      /* 只保留宿主也有的那条：末行去线。首行/末行去内边距是自创覆写，已删除。 */
-      .bib-set-fieldblocks > .bib-set-fieldblock:last-child { border-bottom: 0; }
+      /* 参数区（时区 / 自定义文字 / 额度凭据）复用同一条行语法：左「标题 + 说明」、右控件、
+         8px 圆角 + hover 填充；行与行之间只有留白，没有任何线。 */
+      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-fieldblock:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       /* 行左侧的「标题 + 说明」两行堆叠（与 .bib-set-rowText 同构）。 */
       .bib-set-fieldblock-copy { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
@@ -1409,12 +1390,12 @@ function bibSetInstallStyles() {
       /* 需要横跨整行的附属说明（如分段控件的 tabpanel）：换行到控件下方，仍是同一行的一部分。 */
       .bib-set-fieldblock-panel { flex: 1 0 100%; }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-      .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       /* v1.24.0：额度凭据输入框与自定义文字同一套自绘外观（宿主没有原生 Input 时走这里）。
          独立声明块而不是合并选择器：几何守卫按类逐个检查 --bib-input-radius。 */
-      .bib-set-credential-input { box-sizing: border-box; width: 260px; max-width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-credential-input { box-sizing: border-box; width: 260px; max-width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-custom-text-input:focus-visible, .bib-set-credential-input:focus-visible, .bib-set-time-zone:focus-visible, .bib-set-language:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
       /* 色板：预设色不再描边（描边 + 虚线圈是「手绘控件」的观感），选中用宿主主文字色的双环，
          hover 用一层浅环；「默认」用一个带斜杠的空圈，与原生「无/恢复默认」的语义一致。 */
@@ -1454,7 +1435,7 @@ function bibSetInstallStyles() {
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       /* 页脚操作行已被「恢复默认」行取代：它现在是「显示内容」区块里的最后一个
          .bib-set-data-row（同「导出账单」的行几何），不再悬浮在页面右下角。 */
-      .bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }
+      .bib-set-reset-row { margin-top: 4px; }
       .bib-set-reset-row .bib-set-data-copy { display: flex; flex-direction: column; gap: 2px; }
       /* 按钮优先渲染宿主原生 Button（.sm = h28 / r8 / 12px / 0 10px）；
          下面这份只是宿主没有 Button 时的等价兜底。 */
@@ -1464,10 +1445,9 @@ function bibSetInstallStyles() {
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-data-actions { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; }
-      /* 账单数据行同样是原生 .X_2TxG_row 的几何（12px 2px + .5px 下边线，末行无线）。 */
-      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
-      .bib-set-data-actions > .bib-set-data-row:first-child { padding-top: 0; }
-      .bib-set-data-row:last-child { padding-bottom: 0; border-bottom: 0; }
+      /* 账单数据行同样是设置卡内的标准行几何（8px 10px 内衬 + 圆角 hover，无线）。 */
+      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-data-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       .bib-set-data-copy { min-width: 0; }
       .bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }
       .bib-set-data-desc { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); }
