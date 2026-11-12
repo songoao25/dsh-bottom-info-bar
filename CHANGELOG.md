@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.1...v1.24.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* restore v1.24.0 credential card behavior after 1.24.1 crash reports ([#284](https://github.com/songoao25/dsh-bottom-info-bar/issues/284)) ([9e8eecc](https://github.com/songoao25/dsh-bottom-info-bar/commit/9e8eeccbfb8606719e6827b9388ffa9c7ec9f5ec))
+
 ## [1.24.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.0...v1.24.1) (2026-11-12)
 
 
