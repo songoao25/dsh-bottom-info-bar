@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.23.0...v1.24.0) (2026-11-12)
+
+
+### Features
+
+* configure quota credentials in plugin settings ([#279](https://github.com/songoao25/dsh-bottom-info-bar/issues/279)) ([5558d28](https://github.com/songoao25/dsh-bottom-info-bar/commit/5558d289e45d47e04b8c8b17f48d5916c923e095))
+
 ## [1.23.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.22.0...v1.23.0) (2026-11-12)
 
 
