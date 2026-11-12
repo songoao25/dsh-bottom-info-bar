@@ -2334,7 +2334,7 @@ const bibCredentialsErrorBoundary = (typeof React === 'object' && React && typeo
       render() {
         if (this.state.failed) {
           return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
-            bibSetCardHeader({ static: true, titleId: 'bib-set-credentials-title', title: t('ui.credentialsTitle'), description: '' }),
+            bibSetCardHeader({ static: true, titleId: 'bib-set-credentials-title', title: t('ui.credentialsTitle'), description: t('ui.credentialsDesc') }),
             bibSetAlert({ tone: 'error', children: t('ui.credentialCardCrashed') }));
         }
         return this.props.children;
@@ -2342,12 +2342,16 @@ const bibCredentialsErrorBoundary = (typeof React === 'object' && React && typeo
     }
   : function (props) { return props.children; };
 
-// 额度凭据卡本体：真正的 React 组件。useState 必须由 React 管理（v1.24.1 的 React #310 教训：
-// 折叠卡如果作为普通函数在父渲染里内联执行，函数体里的 useState 实际挂在父组件上，
+// 额度凭据卡本体：真正的 React 组件。useState/useEffect 必须由 React 管理（v1.24.1 的 React #310
+// 教训：折叠卡如果作为普通函数在父渲染里内联执行，函数体里的 hooks 实际挂在父组件上，
 // 父渲染路径一变 hooks 计数就漂移，整个设置页崩）。
+// 结构完全走插件体系：卡片头与其它区块同款（static 头 + 动态摘要做说明），
+// 折叠用组卡同款的 bibSetDisclosure（展开/收起文字 + 原生箭头 + grid 收合动画），
+// 行用 v1.24.0 的 fieldblock 基线（copy=标签+说明+状态，control=原生 Input+保存/清除）。
+// 不自绘任何体系外的折叠头、组标题或展开按钮。
 function bibCredentialsCard(props) {
-  const [open, setOpen] = React.useState(false);
-  const [showOthers, setShowOthers] = React.useState(false);
+  const [openBound, setOpenBound] = React.useState(false);
+  const [openOthers, setOpenOthers] = React.useState(false);
   const state = props.credentialState;
   // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
   // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
@@ -2363,13 +2367,17 @@ function bibCredentialsCard(props) {
   const summary = boundGroups.length > 0
     ? t('ui.credentialSummaryBound', { count: boundGroups.length, names: summaryNames })
     : t('ui.credentialSummaryNone');
+  // 一个都没绑定时「其他服务商」默认展开：用户要补填的就在眼前，不让 TA 连点两次。
+  const noneBound = loaded && boundGroups.length === 0;
+  React.useEffect(function () {
+    if (noneBound) setOpenOthers(true);
+  }, [noneBound]);
   function renderRow(row) {
     const busy = props.credentialBusyRef === row.ref;
     const draft = typeof drafts[row.ref] === 'string' ? drafts[row.ref] : '';
     const labelId = 'bib-set-credential-' + row.ref + '-label';
     // 标签单一来源：有专属 labelKey 用专属文案，否则用通用模板键（{provider} · {ref}），
     // 不在客户端拼接字符串 —— 文案改一处即可，也不会绕开 locale 测试的键覆盖检查。
-    // 长说明进输入框 title 悬停，正文只留「标签 + 状态」一行（卡片默认折叠，正文要短）。
     const labelText = row.labelText || t('ui.credentialGenericLabel', { provider: row.providerLabel, ref: row.ref });
     const statusText = row.kimiLoginReused
       ? t('ui.credentialKimiLoginReused')
@@ -2379,6 +2387,7 @@ function bibCredentialsCard(props) {
     return React.createElement('div', { key: row.ref, className: 'bib-set-fieldblock' },
       React.createElement('div', { className: 'bib-set-fieldblock-copy' },
         React.createElement('span', { id: labelId, className: 'bib-set-fieldblock-label' }, labelText),
+        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, row.hintText),
         React.createElement('span', { className: 'bib-set-fieldblock-hint' }, statusText)),
       React.createElement('div', { className: 'bib-set-fieldblock-control' },
         bibSetInput({
@@ -2391,7 +2400,6 @@ function bibCredentialsCard(props) {
             spellCheck: false,
             maxLength: 512,
             placeholder: t('ui.credentialPlaceholder'),
-            title: row.hintText,
             value: draft,
             disabled: !canWrite || busy,
             onChange: function (event) { props.onCredentialDraft(row.ref, event && event.target ? event.target.value : ''); },
@@ -2410,51 +2418,43 @@ function bibCredentialsCard(props) {
             children: t('ui.credentialClear'),
           }) : null)));
   }
-  function renderGroup(group, keyPrefix) {
-    const nodes = [React.createElement('p', { key: keyPrefix + '-' + group.id, className: 'bib-set-fieldblock-label' }, group.providerLabel)];
-    for (let j = 0; j < group.credentials.length; j++) nodes.push(renderRow(group.credentials[j]));
-    return nodes;
-  }
-  function renderBoundGroups() {
+  function renderRows(list) {
     const nodes = [];
-    for (let i = 0; i < boundGroups.length; i++) nodes.push.apply(nodes, renderGroup(boundGroups[i], 'g'));
-    if (nodes.length === 0) nodes.push(React.createElement('p', { key: 'none-bound', className: 'bib-set-fieldblock-hint' }, t('ui.credentialNoneBound')));
+    for (let i = 0; i < list.length; i++) {
+      for (let j = 0; j < list[i].credentials.length; j++) nodes.push(renderRow(list[i].credentials[j]));
+    }
     return nodes;
   }
-  function renderOtherGroups() {
-    const nodes = [];
-    for (let i = 0; i < otherGroups.length; i++) nodes.push.apply(nodes, renderGroup(otherGroups[i], 'og'));
-    return nodes;
+  function disclosureHead(labelNode, descText) {
+    // 与组卡同款的标题结构（bib-set-group-head > label + desc），形状/配色由体系 CSS 维护
+    return React.createElement('span', { className: 'bib-set-group-head' },
+      React.createElement('span', { className: 'bib-set-group-label' }, labelNode),
+      descText ? React.createElement('span', { className: 'bib-set-group-desc' }, descText) : null);
   }
-  const body = React.createElement('div', { id: 'bib-set-credentials-body', className: 'bib-set-fieldblocks', hidden: !open },
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-credentials-title',
+      title: t('ui.credentialsTitle'),
+      description: summary,
+    }),
     React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
-    renderBoundGroups(),
-    otherGroups.length > 0 ? React.createElement('div', { key: 'others' },
-      // bibSetButton 是普通函数、返回现成元素：直接放进树里，绝不能再包一层 createElement
-      // （v1.24.1 的教训——元素当 type 用，React 直接抛 "Element type is invalid"）。
-      bibSetButton({
-        onClick: function () { setShowOthers(function (v) { return !v; }); },
-        children: (showOthers ? t('ui.collapse') : t('ui.expand')) + ' · ' + t('ui.credentialOthers', { count: otherGroups.length }),
-      }),
-      showOthers ? renderOtherGroups() : null) : null,
+    React.createElement(bibSetDisclosure, {
+      contentId: 'bib-set-credentials-bound',
+      title: disclosureHead(t('ui.credentialBoundGroup', { count: boundGroups.length }), summaryNames),
+      open: openBound,
+      onToggle: function () { setOpenBound(function (v) { return !v; }); },
+    }, React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(boundGroups))),
+    React.createElement(bibSetDisclosure, {
+      contentId: 'bib-set-credentials-others',
+      title: disclosureHead(t('ui.credentialOthers', { count: otherGroups.length })),
+      open: openOthers,
+      onToggle: function () { setOpenOthers(function (v) { return !v; }); },
+    }, React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(otherGroups))),
     loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
     feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
     React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
     React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')));
-  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
-    bibSetCardHeader({
-      titleId: 'bib-set-credentials-title',
-      title: t('ui.credentialsTitle'),
-      description: summary,
-      expanded: open,
-      onToggle: function () {
-        // 一个都没绑定时，展开卡片就直接把「其他服务商」一起打开：不让用户连点两次。
-        if (!open && boundGroups.length === 0) setShowOthers(true);
-        setOpen(function (v) { return !v; });
-      },
-      contentId: 'bib-set-credentials-body',
-    }),
-    body);
 }
 
 // 设置页区块入口保持普通函数（render(deps) 内联调用）：hooks 全部在 bibCredentialsCard

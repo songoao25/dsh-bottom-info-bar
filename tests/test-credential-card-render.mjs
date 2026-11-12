@@ -1,8 +1,10 @@
-// 设置页「额度凭据」折叠卡真实 React 渲染冒烟测试（2026-11-12，v1.24.1 事故防线）
+// 设置页「额度凭据」卡真实 React 渲染冒烟测试（2026-11-12，v1.24.1 事故防线）
 // 背景：v1.24.1 的折叠卡把 React.useState 写在「普通函数内联调用」里，hooks 实际挂在父组件上，
 // 父渲染路径一变计数就漂移 → React error #310 → 整页设置崩。当时的全量测试全是字符串断言，
 // 没有任何真实渲染，所以 CI 全绿照样翻车。本测试用 react-test-renderer 真渲染四轮
 // （状态缺 → 到达 → 又缺 → 到达），hooks 契约错误在这里直接炸出来；另验 ErrorBoundary 收敛。
+// 结构（2026-11-12 体系化重做）：卡片头与各区块同款 static 头 + 组卡同款 bibSetDisclosure 折叠，
+// 断言也按体系结构写：折叠态看 aria-expanded/aria-hidden，展开后按 DOM 顺序验 bound 排前。
 // 用法：node tests/test-credential-card-render.mjs
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -48,10 +50,10 @@ const sandbox = {
   exports: {},
   __testHook: function (api) { hook.api = api },
 }
-vm.runInNewContext(clientSrc + '\n;__testHook({ bibCredentialsCard, bibCredentialsErrorBoundary, bibSetCredentialsSection, t });', sandbox, { filename: 'src/client-bundle.js' })
-check('S1 沙箱装载成功且导出三个凭据卡符号',
-  [typeof hook.api.bibCredentialsCard, typeof hook.api.bibCredentialsErrorBoundary, typeof hook.api.bibSetCredentialsSection],
-  ['function', 'function', 'function'])
+vm.runInNewContext(clientSrc + '\n;__testHook({ bibCredentialsCard, bibCredentialsErrorBoundary, bibSetCredentialsSection, bibSetDisclosure, t });', sandbox, { filename: 'src/client-bundle.js' })
+check('S1 沙箱装载成功且导出凭据卡与体系折叠符号',
+  [typeof hook.api.bibCredentialsCard, typeof hook.api.bibCredentialsErrorBoundary, typeof hook.api.bibSetCredentialsSection, typeof hook.api.bibSetDisclosure],
+  ['function', 'function', 'function', 'function'])
 
 const stubHandlers = {
   onCredentialDraft: function () {},
@@ -80,19 +82,7 @@ const FULL_STATE = {
   ],
 }
 
-function flattenText(node) {
-  let out = ''
-  const walk = function (n) {
-    if (!n) return
-    if (typeof n === 'string') { out += n; return }
-    if (Array.isArray(n)) { n.forEach(walk); return }
-    if (n.props && typeof n.props.children !== 'undefined') walk(n.props.children)
-  }
-  walk(node)
-  return out
-}
-// 实例树拍平：TestInstance.children 才是渲染后的输出（root.props.children 是原始元素，
-// 对根实例拍平会拿到未渲染的 children —— B1 之前就栽在这里）。
+// 按「渲染实例树」拍平：TestInstance.children 才是渲染后的输出（root.props.children 是原始元素）
 function flattenInstanceText(inst) {
   let out = ''
   const walk = function (n) {
@@ -104,8 +94,19 @@ function flattenInstanceText(inst) {
   walk(inst)
   return out
 }
-function findHeader(view) {
-  return view.findAll(function (node) { return node.type === 'button' && node.props['aria-controls'] === 'bib-set-credentials-body' })[0]
+function credentialInputIds(view) {
+  return view.findAll(function (node) { return node.type === 'input' && typeof node.props.id === 'string' && node.props.id.indexOf('bib-set-credential-') === 0 })
+    .map(function (node) { return node.props.id.slice('bib-set-credential-'.length) })
+}
+// 体系折叠头：bibSetDisclosure 的 button[aria-controls=<contentId>]
+function disclosureHead(view, contentId) {
+  return view.findAll(function (node) { return node.type === 'button' && node.props['aria-controls'] === contentId })[0]
+}
+function collapseBox(view, contentId) {
+  return view.findAll(function (node) { return node.props && node.props.id === contentId })[0]
+}
+function staticHeader(view) {
+  return view.findAll(function (node) { return node.type === 'div' && typeof node.props.className === 'string' && node.props.className.indexOf('bib-set-card-header') >= 0 })[0]
 }
 
 // ---- 四轮渲染：状态缺 → 到达 → 又缺 → 到达。hooks 计数漂移（#310 场景）在这里直接炸 ----
@@ -113,82 +114,75 @@ const sectionEl = function (state) { return React.createElement(hook.api.bibSetC
 let renderer = null
 let renderError = null
 try {
-  renderer = TestRenderer.create(sectionEl(null))
-  renderer.update(sectionEl(FULL_STATE))
-  renderer.update(sectionEl(null))
-  renderer.update(sectionEl(FULL_STATE))
+  TestRenderer.act(function () {
+    renderer = TestRenderer.create(sectionEl(null))
+    renderer.update(sectionEl(FULL_STATE))
+    renderer.update(sectionEl(null))
+    renderer.update(sectionEl(FULL_STATE))
+  })
 } catch (err) { renderError = err }
 check('R1 四轮渲染（状态缺→到达→又缺→到达）不抛 hooks 契约错误（#310 场景复现）', renderError ? renderError.message : null, null)
 
-// ---- 折叠态：默认收起（body hidden），折叠头是 button ----
-const headerButton = findHeader(renderer.root)
-const bodyNodes = renderer.root.findAll(function (node) { return node.props && node.props.id === 'bib-set-credentials-body' })
-check('R2 折叠头是 button 且默认折叠（aria-expanded=false + body hidden）',
-  [!!headerButton, headerButton.props['aria-expanded'], bodyNodes[0].props.hidden === true], [true, false, true])
-
-// ---- 展开：点击折叠头 → body 显示引导文案 + bound 组直接渲染 + 其他服务商折叠按钮 ----
-headerButton.props.onClick()
-const body2 = renderer.root.findAll(function (node) { return node.props && node.props.id === 'bib-set-credentials-body' })[0]
-const textBody = flattenInstanceText(body2)
 const tt = hook.api.t
-const guideText = tt('ui.credentialGuide')
-const othersText = tt('ui.credentialOthers', { count: 1 })
-function credentialInputIds(view) {
-  return view.findAll(function (node) { return node.type === 'input' && typeof node.props.id === 'string' && node.props.id.indexOf('bib-set-credential-') === 0 })
-    .map(function (node) { return node.props.id.slice('bib-set-credential-'.length) })
-}
-check('R3 展开后 body 显示、含顶部引导与 bound 组凭据输入框',
-  [body2.props.hidden === true,
-    textBody.indexOf(guideText) >= 0,
+
+// ---- 折叠态：卡片头是各区块同款 static 头（div，非 button），摘要进 description ----
+const headerNode = staticHeader(renderer.root)
+const headerText = headerNode ? flattenInstanceText(headerNode) : ''
+const summaryText = tt('ui.credentialSummaryBound', { count: 2, names: tt('ui.kimiCoding') + '、' + tt('ui.minimax') })
+check('R2 卡片头为 static 头（非折叠按钮）且摘要（已绑定 N 个服务商）在说明位',
+  [!!headerNode, typeof headerNode.props.onClick, headerText.indexOf(summaryText) >= 0],
+  [true, 'undefined', true])
+const boundHead = disclosureHead(renderer.root, 'bib-set-credentials-bound')
+const othersHead = disclosureHead(renderer.root, 'bib-set-credentials-others')
+const boundBox = collapseBox(renderer.root, 'bib-set-credentials-bound')
+check('R2b 两个折叠组默认收起（aria-expanded=false + 内容 aria-hidden）',
+  [!!boundHead, !!othersHead,
+    boundHead.props['aria-expanded'], othersHead.props['aria-expanded'],
+    boundBox.props['aria-hidden']],
+  [true, true, false, false, 'true'])
+
+// ---- 展开已绑定组：bound 行直接可见（bound 组排前的第一半） ----
+TestRenderer.act(function () { boundHead.props.onClick() })
+const boundBoxOpen = collapseBox(renderer.root, 'bib-set-credentials-bound')
+check('R3 展开已绑定组后内容可见且 bound 行出现（体系 grid 收合展开）',
+  [boundHead.props['aria-expanded'], boundBoxOpen.props['aria-hidden'],
     credentialInputIds(renderer.root).indexOf('KIMI_API_KEY') >= 0,
-    textBody.indexOf(othersText) >= 0],
-  [false, true, true, true])
-// ---- bound 排前：bound 组输入框直接出现，未绑定组要点开「其他服务商」才渲染 ----
-const othersButton = renderer.root.findAll(function (node) { return node.type === 'button' && typeof node.props.children === 'string' && node.props.children.indexOf(othersText) >= 0 })[0]
-check('R4 其他服务商按钮带计数（展开态文案）',
-  [!!othersButton, othersButton.props.children.indexOf(tt('ui.expand')) >= 0], [true, true])
-othersButton.props.onClick()
-const idsAfterOthers = credentialInputIds(renderer.root)
-check('R4 展开其他服务商后输入框顺序 = bound 组在前、未绑定组在后',
-  [idsAfterOthers.slice(0, 2), idsAfterOthers.slice(2)],
+    credentialInputIds(renderer.root).indexOf('MINIMAX_API_KEY') >= 0],
+  [true, undefined, true, true])
+
+// ---- 展开其他服务商组：bound 行在 DOM 顺序上先于未绑定行（bound 排前的第二半） ----
+const othersHeadText = flattenInstanceText(othersHead)
+const othersLabel = tt('ui.credentialOthers', { count: 1 })
+check('R4 其他服务商折叠头带计数',
+  [othersHeadText.indexOf(othersLabel) >= 0], [true])
+TestRenderer.act(function () { othersHead.props.onClick() })
+const idsAll = credentialInputIds(renderer.root)
+check('R4b 展开两组后输入框顺序 = bound 组在前、未绑定组在后',
+  [idsAll.slice(0, 2), idsAll.slice(2)],
   [['KIMI_API_KEY', 'MINIMAX_API_KEY'], ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
 
-function boundNamesJoined() {
-  return ['kimi-coding', 'minimax'].map(function (id) {
-    const g = FULL_STATE.groups.filter(function (x) { return x.id === id })[0]
-    return g.labelKey ? tt(g.labelKey) : g.label
-  }).join('、')
-}
-
-// ---- 摘要：标题行 = 已绑定 N 个服务商 ----
-const header2 = findHeader(renderer.root)
-const headerText = flattenText(header2)
-const summaryText = tt('ui.credentialSummaryBound', { count: 2, names: boundNamesJoined() })
-check('R5 摘要 = 已绑定 N 个服务商（摘要含服务商名列表）',
-  [headerText.indexOf(summaryText) >= 0,
-    headerText.indexOf('Kimi') >= 0 || headerText.indexOf('MiniMax') >= 0],
-  [true, true])
+// ---- 老宿主 fallback：state=null 展开其他服务商组后仍列出目录 inline 凭据 ----
+TestRenderer.act(function () { renderer.update(sectionEl(null)) })
+const fallbackOthersHead = disclosureHead(renderer.root, 'bib-set-credentials-others')
+TestRenderer.act(function () { fallbackOthersHead.props.onClick() })
+const fallbackIds = credentialInputIds(renderer.root)
+check('R6 老宿主（state=null）展开其他服务商组后仍列出目录 inline 凭据',
+  ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'KIMI_API_KEY'].every(function (ref) { return fallbackIds.indexOf(ref) >= 0 }), true)
 
 // ---- ErrorBoundary：卡内崩溃收敛成警示条，不外抛 ----
 const Boom = function () { throw new Error('boom-for-boundary-test') }
 let boundaryRenderer = null
 let boundaryError = null
 try {
-  boundaryRenderer = TestRenderer.create(React.createElement(hook.api.bibCredentialsErrorBoundary, { key: 'x' }, React.createElement(Boom, null)))
+  TestRenderer.act(function () {
+    boundaryRenderer = TestRenderer.create(React.createElement(hook.api.bibCredentialsErrorBoundary, { key: 'x' }, React.createElement(Boom, null)))
+  })
 } catch (err) { boundaryError = err }
 const crashText = boundaryRenderer ? flattenInstanceText(boundaryRenderer.root) : ''
 check('B1 卡内崩溃不外抛且收敛为警示条（credentialCardCrashed 文案）',
   [boundaryError ? boundaryError.message : null,
     crashText.indexOf(tt('ui.credentialCardCrashed')) >= 0],
   [null, true])
-
-// ---- 老宿主 fallback：state=null 展开后仍列出目录 inline 凭据（none-bound 时自动展开其他组） ----
-renderer.update(sectionEl(null))
-const fallbackHeader = findHeader(renderer.root)
-fallbackHeader.props.onClick()
-const fallbackIds = credentialInputIds(renderer.root)
-check('R6 老宿主（state=null）展开后仍列出目录 inline 凭据',
-  ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'KIMI_API_KEY'].every(function (ref) { return fallbackIds.indexOf(ref) >= 0 }), true)
 
 console.log('渲染冒烟结果：' + passed + ' passed, ' + failed + ' failed')
 process.exit(failed === 0 ? 0 : 1)
