@@ -2,6 +2,6 @@
 - 依服務商自動選擇餘額、訂閱額度或雲端帳單口徑，不用手動切換
 - 花費分本工作階段、今天、近 30 天和累計四檔，資料只保存在本機
 - 點擊資訊欄中的欄位，在完整和簡潔兩種顯示之間切換
-- 已適配服務商的額度憑證（阿里 AccessKey、Kimi/MiniMax/小米/智譜/Command Code 等）可在外掛設定頁「額度憑證」裡直接填；卡片預設折疊，優先列出你已經綁定的服務商，其餘收在「其他服務商」裡
+- 已適配服務商的額度憑證（阿里 AccessKey、Kimi/MiniMax/小米/智譜/Command Code 等）可在外掛設定頁「額度憑證」裡直接填，不用改環境變數
 
 設定與排障見 [安裝文件](https://github.com/songoao25/dsh-bottom-info-bar/blob/main/docs/INSTALL.md)。
