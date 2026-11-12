@@ -93,5 +93,45 @@ check('面板打开时可用 Esc 收起', clientSrc.includes("event.key === 'Esc
 check('面板高度受限、可内部滚动（不把输入框挤出视口）',
   css.includes('max-height: 40vh') && css.includes('overflow: hidden auto'), true);
 
+// ---------- 5) DSH Go 皮肤层门控与 token（2026-11-12，只做准备，不含视觉规则） ----------
+check('存在 DSH Go 表面判定函数（网页版属性 / 整页岛 hash / 注入通道）',
+  clientSrc.includes('function dshGoSurfaceEnabled()')
+  && clientSrc.includes("root.getAttribute('data-dsh-app-layout') !== null")
+  && clientSrc.includes("root.getAttribute('data-dsh-go-island') !== null")
+  && clientSrc.includes("indexOf('dsh-go-island=')"), true);
+check('整页岛信号会归一成 data-dsh-go-island 属性（CSS 与 JS 共用同一信号）',
+  clientSrc.includes("root.setAttribute('data-dsh-go-island', '1')"), true);
+check('apply 在安装样式前调用门控（CSS 首帧即可生效）',
+  clientSrc.indexOf('dshGoSurfaceEnabled();') > 0
+  && clientSrc.indexOf('dshGoSurfaceEnabled();') < clientSrc.indexOf('const disposeStyles = installStyles();'), true);
+const tokenStart = css.indexOf('--dshgo-accent');
+const gateStart = css.indexOf('@media (pointer: coarse)');
+check('token 层只存在于 pointer:coarse 门控内（桌面不生效）',
+  gateStart > 0 && tokenStart > gateStart, true);
+const tokenBlock = css.slice(gateStart, css.indexOf('/* 字段级颜色消费规则', gateStart));
+check('门控选择器覆盖 DSH Go 网页版与整页岛两种信号',
+  tokenBlock.includes(':root[data-dsh-app-layout], :root[data-dsh-go-island]'), true);
+check('token 覆盖主色/背景/表面/文字/分割线/圆角',
+  tokenBlock.includes('--dshgo-accent: #4D6BFE')
+  && tokenBlock.includes('--dshgo-bg-1: #EBF1FE') && tokenBlock.includes('--dshgo-bg-2: #F6F7FC')
+  && tokenBlock.includes('--dshgo-surface: #FFFFFF') && tokenBlock.includes('--dshgo-text-1: #1F2328')
+  && tokenBlock.includes('--dshgo-line:') && tokenBlock.includes('--dshgo-radius-card: 20px')
+  && tokenBlock.includes('--dshgo-radius-sheet: 28px'), true);
+check('token 间距只给 8/12/16/24 网格（不自创间距）',
+  tokenBlock.includes('--dshgo-space-1: 8px') && tokenBlock.includes('--dshgo-space-2: 12px')
+  && tokenBlock.includes('--dshgo-space-3: 16px') && tokenBlock.includes('--dshgo-space-4: 24px'), true);
+check('token 覆盖行高/字号/开关/分段/安全区',
+  tokenBlock.includes('--dshgo-row-1: 52px') && tokenBlock.includes('--dshgo-row-2: 64px')
+  && tokenBlock.includes('--dshgo-text-title: 17px') && tokenBlock.includes('--dshgo-text-row: 15px')
+  && tokenBlock.includes('--dshgo-text-sub: 13px')
+  && tokenBlock.includes('--dshgo-switch-w: 52px') && tokenBlock.includes('--dshgo-switch-h: 32px')
+  && tokenBlock.includes('--dshgo-segment-h: 44px') && tokenBlock.includes('--dshgo-segment-h-sm: 36px')
+  && tokenBlock.includes('--dshgo-safe-bottom:'), true);
+check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
+  tokenBlock.includes(':root[data-dsh-app-layout] body[data-ds-dark-theme]')
+  && tokenBlock.includes('--dshgo-bg-1: #1D222C') && tokenBlock.includes('--dshgo-bg-2: #1B1C23'), true);
+check('门控块只定义变量、不改任何现有元素视觉（准备阶段不换皮）',
+  !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

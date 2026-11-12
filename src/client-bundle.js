@@ -650,6 +650,41 @@ function collectInfoBarDetails(rootEl) {
   return out;
 }
 
+// ---------- DSH Go 皮肤层门控（2026-11-12，只做门控与信号归一，不含视觉） ----------
+// DSH Go 的网页版/整页 WebView 岛会在 <html> 上留下三种信号之一：
+//   ① data-dsh-app-layout（网页版：drawer / desktop，见 dsh-Go assets/web/dsh_web_phone.js）
+//   ② data-dsh-go-island（若宿主直接注入）
+//   ③ location.hash 里的 dsh-go-island= 片段，或注入的 window.DshGoIsland 通道（整页岛）
+// 这里把 ②③ 归一成 data-dsh-go-island 属性，CSS 与 JS 共用同一个信号；桌面浏览器三者皆无，
+// 属性不存在 → 皮肤层不生效（桌面像素不变）。视觉规则等 design-go v2 稿再落地。
+function dshGoSurfaceEnabled() {
+  try {
+    if (typeof document === 'undefined' || !document || !document.documentElement) return false;
+    const root = document.documentElement;
+    if (root.getAttribute('data-dsh-app-layout') !== null) return true;
+    if (root.getAttribute('data-dsh-go-island') !== null) return true;
+    let island = false;
+    try {
+      island = typeof window !== 'undefined' && window && typeof window.DshGoIsland !== 'undefined';
+    } catch (err) { island = false; }
+    if (!island && typeof window !== 'undefined' && window && window.location) {
+      island = String(window.location.hash || '').indexOf('dsh-go-island=') !== -1;
+    }
+    if (island) {
+      try { root.setAttribute('data-dsh-go-island', '1'); } catch (err) { /* 写不了属性就只靠 JS 判定 */ }
+      return true;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+// DSH Go 手机形态：DSH Go 表面 + 触屏（hover 不可用）。宽屏 DSH Go 窗口同样套皮肤，
+// 版式仍由 CSS 媒体查询决定；桌面浏览器两个条件都不满足。
+function dshGoCompactEnabled() {
+  return dshGoSurfaceEnabled() && touchDetailsEnabled();
+}
+
 // 余额悬停明细（2026-10-07 用户拍板）：底栏只放得下一个总数，但用户想知道其中「充的钱」与
 // 「送的钱」各是多少 —— 两者的来源与规则不同，并成一个数就分不清了。
 // 文案与 DSH 设置页逐字对齐（充值余额 / 赠金余额，见 src/locales.js）：宿主已经这么叫，
@@ -863,6 +898,33 @@ function installStyles() {
       /* 横屏矮视口：把上下留白再压回一点，高度还给对话区。 */
       @media (orientation: landscape) and (max-height: 480px) {
         .bi-root { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
+      }
+      /* ---------- DSH Go 皮肤层：门控 + token（2026-11-12，只定义变量，不改现有视觉） ----------
+         门控信号：:root[data-dsh-app-layout]（DSH Go 网页版）或 :root[data-dsh-go-island]
+         （整页 WebView 岛，由模块级 dshGoSurfaceEnabled 从 hash / DshGoIsland 通道归一），
+         再叠 @media (pointer: coarse)（触屏）。桌面浏览器两者皆无 → 不生效，像素不变。
+         视觉规则（卡片/行/开关/渐变）等 design-go v2 稿后只消费这些 token；间距只用 8/12/16/24 网格。 */
+      @media (pointer: coarse) {
+        :root[data-dsh-app-layout], :root[data-dsh-go-island] {
+          --dshgo-accent: #4D6BFE;
+          --dshgo-bg-1: #EBF1FE; --dshgo-bg-2: #F6F7FC;
+          --dshgo-surface: #FFFFFF; --dshgo-surface-2: #F1F4FB;
+          --dshgo-text-1: #1F2328; --dshgo-text-2: #5A6169; --dshgo-text-3: #8A9099;
+          --dshgo-line: rgba(31, 35, 40, 0.08);
+          --dshgo-radius-card: 20px; --dshgo-radius-sheet: 28px; --dshgo-radius-control: 12px;
+          --dshgo-space-1: 8px; --dshgo-space-2: 12px; --dshgo-space-3: 16px; --dshgo-space-4: 24px;
+          --dshgo-row-1: 52px; --dshgo-row-2: 64px;
+          --dshgo-text-title: 17px; --dshgo-text-row: 15px; --dshgo-text-sub: 13px;
+          --dshgo-switch-w: 52px; --dshgo-switch-h: 32px; --dshgo-switch-thumb: 26px;
+          --dshgo-segment-h: 44px; --dshgo-segment-h-sm: 36px;
+          --dshgo-safe-bottom: var(--dsh-app-inset-bottom, env(safe-area-inset-bottom, 0px));
+        }
+        :root[data-dsh-app-layout] body[data-ds-dark-theme], :root[data-dsh-go-island] body[data-ds-dark-theme] {
+          --dshgo-bg-1: #1D222C; --dshgo-bg-2: #1B1C23;
+          --dshgo-surface: #262B36; --dshgo-surface-2: #2E3440;
+          --dshgo-text-1: #E8EAF0; --dshgo-text-2: #A9AFBC; --dshgo-text-3: #7C8391;
+          --dshgo-line: rgba(232, 234, 240, 0.10);
+        }
       }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
 ` + FIELD_COLOR_CSS + `
@@ -1588,6 +1650,8 @@ function bibSetInstallStyles() {
       .bib-set-quota-mode-opt[aria-checked="true"] { background: var(--bib-set-brand-strong); color: #fff; font-weight: 600; }
       .bib-set-quota-mode-opt[aria-checked="true"]:hover { background: var(--bib-set-brand-strong); color: #fff; }
       @media (forced-colors: active) { .bib-set-quota-mode-opt[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+      /* DSH Go 皮肤层：token 定义在 installStyles 的 :root 门控块里（同一文档只定义一次），
+         设置页规则只消费 --dshgo-*，不重复定义；视觉规则等 design-go v2 稿再落地。 */
       @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-quota-mode-opt { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
     `;
   document.head.appendChild(style);
@@ -3207,6 +3271,9 @@ function InfoBarBundleConfig(props) {
 module.exports = {
   inject: ['slots', 'locale'],
   async apply(ctx) {
+    // 先把 DSH Go 表面信号归一成 data-dsh-go-island（见 dshGoSurfaceEnabled 注释）：
+    // 必须在样式安装与组件挂载之前，CSS 门控才能第一时间生效。
+    dshGoSurfaceEnabled();
     // locale 是 inject 里声明过的服务，但宿主版本差异与测试替身都可能缺席/抛错；
     // 取值与注册全部 try/catch，失败就退回浏览器语言（见 createTranslator）。
     try { localeService = ctx.locale; } catch (err) { localeService = null; }
