@@ -2350,8 +2350,6 @@ const bibCredentialsErrorBoundary = (typeof React === 'object' && React && typeo
 // 行用 v1.24.0 的 fieldblock 基线（copy=标签+说明+状态，control=原生 Input+保存/清除）。
 // 不自绘任何体系外的折叠头、组标题或展开按钮。
 function bibCredentialsCard(props) {
-  const [openBound, setOpenBound] = React.useState(false);
-  const [openOthers, setOpenOthers] = React.useState(false);
   const state = props.credentialState;
   // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
   // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
@@ -2359,19 +2357,15 @@ function bibCredentialsCard(props) {
   const canWrite = loaded && state.canWrite === true;
   const drafts = props.credentialDrafts || {};
   const feedback = props.credentialFeedback;
+  // 目录口径：只有必须单独填写额度凭据的服务商（当前仅阿里百炼）会出现。
+  // 其余服务商全部复用推理 Key / 登录态自动检测，没在用就不占设置页一寸地方。
   const groups = bibSetCredentialGroupsFromCatalog(state);
   const boundGroups = groups.filter(function (g) { return g.bound; });
-  const otherGroups = groups.filter(function (g) { return !g.bound; });
   const boundNames = boundGroups.map(function (g) { return g.providerLabel; });
   const summaryNames = boundNames.slice(0, 3).join('、') + (boundNames.length > 3 ? ' +' + String(boundNames.length - 3) : '');
   const summary = boundGroups.length > 0
     ? t('ui.credentialSummaryBound', { count: boundGroups.length, names: summaryNames })
     : t('ui.credentialSummaryNone');
-  // 一个都没绑定时「其他服务商」默认展开：用户要补填的就在眼前，不让 TA 连点两次。
-  const noneBound = loaded && boundGroups.length === 0;
-  React.useEffect(function () {
-    if (noneBound) setOpenOthers(true);
-  }, [noneBound]);
   function renderRow(row) {
     const busy = props.credentialBusyRef === row.ref;
     const draft = typeof drafts[row.ref] === 'string' ? drafts[row.ref] : '';
@@ -2425,12 +2419,6 @@ function bibCredentialsCard(props) {
     }
     return nodes;
   }
-  function disclosureHead(labelNode, descText) {
-    // 与组卡同款的标题结构（bib-set-group-head > label + desc），形状/配色由体系 CSS 维护
-    return React.createElement('span', { className: 'bib-set-group-head' },
-      React.createElement('span', { className: 'bib-set-group-label' }, labelNode),
-      descText ? React.createElement('span', { className: 'bib-set-group-desc' }, descText) : null);
-  }
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
     bibSetCardHeader({
       static: true,
@@ -2439,18 +2427,7 @@ function bibCredentialsCard(props) {
       description: summary,
     }),
     React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
-    React.createElement(bibSetDisclosure, {
-      contentId: 'bib-set-credentials-bound',
-      title: disclosureHead(t('ui.credentialBoundGroup', { count: boundGroups.length }), summaryNames),
-      open: openBound,
-      onToggle: function () { setOpenBound(function (v) { return !v; }); },
-    }, React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(boundGroups))),
-    React.createElement(bibSetDisclosure, {
-      contentId: 'bib-set-credentials-others',
-      title: disclosureHead(t('ui.credentialOthers', { count: otherGroups.length })),
-      open: openOthers,
-      onToggle: function () { setOpenOthers(function (v) { return !v; }); },
-    }, React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(otherGroups))),
+    React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(groups)),
     loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
     feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
     React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),

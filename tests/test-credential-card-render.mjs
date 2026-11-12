@@ -3,8 +3,9 @@
 // 父渲染路径一变计数就漂移 → React error #310 → 整页设置崩。当时的全量测试全是字符串断言，
 // 没有任何真实渲染，所以 CI 全绿照样翻车。本测试用 react-test-renderer 真渲染四轮
 // （状态缺 → 到达 → 又缺 → 到达），hooks 契约错误在这里直接炸出来；另验 ErrorBoundary 收敛。
-// 结构（2026-11-12 体系化重做）：卡片头与各区块同款 static 头 + 组卡同款 bibSetDisclosure 折叠，
-// 断言也按体系结构写：折叠态看 aria-expanded/aria-hidden，展开后按 DOM 顺序验 bound 排前。
+// 结构（2026-11-12 二次收紧）：目录只留阿里百炼一组 inline 凭据 → 卡片头为各区块同款 static 头
+// （动态摘要做说明），阿里两行 fieldblock 直接渲染，不再有任何组折叠；非 inline 服务商
+// （复用推理 Key / 登录态）绝不出现在卡里。断言按该结构写。
 // 用法：node tests/test-credential-card-render.mjs
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -65,20 +66,28 @@ const stubHandlers = {
 }
 const FULL_STATE = {
   canWrite: true,
-  bound: 2,
-  total: 6,
+  bound: 1,
+  total: 1,
   kimiLogin: { configured: true },
   items: [],
   groups: [
-    { id: 'kimi-coding', labelKey: 'ui.kimiCoding', label: null, mode: 'subscription', bound: true,
-      credentials: [{ ref: 'KIMI_API_KEY', labelKey: 'ui.credentialKimiKeyLabel', hintKey: 'ui.credentialKimiHint', configured: true, source: 'file', writable: true }] },
-    { id: 'minimax', labelKey: 'ui.minimax', label: null, mode: 'subscription', bound: true,
-      credentials: [{ ref: 'MINIMAX_API_KEY', labelKey: null, hintKey: null, configured: true, source: 'env', writable: false }] },
-    { id: 'alibaba', labelKey: 'ui.qwenTokenPlan', label: null, mode: 'subscription', bound: false,
+    { id: 'alibaba', labelKey: 'ui.qwenTokenPlan', label: null, mode: 'subscription', bound: true,
       credentials: [
-        { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', labelKey: 'ui.credentialAlibabaIdLabel', hintKey: 'ui.credentialAlibabaIdHint', configured: false, source: null, writable: true },
+        { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', labelKey: 'ui.credentialAlibabaIdLabel', hintKey: 'ui.credentialAlibabaIdHint', configured: true, source: 'file', writable: true },
         { ref: 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', labelKey: 'ui.credentialAlibabaSecretLabel', hintKey: 'ui.credentialAlibabaHint', configured: false, source: null, writable: true },
       ] },
+  ],
+}
+// 未绑定态（阿里 AccessKey 还没填）：卡片头说明位应显示「未检测到已绑定的额度凭据」。
+const NONE_STATE = {
+  canWrite: true,
+  bound: 0,
+  total: 1,
+  kimiLogin: { configured: false },
+  items: [],
+  groups: [
+    { id: 'alibaba', labelKey: 'ui.qwenTokenPlan', label: null, mode: 'subscription', bound: false,
+      credentials: FULL_STATE.groups[0].credentials.map(function (c) { return Object.assign({}, c, { configured: false, source: null }) }) },
   ],
 }
 
@@ -125,49 +134,31 @@ check('R1 四轮渲染（状态缺→到达→又缺→到达）不抛 hooks 契
 
 const tt = hook.api.t
 
-// ---- 折叠态：卡片头是各区块同款 static 头（div，非 button），摘要进 description ----
+// ---- 卡片态：卡片头是各区块同款 static 头（div，非 button），摘要进 description ----
 const headerNode = staticHeader(renderer.root)
 const headerText = headerNode ? flattenInstanceText(headerNode) : ''
-const summaryText = tt('ui.credentialSummaryBound', { count: 2, names: tt('ui.kimiCoding') + '、' + tt('ui.minimax') })
+const summaryText = tt('ui.credentialSummaryBound', { count: 1, names: tt('ui.qwenTokenPlan') })
 check('R2 卡片头为 static 头（非折叠按钮）且摘要（已绑定 N 个服务商）在说明位',
   [!!headerNode, typeof headerNode.props.onClick, headerText.indexOf(summaryText) >= 0],
   [true, 'undefined', true])
-const boundHead = disclosureHead(renderer.root, 'bib-set-credentials-bound')
-const othersHead = disclosureHead(renderer.root, 'bib-set-credentials-others')
-const boundBox = collapseBox(renderer.root, 'bib-set-credentials-bound')
-check('R2b 两个折叠组默认收起（aria-expanded=false + 内容 aria-hidden）',
-  [!!boundHead, !!othersHead,
-    boundHead.props['aria-expanded'], othersHead.props['aria-expanded'],
-    boundBox.props['aria-hidden']],
-  [true, true, false, false, 'true'])
+check('R2b 阿里两行凭据直接渲染、无需任何展开交互（卡内已无组折叠）',
+  credentialInputIds(renderer.root), ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET'])
+check('R2c 复用推理 Key 的服务商（Kimi/MiniMax）绝不出现在卡里',
+  ['KIMI_API_KEY', 'MINIMAX_API_KEY'].map(function (ref) { return credentialInputIds(renderer.root).indexOf(ref) >= 0 }),
+  [false, false])
 
-// ---- 展开已绑定组：bound 行直接可见（bound 组排前的第一半） ----
-TestRenderer.act(function () { boundHead.props.onClick() })
-const boundBoxOpen = collapseBox(renderer.root, 'bib-set-credentials-bound')
-check('R3 展开已绑定组后内容可见且 bound 行出现（体系 grid 收合展开）',
-  [boundHead.props['aria-expanded'], boundBoxOpen.props['aria-hidden'],
-    credentialInputIds(renderer.root).indexOf('KIMI_API_KEY') >= 0,
-    credentialInputIds(renderer.root).indexOf('MINIMAX_API_KEY') >= 0],
-  [true, undefined, true, true])
+// ---- 未绑定态：说明位切换为「未检测到已绑定的额度凭据」，输入行仍在（用户要填的就是它） ----
+TestRenderer.act(function () { renderer.update(sectionEl(NONE_STATE)) })
+const noneHeaderText = staticHeader(renderer.root) ? flattenInstanceText(staticHeader(renderer.root)) : ''
+check('R3 未绑定时摘要切换为「未检测到」且阿里填写行保持可见',
+  [noneHeaderText.indexOf(tt('ui.credentialSummaryNone')) >= 0, credentialInputIds(renderer.root).length],
+  [true, 2])
+TestRenderer.act(function () { renderer.update(sectionEl(FULL_STATE)) })
 
-// ---- 展开其他服务商组：bound 行在 DOM 顺序上先于未绑定行（bound 排前的第二半） ----
-const othersHeadText = flattenInstanceText(othersHead)
-const othersLabel = tt('ui.credentialOthers', { count: 1 })
-check('R4 其他服务商折叠头带计数',
-  [othersHeadText.indexOf(othersLabel) >= 0], [true])
-TestRenderer.act(function () { othersHead.props.onClick() })
-const idsAll = credentialInputIds(renderer.root)
-check('R4b 展开两组后输入框顺序 = bound 组在前、未绑定组在后',
-  [idsAll.slice(0, 2), idsAll.slice(2)],
-  [['KIMI_API_KEY', 'MINIMAX_API_KEY'], ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
-
-// ---- 老宿主 fallback：state=null 展开其他服务商组后仍列出目录 inline 凭据 ----
+// ---- 老宿主 fallback：state=null 仍列出目录 inline 凭据（阿里两行） ----
 TestRenderer.act(function () { renderer.update(sectionEl(null)) })
-const fallbackOthersHead = disclosureHead(renderer.root, 'bib-set-credentials-others')
-TestRenderer.act(function () { fallbackOthersHead.props.onClick() })
-const fallbackIds = credentialInputIds(renderer.root)
-check('R6 老宿主（state=null）展开其他服务商组后仍列出目录 inline 凭据',
-  ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'KIMI_API_KEY'].every(function (ref) { return fallbackIds.indexOf(ref) >= 0 }), true)
+check('R6 老宿主（state=null）仍列出目录 inline 凭据（阿里 AccessKey 两项）',
+  credentialInputIds(renderer.root), ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET'])
 
 // ---- ErrorBoundary：卡内崩溃收敛成警示条，不外抛 ----
 const Boom = function () { throw new Error('boom-for-boundary-test') }

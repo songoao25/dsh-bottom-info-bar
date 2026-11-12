@@ -320,10 +320,8 @@ async function main() {
   }))
   check('A23 kimi-coding 的 oauthRecord 与 host 只读凭据记录键一致', [kimiEntry.oauthRecord, KIMI_CODING_RECORD_KEY],
     ['llm-pi-ai/kimi-coding', 'llm-pi-ai/kimi-coding'])
-  ok('A24 三个原内联 ref 仍是 inline（阿里 ID/Secret + Kimi Key）',
-    ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', 'KIMI_API_KEY'].every(function (ref) {
-      return inlineRefs.indexOf(ref) >= 0
-    }), JSON.stringify(inlineRefs))
+  ok('A24 只有阿里 AccessKey 两项是 inline（其余一律复用推理 Key / 登录态，2026-11-12 只留阿里）',
+    JSON.stringify(inlineRefs) === JSON.stringify(['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']), JSON.stringify(inlineRefs))
   check('A25 host 的 CREDENTIAL_CONFIG_REFS 与目录 inline ref 去重结果逐项一致（白名单只收 inline，2026-11-12 收紧）', C.CREDENTIAL_CONFIG_REFS, inlineRefs)
   ok('A26 host 白名单确实由 CREDENTIAL_CATALOG.reduce 派生（源码守卫）',
     hostSrc.indexOf('const CREDENTIAL_CONFIG_REFS = CREDENTIAL_CATALOG.reduce(') >= 0
@@ -404,8 +402,7 @@ async function main() {
 
   // ================= D) describeCredentialConfig =================
   function describeStub(ref) {
-    if (ref === 'KIMI_API_KEY') return { configured: true, source: 'file', writable: true }
-    if (ref === 'MINIMAX_API_KEY') return { configured: true, source: 'env', writable: false }
+    if (ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID') return { configured: true, source: 'file', writable: true }
     return { configured: false, source: null, writable: true }
   }
   const describeHost = makeHostApi(C, {
@@ -419,23 +416,20 @@ async function main() {
   check('D2 items 是目录 inline ref 的扁平视图', described.items.map(function (item) { return item.ref }), inlineRefs)
   check('D3 items 每项字段固定为 ref/configured/source/writable',
     described.items.map(function (item) { return Object.keys(item).sort().join(',') }).filter(function (keys) { return keys !== 'configured,ref,source,writable' }), [])
-  check('D4 items 状态来自 describe', [described.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0],
-    described.items.filter(function (i) { return i.ref === 'MINIMAX_API_KEY' })[0]],
-    [{ ref: 'KIMI_API_KEY', configured: true, source: 'file', writable: true },
-      { ref: 'MINIMAX_API_KEY', configured: true, source: 'env', writable: false }])
-  // D5（2026-11-12）：groups 仍只含 inline 组，但按「bound 优先、同内保持目录顺序」排序。
-  // stub 里 KIMI_API_KEY / MINIMAX_API_KEY 已配置 → kimi-coding、minimax bound=true 排前面。
-  const expectedGroupOrder = ['kimi-coding', 'minimax', 'alibaba', 'xiaomi-token-plan', 'command-code', 'opencode-go']
-  check('D5 groups 只含 inline 组且按 bound 优先排序（同内保持目录顺序）', described.groups.map(function (g) { return g.id }), expectedGroupOrder)
+  check('D4 items 状态来自 describe', described.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0],
+    { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', configured: true, source: 'file', writable: true })
+  // D5（2026-11-12 二次收紧）：只有阿里百炼需要单独填写额度凭据 → groups 只含 alibaba 一组；
+  // bound 仍按四判据，排序规则保留（当前只有一组时退化为目录顺序）。
+  check('D5 groups 只含 inline 组（当前仅 alibaba）且保持目录顺序', described.groups.map(function (g) { return g.id }), ['alibaba'])
   check('D5b bound/total 与逐组 bound 值',
     [described.bound, described.total, described.groups.map(function (g) { return g.bound })],
-    [2, 6, [true, true, false, false, false, false]])
+    [1, 1, [true]])
   check('D6 groups 每项字段固定为 bound/id/labelKey/label/mode/credentials',
     described.groups.map(function (g) { return Object.keys(g).sort().join(',') }).filter(function (keys) { return keys !== 'bound,credentials,id,label,labelKey,mode' }), [])
-  // D6b（2026-11-12）：detectRefs 命中即 bound —— 用户没填 Token Plan Key，但 DSH 设置 → 模型
-  // 里配了小米推理 Key（stub describe 命中 XIAOMI_API_KEY），xiaomi-token-plan 仍算「已绑定」。
+  // D6b（2026-11-12）：detectRefs 命中即 bound —— 用户没填阿里 AccessKey，但 DSH 设置 → 模型
+  // 里配了 Qwen Token Plan 推理 Key（stub describe 命中），alibaba 组仍算「已绑定」。
   const detectStub = function (ref) {
-    if (ref === 'XIAOMI_API_KEY') return { configured: true, source: 'env', writable: false }
+    if (ref === 'QWEN_TOKEN_PLAN_API_KEY') return { configured: true, source: 'env', writable: false }
     return { configured: false, source: null, writable: true }
   }
   const detectHost = makeHostApi(C, {
@@ -445,15 +439,12 @@ async function main() {
     readRecord: function () { return { payload: { access: OAUTH_TOKEN } } },
   })
   const detectDescribed = await detectHost.api.describeCredentialConfig()
-  const detectXiaomi = detectDescribed.groups.filter(function (g) { return g.id === 'xiaomi-token-plan' })[0]
+  const detectAlibaba = detectDescribed.groups.filter(function (g) { return g.id === 'alibaba' })[0]
   check('D6b detectRefs 命中推理 Key → 该组 bound=true（inline 凭据全未配置）',
-    [detectXiaomi.bound, detectXiaomi.credentials.every(function (c) { return c.configured === false })], [true, true])
+    [detectAlibaba.bound, detectAlibaba.credentials.every(function (c) { return c.configured === false })], [true, true])
   const alibabaGroup = described.groups.filter(function (g) { return g.id === 'alibaba' })[0]
-  const opencodeGroup = described.groups.filter(function (g) { return g.id === 'opencode-go' })[0]
   check('D7 有品牌字典键的组用 labelKey、label=null',
     [alibabaGroup.labelKey, alibabaGroup.label, alibabaGroup.mode], ['ui.qwenTokenPlan', null, 'subscription'])
-  check('D8 只有原文字面量的组用 label、labelKey=null',
-    [opencodeGroup.labelKey, opencodeGroup.label], [null, 'OpenCode Go'])
   check('D9 组内凭据只含 inline 条目', described.groups.reduce(function (bad, g) {
     for (const credential of g.credentials) if (inlineRefs.indexOf(credential.ref) < 0) bad.push(g.id + ':' + credential.ref)
     return bad
@@ -471,9 +462,9 @@ async function main() {
   check('D12 组内凭据保留 labelKey/hintKey 供客户端渲染',
     alibabaGroup.credentials.map(function (c) { return [c.ref, c.labelKey, c.hintKey] })[0],
     ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ui.credentialAlibabaIdLabel', 'ui.credentialAlibabaIdHint'])
-  check('D13 无 labelKey/hintKey 的 inline 凭据为 null（客户端走 generic 文案）', described.groups.reduce(function (list, g) {
-    return list.concat(g.credentials.filter(function (c) { return c.ref === 'MINIMAX_API_KEY' }))
-  }, [])[0], { ref: 'MINIMAX_API_KEY', labelKey: null, hintKey: null, configured: true, source: 'env', writable: false })
+  check('D13 非 inline 的 ref（检测绑定）绝不进入 items / groups', described.groups.reduce(function (list, g) {
+    return list.concat(g.credentials.filter(function (c) { return c.ref === 'MINIMAX_API_KEY' || c.ref === 'KIMI_API_KEY' }))
+  }, []).concat(described.items.filter(function (i) { return i.ref === 'MINIMAX_API_KEY' || i.ref === 'KIMI_API_KEY' })), [])
   check('D14 footnoteKey 固定指向余额/账单说明', described.footnoteKey, 'ui.credentialFootnote')
   check('D15 canWrite = set+unset 都是函数', described.canWrite, true)
   const expiredLoginHost = makeHostApi(C, {
@@ -504,23 +495,23 @@ async function main() {
   check('D23 canWrite 缺 set 时为 false', (await makeHostApi(C, { describe: describeStub, unset: async function () {} }).api.describeCredentialConfig()).canWrite, false)
   // 无 describe 时回退 resolve
   const fallbackHost = makeHostApi(C, {
-    resolve: function (ref) { return ref === 'KIMI_API_KEY' ? { value: 'yes', source: 'env' } : null },
+    resolve: function (ref) { return ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' ? { value: 'yes', source: 'env' } : null },
     set: async function () {}, unset: async function () {},
   })
   const fallback = await fallbackHost.api.describeCredentialConfig()
-  check('D24 无 describe 回退 resolve：configured/source', [fallback.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured,
-    fallback.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].source], [true, 'env'])
+  check('D24 无 describe 回退 resolve：configured/source', [fallback.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0].configured,
+    fallback.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0].source], [true, 'env'])
   check('D25 无 describe 时 writable 跟随 set 是否存在', fallback.items[0].writable, true)
   check('D26 resolve 抛错 → 按未配置展示', (await makeHostApi(C, {
     resolve: function () { throw new Error('boom') }, set: async function () {}, unset: async function () {},
   }).api.describeCredentialConfig()).items.every(function (i) { return i.configured === false }), true)
   check('D27 describe 单项抛错只影响该项、不影响 canWrite', await (async function () {
     const host = makeHostApi(C, {
-      describe: function (ref) { if (ref === 'KIMI_API_KEY') throw new Error('boom'); return describeStub(ref) },
+      describe: function (ref) { if (ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID') throw new Error('boom'); return describeStub(ref) },
       set: async function () {}, unset: async function () {},
     })
     const res = await host.api.describeCredentialConfig()
-    return [res.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured, res.canWrite]
+    return [res.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0].configured, res.canWrite]
   })(), [false, true])
   // getCredentialConfig 路由与 describe 等价
   const readHost = makeHostApi(C, { describe: describeStub, set: async function () {}, unset: async function () {}, readRecord: function () { return { access: 'x' } } })
@@ -561,20 +552,20 @@ async function main() {
   }
 
   const writeHost = makeStoreHost()
-  for (const badRef of ['DEEPSEEK_API_KEY', '', ' KIMI_API_KEY ', undefined]) {
+  for (const badRef of ['DEEPSEEK_API_KEY', '', ' KIMI_API_KEY ', 'KIMI_API_KEY', 'XIAOMI_TOKEN_PLAN_CN_API_KEY', undefined]) {
     check('E4 setCredential 非白名单 ref → invalid-ref（' + String(badRef) + '）', await run(writeHost, 'setCredential', { ref: badRef, value: SECRET }),
       { ok: false, code: 'invalid-ref' })
   }
   check('E5 invalid-ref 时不调用 set', writeHost.calls.set.length, 0)
   const noSetHost = makeHostApi(C, { describe: describeStub, unset: async function () {} })
-  check('E6 宿主无 set → write-unsupported', await run(noSetHost, 'setCredential', { ref: 'KIMI_API_KEY', value: KIMI_VALUE }),
+  check('E6 宿主无 set → write-unsupported', await run(noSetHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: SECRET }),
     { ok: false, code: 'write-unsupported' })
-  check('E7 无 set 时即使值非法也先报 write-unsupported', await run(noSetHost, 'setCredential', { ref: 'KIMI_API_KEY', value: 'a b' }),
+  check('E7 无 set 时即使值非法也先报 write-unsupported', await run(noSetHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: 'a b' }),
     { ok: false, code: 'write-unsupported' })
   const badValueHost = makeStoreHost()
   for (const badValue of ['', '   ', 'a b', 'a' + LF + 'b', 'x'.repeat(CREDENTIAL_VALUE_MAX_LEN + 1)]) {
     check('E8 setCredential 非法值 → invalid-value（' + JSON.stringify(badValue).slice(0, 18) + '）',
-      await run(badValueHost, 'setCredential', { ref: 'KIMI_API_KEY', value: badValue }), { ok: false, code: 'invalid-value' })
+      await run(badValueHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: badValue }), { ok: false, code: 'invalid-value' })
   }
   check('E9 invalid-value 时不调用 set', badValueHost.calls.set.length, 0)
   const setThrowsHost = makeHostApi(C, {
@@ -589,39 +580,37 @@ async function main() {
   check('E13 失败结果只有 ok+code 两个字段', Object.keys(failed).sort(), ['code', 'ok'])
 
   const successHost = makeStoreHost()
-  const saved = await run(successHost, 'setCredential', { ref: 'KIMI_API_KEY', value: '  ' + KIMI_VALUE + '  ' })
+  const saved = await run(successHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: '  ' + SECRET + '  ' })
   check('E14 成功返回 ok:true 且带完整状态视图', [saved.ok, Object.keys(saved).sort()],
     [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
-  check('E15 成功时 set 收到白名单 ref + trim 后值', successHost.calls.set, [['KIMI_API_KEY', KIMI_VALUE]])
+  check('E15 成功时 set 收到白名单 ref + trim 后值', successHost.calls.set, [['ALIBABA_CLOUD_ACCESS_KEY_ID', SECRET]])
   check('E16 成功返回的状态里该项 configured=true（保存后立即可见）',
-    saved.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured, true)
-  check('E17 Kimi Key 保存后刷新 kimi-coding 订阅源', [successHost.calls.markRequested, successHost.calls.kick],
-    [['kimi-coding'], [['kimi-coding', 'kimi-coding']]])
+    saved.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0].configured, true)
+  check('E17 阿里 Key 保存后刷新两个阿里源（来源去重、顺序按目录）', [successHost.calls.markRequested, successHost.calls.kick],
+    [['alibaba-intl', 'alibaba-cn'], [['alibaba-intl', 'qwen-token-plan'], ['alibaba-cn', 'qwen-token-plan-cn']]])
   ok('E18 成功结果不含 Key 值', !leaks(saved))
 
   const alibabaHost = makeStoreHost()
-  await run(alibabaHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: SECRET })
-  check('E19 阿里 ID 保存后按目录刷新两个阿里源（来源去重、顺序按目录）',
+  await run(alibabaHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_SECRET', value: SECRET })
+  check('E19 阿里 Secret 保存后同样刷新两个阿里源（同一目录条目）',
     [alibabaHost.calls.markRequested, alibabaHost.calls.kick],
     [['alibaba-intl', 'alibaba-cn'], [['alibaba-intl', 'qwen-token-plan'], ['alibaba-cn', 'qwen-token-plan-cn']]])
   check('E20 刷新时写回 subscriptionSourceProvider', alibabaHost.sourceProvider,
     { 'alibaba-intl': 'qwen-token-plan', 'alibaba-cn': 'qwen-token-plan-cn' })
   const xiaomiHost = makeStoreHost()
-  await run(xiaomiHost, 'setCredential', { ref: 'XIAOMI_TOKEN_PLAN_CN_API_KEY', value: 'xiaomi-key-value' })
-  check('E21 小米 Key 保存后按目录刷新三集群（xiaomi 无订阅源被跳过）',
-    [xiaomiHost.calls.markRequested, xiaomiHost.calls.kick],
-    [['xiaomi-cn', 'xiaomi-sgp', 'xiaomi-ams'],
-      [['xiaomi-cn', 'xiaomi-token-plan-cn'], ['xiaomi-sgp', 'xiaomi-token-plan-sgp'], ['xiaomi-ams', 'xiaomi-token-plan-ams']]])
+  check('E21 已改为检测绑定的 ref（小米 Token Plan）不再开放写入 → invalid-ref',
+    await run(xiaomiHost, 'setCredential', { ref: 'XIAOMI_TOKEN_PLAN_CN_API_KEY', value: 'xiaomi-key-value' }), { ok: false, code: 'invalid-ref' })
   const billingHost = makeStoreHost()
-  await run(billingHost, 'setCredential', { ref: 'TOGETHER_API_KEY', value: 'together-key-value' })
-  check('E22 余额/账单类 ref 不触发订阅源刷新', billingHost.calls.markRequested, [])
+  check('E22 非 inline 的余额/账单类 ref 拒绝且不触发订阅源刷新',
+    [await run(billingHost, 'setCredential', { ref: 'TOGETHER_API_KEY', value: 'together-key-value' }), billingHost.calls.markRequested],
+    [{ ok: false, code: 'invalid-ref' }, []])
   const kickThrowsHost = makeHostApi(C, {
     describe: describeStub,
     set: async function () {},
     unset: async function () {},
     engine: { markRequested: function () {}, kick: async function () { throw new Error('kick failed') } },
   })
-  check('E23 订阅源刷新失败不影响保存成功', (await run(kickThrowsHost, 'setCredential', { ref: 'KIMI_API_KEY', value: KIMI_VALUE })).ok, true)
+  check('E23 订阅源刷新失败不影响保存成功', (await run(kickThrowsHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: SECRET })).ok, true)
   check('E24 保存失败时不刷新订阅源', [setThrowsHost.calls.markRequested.length, setThrowsHost.calls.kick.length], [0, 0])
   // refresh 纯函数：未知 ref 不抛也不刷新
   const unknownRefreshHost = makeStoreHost()
@@ -630,10 +619,10 @@ async function main() {
   check('E25 refresh 对未知 ref 静默跳过', [unknownThrew, unknownRefreshHost.calls.markRequested], [false, []])
 
   const clearHost = makeStoreHost()
-  await run(clearHost, 'setCredential', { ref: 'KIMI_API_KEY', value: KIMI_VALUE })
+  await run(clearHost, 'setCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID', value: SECRET })
   check('E26 clearCredential 非白名单 ref → invalid-ref', await run(clearHost, 'clearCredential', { ref: 'NOT_A_CATALOG_REF' }), { ok: false, code: 'invalid-ref' })
   const noUnsetHost = makeHostApi(C, { describe: describeStub, set: async function () {} })
-  check('E27 宿主无 unset → write-unsupported', await run(noUnsetHost, 'clearCredential', { ref: 'KIMI_API_KEY' }), { ok: false, code: 'write-unsupported' })
+  check('E27 宿主无 unset → write-unsupported', await run(noUnsetHost, 'clearCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID' }), { ok: false, code: 'write-unsupported' })
   const unsetThrowsHost = makeHostApi(C, {
     describe: describeStub,
     set: async function () {},
@@ -645,12 +634,13 @@ async function main() {
   check('E30 清除失败不刷新订阅源', [unsetThrowsHost.calls.markRequested.length, unsetThrowsHost.calls.kick.length], [0, 0])
   const clearMarkAt = clearHost.calls.markRequested.length
   const clearKickAt = clearHost.calls.kick.length
-  const clearOk = await run(clearHost, 'clearCredential', { ref: 'KIMI_API_KEY' })
+  const clearOk = await run(clearHost, 'clearCredential', { ref: 'ALIBABA_CLOUD_ACCESS_KEY_ID' })
   check('E31 清除成功 → ok:true + 完整状态视图', [clearOk.ok, Object.keys(clearOk).sort()],
     [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
-  check('E32 unset 收到白名单 ref', clearHost.calls.unset, ['KIMI_API_KEY'])
-  check('E33 清除后 configured=false 且刷新对应源', [clearOk.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured,
-    clearHost.calls.markRequested.slice(clearMarkAt), clearHost.calls.kick.slice(clearKickAt)], [false, ['kimi-coding'], [['kimi-coding', 'kimi-coding']]])
+  check('E32 unset 收到白名单 ref', clearHost.calls.unset, ['ALIBABA_CLOUD_ACCESS_KEY_ID'])
+  check('E33 清除后 configured=false 且刷新对应源', [clearOk.items.filter(function (i) { return i.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0].configured,
+    clearHost.calls.markRequested.slice(clearMarkAt), clearHost.calls.kick.slice(clearKickAt)],
+    [false, ['alibaba-intl', 'alibaba-cn'], [['alibaba-intl', 'qwen-token-plan'], ['alibaba-cn', 'qwen-token-plan-cn']]])
   check('E34 错误 code 只允许四个稳定值', results.filter(function (r) { return r && r.ok === false })
     .every(function (r) { return ERROR_CODES.indexOf(r.code) >= 0 }), true)
 
@@ -712,18 +702,19 @@ async function main() {
     }
   })
   const rows = rowsFromCatalog({ groups: hostGroups, kimiLogin: { configured: true }, canWrite: true })
-  check('G3 rows 按 groups 顺序（bound 优先）拍平且只含 inline 凭据', rows.map(function (row) { return row.ref }),
-    ['kimi-coding', 'minimax', 'alibaba', 'xiaomi-token-plan', 'command-code', 'opencode-go'].map(function (id) {
-      return inlineRefs.filter(function (ref) {
-        const entry = catalog.filter(function (e) { return e.id === id })[0]
-        return entry && entry.credentials.some(function (c) { return c.ref === ref && c.inline === true })
-      })
-    }).reduce(function (acc, list) { return acc.concat(list) }, []))
+  check('G3 rows 按 groups 顺序拍平且只含 inline 凭据', rows.map(function (row) { return row.ref }), inlineRefs)
   const alibabaRow = rows.filter(function (row) { return row.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0]
   check('G4 行显示名 = 组品牌 + 凭据标签，状态来自 host',
     [alibabaRow.providerLabel, alibabaRow.labelText, alibabaRow.hintText, alibabaRow.configured],
-    [tStub('ui.qwenTokenPlan'), tStub('ui.credentialAlibabaIdLabel'), tStub('ui.credentialAlibabaIdHint'), false])
-  const minimaxRow = rows.filter(function (row) { return row.ref === 'MINIMAX_API_KEY' })[0]
+    [tStub('ui.qwenTokenPlan'), tStub('ui.credentialAlibabaIdLabel'), tStub('ui.credentialAlibabaIdHint'), true])
+  // 无 labelKey 的 generic 回退改用合成组验证（host 只发 alibaba，但客户端要兼容任意组形状，
+  // 例如宿主升级后新增 inline 条目时仍走同一条路径）。
+  const genericRows = rowsFromCatalog({
+    groups: [{ id: 'minimax', labelKey: 'ui.minimax', label: null, mode: 'subscription',
+      credentials: [{ ref: 'MINIMAX_API_KEY', labelKey: null, hintKey: null, configured: true, source: 'env', writable: false }] }],
+    kimiLogin: { configured: false }, canWrite: true,
+  })
+  const minimaxRow = genericRows[0]
   check('G5 无 labelKey/hintKey 时回退 generic 文案',
     [minimaxRow.labelText, minimaxRow.hintText], [null, tStub('ui.credentialGenericHint')])
   check('G6 无 labelKey 的行标签拼接 = providerLabel · ref', tStub('ui.credentialGenericLabel', { provider: minimaxRow.providerLabel, ref: minimaxRow.ref }),
