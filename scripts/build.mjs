@@ -102,6 +102,16 @@ await writeFile(join(libDir, 'client.js'), wrapped)
 console.log('build OK → lib/index.js, lib/constants.js, lib/client.js')
 
 await mkdir(join(root, 'locale'), { recursive: true })
+// DSH 0.2.2 起，插件页的「详细介绍」优先读 locale meta.detail 指定的 Markdown，没声明才回退整篇 README。
+// 只给确实准备了文档的语言声明；其余语言按 DSH 的语言链回退到 en（见 dsh-plugin-detail 的文档顺序）。
+const DETAIL_DOCUMENTS = {
+  en: 'docs/DETAIL.md',
+  zh: 'docs/DETAIL.zh.md',
+  'zh-hant': 'docs/DETAIL.zh-Hant.md',
+}
 for (const [language, dictionary] of Object.entries(LOCALES)) {
-  await writeFile(join(root, 'locale', language + '.json'), JSON.stringify({ meta: { title: dictionary['meta.title'], description: dictionary['meta.description'] } }, null, 2) + '\n')
+  const meta = { title: dictionary['meta.title'], description: dictionary['meta.description'] }
+  const detail = DETAIL_DOCUMENTS[language]
+  if (detail !== undefined) meta.detail = detail
+  await writeFile(join(root, 'locale', language + '.json'), JSON.stringify({ meta }, null, 2) + '\n')
 }

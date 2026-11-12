@@ -297,5 +297,27 @@ console.log('PASS  Both dictionaries, interpolation, Settings, all three modes, 
   assert.equal(pkg.description, en.meta.description, 'package.json description is the English fallback DSH uses for en')
   assert.ok(pkg.exports?.['./locale/*.json'], 'exports must expose ./locale/*.json or DSH silently finds no dictionaries')
   assert.ok(pkg.files?.includes('locale/*.json'), 'files must ship locale/*.json in the npm tarball')
-  console.log('PASS  Plugin metadata dictionaries are discoverable (locale/en.json + exports + files)')
+
+  // DSH 0.2.2 起，插件页的「详细介绍」优先读 locale meta.detail 指定的 Markdown；
+  // 没有 meta.detail 就回退整篇 README（README 是给 npm / GitHub 看的，放进插件页太长）。
+  // 这条契约错了不会报错、只会悄悄退回长 README，因此在这里锁住。
+  const detailDocs = [
+    ['en', 'docs/DETAIL.md'],
+    ['zh', 'docs/DETAIL.zh.md'],
+    ['zh-hant', 'docs/DETAIL.zh-Hant.md'],
+  ]
+  for (const [language, path] of detailDocs) {
+    const meta = JSON.parse(readFileSync(new URL('locale/' + language + '.json', root), 'utf8')).meta
+    assert.equal(meta.detail, path, language + ' locale must name its plugin-page detail document')
+    assert.match(path, /^docs\/[^/]+\.md$/, 'meta.detail is a package-relative Markdown path under docs/')
+    assert.ok(pkg.files.includes(path), 'files must ship ' + path + ' in the npm tarball')
+    const markdown = readFileSync(new URL(path, root), 'utf8').trim()
+    assert.ok(markdown.length > 0, path + ' must not be empty')
+    assert.ok(markdown.length <= 800, path + ' must stay short enough for the plugin page')
+  }
+  const enDetail = readFileSync(new URL('docs/DETAIL.md', root), 'utf8')
+  const zhDetail = readFileSync(new URL('docs/DETAIL.zh.md', root), 'utf8')
+  assert.doesNotMatch(enDetail, /\p{Script=Han}/u, 'the English detail document is English')
+  assert.match(zhDetail, /\p{Script=Han}/u, 'the Chinese detail document is Chinese')
+  console.log('PASS  Plugin metadata dictionaries are discoverable (locale/en.json + exports + files) and the plugin page shows the short detail document')
 }

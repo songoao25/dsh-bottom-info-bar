@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "底部資訊欄",
-    "description": "在輸入框下方顯示當前模型、餘額和花費。"
+    "description": "在輸入框下方顯示當前模型、餘額和花費。",
+    "detail": "docs/DETAIL.zh-Hant.md"
   }
 }
