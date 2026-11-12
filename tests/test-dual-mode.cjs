@@ -283,6 +283,11 @@ check('client 订阅·充值余额形态追加本会话花费块（共用 pushSe
 check('client 订阅制不显示距高峰倒计时', subFn.includes('距高峰'), false);
 check('client 订阅制不显示本会话 token 用量（subtok 已移除）', subFn.includes('subtok'), false);
 check('client 刷新失败只显示简短标签并提供悬停说明', clientSrc.includes("t('ui.refreshFailed')") && clientSrc.includes('subscriptionFailureHint'), true);
+// Issue #274：触屏宿主（DSH Go）没有悬停，no-key 的「未找到登录凭证」不能只放进 title。
+// 无插件页专属引导（setup!=='plugin'）时，可见文本直接给引导，替代裸「刷新失败」。
+check('client no-key 兜底引导可见（未找到登录凭证替代裸刷新失败，触屏无悬停）',
+  subFn.includes("sub.error.kind === 'no-key' && fieldVisible('noKeyHint')")
+  && subFn.includes("t('ui.noSignInCredentialsFound', { serviceName: subscriptionServiceName(noKeySource) })"), true);
 
 // ---- 6.5) v1.7 三态互斥 + JWT 订阅卡 + 账单型静态检查 ----
 const billFn = extractClientFnBody('pushBillingGroups');
