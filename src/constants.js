@@ -32,6 +32,9 @@ export const CREDENTIAL_CATALOG = [
     labelKey: 'ui.qwenTokenPlan',
     mode: 'subscription',
     providers: ['qwen-token-plan', 'qwen-token-plan-cn', 'qwen-token-plan-individual'],
+    // 推理套餐 Key 是 DSH「设置 → 模型」写进凭据存储的名字：命中说明用户已经在用阿里，
+    // 设置页应把这条排在前面（即使 AK/SK 还没填）。
+    detectRefs: ['QWEN_TOKEN_PLAN_API_KEY', 'QWEN_TOKEN_PLAN_CN_API_KEY'],
     official: true,
     verification: 'unverified',
     credentials: [
