@@ -899,31 +899,45 @@ function installStyles() {
       @media (orientation: landscape) and (max-height: 480px) {
         .bi-root { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
       }
-      /* ---------- DSH Go 皮肤层：门控 + token（2026-11-12，只定义变量，不改现有视觉） ----------
+      /* ---------- DSH Go 皮肤层：门控 + token（DESIGN-FINAL 定稿，只定义变量，不改现有视觉） ----------
          门控信号：:root[data-dsh-app-layout]（DSH Go 网页版）或 :root[data-dsh-go-island]
          （整页 WebView 岛，由模块级 dshGoSurfaceEnabled 从 hash / DshGoIsland 通道归一），
          再叠 @media (pointer: coarse)（触屏）。桌面浏览器两者皆无 → 不生效，像素不变。
-         视觉规则（卡片/行/开关/渐变）等 design-go v2 稿后只消费这些 token；间距只用 8/12/16/24 网格。 */
+         数值唯一来源：.private/mobile-design/DESIGN-FINAL.md §1/§2/§3/§7（真机 412×915）。
+         视觉规则等 Lead 总览稿后一次性实现，只消费这些 token；间距只用 8/12/16/24 网格。 */
       @media (pointer: coarse) {
         :root[data-dsh-app-layout], :root[data-dsh-go-island] {
-          --dshgo-accent: #4D6BFE;
-          --dshgo-bg-1: #EBF1FE; --dshgo-bg-2: #F6F7FC;
-          --dshgo-surface: #FFFFFF; --dshgo-surface-2: #F1F4FB;
-          --dshgo-text-1: #1F2328; --dshgo-text-2: #5A6169; --dshgo-text-3: #8A9099;
-          --dshgo-line: rgba(31, 35, 40, 0.08);
-          --dshgo-radius-card: 20px; --dshgo-radius-sheet: 28px; --dshgo-radius-control: 12px;
-          --dshgo-space-1: 8px; --dshgo-space-2: 12px; --dshgo-space-3: 16px; --dshgo-space-4: 24px;
-          --dshgo-row-1: 52px; --dshgo-row-2: 64px;
-          --dshgo-text-title: 17px; --dshgo-text-row: 15px; --dshgo-text-sub: 13px;
-          --dshgo-switch-w: 52px; --dshgo-switch-h: 32px; --dshgo-switch-thumb: 26px;
-          --dshgo-segment-h: 44px; --dshgo-segment-h-sm: 36px;
+          /* 颜色（§1） */
+          --dshgo-accent: #4B67B4; --dshgo-accent-soft: #DEE8FF; --dshgo-danger: #A54743;
+          --dshgo-bg-1: #F1F4FB; --dshgo-bg-2: #FAFBFE;
+          --dshgo-surface: #FBFCFF; --dshgo-surface-low: #F6F9FE;
+          --dshgo-ink: #1E232E; --dshgo-label: #4F5562; --dshgo-muted: #646974; --dshgo-faint: #646974; --dshgo-ghost: #A1A5AC;
+          --dshgo-line: rgba(30, 35, 46, 0.07);
+          --dshgo-card: rgba(255, 255, 255, 0.62); --dshgo-card-rim: rgba(255, 255, 255, 0.70);
+          /* 几何（§3） */
+          --dshgo-hairline: 0.5px;
+          --dshgo-radius-card: 20px; --dshgo-radius-sheet: 28px; --dshgo-radius-control: 14px; --dshgo-radius-segment: 18px;
+          --dshgo-page-x: 16px; --dshgo-config-page-x: 20px;
+          --dshgo-gap: 8px; --dshgo-group-gap: 24px; --dshgo-card-pad: 16px; --dshgo-row-gap: 2px;
+          --dshgo-row-h: 56px; --dshgo-row-h2: 64px; --dshgo-panel-row: 40px; --dshgo-panel-row2: 56px;
+          --dshgo-switch-w: 52px; --dshgo-switch-h: 32px; --dshgo-switch-thumb: 28px;
+          --dshgo-seg-h: 36px; --dshgo-seg-thumb: 30px;
+          --dshgo-control-h: 44px;
+          --dshgo-panel-max: 40vh;
+          /* 字号 / 行高（§2） */
+          --dshgo-font-title: 26px; --dshgo-font-panel-title: 16px; --dshgo-font-value: 16px;
+          --dshgo-font-row: 15px; --dshgo-font-label: 14px; --dshgo-font-setting: 14px;
+          --dshgo-font-desc: 13px; --dshgo-font-caption: 12px; --dshgo-font-micro: 11px;
+          --dshgo-lh-value: 20px; --dshgo-lh-panel: 22px; --dshgo-lh-body: 1.4; --dshgo-lh-desc: 1.45;
           --dshgo-safe-bottom: var(--dsh-app-inset-bottom, env(safe-area-inset-bottom, 0px));
         }
         :root[data-dsh-app-layout] body[data-ds-dark-theme], :root[data-dsh-go-island] body[data-ds-dark-theme] {
-          --dshgo-bg-1: #1D222C; --dshgo-bg-2: #1B1C23;
-          --dshgo-surface: #262B36; --dshgo-surface-2: #2E3440;
-          --dshgo-text-1: #E8EAF0; --dshgo-text-2: #A9AFBC; --dshgo-text-3: #7C8391;
-          --dshgo-line: rgba(232, 234, 240, 0.10);
+          --dshgo-accent: #97B1F0; --dshgo-accent-soft: #2E3C5F; --dshgo-danger: #E69089;
+          --dshgo-bg-1: #1D222C; --dshgo-bg-2: #171920;
+          --dshgo-surface: #232730; --dshgo-surface-low: #232730;
+          --dshgo-ink: #E6E9F0; --dshgo-label: #B6BBC5; --dshgo-muted: #9A9EA9; --dshgo-faint: #9A9EA9; --dshgo-ghost: #656971;
+          --dshgo-line: rgba(230, 233, 240, 0.08);
+          --dshgo-card: rgba(255, 255, 255, 0.05); --dshgo-card-rim: rgba(255, 255, 255, 0);
         }
       }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
