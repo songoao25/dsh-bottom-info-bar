@@ -507,7 +507,7 @@ check('横向既不自带内边距（否则与宿主 323.2 错位）也不越界
 // 后者管的是分组卡片 / 色块 / 警示条 / 分段控件槽 / 系统取色井那一类 8px 形状，混用会连带变形。
 check('兜底输入框几何：34px 高 / 12px 圆角（= 宿主 .input 现值），且四类兜底规则都走独立的 --bib-input-radius', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
-  const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-time-zone', '.bib-set-language', '.bib-set-hex'];
+  const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-credential-input', '.bib-set-time-zone', '.bib-set-language', '.bib-set-hex'];
   const usesInputRadius = fallbacks.every(function (selector) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(escaped + '\\s*\\{[^}]*border-radius: var\\(--bib-input-radius\\)').test(install);
@@ -825,7 +825,7 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
   check('原生 Input 只挂布局类 bib-set-input（绝不把自绘外观类交给宿主）',
     inputNative.includes("className: 'bib-set-input'")
     && !/bib-set-search|bib-set-hex|bib-set-custom-text-input/.test(inputNative), true);
-  check('三个输入框都走 bibSetInput；自绘外观类只在 fallbackClassName 里出现，layout 限定在白名单内', (function () {
+  check('五个输入框都走 bibSetInput；自绘外观类只在 fallbackClassName 里出现，layout 限定在白名单内', (function () {
     const ALLOWED = ['bib-set-input--block', 'bib-set-input--field', 'bib-set-input--hex', 'bib-set-input--invalid'];
     const fallbacks = [];
     let m;
@@ -834,15 +834,16 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     const layouts = [];
     const reLayout = /layout:\s*'([^']+)'/g;
     while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
-    // 6 处 fallbackClassName = 4 个输入框（hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）。
-    // layout 只有输入框用：恰好 4 条，且都在白名单内。
-    return fallbacks.length === 6
+    // 7 处 fallbackClassName = 5 个输入框（search / customText / credential / hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）。
+    // layout 只有输入框用：恰好 5 条，且都在白名单内。
+    return fallbacks.length === 7
       && fallbacks.indexOf('bib-set-search') !== -1
       && fallbacks.indexOf('bib-set-custom-text-input') !== -1
+      && fallbacks.indexOf('bib-set-credential-input') !== -1
       && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length === 2
       && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length === 1
       && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 1
-      && layouts.length === 4
+      && layouts.length === 5
       && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
   })(), true);
 
@@ -877,6 +878,7 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
   })(), true);
   check('兜底路径的自绘外观类全部保留（老宿主仍可渲染）',
     /\.bib-set-search\s*\{/.test(cssOnly) && /\.bib-set-custom-text-input\s*\{/.test(cssOnly)
+    && /\.bib-set-credential-input\s*\{/.test(cssOnly)
     && /\.bib-set-hex\s*\{/.test(cssOnly) && /\.bib-set-btn\s*\{/.test(cssOnly), true);
 }
 

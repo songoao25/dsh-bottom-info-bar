@@ -65,6 +65,8 @@ const fieldGroupOrderJson = extractLiteral('FIELD_GROUP_ORDER')
 const fieldGroupLabelsJson = extractLiteral('FIELD_GROUP_LABELS')
 // 2026-09-26：+FIELD_SECTIONS（设置页小节：只做阅读分组，不影响信息栏）
 const fieldSectionsJson = extractLiteral('FIELD_SECTIONS')
+// 2026-11-12：+CREDENTIAL_CATALOG（额度凭据目录：设置页渲染与测试都以它为同一口径）
+const credentialCatalogJson = extractLiteral('CREDENTIAL_CATALOG')
 function injectSharedConstants(source) {
   return source
     .replace(/\/\*__SUBSCRIPTION_PROVIDERS__\*\/\[\]/g, subscriptionProvidersJson)
@@ -74,6 +76,7 @@ function injectSharedConstants(source) {
     .replace(/\/\*__FIELD_GROUP_ORDER__\*\/\[\]/g, fieldGroupOrderJson)
     .replace(/\/\*__FIELD_GROUP_LABELS__\*\/\{\}/g, fieldGroupLabelsJson)
     .replace(/\/\*__FIELD_SECTIONS__\*\/\[\]/g, fieldSectionsJson)
+    .replace(/\/\*__CREDENTIAL_CATALOG__\*\/\[\]/g, credentialCatalogJson)
 }
 
 // 1) host（ESM，原样复制后替换锚点占位；constants.js 随包复制供 import 解析）

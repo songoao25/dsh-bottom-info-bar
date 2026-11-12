@@ -91,6 +91,7 @@ const ALIBABA_ACS3_ALGORITHM = (hostSrc.match(/const ALIBABA_ACS3_ALGORITHM = '(
 const ALIBABA_TOKEN_PLAN_USAGE_API = (hostSrc.match(/const ALIBABA_TOKEN_PLAN_USAGE_API = '([^']+)'/) || [])[1]
 const KIMI_CODING_BASE_URLS = eval('(' + extractBracketed(hostSrc, 'const KIMI_CODING_BASE_URLS = ') + ')')
 const KIMI_CODING_CREDENTIAL_NAMES = eval('(' + extractBracketed(hostSrc, 'const KIMI_CODING_CREDENTIAL_NAMES = ') + ')')
+const KIMI_CODING_RECORD_KEY = (hostSrc.match(/const KIMI_CODING_RECORD_KEY = '([^']+)'/) || [])[1]
 const HTTP_TIMEOUT_MS = Number((hostSrc.match(/const HTTP_TIMEOUT_MS = (\d+)/) || [])[1])
 const SUBSCRIPTION_PROVIDERS = eval('(' + extractBracketed(constantsSrc, 'export const SUBSCRIPTION_PROVIDERS = ') + ')')
 const DSH_PRESET_PROVIDERS = eval('(' + extractBracketed(constantsSrc, 'export const DSH_PRESET_PROVIDERS = ') + ')')
@@ -154,6 +155,7 @@ function makeHarness(u, options) {
     + 'const ALIBABA_TOKEN_PLAN_USAGE_API = ' + JSON.stringify(ALIBABA_TOKEN_PLAN_USAGE_API) + ';'
     + 'const KIMI_CODING_BASE_URLS = ' + JSON.stringify(KIMI_CODING_BASE_URLS) + ';'
     + 'const KIMI_CODING_CREDENTIAL_NAMES = ' + JSON.stringify(KIMI_CODING_CREDENTIAL_NAMES) + ';'
+    + 'const KIMI_CODING_RECORD_KEY = ' + JSON.stringify(KIMI_CODING_RECORD_KEY) + ';'
     + extractFn('timeoutSignal')
     + extractFn('resolveCredentialValue')
     + extractFn('resolveWithFallback')
@@ -166,6 +168,7 @@ function makeHarness(u, options) {
     + extractFn('alibabaConsoleApiRequest')
     + extractFn('alibabaGatewayError')
     + extractFn('fetchAlibabaTokenPlanUsage')
+    + extractFn('readKimiCodingRecordToken')
     + extractFn('resolveKimiCodingKey')
     + extractFn('fetchKimiCodingUsage')
     + 'return { resolveAlibabaAccessKeys: resolveAlibabaAccessKeys, resolveKimiCodingKey: resolveKimiCodingKey,'

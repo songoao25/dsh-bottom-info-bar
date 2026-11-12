@@ -65,6 +65,10 @@ const SAME_BY_DESIGN = new Set([
   'ui.commandCode', 'ui.contextFigures', 'ui.minimax', 'number.thousand', 'number.million',
   // v1.22.0：阿里 Token Plan / Kimi For Coding 是品牌名，各语言同形（与 ui.minimax 同先例）
   'ui.qwenTokenPlan', 'ui.kimiCoding',
+  // v1.24.0：凭据标签里的品牌/产品名（Kimi API Key）按原文保留，中英同形
+  'ui.credentialKimiKeyLabel',
+  // v1.24.0：通用凭据标签是纯模板（{provider} · {ref}），两种语言同形
+  'ui.credentialGenericLabel',
 ])
 for (const key of zhKeys) {
   assert.ok(LOCALES.zh[key].trim() !== '' && LOCALES.en[key].trim() !== '', key + ' must be non-empty in both languages')

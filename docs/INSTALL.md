@@ -93,6 +93,8 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 ## 配置订阅额度（可选，v1.1.0）
 
+**最省事的方式**：插件设置页里新增了「额度凭据」区（阿里云 AccessKey ID / AccessKey Secret、Kimi API Key 三个输入框），粘贴后点保存即可——值会写进 DSH 凭据存储（本机 `.credentials.yaml`，权限 0600），不写插件配置文件，也不用重启 DSH，保存后信息栏会立即重查一次。下面也保留环境变量的配置方式，适合不想在界面里填的人。
+
 信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱、阿里 Token Plan、Kimi For Coding）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
 
 - **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-sub**](https://github.com/songoao25/dsh-chatgpt-sub)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
@@ -100,7 +102,7 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 - **阿里 Token Plan（百炼，中国站 / 国际站）**：额度接口不认推理套餐 Key（`sk-sp-…` 只能推理），要另配阿里云 AccessKey——`ALIBABA_CLOUD_ACCESS_KEY_ID` 与 `ALIBABA_CLOUD_ACCESS_KEY_SECRET`（RAM 用户即可），配置给 DSH 凭据或设为同名环境变量（插件先读 DSH 凭据，再读环境变量）。最小权限：系统策略 `AliyunTokenPlanReadOnlyAccess` 覆盖官方 OpenAPI `GetSubscriptionStats`；官方 CLI 同款的控制台链路还要给该 RAM 用户一个自定义策略，授予 `modelstudio:GenerateCLIAccessToken`。两条链路都只读、不读浏览器 Cookie；未配置、权限不足或未订阅时信息栏给明确提示并保留上一份额度，不显示 0%。
 - **Kimi For Coding**：配订阅专属 API Key `KIMI_API_KEY`（DSH 里 kimi-coding 的凭据名；回退 `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY`），配置给 DSH 凭据或设为同名环境变量；信息栏用 Bearer 调 `GET https://api.kimi.com/coding/v1/usages`，国内站不通时自动试国际站 `https://api.kimi.ai/coding/v1/usages`，显示 5 小时与周窗口。这个端点没有官方公开文档，可能随上游变化；读不到时保留上一份额度。
 
-最小配置示例（示例值换成自己的凭据，别提交到仓库）：
+不习惯在设置页填的话，也可以用同名环境变量（示例值换成自己的凭据，别提交到仓库）：
 
 ```bash
 export ALIBABA_CLOUD_ACCESS_KEY_ID="<your-access-key-id>"
