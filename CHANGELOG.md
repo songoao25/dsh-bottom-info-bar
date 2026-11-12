@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.23.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.22.0...v1.23.0) (2026-11-12)
+
+
+### Features
+
+* support Alibaba Token Plan and Kimi For Coding quota ([#277](https://github.com/songoao25/dsh-bottom-info-bar/issues/277)) ([4ebf016](https://github.com/songoao25/dsh-bottom-info-bar/commit/4ebf01621b5e90cf4b2444e3219ae3aa4967531c))
+
 ## [1.22.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.15...v1.22.0) (2026-11-12)
 
 
