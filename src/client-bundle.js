@@ -3699,6 +3699,9 @@ module.exports = {
         // v1.16：MiniMax Token Plan（minimax = Global / minimax-cn = CN）；品牌名不翻译，走字典键保持一致来源
         if (provider === 'minimax' || provider === 'minimax-cn') return t('ui.minimax');
         if (provider === 'command' || provider === 'command-code') return t('ui.commandCode');
+        // v1.22：阿里 Token Plan（中国站/国际站）与 Kimi For Coding
+        if (provider === 'qwen-token-plan' || provider === 'qwen-token-plan-cn' || provider === 'qwen-token-plan-individual') return t('ui.qwenTokenPlan');
+        if (provider === 'kimi-coding') return t('ui.kimiCoding');
         return t('ui.subscription');
       }
 
@@ -3946,6 +3949,8 @@ module.exports = {
          const statusMatch = message.match(/HTTP (\d{3})/);
          const status = error && error.params && error.params.status != null ? String(error.params.status) : (statusMatch ? statusMatch[1] : '');
          if (kind === 'no-key') return t('ui.noSignInCredentialsFound', { serviceName: serviceName });
+         // v1.22：账号能登录但读不到订阅（阿里 Token Plan 之类 AK/SK 场景）——给准确提示，不说“暂时不可用”
+         if (kind === 'no-subscription') return t('ui.noSubscriptionFound', { serviceName: serviceName });
          if (kind === 'auth' || status === '401') return t('ui.credentialsHaveExpiredPleaseReauthorize', { serviceName: serviceName });
          if (status === '403') return t('ui.deniedAccessReauthorizeOrTry', { serviceName: serviceName });
          if (status === '429') return t('ui.rateLimitReachedPleaseTry', { serviceName: serviceName });

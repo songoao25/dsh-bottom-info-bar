@@ -61,7 +61,7 @@ Plugin information is further grouped by billing mode — read only the block th
 
 ![Time and date: time zones only](assets/settings-time.webp)
 
-API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode, Xiaomi Token Plan, Command Code, MiniMax) read the local sign-in, and MiniMax requires a Subscription Key. Anything off the list gets a not-supported hint instead of borrowed numbers.
+API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode, Xiaomi Token Plan, Command Code, MiniMax, Zhipu GLM, Kimi For Coding, Alibaba Token Plan for both China and international sites) read the local sign-in or their own credential: MiniMax needs a Subscription Key, and Kimi For Coding reads `KIMI_API_KEY` (its DSH credential name; `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY` are also accepted). Alibaba Token Plan (China and international sites) cannot read quota with the inference plan key — set an Alibaba Cloud AccessKey (`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, a RAM user is enough) in DSH's credentials or as same-named environment variables. Anything off the list gets a not-supported hint instead of borrowed numbers.
 
 ## Spend and updates
 

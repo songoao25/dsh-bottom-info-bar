@@ -61,7 +61,7 @@ https://github.com/songoao25/dsh-bottom-info-bar
 
 ![时间与日期：只设时区](assets/settings-time.zh-CN.webp)
 
-密钥填在 DSH 的**设置 → 模型**；订阅类（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax）读本机登录，MiniMax 必须用 Subscription Key。列表里没有的服务商只会显示未适配提示，绝不借用别家的数据。
+密钥填在 DSH 的**设置 → 模型**；订阅类（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱、Kimi For Coding、阿里 Token Plan 中国站/国际站）读本机登录或各自的凭据：MiniMax 用 Subscription Key，Kimi For Coding 读 `KIMI_API_KEY`（DSH 里的凭据名；也兼容 `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY`）。阿里 Token Plan（中国站/国际站）用推理套餐 Key 读不到额度，要另配阿里云 AccessKey——`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`（RAM 用户即可），填在 DSH 凭据或同名环境变量里。列表里没有的服务商只会显示未适配提示，绝不借用别家的数据。
 
 ## 花费与更新
 

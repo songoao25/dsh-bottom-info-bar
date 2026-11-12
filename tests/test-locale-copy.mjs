@@ -63,6 +63,8 @@ assert.deepEqual(zhKeys.filter((key) => !enKeys.includes(key)), [], 'every Chine
 // number.* 复刻宿主 common 命名空间的 K/M 缩写，中文界面与宿主一致，故同形。
 const SAME_BY_DESIGN = new Set([
   'ui.commandCode', 'ui.contextFigures', 'ui.minimax', 'number.thousand', 'number.million',
+  // v1.22.0：阿里 Token Plan / Kimi For Coding 是品牌名，各语言同形（与 ui.minimax 同先例）
+  'ui.qwenTokenPlan', 'ui.kimiCoding',
 ])
 for (const key of zhKeys) {
   assert.ok(LOCALES.zh[key].trim() !== '' && LOCALES.en[key].trim() !== '', key + ' must be non-empty in both languages')
