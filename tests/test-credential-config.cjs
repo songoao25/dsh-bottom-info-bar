@@ -4,8 +4,8 @@
 //     providers 合法且不重复、已适配的订阅/账单 provider 全部登记、host 白名单由目录派生、构建注入
 //  B) 值校验：trim 后空 / 内部空白 / 换行制表符 / 非 ASCII / 控制字符 / 超长拒绝；512 边界通过
 //  C) ref 白名单：目录全部 ref 可写、目录外一律拒绝
-//  D) describeCredentialConfig：items 扁平视图 / groups 按目录分组（仅 inline，bound 四判据优先排序）/
-//     bound+total 汇总 / footnoteKey / canWrite / kimiLogin{configured}，以及 describe 抛错、回退 resolve 的降级
+//  D) describeCredentialConfig：items 扁平视图 / groups 按目录分组（仅 inline）/ footnoteKey /
+//     canWrite / kimiLogin{configured}，以及 describe 抛错、回退 resolve 的降级
 //  E) ROUTES：getCredentialConfig / setCredential / clearCredential 的成功与
 //     invalid-ref / invalid-value / write-unsupported / write-failed 语义 + 目录驱动刷新订阅源
 //  F) Kimi OAuth 复用：resolveKimiCodingKey 顺序（ref 名单 → 环境变量 → readRecord 兜底），过期不返回
@@ -136,10 +136,9 @@ function makeHostApi(C, options) {
     kick: async function (key, provider) { calls.kick.push([key, provider]) },
   }
   const sourceProvider = opts.sourceProvider || {}
-  const modelSelection = typeof opts.modelSelection === 'function' ? opts.modelSelection : function () { return null }
   const factory = eval(
     '(function (ctx, subscriptionEngine, subscriptionSourceProvider, CREDENTIAL_CATALOG,'
-    + ' CREDENTIAL_CONFIG_REFS, subscriptionSourceFor, PROVIDER_IDENTITY, modelSelection) {'
+    + ' CREDENTIAL_CONFIG_REFS, subscriptionSourceFor, PROVIDER_IDENTITY) {'
     + 'const CREDENTIAL_VALUE_MAX_LEN = ' + CREDENTIAL_VALUE_MAX_LEN + ';'
     + 'const KIMI_CODING_RECORD_KEY = ' + JSON.stringify(KIMI_CODING_RECORD_KEY) + ';'
     + extractFn(hostSrc, 'credentialConfigRef')
@@ -158,7 +157,7 @@ function makeHostApi(C, options) {
     + ' } })'
   )
   const api = factory({ credentials: credentials }, engine, sourceProvider,
-    C.CREDENTIAL_CATALOG, C.CREDENTIAL_CONFIG_REFS, C.subscriptionSourceFor, C.PROVIDER_IDENTITY, modelSelection)
+    C.CREDENTIAL_CATALOG, C.CREDENTIAL_CONFIG_REFS, C.subscriptionSourceFor, C.PROVIDER_IDENTITY)
   return { api: api, calls: calls, sourceProvider: sourceProvider, credentials: credentials }
 }
 
@@ -253,7 +252,7 @@ async function main() {
   check('A8 labelKey 必须在 zh/en 字典存在', catalog.filter(function (entry) {
     return typeof entry.labelKey === 'string' && (typeof zhDict[entry.labelKey] !== 'string' || typeof enDict[entry.labelKey] !== 'string')
   }).map(function (entry) { return entry.labelKey }), [])
-  const ENTRY_KEYS = ['id', 'labelKey', 'label', 'mode', 'providers', 'credentials', 'oauthRecord', 'detectRefs', 'official', 'verification', 'noteKey']
+  const ENTRY_KEYS = ['id', 'labelKey', 'label', 'mode', 'providers', 'credentials', 'oauthRecord', 'official', 'verification', 'noteKey']
   check('A9 目录条目不允许未知字段', catalog.map(function (entry) {
     return Object.keys(entry).filter(function (key) { return ENTRY_KEYS.indexOf(key) < 0 })
   }).reduce(function (acc, list) { return acc.concat(list) }, []), [])
@@ -307,17 +306,6 @@ async function main() {
   check('A20 oauthRecord 若存在必须是非空字符串', catalog.filter(function (entry) {
     return entry.oauthRecord !== undefined && (typeof entry.oauthRecord !== 'string' || entry.oauthRecord.length === 0)
   }).map(function (entry) { return entry.id }), [])
-  const detectRefsEntries = catalog.filter(function (entry) { return entry.detectRefs !== undefined })
-  ok('A20b detectRefs 若存在必须是合法环境变量名数组（只用于探测，不进可写白名单）', detectRefsEntries.every(function (entry) {
-    return Array.isArray(entry.detectRefs) && entry.detectRefs.length > 0
-      && entry.detectRefs.every(function (ref) { return isEnvName(ref) })
-      && new Set(entry.detectRefs).size === entry.detectRefs.length
-  }), detectRefsEntries.map(function (entry) { return entry.id }).join(','))
-  const alibabaDetect = catalog.filter(function (entry) { return entry.id === 'alibaba' })[0].detectRefs
-  check('A20c alibaba 的 detectRefs 登记两条推理套餐 Key', alibabaDetect, ['QWEN_TOKEN_PLAN_API_KEY', 'QWEN_TOKEN_PLAN_CN_API_KEY'])
-  check('A20d detectRefs 不属于可写凭据白名单（只有 credentials[].ref 可写）', alibabaDetect.filter(function (ref) {
-    return allRefs.indexOf(ref) >= 0
-  }), [])
   check('A21 noteKey 若存在必须在 zh/en 字典存在', catalog.filter(function (entry) {
     return typeof entry.noteKey === 'string' && (typeof zhDict[entry.noteKey] !== 'string' || typeof enDict[entry.noteKey] !== 'string')
   }).map(function (entry) { return entry.id }), [])
@@ -419,8 +407,7 @@ async function main() {
     readRecord: function () { return { payload: { access: OAUTH_TOKEN } } },
   })
   const described = await describeHost.api.describeCredentialConfig()
-  check('D1 describeCredentialConfig 顶层字段固定（新增 bound/total 汇总）', Object.keys(described).sort(),
-    ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'total'])
+  check('D1 describeCredentialConfig 顶层字段固定', Object.keys(described).sort(), ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin'])
   check('D2 items 是目录 ref 的扁平视图', described.items.map(function (item) { return item.ref }), allRefs)
   check('D3 items 每项字段固定为 ref/configured/source/writable',
     described.items.map(function (item) { return Object.keys(item).sort().join(',') }).filter(function (keys) { return keys !== 'configured,ref,source,writable' }), [])
@@ -428,29 +415,9 @@ async function main() {
     described.items.filter(function (i) { return i.ref === 'MINIMAX_API_KEY' })[0]],
     [{ ref: 'KIMI_API_KEY', configured: true, source: 'file', writable: true },
       { ref: 'MINIMAX_API_KEY', configured: true, source: 'env', writable: false }])
-  // describeStub 让 KIMI_API_KEY / MINIMAX_API_KEY 已配置 → 这两组 bound，按「bound 优先、组内目录序」排到最前
-  const stubBoundIds = ['kimi-coding', 'minimax']
-  const inlineGroupIds = inlineEntries.map(function (entry) { return entry.id })
-  const expectedGroupOrder = stubBoundIds.concat(inlineGroupIds.filter(function (id) { return stubBoundIds.indexOf(id) < 0 }))
-  check('D5 groups 只包含有 inline 凭据的目录条目，且按 bound 优先、组内保持目录顺序',
-    described.groups.map(function (g) { return g.id }), expectedGroupOrder)
-  check('D6 groups 每项字段固定为 id/labelKey/label/mode/bound/credentials',
-    described.groups.map(function (g) { return Object.keys(g).sort().join(',') }).filter(function (keys) { return keys !== 'bound,credentials,id,label,labelKey,mode' }), [])
-  check('D6b bound 判定：该组任一凭据 configured=true → bound（kimi-coding / minimax）',
-    described.groups.filter(function (g) { return g.bound === true }).map(function (g) { return g.id }), stubBoundIds)
-  check('D6c 响应汇总 bound/total 与 groups 状态一致',
-    [described.bound, described.total, described.groups.filter(function (g) { return g.bound }).length],
-    [stubBoundIds.length, inlineGroupIds.length, stubBoundIds.length])
-  const loginOnlyHost = makeHostApi(C, {
-    describe: function () { return { configured: false, source: null, writable: true } },
-    set: async function () {}, unset: async function () {},
-    readRecord: function () { return { payload: { access: OAUTH_TOKEN } } },
-  })
-  const loginOnly = await loginOnlyHost.api.describeCredentialConfig()
-  check('D6d kimiLogin.configured 也计入 bound：KIMI_API_KEY 未配置时 kimi-coding 组仍 bound',
-    [loginOnly.groups.filter(function (g) { return g.id === 'kimi-coding' })[0].bound,
-      loginOnly.groups.filter(function (g) { return g.id !== 'kimi-coding' }).every(function (g) { return g.bound === false }),
-      loginOnly.bound, loginOnly.total], [true, true, 1, inlineGroupIds.length])
+  check('D5 groups 只包含有 inline 凭据的目录条目', described.groups.map(function (g) { return g.id }), inlineEntries.map(function (entry) { return entry.id }))
+  check('D6 groups 每项字段固定为 id/labelKey/label/mode/credentials',
+    described.groups.map(function (g) { return Object.keys(g).sort().join(',') }).filter(function (keys) { return keys !== 'credentials,id,label,labelKey,mode' }), [])
   const alibabaGroup = described.groups.filter(function (g) { return g.id === 'alibaba' })[0]
   const opencodeGroup = described.groups.filter(function (g) { return g.id === 'opencode-go' })[0]
   check('D7 有品牌字典键的组用 labelKey、label=null',
@@ -474,7 +441,7 @@ async function main() {
   check('D12 组内凭据保留 labelKey/hintKey 供客户端渲染',
     alibabaGroup.credentials.map(function (c) { return [c.ref, c.labelKey, c.hintKey] })[0],
     ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ui.credentialAlibabaIdLabel', 'ui.credentialAlibabaIdHint'])
-  check('D13 无 labelKey/hintKey 的 inline 凭据为 null（客户端行 label 回退 ref、hint 回退 generic）', described.groups.reduce(function (list, g) {
+  check('D13 无 labelKey/hintKey 的 inline 凭据为 null（客户端走 generic 文案）', described.groups.reduce(function (list, g) {
     return list.concat(g.credentials.filter(function (c) { return c.ref === 'MINIMAX_API_KEY' }))
   }, [])[0], { ref: 'MINIMAX_API_KEY', labelKey: null, hintKey: null, configured: true, source: 'env', writable: false })
   check('D14 footnoteKey 固定指向余额/账单说明', described.footnoteKey, 'ui.credentialFootnote')
@@ -530,45 +497,7 @@ async function main() {
   const readRes = await readHost.api.getCredentialConfig()
   check('D28 getCredentialConfig 返回与 describeCredentialConfig 等价', readRes, await readHost.api.describeCredentialConfig())
   check('D29 getCredentialConfig 顶层字段固定',
-    Object.keys(readRes).sort(), ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'total'])
-  // ② detectRefs：DSH 设置 → 模型 里已填写推理套餐 Key，即使本插件没填 AK/SK 也算「在用」
-  const detectHost = makeHostApi(C, {
-    describe: function (ref) { return { configured: ref === 'QWEN_TOKEN_PLAN_CN_API_KEY', source: ref === 'QWEN_TOKEN_PLAN_CN_API_KEY' ? 'file' : null, writable: true } },
-    set: async function () {}, unset: async function () {},
-  })
-  const detected = await detectHost.api.describeCredentialConfig()
-  check('D6e detectRefs 任一已配置 → alibaba 组 bound 且排最前（凭据本身仍未配置）',
-    [detected.groups[0].id, detected.groups[0].bound, detected.groups.filter(function (g) { return g.id === 'alibaba' })[0].credentials.every(function (c) { return c.configured === false }), detected.bound],
-    ['alibaba', true, true, 1])
-  // ③ 当前会话 provider ∈ entry.providers → 该组 bound 且排最前
-  const usingHost = makeHostApi(C, {
-    describe: function () { return { configured: false, source: null, writable: true } },
-    set: async function () {}, unset: async function () {},
-    modelSelection: function () { return { provider: 'qwen-token-plan-cn', model: 'qwen3-max' } },
-  })
-  const usingNow = await usingHost.api.describeCredentialConfig()
-  check('D6f 当前会话 provider 命中目录 → 对应组 bound 且排最前',
-    [usingNow.groups[0].id, usingNow.groups[0].bound, usingNow.bound], ['alibaba', true, 1])
-  // ④ modelSelection 取不到/抛错时忽略该判据
-  const noSelectionHost = makeHostApi(C, {
-    describe: function () { return { configured: false, source: null, writable: true } },
-    set: async function () {}, unset: async function () {},
-    modelSelection: function () { throw new Error('selection unavailable') },
-  })
-  check('D6g modelSelection 抛错时忽略该判据（不 500、bound=0）',
-    (await noSelectionHost.api.describeCredentialConfig()).bound, 0)
-  const nullSelectionHost = makeHostApi(C, {
-    describe: function () { return { configured: false, source: null, writable: true } },
-    set: async function () {}, unset: async function () {},
-    modelSelection: function () { return null },
-  })
-  check('D6h modelSelection 返回 null 时忽略该判据', (await nullSelectionHost.api.describeCredentialConfig()).bound, 0)
-  ok('D6i bound 四判据在 host 源码里都有（inline/detectRefs/当前 provider/kimiLogin）', (function () {
-    const src = extractFn(hostSrc, 'describeCredentialConfig')
-    return src.indexOf('inlineConfigured') >= 0 && src.indexOf('entry.detectRefs') >= 0
-      && src.indexOf('usingNow') >= 0 && src.indexOf('kimiLogin.configured === true') >= 0
-  })())
-
+    Object.keys(readRes).sort(), ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin'])
 
   // ================= E) ROUTES：set / clear =================
   const ERROR_CODES = ['invalid-ref', 'invalid-value', 'write-unsupported', 'write-failed']
@@ -632,7 +561,7 @@ async function main() {
   const successHost = makeStoreHost()
   const saved = await run(successHost, 'setCredential', { ref: 'KIMI_API_KEY', value: '  ' + KIMI_VALUE + '  ' })
   check('E14 成功返回 ok:true 且带完整状态视图', [saved.ok, Object.keys(saved).sort()],
-    [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
+    [true, ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok']])
   check('E15 成功时 set 收到白名单 ref + trim 后值', successHost.calls.set, [['KIMI_API_KEY', KIMI_VALUE]])
   check('E16 成功返回的状态里该项 configured=true（保存后立即可见）',
     saved.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured, true)
@@ -688,7 +617,7 @@ async function main() {
   const clearKickAt = clearHost.calls.kick.length
   const clearOk = await run(clearHost, 'clearCredential', { ref: 'KIMI_API_KEY' })
   check('E31 清除成功 → ok:true + 完整状态视图', [clearOk.ok, Object.keys(clearOk).sort()],
-    [true, ['bound', 'canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok', 'total']])
+    [true, ['canWrite', 'footnoteKey', 'groups', 'items', 'kimiLogin', 'ok']])
   check('E32 unset 收到白名单 ref', clearHost.calls.unset, ['KIMI_API_KEY'])
   check('E33 清除后 configured=false 且刷新对应源', [clearOk.items.filter(function (i) { return i.ref === 'KIMI_API_KEY' })[0].configured,
     clearHost.calls.markRequested.slice(clearMarkAt), clearHost.calls.kick.slice(clearKickAt)], [false, ['kimi-coding'], [['kimi-coding', 'kimi-coding']]])
@@ -736,120 +665,78 @@ async function main() {
   })
   ok('F17 OAuth token 只用于额度请求，不出现在设置页状态里', !leaks(await oauthDescribeHost.api.describeCredentialConfig()))
 
-  // ================= G) 客户端：折叠卡 + 目录分组行为 =================
-  const groupsFactory = eval('(function (t, CREDENTIAL_CATALOG) { ' + extractFn(clientSrc, 'bibSetCredentialGroups')
-    + ' return bibSetCredentialGroups })')
-  const groupsFromCatalog = groupsFactory(tStub, catalog)
-  const sectionFn = extractFn(clientSrc, 'bibSetCredentialsSection')
+  // ================= G) 客户端静态与 rows 行为 =================
+  const rowsFactory = eval('(function (t, CREDENTIAL_CATALOG) { ' + extractFn(clientSrc, 'bibSetCredentialRowsFromCatalog')
+    + ' return bibSetCredentialRowsFromCatalog })')
+  const rowsFromCatalog = rowsFactory(tStub, catalog)
   ok('G1 客户端不再硬编码三行凭据表（无 BIB_SET_CREDENTIAL_ROWS）', clientSrc.indexOf('BIB_SET_CREDENTIAL_ROWS') < 0)
-  ok('G2 分组由 bibSetCredentialGroups 从 state.groups / 目录 fallback 生成',
-    clientSrc.indexOf('function bibSetCredentialGroups(state)') >= 0
-    && sectionFn.indexOf('bibSetCredentialGroups(state)') >= 0)
-  const hostGroupsForClient = described.groups.map(function (group) {
+  ok('G2 客户端渲染行来自 state.groups / 目录 fallback',
+    clientSrc.indexOf('function bibSetCredentialRowsFromCatalog(state)') >= 0
+    && clientSrc.indexOf('bibSetCredentialRowsFromCatalog(state)') >= 0)
+  const hostGroups = described.groups.map(function (group) {
     return {
-      id: group.id, labelKey: group.labelKey, label: group.label, mode: group.mode, bound: group.bound,
+      id: group.id, labelKey: group.labelKey, label: group.label, mode: group.mode,
       credentials: group.credentials.map(function (credential) {
         return { ref: credential.ref, labelKey: credential.labelKey, hintKey: credential.hintKey, configured: credential.configured, source: credential.source, writable: credential.writable }
       }),
     }
   })
-  const clientGroups = groupsFromCatalog({ groups: hostGroupsForClient, kimiLogin: { configured: true }, canWrite: true })
-  check('G3 分组顺序沿用 host（bound 优先、目录序）且只包含 inline 组',
-    clientGroups.map(function (g) { return g.id }), described.groups.map(function (g) { return g.id }))
-  check('G4 组字段固定为 id/providerLabel/bound/credentials',
-    clientGroups.map(function (g) { return Object.keys(g).sort().join(',') }),
-    inlineEntries.map(function () { return 'bound,credentials,id,providerLabel' }))
-  const alibabaClientGroup = clientGroups.filter(function (g) { return g.id === 'alibaba' })[0]
-  const opencodeClientGroup = clientGroups.filter(function (g) { return g.id === 'opencode-go' })[0]
-  check('G5 组标题来自目录品牌（labelKey 与 label 字面量两种）',
-    [alibabaClientGroup.providerLabel, opencodeClientGroup.providerLabel],
-    [tStub('ui.qwenTokenPlan'), 'OpenCode Go'])
-  check('G6 行字段固定为 ref/labelText/hintText/configured/source/kimiLoginReused',
-    clientGroups.reduce(function (bad, g) {
-      for (const row of g.credentials) if (Object.keys(row).sort().join(',') !== 'configured,hintText,kimiLoginReused,labelText,ref,source') bad.push(g.id)
-      return bad
-    }, []), [])
-  const alibabaRow = clientGroups.reduce(function (list, g) { return list.concat(g.credentials) }, []).filter(function (row) { return row.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0]
-  check('G7 行保留专属 label/hint 文案，状态来自 host',
-    [alibabaRow.labelText, alibabaRow.hintText, alibabaRow.configured, alibabaRow.source],
-    [tStub('ui.credentialAlibabaIdLabel'), tStub('ui.credentialAlibabaIdHint'), false, null])
-  const minimaxRow = clientGroups.reduce(function (list, g) { return list.concat(g.credentials) }, []).filter(function (row) { return row.ref === 'MINIMAX_API_KEY' })[0]
-  check('G8 无专属 label 的行 labelText=null（正文回退 ref），hint 回退 generic',
+  const rows = rowsFromCatalog({ groups: hostGroups, kimiLogin: { configured: true }, canWrite: true })
+  check('G3 rows 按 groups 顺序拍平且只含 inline 凭据', rows.map(function (row) { return row.ref }), inlineRefs)
+  const alibabaRow = rows.filter(function (row) { return row.ref === 'ALIBABA_CLOUD_ACCESS_KEY_ID' })[0]
+  check('G4 行显示名 = 组品牌 + 凭据标签，状态来自 host',
+    [alibabaRow.providerLabel, alibabaRow.labelText, alibabaRow.hintText, alibabaRow.configured],
+    [tStub('ui.qwenTokenPlan'), tStub('ui.credentialAlibabaIdLabel'), tStub('ui.credentialAlibabaIdHint'), false])
+  const minimaxRow = rows.filter(function (row) { return row.ref === 'MINIMAX_API_KEY' })[0]
+  check('G5 无 labelKey/hintKey 时回退 generic 文案',
     [minimaxRow.labelText, minimaxRow.hintText], [null, tStub('ui.credentialGenericHint')])
-  const kimiReuseGroups = groupsFromCatalog({
-    groups: [{ id: 'kimi-coding', labelKey: 'ui.kimiCoding', label: null, mode: 'subscription', bound: false,
+  check('G6 无 labelKey 的行标签拼接 = providerLabel · ref', tStub('ui.credentialGenericLabel', { provider: minimaxRow.providerLabel, ref: minimaxRow.ref }),
+    tStub('ui.minimax') + ' · MINIMAX_API_KEY')
+  const kimiReuseRows = rowsFromCatalog({
+    groups: [{ id: 'kimi-coding', labelKey: 'ui.kimiCoding', label: null, mode: 'subscription',
       credentials: [{ ref: 'KIMI_API_KEY', labelKey: 'ui.credentialKimiKeyLabel', hintKey: 'ui.credentialKimiHint', configured: false, source: null, writable: true }] }],
     kimiLogin: { configured: true }, canWrite: true,
   })
-  check('G9 KIMI_API_KEY 未配置且 kimiLogin.configured → 行标记复用态、组兜底标记 bound',
-    [kimiReuseGroups[0].credentials[0].kimiLoginReused, kimiReuseGroups[0].bound], [true, true])
-  const kimiConfiguredGroups = groupsFromCatalog({
-    groups: [{ id: 'kimi-coding', labelKey: 'ui.kimiCoding', label: null, mode: 'subscription', bound: true,
+  check('G7 KIMI_API_KEY 未配置且 kimiLogin.configured → 复用登录态展示', kimiReuseRows[0].kimiLoginReused, true)
+  const kimiConfiguredRows = rowsFromCatalog({
+    groups: [{ id: 'kimi-coding', labelKey: 'ui.kimiCoding', label: null, mode: 'subscription',
       credentials: [{ ref: 'KIMI_API_KEY', labelKey: 'ui.credentialKimiKeyLabel', hintKey: 'ui.credentialKimiHint', configured: true, source: 'file', writable: true }] }],
     kimiLogin: { configured: true }, canWrite: true,
   })
-  check('G10 已手填 Kimi Key 时不显示复用态', kimiConfiguredGroups[0].credentials[0].kimiLoginReused, false)
-  const fallbackClientGroups = groupsFromCatalog({ groups: [], canWrite: false })
-  check('G11 老宿主无 groups → 目录 fallback 只列 inline 组、bound=false、状态未知',
-    [fallbackClientGroups.map(function (g) { return g.id }),
-      fallbackClientGroups.every(function (g) { return g.bound === false && g.credentials.every(function (row) { return row.configured === false }) })],
-    [inlineEntries.map(function (entry) { return entry.id }), true])
-  check('G12 fallback 组标题来自目录品牌键', fallbackClientGroups[0].providerLabel, tStub('ui.qwenTokenPlan'))
-  ok('G13 行 label 回退 ref、组标题渲染 providerLabel（行内不再调 genericLabel）',
-    sectionFn.indexOf('row.labelText || row.ref') >= 0
-    && sectionFn.indexOf("t('ui.credentialGenericLabel'") < 0
-    && sectionFn.indexOf('group.providerLabel') >= 0)
-  ok('G14 卡片默认折叠：open/showOthers 初值 false，body 始终渲染但 hidden=!open，contentId 对应',
-    sectionFn.indexOf('const [open, setOpen] = React.useState(false)') >= 0
-    && sectionFn.indexOf('const [showOthers, setShowOthers] = React.useState(false)') >= 0
-    && sectionFn.indexOf("id: 'bib-set-credentials-body'") >= 0
-    && sectionFn.indexOf('hidden: !open') >= 0
-    && sectionFn.indexOf("contentId: 'bib-set-credentials-body'") >= 0)
-  ok('G15 摘要：有绑定用 SummaryBound{count,names}，无绑定用 SummaryNone',
-    sectionFn.indexOf("t('ui.credentialSummaryBound', { count: boundGroups.length, names: summaryNames })") >= 0
-    && sectionFn.indexOf("t('ui.credentialSummaryNone')") >= 0)
-  ok('G16 展开后先渲染 bound 组，其余收进「其他服务商」二次展开',
-    sectionFn.indexOf('renderBoundGroups()') >= 0
-    && sectionFn.indexOf('renderOtherGroups()') >= 0
-    && sectionFn.indexOf("t('ui.credentialOthers', { count: otherGroups.length })") >= 0
-    && sectionFn.indexOf('showOthers ? renderOtherGroups() : null') >= 0)
-  ok('G17 无 bound 组时显示 NoneBound；正文顶部有 Guide',
-    sectionFn.indexOf("t('ui.credentialNoneBound')") >= 0
-    && sectionFn.indexOf("t('ui.credentialGuide')") >= 0)
-  ok('G18 折叠头走非 static 分支（expanded/onToggle/contentId）',
-    sectionFn.indexOf('expanded: open') >= 0
-    && sectionFn.indexOf('onToggle: function ()') >= 0
-    && sectionFn.indexOf('static: true') < 0)
-  ok('G19 行内长说明只在输入框 title，正文只留 label+状态',
-    sectionFn.indexOf('title: row.hintText') >= 0
-    && (sectionFn.split('hintText').length - 1) === 1
-    && sectionFn.indexOf("t('ui.credentialNotConfigured')") >= 0
-    && sectionFn.indexOf("t('ui.credentialConfigured', { source: bibSetCredentialSourceLabel(row.source) })") >= 0)
-  ok('G20 一个都没绑定时展开卡片自动打开「其他服务商」', sectionFn.indexOf('if (!open && boundGroups.length === 0) setShowOthers(true)') >= 0)
-  ok('G21 凭据输入框 type=password + autoComplete=new-password',
+  check('G8 已手填 Kimi Key 时不显示复用态', kimiConfiguredRows[0].kimiLoginReused, false)
+  const fallbackRows = rowsFromCatalog({ groups: [], canWrite: false })
+  check('G9 老宿主无 groups → 目录 fallback 只列 inline 且状态未知', [fallbackRows.map(function (row) { return row.ref }), fallbackRows.every(function (row) { return row.configured === false && row.writable === false })],
+    [inlineRefs, true])
+  check('G10 fallback 行显示名来自目录品牌键', fallbackRows[0].providerLabel, tStub('ui.qwenTokenPlan'))
+
+  const sectionFn = extractFn(clientSrc, 'bibSetCredentialsSection')
+  ok('G10b 无 labelKey 的行标签统一走 t(ui.credentialGenericLabel, { provider, ref })（不再字符串拼接）',
+    sectionFn.indexOf("t('ui.credentialGenericLabel', { provider: row.providerLabel, ref: row.ref })") >= 0
+    && sectionFn.indexOf("' · '") < 0)
+  ok('G11 凭据输入框 type=password + autoComplete=new-password',
     sectionFn.indexOf("type: 'password'") >= 0 && sectionFn.indexOf("autoComplete: 'new-password'") >= 0)
-  ok('G22 输入框 maxLength 与宿主值上限一致', sectionFn.indexOf('maxLength: ' + CREDENTIAL_VALUE_MAX_LEN) >= 0)
-  ok('G23 状态未加载时不闪写保护、加载后 canWrite=false 才警示',
+  ok('G12 输入框 maxLength 与宿主值上限一致', sectionFn.indexOf('maxLength: ' + CREDENTIAL_VALUE_MAX_LEN) >= 0)
+  ok('G13 状态未加载时不闪写保护、加载后 canWrite=false 才警示',
     sectionFn.indexOf('const loaded = state !== null;') >= 0
     && sectionFn.indexOf('loaded && !canWrite ? bibSetAlert(') >= 0
     && sectionFn.indexOf("t('ui.credentialWriteUnsupported')") >= 0)
-  ok('G24 渲染目录说明 footnote', sectionFn.indexOf("t('ui.credentialFootnote')") >= 0)
-  ok('G25 Kimi 复用态有独立状态文案', sectionFn.indexOf("t('ui.credentialKimiLoginReused')") >= 0)
-  ok('G26 凭据区块挂到设置页区块注册表', clientSrc.indexOf("id: 'credentials'") >= 0 && clientSrc.indexOf('bibSetCredentialsSection(') >= 0)
+  ok('G14 渲染目录说明 footnote', sectionFn.indexOf("t('ui.credentialFootnote')") >= 0)
+  ok('G15 Kimi 复用态有独立状态文案', sectionFn.indexOf("t('ui.credentialKimiLoginReused')") >= 0)
+  ok('G16 凭据输入框挂到设置页区块注册表', clientSrc.indexOf("id: 'credentials'") >= 0 && clientSrc.indexOf('bibSetCredentialsSection(') >= 0)
   const actionFn = extractFn(clientSrc, 'runCredentialAction')
-  ok('G27 保存/清除成功后广播信息栏立即重拉',
+  ok('G17 保存/清除成功后广播信息栏立即重拉',
     actionFn.indexOf('bibSetDispatchLedgerChanged()') > actionFn.indexOf('if (res && res.ok) {'))
-  ok('G28 失败按稳定 code 翻译，不显示宿主原文', actionFn.indexOf('credentialErrorText(res && res.code)') >= 0)
+  ok('G18 失败按稳定 code 翻译，不显示宿主原文', actionFn.indexOf('credentialErrorText(res && res.code)') >= 0)
   const errorTextFn = extractFn(clientSrc, 'credentialErrorText')
-  ok('G29 错误码映射 invalid-value / write-unsupported / 兜底 write-failed',
+  ok('G19 错误码映射 invalid-value / write-unsupported / 兜底 write-failed',
     errorTextFn.indexOf("code === 'invalid-value'") >= 0
     && errorTextFn.indexOf("code === 'write-unsupported'") >= 0
     && errorTextFn.indexOf("t('ui.credentialWriteFailed')") >= 0)
   const saveFn = extractFn(clientSrc, 'onCredentialSave')
-  ok('G30 保存走 rpc(setCredential) 且先 trim 草稿', saveFn.indexOf("rpc('setCredential', { ref: ref, value: value })") >= 0 && saveFn.indexOf('.trim()') >= 0)
-  ok('G31 保存成功后清空草稿（不回显已存值）', saveFn.indexOf("next[ref] = ''") >= 0)
-  ok('G32 清除走 rpc(clearCredential)', extractFn(clientSrc, 'onCredentialClear').indexOf("rpc('clearCredential', { ref: ref })") >= 0)
-  ok('G33 输入草稿只进本地 state', extractFn(clientSrc, 'onCredentialDraft').indexOf('setCredentialDrafts') >= 0)
+  ok('G20 保存走 rpc(setCredential) 且先 trim 草稿', saveFn.indexOf("rpc('setCredential', { ref: ref, value: value })") >= 0 && saveFn.indexOf('.trim()') >= 0)
+  ok('G21 保存成功后清空草稿（不回显已存值）', saveFn.indexOf("next[ref] = ''") >= 0)
+  ok('G22 清除走 rpc(clearCredential)', extractFn(clientSrc, 'onCredentialClear').indexOf("rpc('clearCredential', { ref: ref })") >= 0)
+  ok('G23 输入草稿只进本地 state', extractFn(clientSrc, 'onCredentialDraft').indexOf('setCredentialDrafts') >= 0)
 
   // ================= H) locale 与密钥不外泄 =================
   const MANDATED_KEYS = [
@@ -868,8 +755,7 @@ async function main() {
     return typeof zhDict[key] === 'string' && zhDict[key].length > 0
       && typeof enDict[key] === 'string' && enDict[key].length > 0
   }))
-  const NEW_KEYS = ['ui.credentialGenericLabel', 'ui.credentialGenericHint', 'ui.credentialFootnote', 'ui.credentialKimiLoginReused',
-    'ui.credentialSummaryBound', 'ui.credentialSummaryNone', 'ui.credentialGuide', 'ui.credentialOthers', 'ui.credentialNoneBound']
+  const NEW_KEYS = ['ui.credentialGenericLabel', 'ui.credentialGenericHint', 'ui.credentialFootnote', 'ui.credentialKimiLoginReused']
   ok('H2 目录驱动新增的 generic/footnote/kimi-login 文案中英齐备', NEW_KEYS.every(function (key) {
     return typeof zhDict[key] === 'string' && typeof enDict[key] === 'string'
   }), NEW_KEYS.filter(function (key) { return typeof zhDict[key] !== 'string' || typeof enDict[key] !== 'string' }).join(','))
