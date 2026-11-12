@@ -1383,18 +1383,43 @@ function bibSetInstallStyles() {
          .field 列向 + gap 6 + padding 12px 0；相邻字段块之间 .5px 细线；label 13/500；
          输入框 34px / r8 / 0 12px；hint 12/1.5。全部度量走 --bib-* token。 */
       .bib-set-fieldblocks { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; }
-      /* 参数区（时区 / 自定义文字 / 额度凭据）复用同一条行语法：左「标题 + 说明」、右控件、
-         8px 圆角 + hover 填充；行与行之间只有留白，没有任何线。 */
+      /* 参数区（时区 / 自定义文字 / 额度凭据）行与字段节的通用几何。
+         【对齐铁律】行 / 字段节 / 组头 / 可点击卡头的横向内衬只用于 hover 填充外扩，
+         文字必须仍压在卡面 16px 内衬线上 —— 用负 margin 抵掉横向 padding。
+         没有这条，行内文字会比卡头缩进多 10px，出现「标题一层缩进、行文字另一层缩进」
+         的碎节奏（2026-11-12 用户截图点名）。 */
+      .bib-set-row, .bib-set-fieldblock, .bib-set-data-row, .bib-set-group-fallback-head,
+      .bib-set-subsection-head, .bib-set-field, .bib-set-card-header:not(.bib-set-card-header--static) { margin-inline: calc(-1 * var(--bib-row-pad-inline)); }
       .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
       .bib-set-fieldblock:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       /* 行左侧的「标题 + 说明」两行堆叠（与 .bib-set-rowText 同构）。 */
       .bib-set-fieldblock-copy { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
       /* 行右侧的控件列：竖排（控件在下、计数/说明在上或下）时右对齐，单控件时也走这一层。 */
-      .bib-set-fieldblock-control { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; min-width: 0; }
+      .bib-set-fieldblock-control { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; min-width: 0; }
       /* 需要横跨整行的附属说明（如分段控件的 tabpanel）：换行到控件下方，仍是同一行的一部分。 */
       .bib-set-fieldblock-panel { flex: 1 0 100%; }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+      /* ===== 字段节（2026-11-12 体系化）=====
+         参数型字段（凭据、自定义文字）照 DSH 0.2.2 原生 settings-form 的 .field 语法排：
+         列向 gap 6px —— 第一行「标签 + 状态」、第二行说明、第三行控件（输入框满宽 + 动作按钮同行）。
+         与两栏「行」是两套语义：行承载开关与入口（copy 左 + 控件右），字段节承载输入。
+         凭据行原先把三行文字挤在左、窄输入框和孤立按钮堆在右，正是没有这套语义的产物
+         （2026-11-12 用户在真实客户端截图点名「突然多出来两节」）。 */
+      .bib-set-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-field:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
+      .bib-set-field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--bib-row-gap); min-width: 0; }
+      .bib-set-field-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
+      .bib-set-field-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+      .bib-set-field-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; min-width: 0; }
+      /* 字段节里的输入框吃满剩余宽度：512 长度的凭据值在 260px 窄框里没法核对首尾。
+         原生分支吃 layout 类（--block），兜底分支吃外观类，两条都要覆盖。 */
+      .bib-set-field-control .bib-set-input--block,
+      .bib-set-field-control .bib-set-credential-input { flex: 1 1 240px; }
+      /* 状态胶囊：与信息栏软底徽章同一语言（14% 同色底 + 999 胶囊）。已配置=次要色胶囊、
+         未配置=三级色裸文字 —— 一眼分出两态，不引入红绿装饰色。 */
+      .bib-set-status-pill { display: inline-flex; align-items: center; height: 16px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, var(--dsw-alias-label-secondary) 14%, transparent); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
+      .bib-set-status-plain { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); white-space: nowrap; }
       .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       /* v1.24.0：额度凭据输入框与自定义文字同一套自绘外观（宿主没有原生 Input 时走这里）。
          独立声明块而不是合并选择器：几何守卫按类逐个检查 --bib-input-radius。 */
@@ -1721,7 +1746,9 @@ function bibSetCardHeader(props) {
   const main = React.createElement('span', { className: 'bib-set-card-header-main' },
     title,
     props.static ? null : bibSetChevron({ expanded: props.expanded }));
-  const description = React.createElement('span', { className: 'bib-set-card-desc' }, props.description);
+  const description = props.description
+    ? React.createElement('span', { className: 'bib-set-card-desc' }, props.description)
+    : null;
   if (props.static) return React.createElement('div', { className: className }, main, description);
   return React.createElement('button', {
     type: 'button',
@@ -2001,25 +2028,22 @@ function bibSetTimeDateSection(props) {
   const mainOn = props.fieldOn('mainTime');
   const worldOn = props.fieldOn('worldTime');
   if (!mainOn && !worldOn) return null;
+  const zoneRow = function (key, labelKey, zone) {
+    // 与「语言」卡同一行语义：label 左、控件右（B 型参数行）。select 右对齐后
+    // 两行的控件边缘齐线，不再随 label 宽度漂移（2026-11-12 概览审计）。
+    return React.createElement('div', { key: key, className: 'bib-set-fieldblock' },
+      React.createElement('div', { className: 'bib-set-fieldblock-copy' },
+        React.createElement('span', { className: 'bib-set-fieldblock-label' }, t(labelKey))),
+      React.createElement('div', { className: 'bib-set-fieldblock-control' },
+        React.createElement(bibSetTimeZonePicker, {
+          label: t(labelKey),
+          value: zone,
+          onChange: function (value) { props.onTimeZoneChange(key === 'main-zone' ? 'main' : 'world', value); },
+        })));
+  };
   const blocks = [];
-  if (mainOn) {
-    blocks.push(React.createElement('div', { key: 'main-zone', className: 'bib-set-fieldblock' },
-      React.createElement('span', { className: 'bib-set-fieldblock-label' }, t('ui.mainTimeZone')),
-      React.createElement(bibSetTimeZonePicker, {
-        label: t('ui.mainTimeZone'),
-        value: props.timeZonesOf().main,
-        onChange: function (value) { props.onTimeZoneChange('main', value); },
-      })));
-  }
-  if (worldOn) {
-    blocks.push(React.createElement('div', { key: 'world-zone', className: 'bib-set-fieldblock' },
-      React.createElement('span', { className: 'bib-set-fieldblock-label' }, t('ui.worldTimeZone')),
-      React.createElement(bibSetTimeZonePicker, {
-        label: t('ui.worldTimeZone'),
-        value: props.timeZonesOf().world,
-        onChange: function (value) { props.onTimeZoneChange('world', value); },
-      })));
-  }
+  if (mainOn) blocks.push(zoneRow('main-zone', 'ui.mainTimeZone', props.timeZonesOf().main));
+  if (worldOn) blocks.push(zoneRow('world-zone', 'ui.worldTimeZone', props.timeZonesOf().world));
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-time-date-title' },
     bibSetCardHeader({
       static: true,
@@ -2030,18 +2054,24 @@ function bibSetTimeDateSection(props) {
     React.createElement('div', { className: 'bib-set-fieldblocks' }, blocks));
 }
 
-// 「自定义文字」独立设置区（决策 3）：输入框 + 字数提示；对应开关关闭时整区隐藏。
+// 「自定义文字」独立设置区（决策 3）：与其它区块同一张卡面 + 同一个一级卡头，
+// 输入框是字段节（C 型）：控件满宽在上、字数提示在下（照原生 field「控件上、说明下」）。
+// 对应开关关闭时整区隐藏。
 function bibSetCustomTextSection(props) {
   if (!props.fieldOn('customText')) return null;
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-custom-text-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-custom-text-title',
+      // 与字段开关同一名字（field.customText.label「自定义文字」）：ui.customTextTitle 是
+      // 「自定义文本」，同一东西两个名字会被读成两个功能（概览审计抓出）。
+      title: t('field.customText.label'),
+      description: t('ui.customTextSectionDesc'),
+    }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
-      React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-          React.createElement('span', { id: 'bib-set-custom-text-title', className: 'bib-set-fieldblock-label' }, t('field.customText.label')),
-          React.createElement('span', { className: 'bib-set-fieldblock-hint' }, t('ui.customTextSectionDesc'))),
-        React.createElement('div', { className: 'bib-set-fieldblock-control' },
+      React.createElement('div', { className: 'bib-set-field' },
         bibSetInput({
-          layout: 'bib-set-input--field',
+          layout: 'bib-set-input--block',
           fallbackClassName: 'bib-set-custom-text-input',
           attrs: {
             id: 'bib-set-custom-text-input',
@@ -2052,11 +2082,11 @@ function bibSetCustomTextSection(props) {
             onChange: function (event) { props.onCustomTextChange(event.target.value); },
             onBlur: props.onCustomTextCommit,
             onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
-            'aria-label': t('ui.customTextTitle'),
+            'aria-label': t('field.customText.label'),
           },
         }),
-        React.createElement('p', { className: 'bib-set-fieldblock-hint' },
-          t('ui.customTextCount', { value: props.customTextOf().length }))))));
+        React.createElement('p', { className: 'bib-set-field-hint' },
+          t('ui.customTextCount', { value: props.customTextOf().length })))));
 }
 
 // ===== 插件设置页的通用两段式分段控件 =====
@@ -2159,18 +2189,19 @@ function bibSetQuotaDisplaySection(props) {
       hidden: value !== mode,
     }, desc);
   }) : null;
-  // 行语法照宿主 .rowLine / .rowMain：标题与说明都在左侧文字列里，分段控件在右。
-  // 原生分段控件是 tablist，说明就是它的 tabpanel——放在文字列里既满足 aria 契约，
-  // 又与姊妹插件的「更新方式」行同一形态（说明跟着选中项变，不另起一行）。
+  // 卡头承载「标题」与其他区块同一层级；说明不进卡头 —— 原生分支里说明是选中的那条
+  // 可见 tabpanel（控件下方，随选中项切换），卡头再放一份就是重复文案（概览审计抓出）；
+  // 兜底分支没有 tabpanel，说明留在卡头。
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-quota-mode-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-quota-mode-title',
+      title: t('ui.quotaDisplayModeTitle'),
+      description: native ? undefined : desc,
+    }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
-      React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-          React.createElement('span', { id: 'bib-set-quota-mode-title', className: 'bib-set-fieldblock-label' }, t('ui.quotaDisplayModeTitle')),
-          panels === null
-            ? React.createElement('span', { className: 'bib-set-fieldblock-hint' }, desc)
-            : panels),
-        React.createElement('div', { className: 'bib-set-fieldblock-control' },
+      React.createElement('div', { className: 'bib-set-field' },
+        React.createElement('div', { className: 'bib-set-field-control' },
           React.createElement(bibSetQuotaMode, {
             id: BIB_SET_QUOTA_MODE_ID,
             label: t('ui.quotaDisplayModeTitle'),
@@ -2179,7 +2210,8 @@ function bibSetQuotaDisplaySection(props) {
             // 布局类：原生控件是 inline-grid，落在列向 flex 里会被 stretch 拉满整行；
             // 只做 align-self / 最大宽度这类布局声明，外观仍全部交还宿主。
             className: native ? 'bib-set-segmented' : null,
-          })))));
+          })),
+        native ? panels : null)));
 }
 
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
@@ -2366,14 +2398,18 @@ function bibCredentialsCard(props) {
       : (row.configured
         ? t('ui.credentialConfigured', { source: bibSetCredentialSourceLabel(row.source) })
         : t('ui.credentialNotConfigured'));
-    return React.createElement('div', { key: row.ref, className: 'bib-set-fieldblock' },
-      React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-        React.createElement('span', { id: labelId, className: 'bib-set-fieldblock-label' }, labelText),
-        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, row.hintText),
-        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, statusText)),
-      React.createElement('div', { className: 'bib-set-fieldblock-control' },
+    // 字段节（C 型，照原生 .field 列向语法）：「标签 + 状态」在上、说明居中、控件满宽在下。
+    // 状态是同一行里与标签相对的胶囊/裸文字，不再混进说明堆里（2026-11-12 用户点名）。
+    return React.createElement('div', { key: row.ref, className: 'bib-set-field' },
+      React.createElement('div', { className: 'bib-set-field-head' },
+        React.createElement('label', { id: labelId, htmlFor: 'bib-set-credential-' + row.ref, className: 'bib-set-field-label' }, labelText),
+        row.configured
+          ? React.createElement('span', { className: 'bib-set-status-pill' }, statusText)
+          : React.createElement('span', { className: 'bib-set-status-plain' }, statusText)),
+      React.createElement('span', { className: 'bib-set-field-hint' }, row.hintText),
+      React.createElement('div', { className: 'bib-set-field-control' },
         bibSetInput({
-          layout: 'bib-set-input--field',
+          layout: 'bib-set-input--block',
           fallbackClassName: 'bib-set-credential-input',
           attrs: {
             id: 'bib-set-credential-' + row.ref,
@@ -2388,17 +2424,16 @@ function bibCredentialsCard(props) {
             'aria-labelledby': labelId,
           },
         }),
-        React.createElement('div', { className: 'bib-set-data-button-group' },
-          bibSetButton({
-            disabled: !canWrite || busy || draft.trim().length === 0,
-            onClick: function () { props.onCredentialSave(row.ref); },
-            children: t('ui.credentialSave'),
-          }),
-          row.configured ? bibSetButton({
-            disabled: !canWrite || busy,
-            onClick: function () { props.onCredentialClear(row.ref); },
-            children: t('ui.credentialClear'),
-          }) : null)));
+        bibSetButton({
+          disabled: !canWrite || busy || draft.trim().length === 0,
+          onClick: function () { props.onCredentialSave(row.ref); },
+          children: t('ui.credentialSave'),
+        }),
+        row.configured ? bibSetButton({
+          disabled: !canWrite || busy,
+          onClick: function () { props.onCredentialClear(row.ref); },
+          children: t('ui.credentialClear'),
+        }) : null));
   }
   function renderRows(list) {
     const nodes = [];
