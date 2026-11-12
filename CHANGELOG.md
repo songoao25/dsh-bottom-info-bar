@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.0...v1.24.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* collapse quota credentials and show bound providers first ([#281](https://github.com/songoao25/dsh-bottom-info-bar/issues/281)) ([e1f0a79](https://github.com/songoao25/dsh-bottom-info-bar/commit/e1f0a79b16597719c90f8a2876392a6410cc11d0))
+
 ## [1.24.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.23.0...v1.24.0) (2026-11-12)
 
 
