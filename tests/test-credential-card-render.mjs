@@ -131,21 +131,24 @@ check('R1 四轮渲染（状态缺→到达→又缺→到达）不抛 hooks 契
 
 const tt = hook.api.t
 
-// ---- 卡片态（2026-11-12 用户拍板：默认折叠，与「原生信息 / 插件信息」同行为）----
+// ---- 卡片态（2026-11-12 用户拍板：默认折叠；卡头与「原生信息 / 插件信息」同一 bibSetDisclosure 布局）----
 const headerBtn = cardHeaderButton(renderer.root)
 const bodyBox = collapseBox(renderer.root, 'bib-set-credentials-body')
 const headerText = headerBtn ? flattenInstanceText(headerBtn) : ''
 const summaryText = tt('ui.credentialSummaryBound', { count: 1, names: tt('ui.qwenTokenPlan') })
-check('R2 卡头为可点折叠头且默认收起，摘要（已绑定 N 个服务商）在说明位',
-  [!!headerBtn, headerBtn.props['aria-expanded'], bodyBox.props.hidden, headerText.indexOf(summaryText) >= 0],
-  [true, false, true, true])
-check('R2b 默认收起时内容容器为 hidden（填写行只存在于隐藏容器内，不占默认视野）',
-  [bodyBox.props.hidden, credentialInputIds(renderer.root)],
-  [true, ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
+check('R2 卡头为组卡同款折叠头（默认收起），标题+摘要在左、展开/收起动作在右',
+  [!!headerBtn, headerBtn.props['aria-expanded'], bodyBox.props['aria-hidden'],
+    headerText.indexOf(tt('ui.credentialsTitle')) >= 0,
+    headerText.indexOf(summaryText) >= 0,
+    headerText.indexOf(tt('ui.expand')) >= 0],
+  [true, false, 'true', true, true, true])
+check('R2b 默认收起时内容在折叠容器内（grid 0fr + visibility，不占默认视野）',
+  [bodyBox.props['aria-hidden'], credentialInputIds(renderer.root)],
+  ['true', ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
 TestRenderer.act(function () { headerBtn.props.onClick() })
-check('R2c 展开后阿里两行凭据出现（aria-expanded 翻转 + 内容可见）',
-  [headerBtn.props['aria-expanded'], bodyBox.props.hidden, credentialInputIds(renderer.root)],
-  [true, false, ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
+check('R2c 展开后阿里两行凭据出现（aria-expanded 翻转 + 容器解除隐藏）',
+  [headerBtn.props['aria-expanded'], bodyBox.props['aria-hidden'] === undefined, credentialInputIds(renderer.root)],
+  [true, true, ['ALIBABA_CLOUD_ACCESS_KEY_ID', 'ALIBABA_CLOUD_ACCESS_KEY_SECRET']])
 check('R2d 复用推理 Key 的服务商（Kimi/MiniMax）绝不出现在卡里',
   ['KIMI_API_KEY', 'MINIMAX_API_KEY'].map(function (ref) { return credentialInputIds(renderer.root).indexOf(ref) >= 0 }),
   [false, false])
