@@ -4062,6 +4062,10 @@ module.exports = {
          const kind = error && error.kind;
          const serviceName = subscriptionServiceName(source);
          const message = errorText(error);
+         // Issue #274：宿主 appAuth 通道（DSH Go / 安卓 App）的错误自带完整指引（例如「到 DSH App
+         // 的账号页授权 ChatGPT」），且已按用户语言本地化。通用兜底文案会把这条最有用的原因盖掉，
+         // 而手机上没有 hover，只能靠这个 title 说清为什么刷新失败（点按展开由移动适配面板负责）。
+         if (error && typeof error.code === 'string' && error.code.indexOf('subscription.app-auth-') === 0) return message;
          // HTTP 状态优先取宿主给的 params（结构化、跨语言稳定），退回从文案里解析（旧快照）。
          const statusMatch = message.match(/HTTP (\d{3})/);
          const status = error && error.params && error.params.status != null ? String(error.params.status) : (statusMatch ? statusMatch[1] : '');

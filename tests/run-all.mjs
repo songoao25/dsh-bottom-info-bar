@@ -42,6 +42,7 @@ const cases = [
   ['test-weekend-pricing（host.js 周末峰谷规则）', ['tests/test-weekend-pricing.mjs'], join(root), process.execPath],
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.cjs'], join(root), process.execPath],
   ['test-zai-quota（Issue #85 智谱 CREDIT_LIMIT 积分制 + 窗口时长闸门/百分比推算/降级）', ['tests/test-zai-quota.cjs'], join(root), process.execPath],
+  ['test-codex-appauth（Issue #274 DSH Go appAuth 通道：窗口映射/未登录引导/桌面回归/异常降级）', ['tests/test-codex-appauth.mjs'], join(root), process.execPath],
   ['test-commandcode-quota（Issue #99 Command Code credits/窗口/未知套餐降级）', ['tests/test-commandcode-quota.cjs'], join(root), process.execPath],
   ['test-minimax-token-plan（MiniMax Token Plan 多桶最紧聚合 + Subscription Key 错误码降级）', ['tests/test-minimax-token-plan.cjs'], join(root), process.execPath],
   ['test-quota-display-mode（订阅窗口百分比方向：默认 remaining / 切换 used / 落盘与回滚）', ['tests/test-quota-display-mode.cjs'], join(root), process.execPath],
