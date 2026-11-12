@@ -590,6 +590,66 @@ function infoBarShouldRemoveAll(registry, isVisible) {
   return registry.length > 0;
 }
 
+// ---------- 触屏基础适配：hover 明细 → 点按内联面板（2026-11-12） ----------
+// 信息栏的明细（余额构成、今天/近一月/全部花费、定价模式、订阅窗口明细、错误原因）历来只挂在
+// title 属性上：桌面端 hover 可读，触屏设备没有 hover，这些内容等于永远看不到（DSH Go 网页版、
+// 手机浏览器同理；issue #274 的红色「刷新失败」原因就只写在 title 里）。
+// 这里在「hover 不可用 / coarse pointer」的设备上把整栏点击改成「展开内联明细」：
+//   · 面板是信息栏的兄弟节点、在文档流里展开，不覆盖输入框，也不改动任何字段显隐
+//     （字段开关仍是唯一显隐来源；面板只搬运本来就存在的 title 文案）；
+//   · 桌面端不渲染面板、行为与像素零变化（matchMedia 不可用 / hover 可用 → 保持原样）；
+//   · 触屏上完整/简洁切换改由面板里的按钮触发，原「点整栏切换」在触屏让位给「看明细」。
+function touchDetailsEnabled() {
+  try {
+    if (typeof window === 'undefined' || !window || typeof window.matchMedia !== 'function') return false;
+    const hover = window.matchMedia('(hover: hover)');
+    if (hover && hover.matches) return false;
+    const coarse = window.matchMedia('(pointer: coarse)');
+    if (coarse && coarse.matches) return true;
+    return typeof navigator !== 'undefined' && navigator !== null && navigator.maxTouchPoints > 0;
+  } catch (err) {
+    // 媒体查询不可用的极简宿主：按桌面处理，绝不让适配逻辑挡住信息栏本身。
+    return false;
+  }
+}
+
+// 收集栏内各字段的 hover 明细（title 原文，与桌面端看到的是同一份文案）。
+// 只收「当前真正可见」的节点：简洁模式收起的原生行高度为 0，不能把用户已收起的明细再列出来；
+// 同一段文案只列一次（嵌套节点会重复），顺序即字段在栏内的视觉顺序。
+function collectInfoBarDetails(rootEl) {
+  if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return [];
+  const nodes = rootEl.querySelectorAll('[title]');
+  const seen = new Set();
+  const out = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
+    const raw = el.getAttribute('title');
+    if (typeof raw !== 'string') continue;
+    const text = raw.trim();
+    if (text.length === 0 || seen.has(text)) continue;
+    // 标题与可见文本逐字相同 = 这行没有额外信息（如自定义文字），不占面板篇幅。
+    const visibleText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (visibleText === text.replace(/\s+/g, ' ').trim()) continue;
+    let node = el;
+    let visible = true;
+    while (node && node !== rootEl) {
+      let rect = null;
+      try { if (typeof node.getBoundingClientRect === 'function') rect = node.getBoundingClientRect(); } catch (err) { rect = null; }
+      if (rect && (!(rect.width > 0) || !(rect.height > 0))) { visible = false; break; }
+      let style = null;
+      try {
+        if (typeof window !== 'undefined' && window && typeof window.getComputedStyle === 'function') style = window.getComputedStyle(node);
+      } catch (err) { style = null; }
+      if (style && (style.visibility === 'hidden' || style.display === 'none')) { visible = false; break; }
+      node = node.parentElement;
+    }
+    if (!visible) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
 // 余额悬停明细（2026-10-07 用户拍板）：底栏只放得下一个总数，但用户想知道其中「充的钱」与
 // 「送的钱」各是多少 —— 两者的来源与规则不同，并成一个数就分不清了。
 // 文案与 DSH 设置页逐字对齐（充值余额 / 赠金余额，见 src/locales.js）：宿主已经这么叫，
@@ -767,6 +827,43 @@ function installStyles() {
          不绑 DSH 的哈希类名，只认结构——「同一个 dock 行 + 直接子级 span + 内含 14px 圆环按钮」，
          并要求该 span 内不含本插件信息栏（避免误伤包着信息栏的插槽包装元素）。 */
       [class*="_dock"]:has(.bi-root) > span:not(:has(.bi-root)):has(button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"]) { display: none !important; }
+      /* ---------- 触屏点按明细（hover 不可用时的替代路径，2026-11-12） ----------
+         只有组件判定为触屏（hover 不可用 / coarse pointer）时才渲染这个面板；桌面端没有这个 DOM，
+         像素零变化。面板是信息栏的兄弟节点、在文档流里展开（不 position:fixed），因此不会盖住
+         输入框，也不依赖任何浮层定位；明细内容就是各字段原有的 title 文案。 */
+      .bi-mobile-details { box-sizing: border-box; width: 100%; max-height: 40vh; overflow: hidden auto; overscroll-behavior: contain; flex: 0 0 100%; order: 2; margin: 4px 0 0; padding: 8px 12px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2)); color: var(--dsw-alias-label-secondary, #5a6169); font-size: var(--dsh-content-font-size-secondary, 13px); line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); text-align: left; user-select: text; -webkit-user-select: text; }
+      .bi-mobile-details-list { margin: 0; padding: 0; list-style: none; }
+      .bi-mobile-details-item { padding: 6px 0; white-space: pre-line; overflow-wrap: anywhere; }
+      .bi-mobile-details-item + .bi-mobile-details-item { border-top: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14)); }
+      .bi-mobile-details-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .bi-mobile-details-button { flex: 1 1 140px; min-height: 44px; margin: 0; padding: 8px 12px; border: 1px solid var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.35)); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary, #1f2328); font: inherit; line-height: 1.3; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .bi-mobile-details-button:active { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14)); }
+      /* 手机宽度（含 320px 极窄）与横屏矮视口的基础适配：全部规则落在媒体查询里，
+         桌面端一条都不生效（像素零变化）。几何仍取宿主令牌，插件只表达意图：
+         触控目标、可折行、分隔符不悬空、安全区不重叠。 */
+      @media (max-width: 480px), (orientation: landscape) and (max-height: 480px) {
+        /* 触控目标：整栏本身是一个 role=button。DSH Go 网页版对 [data-slot="main"] 里的
+           button/[role=button] 强制 44px（assets/web/dsh_web_phone.css）；独立移动浏览器没有
+           这条，这里补同一意图。min-height 只在单行时生效（多行本来就高），
+           上下内边距保持 4px，避免为了触控把整条底栏撑高。 */
+        .bi-root { min-height: 44px; padding: 4px 0 max(4px, env(safe-area-inset-bottom, 0px)); justify-content: center; }
+        /* 折行：桌面上「一个字段组不拆行」是版式；窄屏下单个 nowrap 组（长模型名、三个订阅窗口、
+           长错误提示、自定义文字）会撑破容器。允许组内折行，桌面端不变。 */
+        .bi-root > .bi-row2 > span:not(.bi-tail) { white-space: normal; overflow-wrap: anywhere; }
+        /* 分隔符是独立 flex 项：折行时会孤零零落在行首或行尾（320px 实测每行都有）。
+           窄屏改用间距分组（组间 8px），分隔符不参与排版；圆环尾巴仍整体不折行，
+           避免圆环被单独挤到下一行（2026-09-24 修过的回归）。 */
+        .bi-root > .bi-row2, .bi-root > .bi-density-extra .bi-native-row { column-gap: 8px; }
+        .bi-root > .bi-row2 > .bi-sep, .bi-root > .bi-density-extra .bi-native-row > .bi-sep { display: none; }
+        /* 上下文圆环按钮原高 22px：用伪元素把命中区扩到 44px，而不把整行撑到 44px。
+           DSH Go 网页版已由宿主对按钮强制 44px；独立移动浏览器用这条补同一意图。 */
+        .bi-ctx-trigger { position: relative; }
+        .bi-ctx-trigger::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+      }
+      /* 横屏矮视口：把上下留白再压回一点，高度还给对话区。 */
+      @media (orientation: landscape) and (max-height: 480px) {
+        .bi-root { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
+      }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
 ` + FIELD_COLOR_CSS + `
     `;
@@ -3270,7 +3367,7 @@ module.exports = {
         errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
-      const [, setLanguageRevision] = React.useState(0);
+      const [languageRevision, setLanguageRevision] = React.useState(0);
       React.useEffect(function () {
         return languageRuntime.subscribe(function () { setLanguageRevision(function (value) { return value + 1; }); });
       }, []);
@@ -3281,6 +3378,12 @@ module.exports = {
       const [sessionModel, setSessionModel] = React.useState(null);
       const [displayDensity, setDisplayDensity] = React.useState(props.density);
       const [isDensitySaving, setIsDensitySaving] = React.useState(toggling);
+      // 触屏基础适配（见模块级 touchDetailsEnabled / collectInfoBarDetails 注释）：
+      // 桌面端 touchDetails=false，本组状态与面板都不参与渲染，像素零变化。
+      const [touchDetails] = React.useState(touchDetailsEnabled);
+      const [detailsOpen, setDetailsOpen] = React.useState(false);
+      const [detailsItems, setDetailsItems] = React.useState([]);
+      const barRef = React.useRef(null);
 
       // 外层持有持久化后的密度；组件只订阅数值变化，避免 slot 卸载重建打断动画。
       React.useEffect(function () {
@@ -3307,6 +3410,23 @@ module.exports = {
         setFieldConfigTick(fieldConfigVersion);
         return function () { fieldConfigListeners.delete(listener); };
       }, []);
+
+      // 点按明细面板的内容取自栏内各字段的 title（与桌面 hover 同一份文案）。
+      // 面板打开期间数据/字段配置/语言变化都会重取；渲染完成后读取 DOM，避免把 title 文案
+      // 在渲染层再抄一份（抄一份就多一处会和真实 tooltip 漂移的来源）。
+      React.useEffect(function () {
+        if (!touchDetails || !detailsOpen) return undefined;
+        setDetailsItems(collectInfoBarDetails(barRef.current));
+        return undefined;
+      }, [touchDetails, detailsOpen, state, fieldConfigTick, languageRevision]);
+      // 触屏面板可用 Esc 收起（键盘/外接键盘场景）。
+      React.useEffect(function () {
+        if (!detailsOpen) return undefined;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+        const onKeyDown = function (event) { if (event && event.key === 'Escape') setDetailsOpen(false); };
+        document.addEventListener('keydown', onKeyDown);
+        return function () { document.removeEventListener('keydown', onKeyDown); };
+      }, [detailsOpen]);
 
       // 当前会话 ID 多路获取：slotProps 标准 kit → session 快照 → 运行时 sessions 服务
       // （DSH 各版本注入方式不同，任一路可用即拿到真实会话 ID，避免回退到上一会话的账）
@@ -4381,54 +4501,81 @@ module.exports = {
       // This row is still the Full/Compact switch: clicking any plugin field toggles the
       // density (the user decision from 2026-10-17), while the native buttons above keep
       // their own click behavior. Nested plugin controls stop propagation themselves.
-      if (nativePills) return React.createElement('div', {
-        className: 'bi-root',
-        'data-native-pills': 'true',
-        onClick: function () { props.onToggleDensity(); },
-        onKeyDown: function (event) {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            props.onToggleDensity();
+      // 触屏例外（2026-11-12）：hover 不可用时整栏点击改为展开明细面板，密度切换移到面板按钮上
+      // （见模块级 touchDetailsEnabled 注释）；桌面端这条分支不生效。
+      const onBarActivate = function () {
+        if (touchDetails) {
+          setDetailsOpen(function (open) { return !open; });
+          return;
+        }
+        props.onToggleDensity();
+      };
+      const onBarKeyDown = function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          if (touchDetails) {
+            setDetailsOpen(function (open) { return !open; });
+            return;
           }
-        },
-        role: 'button',
-        tabIndex: 0,
-        'aria-labelledby': 'dsh-bottom-info-bar-primary',
-        'aria-describedby': 'dsh-bottom-info-bar-action',
-        'aria-pressed': full,
-        'aria-busy': isDensitySaving,
-        'aria-disabled': isDensitySaving,
-        'data-density': displayDensity,
-        'data-density-saving': isDensitySaving,
-        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
-      }, row2,
-      React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
-        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
-
+          props.onToggleDensity();
+        }
+      };
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra', ref: extraRowRef }, row1);
-      const rootCls = 'bi-root';
-      return React.createElement('div', {
-        className: rootCls,
-        onClick: function () { props.onToggleDensity(); },
-        onKeyDown: function (event) {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            props.onToggleDensity();
-          }
-        },
+      const actionNode = React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
+        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar'));
+      const barProps = {
+        className: 'bi-root',
+        ref: barRef,
+        onClick: onBarActivate,
+        onKeyDown: onBarKeyDown,
         role: 'button',
         tabIndex: 0,
-        'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
         'aria-describedby': 'dsh-bottom-info-bar-action',
         'aria-pressed': full,
+        // 触屏上的点击语义是「展开明细」，不是「切换密度」：用 aria-expanded 如实表达。
+        'aria-expanded': touchDetails ? detailsOpen : undefined,
         'aria-busy': isDensitySaving,
         'aria-disabled': isDensitySaving,
         'data-density': displayDensity,
         'data-density-saving': isDensitySaving,
-        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
-      }, animatedRow1, row2,
-      React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
-        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
+        // 触屏没有 hover：title 提示没有意义，还会让长按弹出无用提示；桌面端保持原文案。
+        title: touchDetails ? undefined : (isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact')),
+      };
+      const barNode = nativePills
+        ? React.createElement('div', Object.assign({}, barProps, {
+          'data-native-pills': 'true',
+          'aria-labelledby': 'dsh-bottom-info-bar-primary',
+        }), row2, actionNode)
+        : React.createElement('div', Object.assign({}, barProps, {
+          'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
+        }), animatedRow1, row2, actionNode);
+
+      // 触屏点按明细：兄弟节点、文档流内展开，不覆盖输入框；内容是各字段原本的 title 文案。
+      const detailsNode = !(touchDetails && detailsOpen) ? null : React.createElement('div', {
+        className: 'bi-mobile-details',
+        role: 'region',
+        'aria-label': t('ui.infoBarSettings'),
+      },
+        React.createElement('ul', { className: 'bi-mobile-details-list' },
+          detailsItems.map(function (item, index) {
+            return React.createElement('li', { key: 'md' + index, className: 'bi-mobile-details-item' }, item);
+          })),
+        React.createElement('div', { className: 'bi-mobile-details-actions' },
+          React.createElement('button', {
+            key: 'md-density',
+            type: 'button',
+            className: 'bi-mobile-details-button',
+            onClick: function () { props.onToggleDensity(); },
+          }, isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact')),
+          React.createElement('button', {
+            key: 'md-close',
+            type: 'button',
+            className: 'bi-mobile-details-button',
+            onClick: function () { setDetailsOpen(false); },
+          }, t('ui.collapse'))));
+
+      if (detailsNode === null) return barNode;
+      return React.createElement(React.Fragment, null, barNode, detailsNode);
     }
   },
 };
