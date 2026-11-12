@@ -32,10 +32,10 @@ assert.deepEqual(readdirSync(join(pluginDir, 'locale')).sort(), Object.keys(LOCA
   'locale/ must carry exactly the two DSH built-in languages (zh, en)')
 const en = JSON.parse(readFileSync(join(pluginDir, 'locale', 'en.json'), 'utf8'))
 const zh = JSON.parse(readFileSync(join(pluginDir, 'locale', 'zh.json'), 'utf8'))
-assert.deepEqual(Object.keys(en.meta).sort(), ['description', 'title'], 'plugin metadata carries a title and a description')
+assert.deepEqual(Object.keys(en.meta).sort(), ['description', 'detail', 'title'], 'plugin metadata carries a title, a description and the plugin-page detail document')
 assert.deepEqual(Object.keys(zh.meta).sort(), Object.keys(en.meta).sort(), 'en/zh meta must declare the same fields')
 for (const [lang, meta] of [['en', en.meta], ['zh', zh.meta]]) {
-  for (const field of ['title', 'description']) {
+  for (const field of ['title', 'description', 'detail']) {
     assert.equal(typeof meta[field], 'string', lang + '.' + field + ' must be a string')
     assert.ok(meta[field].trim() !== '', lang + '.' + field + ' must not be blank')
   }

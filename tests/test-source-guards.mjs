@@ -133,13 +133,15 @@ check(
 // 2026-10-14：+UI-STYLE.md —— 两个插件共用的设置页样式契约（数值取自宿主插件详情页 CSS），
 // 是给用户/贡献者看的公开文档，不是过程文稿。
 // LEDGER.md documents user-visible storage, safe migration, export and recovery.
-const ALLOWED_DOCS = ['INSTALL.md', 'PROVIDER-COMPATIBILITY.md', 'UI-STYLE.md', 'LEDGER.md']
+// 2026-11-12：+DETAIL*.md —— 插件页「详细介绍」的短文档（DSH 0.2.2 起由 locale meta.detail 指定），
+// 面向用户，和 INSTALL.md 一样属于仓库该留的说明。
+const ALLOWED_DOCS = ['INSTALL.md', 'PROVIDER-COMPATIBILITY.md', 'UI-STYLE.md', 'LEDGER.md', 'DETAIL.md', 'DETAIL.zh.md', 'DETAIL.zh-Hant.md']
 let extraDocs = []
 try {
   extraDocs = readdirSync(join(root, 'docs')).filter((f) => f.endsWith('.md') && !ALLOWED_DOCS.includes(f))
 } catch (err) { extraDocs = ['docs/ 不可读：' + String((err && err.message) || err)] }
 check(
-  '守卫 3b：docs/ 只留用户说明（INSTALL.md / PROVIDER-COMPATIBILITY.md / UI-STYLE.md / LEDGER.md）',
+  '守卫 3b：docs/ 只留用户说明（INSTALL.md / PROVIDER-COMPATIBILITY.md / UI-STYLE.md / LEDGER.md / DETAIL*.md）',
   extraDocs.length === 0,
   extraDocs.length === 0 ? undefined : '发现：' + extraDocs.join(', ')
 )

@@ -38,6 +38,9 @@
     "README.zh-CN.md",
     "docs/INSTALL.md",
     "docs/LEDGER.md",
+    "docs/DETAIL.md",
+    "docs/DETAIL.zh.md",
+    "docs/DETAIL.zh-Hant.md",
     "LICENSE"
   ],
   "scripts": {
