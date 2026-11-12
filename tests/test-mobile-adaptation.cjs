@@ -108,7 +108,8 @@ const tokenStart = css.indexOf('--dshgo-accent');
 const gateStart = css.indexOf('@media (pointer: coarse)');
 check('token 层只存在于 pointer:coarse 门控内（桌面不生效）',
   gateStart > 0 && tokenStart > gateStart, true);
-const tokenBlock = css.slice(gateStart, css.indexOf('/* 字段级颜色消费规则', gateStart));
+const tokenBlock = css.slice(gateStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', gateStart));
+const visualBlock = css.slice(css.indexOf('/* ---------- DSH Go 信息栏三列卡', gateStart), css.indexOf('/* 字段级颜色消费规则', gateStart));
 check('门控选择器覆盖 DSH Go 网页版与整页岛两种信号',
   tokenBlock.includes(':root[data-dsh-app-layout], :root[data-dsh-go-island]'), true);
 check('token 颜色对齐 DESIGN-FINAL（雾蓝主色/渐变/玻璃卡/发丝/danger）',
@@ -143,8 +144,27 @@ check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
   && tokenBlock.includes('--dshgo-accent: #97B1F0') && tokenBlock.includes('--dshgo-danger: #E69089')
   && tokenBlock.includes('--dshgo-bg-1: #1D222C') && tokenBlock.includes('--dshgo-bg-2: #171920')
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.05)'), true);
-check('门控块只定义变量、不改任何现有元素视觉（准备阶段不换皮）',
+check('token 块只定义变量、不改任何现有元素视觉（视觉规则单独成块）',
   !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
+check('三列卡：56 高 / 20 圆角 / 面 low / 0.5 发丝 / 28 chevron 格，三列无竖线',
+  visualBlock.includes('.bi-go-strip') && visualBlock.includes('height: 56px')
+  && visualBlock.includes('border-radius: var(--dshgo-radius-card, 20px)')
+  && visualBlock.includes('background: var(--dshgo-surface-low)')
+  && visualBlock.includes('var(--dshgo-chevron-cell, 28px)')
+  && !visualBlock.includes('.bi-go-col + .bi-go-col::before'), true);
+check('面板：28 圆角 / 40vh 内滚 / 行间 2px 空隙 / 分组 16 / 无行分割线 / 动作行无上边框',
+  visualBlock.includes('border-radius: var(--dshgo-radius-sheet, 28px)')
+  && visualBlock.includes('max-height: var(--dshgo-panel-max, 40vh)')
+  && visualBlock.includes('gap: var(--dshgo-row-gap, 2px)')
+  && visualBlock.includes('margin-top: var(--dshgo-section-gap, 16px)')
+  && !visualBlock.includes('.bi-go-row + .bi-go-row')
+  && !visualBlock.includes('border-top'), true);
+check('三列卡数值：caption 12/500、value 16/600、tabular-nums、长金额缩字号、窗口 progress 4px',
+  visualBlock.includes('font-size: var(--dshgo-font-caption, 12px)')
+  && visualBlock.includes('font-size: var(--dshgo-font-value, 16px)')
+  && visualBlock.includes('font-variant-numeric: tabular-nums')
+  && visualBlock.includes('.bi-go-val--shrink') && visualBlock.includes('font-size: 11px; letter-spacing: -0.5px;')
+  && visualBlock.includes('.bi-go-bar') && visualBlock.includes('height: 4px'), true);
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);

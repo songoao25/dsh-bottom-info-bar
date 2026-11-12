@@ -834,15 +834,17 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     const layouts = [];
     const reLayout = /layout:\s*'([^']+)'/g;
     while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
-    // 6 处 fallbackClassName = 4 个输入框（hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）。
-    // layout 只有输入框用：恰好 4 条，且都在白名单内。
-    return fallbacks.length === 6
+    // 原设置页 6 处 fallbackClassName = 4 个输入框（hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）；
+    // 2026-11-12 DSH Go 配置页（BibSetDshGoPage）新增 3 个输入框（自定义文字 + 主/世界时区），
+    // 同样只走 bibSetInput（原生布局类 + fallbackClassName），所以下限从「恰好 6/4」改为「至少 6/4」，
+    // 其余约束不变：自绘外观类只能出现在 fallbackClassName，layout 必须在白名单内。
+    return fallbacks.length >= 6
       && fallbacks.indexOf('bib-set-search') !== -1
       && fallbacks.indexOf('bib-set-custom-text-input') !== -1
-      && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length === 2
-      && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length === 1
-      && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 1
-      && layouts.length === 4
+      && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length >= 2
+      && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length >= 1
+      && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length >= 1
+      && layouts.length >= 4
       && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
   })(), true);
 
