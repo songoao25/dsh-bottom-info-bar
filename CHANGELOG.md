@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.22.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.15...v1.22.0) (2026-11-12)
+
+
+### Features
+
+* **plugin-page:** show a short detail document instead of the whole README ([#275](https://github.com/songoao25/dsh-bottom-info-bar/issues/275)) ([8b47c16](https://github.com/songoao25/dsh-bottom-info-bar/commit/8b47c16f7608b83e743794487f0308cc03d9868d))
+
 ## [1.21.15](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.21.14...v1.21.15) (2026-11-09)
 
 
