@@ -93,10 +93,22 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 ## 配置订阅额度（可选，v1.1.0）
 
-信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
+信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱、阿里 Token Plan、Kimi For Coding）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
 
 - **Codex / ChatGPT**：信息栏**只读** `~/.codex/auth.json` 中的登录令牌，解析真实套餐与到期信息；token 仅在本机内存中使用，不落盘、不记录、不续期、不写回。令牌的**绑定 / 续期**由独立插件 [**dsh-chatgpt-sub**](https://github.com/songoao25/dsh-chatgpt-sub)（独立仓库）负责——安装并绑定后，本信息栏即可显示订阅信息；令牌缺失时信息栏显示「未绑定」引导，相关字段缺失时只保留服务商和模型。
 - **OpenCode Go**：在 **设置 → 模型** 配置 `OPENCODE_GO_API_KEY`（或先用 opencode CLI 登录其订阅，写入平台共享目录 `opencode/auth.json` 的 `opencode-go` 条目：macOS/Linux 为 `~/.local/share/opencode/auth.json`，Windows 为 `%LOCALAPPDATA%\opencode\auth.json`）。未配置时信息栏显示"未配置 OpenCode Go"引导，不报错。
+- **阿里 Token Plan（百炼，中国站 / 国际站）**：额度接口不认推理套餐 Key（`sk-sp-…` 只能推理），要另配阿里云 AccessKey——`ALIBABA_CLOUD_ACCESS_KEY_ID` 与 `ALIBABA_CLOUD_ACCESS_KEY_SECRET`（RAM 用户即可），配置给 DSH 凭据或设为同名环境变量（插件先读 DSH 凭据，再读环境变量）。最小权限：系统策略 `AliyunTokenPlanReadOnlyAccess` 覆盖官方 OpenAPI `GetSubscriptionStats`；官方 CLI 同款的控制台链路还要给该 RAM 用户一个自定义策略，授予 `modelstudio:GenerateCLIAccessToken`。两条链路都只读、不读浏览器 Cookie；未配置、权限不足或未订阅时信息栏给明确提示并保留上一份额度，不显示 0%。
+- **Kimi For Coding**：配订阅专属 API Key `KIMI_API_KEY`（DSH 里 kimi-coding 的凭据名；回退 `KIMI_CODING_API_KEY` / `MOONSHOT_API_KEY`），配置给 DSH 凭据或设为同名环境变量；信息栏用 Bearer 调 `GET https://api.kimi.com/coding/v1/usages`，国内站不通时自动试国际站 `https://api.kimi.ai/coding/v1/usages`，显示 5 小时与周窗口。这个端点没有官方公开文档，可能随上游变化；读不到时保留上一份额度。
+
+最小配置示例（示例值换成自己的凭据，别提交到仓库）：
+
+```bash
+export ALIBABA_CLOUD_ACCESS_KEY_ID="<your-access-key-id>"
+export ALIBABA_CLOUD_ACCESS_KEY_SECRET="<your-access-key-secret>"
+export KIMI_API_KEY="sk-..."
+```
+
+这两类都不需要额外插件，也不需要网页 Cookie；凭据只用于只读查询额度，不参与推理请求。
 
 ## 更新版本
 

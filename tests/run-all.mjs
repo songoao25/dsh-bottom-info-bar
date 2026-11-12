@@ -43,6 +43,8 @@ const cases = [
   ['test-zai-quota（Issue #85 智谱 CREDIT_LIMIT 积分制 + 窗口时长闸门/百分比推算/降级）', ['tests/test-zai-quota.cjs'], join(root), process.execPath],
   ['test-commandcode-quota（Issue #99 Command Code credits/窗口/未知套餐降级）', ['tests/test-commandcode-quota.cjs'], join(root), process.execPath],
   ['test-minimax-token-plan（MiniMax Token Plan 多桶最紧聚合 + Subscription Key 错误码降级）', ['tests/test-minimax-token-plan.cjs'], join(root), process.execPath],
+  ['test-alibaba-token-plan（阿里 Token Plan：ACS3 签名向量/多层信封解析/CLI 令牌回退/错误分类）', ['tests/test-alibaba-token-plan.cjs'], join(root), process.execPath],
+  ['test-kimi-coding-plan（Kimi For Coding：窗口解析/双站回退/多种凭据形态/失败降级）', ['tests/test-kimi-coding-plan.cjs'], join(root), process.execPath],
   ['test-quota-display-mode（订阅窗口百分比方向：默认 remaining / 切换 used / 落盘与回滚）', ['tests/test-quota-display-mode.cjs'], join(root), process.execPath],
   ['test-minimax-e2e（独立装置：真实 apply + 桩 ctx + 拦截 fetch 的双站点路由/错误码/快照降级）', ['tests/test-minimax-e2e.mjs'], join(root), process.execPath],
   ['test-usage-sanitize（host.js 记账数值清洗）', ['tests/test-usage-sanitize.cjs'], join(root), process.execPath],
