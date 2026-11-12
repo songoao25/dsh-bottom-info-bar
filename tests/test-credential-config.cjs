@@ -745,10 +745,10 @@ async function main() {
     [inlineRefs, true])
   check('G10 fallback 行显示名来自目录品牌键', fallbackRows[0].providerLabel, tStub('ui.qwenTokenPlan'))
 
-  const sectionFn = extractFn(clientSrc, 'bibSetCredentialsSection')
+  const sectionFn = extractFn(clientSrc, 'bibCredentialsCard')
   ok('G10b 无 labelKey 的行标签统一走 t(ui.credentialGenericLabel, { provider, ref })（不再字符串拼接）',
     sectionFn.indexOf("t('ui.credentialGenericLabel', { provider: row.providerLabel, ref: row.ref })") >= 0
-    && sectionFn.indexOf("' · '") < 0)
+    && sectionFn.indexOf("+ ' · ' + row.ref") < 0)
   ok('G11 凭据输入框 type=password + autoComplete=new-password',
     sectionFn.indexOf("type: 'password'") >= 0 && sectionFn.indexOf("autoComplete: 'new-password'") >= 0)
   ok('G12 输入框 maxLength 与宿主值上限一致', sectionFn.indexOf('maxLength: ' + CREDENTIAL_VALUE_MAX_LEN) >= 0)
