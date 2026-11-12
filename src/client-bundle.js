@@ -4159,8 +4159,25 @@ module.exports = {
          if (status === '429') return t('ui.rateLimitReachedPleaseTry', { serviceName: serviceName });
          if (kind === 'timeout' || /timeout|timed out|abort/i.test(message)) return t('ui.timedOutCheckYourConnection', { serviceName: serviceName });
          if (kind === 'parse') return t('ui.returnedAnUnrecognizedResponsePlease', { serviceName: serviceName });
-         return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
-       }
+          return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
+      }
+
+      // 订阅制「配置引导」（2026-11-12）：凭据缺失（kind:'no-key'）时不再只给悬停提示。
+      // host 按目录注入 error.params.setup：'plugin' = 该服务商需要插件设置页专属凭据
+      // （阿里 AK/SK、MiniMax Subscription Key 等），凭据名以字典键列表下发、在此翻译；
+      // 'models' 或缺参 → 返回 null，保持原有"刷新失败"降级，不改变既有行为。
+      function subscriptionSetupHint(error) {
+        if (!error || error.kind !== 'no-key') return null;
+        const params = error.params || {};
+        if (params.setup !== 'plugin') return null;
+        const keys = Array.isArray(params.credentialKeys) ? params.credentialKeys.filter(function (k) { return typeof k === 'string' && k.length > 0; }) : [];
+        const serviceName = subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider);
+        const credential = keys.length > 0 ? keys.map(function (k) { return t(k); }).join(' / ') : serviceName;
+        return {
+          title: t('ui.quotaCredentialSetupTitle', { serviceName: serviceName, credential: credential }),
+          text: t('ui.quotaCredentialSetupText', { serviceName: serviceName, credential: credential }),
+        };
+      }
 
       function pushSubscriptionGroups(groups, trailingErrorGroups) {
         pushIdentityGroups(groups, 'subServiceGroup', subscriptionProviderGroup);
@@ -4189,6 +4206,15 @@ module.exports = {
         // no-key（无令牌/缺 access_token）与 auth（令牌失效 401）→ 统一"未绑定/重新绑定"引导——
         // 令牌由独立插件 dsh-chatgpt-sub 维护，本插件只读令牌显示额度，不自行绑定/续期
         if (sub.error && !hasData) {
+          // 凭据缺失（host 按目录注入 params.setup）→ 与余额制同款的配置引导占 noKeyHint 槽位：
+          // 需要插件页专属凭据的服务商（阿里 AK/SK、MiniMax Subscription Key 等）直接给出路径，
+          // 不再只留一个悬停才看得见的"刷新失败"。
+          const setupHint = subscriptionSetupHint(sub.error);
+          if (setupHint && fieldVisible('noKeyHint')) {
+            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+              React.createElement('span', { className: 'bi-err', title: setupHint.title }, setupHint.text)));
+            return;
+          }
           if (fieldVisible('refreshFailure')) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));

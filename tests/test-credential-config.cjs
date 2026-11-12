@@ -774,6 +774,21 @@ async function main() {
   ok('G22 清除走 rpc(clearCredential)', extractFn(clientSrc, 'onCredentialClear').indexOf("rpc('clearCredential', { ref: ref })") >= 0)
   ok('G23 输入草稿只进本地 state', extractFn(clientSrc, 'onCredentialDraft').indexOf('setCredentialDrafts') >= 0)
 
+  // ================= G24-G26（2026-11-12）：订阅 no-key 引导态 =================
+  // host：12 个订阅源 fetch 都包了 annotateSubscriptionNoKey（单一生源仍是目录表）。
+  ok('G24 host 12 个订阅源都包了 annotateSubscriptionNoKey 包装',
+    (hostSrc.match(/annotateSubscriptionNoKey\('([^']+)'/g) || []).length >= 12, (hostSrc.match(/annotateSubscriptionNoKey\('([^']+)'/g) || []).length)
+  ok('G25 host 注入 setup=plugin + 凭据字典键 / setup=models 两类引导参数',
+    hostSrc.indexOf("params.setup = 'plugin'") >= 0
+    && hostSrc.indexOf('params.credentialKeys') >= 0
+    && hostSrc.indexOf("params.setup = 'models'") >= 0)
+  const hintFn = extractFn(clientSrc, 'subscriptionSetupHint')
+  ok('G26 client 订阅 no-key 走 subscriptionSetupHint 占 noKeyHint 槽位（与余额制同款引导）',
+    hintFn.indexOf("params.setup !== 'plugin'") >= 0
+    && hintFn.indexOf("t('ui.quotaCredentialSetupTitle'") >= 0
+    && hintFn.indexOf("t('ui.quotaCredentialSetupText'") >= 0
+    && clientSrc.indexOf('subscriptionSetupHint(sub.error)') >= 0)
+
   // ================= H) locale 与密钥不外泄 =================
   const MANDATED_KEYS = [
     'ui.credentialsTitle', 'ui.credentialsDesc',
@@ -795,6 +810,11 @@ async function main() {
   ok('H2 目录驱动新增的 generic/footnote/kimi-login 文案中英齐备', NEW_KEYS.every(function (key) {
     return typeof zhDict[key] === 'string' && typeof enDict[key] === 'string'
   }), NEW_KEYS.filter(function (key) { return typeof zhDict[key] !== 'string' || typeof enDict[key] !== 'string' }).join(','))
+  // H2b（2026-11-12）：订阅引导态文案中英齐备（client 端 quotaCredentialSetup{Title,Text}）
+  const HINT_KEYS = Object.keys(zhDict).filter(function (key) { return key.indexOf('ui.quotaCredentialSetup') === 0 })
+  check('H2b 订阅引导文案中英齐备', HINT_KEYS.filter(function (key) {
+    return typeof zhDict[key] !== 'string' || typeof enDict[key] !== 'string'
+  }).length, 0)
   check('H3 目录 footnoteKey 在 zh/en 字典存在', [zhDict['ui.credentialFootnote'] !== undefined, enDict['ui.credentialFootnote'] !== undefined], [true, true])
   // 客户端源码引用的所有 ui.credential* 键都必须存在（以后新加文案漏翻译会被这里拦住）
   const referenced = []

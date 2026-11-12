@@ -3667,23 +3667,63 @@ export default {
       }
     }
 
+    // 订阅 no-key 错误统一补「引导参数」（2026-11-12）：client 据此在信息栏显示配置引导。
+    // setup:'plugin' = 该服务商在 CREDENTIAL_CATALOG 里有 inline 专属凭据 → 引导到插件设置 → 额度凭据，
+    //                    凭据名以字典键列表下发（client 翻译，品牌/术语不硬编码）；
+    // setup:'models' = 凭据走 DSH 设置 → 模型（维持现状悬停提示，不改变既有行为）。
+    // 单一生源仍是目录表：inline 收录变化只改 constants.js，这里不加 if。
+    function annotateSubscriptionNoKey(providerId, result) {
+      if (!result || !result.error || result.error.kind !== 'no-key') return result;
+      let entry = null;
+      for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
+        const e = CREDENTIAL_CATALOG[i];
+        if (e && Array.isArray(e.providers) && e.providers.indexOf(providerId) >= 0) { entry = e; break; }
+      }
+      const inline = entry && Array.isArray(entry.credentials) ? entry.credentials.filter(function (c) { return c && c.inline === true; }) : [];
+      const params = Object.assign({}, result.error.params);
+      if (inline.length > 0) {
+        params.setup = 'plugin';
+        params.credentialKeys = inline.reduce(function (keys, c) {
+          if (c && typeof c.labelKey === 'string' && keys.indexOf(c.labelKey) < 0) keys.push(c.labelKey);
+          return keys;
+        }, []);
+      } else {
+        params.setup = 'models';
+      }
+      return Object.assign({}, result, { error: Object.assign({}, result.error, { params: params }) });
+    }
+    // 源 key → 目录 provider id（找 inline 凭据用）：同一目录 providers 列表里第一个匹配即可。
+    const SUBSCRIPTION_SOURCE_PROVIDERS = {
+      codex: 'codex',
+      'opencode-go': 'opencode-go',
+      'command-code': 'command-code',
+      zai: 'zai',
+      'xiaomi-cn': 'xiaomi-token-plan-cn',
+      'xiaomi-sgp': 'xiaomi-token-plan-sgp',
+      'xiaomi-ams': 'xiaomi-token-plan-ams',
+      minimax: 'minimax',
+      'minimax-cn': 'minimax-cn',
+      'alibaba-cn': 'qwen-token-plan-cn',
+      'alibaba-intl': 'qwen-token-plan',
+      'kimi-coding': 'kimi-coding',
+    }
     const SUBSCRIPTION_SOURCES = {
-      codex: { fetch: fetchCodexUsage },
-      'opencode-go': { fetch: fetchOpenCodeGoUsage },
-      'command-code': { fetch: fetchCommandCodeUsage },
-      zai: { fetch: fetchZaiUsage },
+      codex: { fetch: function () { return fetchCodexUsage().then(function (r) { return annotateSubscriptionNoKey('codex', r); }); } },
+      'opencode-go': { fetch: function () { return fetchOpenCodeGoUsage().then(function (r) { return annotateSubscriptionNoKey('opencode-go', r); }); } },
+      'command-code': { fetch: function () { return fetchCommandCodeUsage().then(function (r) { return annotateSubscriptionNoKey('command-code', r); }); } },
+      zai: { fetch: function () { return fetchZaiUsage().then(function (r) { return annotateSubscriptionNoKey('zai', r); }); } },
       // v1.7 FR-9：小米 Token Plan 三集群各为独立源（地区隔离，快照互不串扰）
-      'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn'); } },
-      'xiaomi-sgp': { fetch: function () { return fetchXiaomiTokenPlanUsage('sgp'); } },
-      'xiaomi-ams': { fetch: function () { return fetchXiaomiTokenPlanUsage('ams'); } },
+      'xiaomi-cn': { fetch: function () { return fetchXiaomiTokenPlanUsage('cn').then(function (r) { return annotateSubscriptionNoKey('xiaomi-token-plan-cn', r); }); } },
+      'xiaomi-sgp': { fetch: function () { return fetchXiaomiTokenPlanUsage('sgp').then(function (r) { return annotateSubscriptionNoKey('xiaomi-token-plan-sgp', r); }); } },
+      'xiaomi-ams': { fetch: function () { return fetchXiaomiTokenPlanUsage('ams').then(function (r) { return annotateSubscriptionNoKey('xiaomi-token-plan-ams', r); }); } },
       // v1.16.0：MiniMax Token Plan 双站点各为独立源（Global / CN 地区隔离，快照互不串扰）
-      minimax: { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax'); } },
-      'minimax-cn': { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax-cn'); } },
+      minimax: { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax').then(function (r) { return annotateSubscriptionNoKey('minimax', r); }); } },
+      'minimax-cn': { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax-cn').then(function (r) { return annotateSubscriptionNoKey('minimax-cn', r); }); } },
       // v1.22.0：阿里 Token Plan 中国站/国际站各为独立源（地区隔离，快照互不串扰）
-      'alibaba-cn': { fetch: function () { return fetchAlibabaTokenPlanUsage('cn'); } },
-      'alibaba-intl': { fetch: function () { return fetchAlibabaTokenPlanUsage('intl'); } },
+      'alibaba-cn': { fetch: function () { return fetchAlibabaTokenPlanUsage('cn').then(function (r) { return annotateSubscriptionNoKey('qwen-token-plan-cn', r); }); } },
+      'alibaba-intl': { fetch: function () { return fetchAlibabaTokenPlanUsage('intl').then(function (r) { return annotateSubscriptionNoKey('qwen-token-plan', r); }); } },
       // v1.22.0：Kimi For Coding（与智谱/小米同型的滚动窗口）
-      'kimi-coding': { fetch: fetchKimiCodingUsage },
+      'kimi-coding': { fetch: function () { return fetchKimiCodingUsage().then(function (r) { return annotateSubscriptionNoKey('kimi-coding', r); }); } },
     };
 
 
