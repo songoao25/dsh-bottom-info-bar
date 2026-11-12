@@ -2220,57 +2220,65 @@ function bibSetCredentialSourceLabel(source) {
 
 // 把「设置页要渲染的凭据行」从 host 返回的 groups 拍平；老宿主还没实现该接口时，
 // 退回目录表本身（状态未知、写入不可用），至少把「需要配什么」告诉用户。
-function bibSetCredentialRowsFromCatalog(state) {
-  const rows = [];
-  const groups = state && Array.isArray(state.groups) ? state.groups : [];
-  if (groups.length > 0) {
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
+function bibSetCredentialGroups(state) {
+  // 返回 [{ id, providerLabel, bound, credentials:[{ref, labelText, hintText, configured, source, kimiLoginReused}] }]；
+  // 优先用 host 返回的 groups（带 bound 判定与绑定排序），老宿主没有该接口时退回目录表。
+  const groups = [];
+  const hostGroups = state && Array.isArray(state.groups) ? state.groups : [];
+  function providerLabelOf(entry) {
+    if (entry && typeof entry.labelKey === 'string' && entry.labelKey.length > 0) return t(entry.labelKey);
+    if (entry && typeof entry.label === 'string' && entry.label.length > 0) return entry.label;
+    return t('ui.subscription');
+  }
+  if (hostGroups.length > 0) {
+    for (let i = 0; i < hostGroups.length; i++) {
+      const group = hostGroups[i];
       const credentials = group && Array.isArray(group.credentials) ? group.credentials : [];
+      const rows = [];
       for (let j = 0; j < credentials.length; j++) {
         const c = credentials[j];
         if (!c || typeof c.ref !== 'string') continue;
         rows.push({
           ref: c.ref,
-          providerLabel: (typeof group.labelKey === 'string' && group.labelKey.length > 0) ? t(group.labelKey) : (typeof group.label === 'string' && group.label.length > 0 ? group.label : t('ui.subscription')),
           labelText: (typeof c.labelKey === 'string' && c.labelKey.length > 0) ? t(c.labelKey) : null,
           hintText: (typeof c.hintKey === 'string' && c.hintKey.length > 0) ? t(c.hintKey) : t('ui.credentialGenericHint'),
           configured: c.configured === true,
           source: c.source || null,
-          writable: c.writable !== false,
-          kimiLoginReused: false,
+          kimiLoginReused: c.ref === 'KIMI_API_KEY' && c.configured !== true && state && state.kimiLogin && state.kimiLogin.configured === true,
         });
       }
+      if (rows.length === 0) continue;
+      groups.push({ id: group.id, providerLabel: providerLabelOf(group), bound: group.bound === true || rows.some(function (r) { return r.kimiLoginReused; }), credentials: rows });
     }
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].ref === 'KIMI_API_KEY' && !rows[i].configured && state && state.kimiLogin && state.kimiLogin.configured === true) {
-        rows[i].kimiLoginReused = true;
-      }
-    }
-    return rows;
+    return groups;
   }
   for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
     const entry = CREDENTIAL_CATALOG[i];
     const credentials = entry && Array.isArray(entry.credentials) ? entry.credentials : [];
+    const rows = [];
     for (let j = 0; j < credentials.length; j++) {
       const c = credentials[j];
       if (!c || c.inline !== true || typeof c.ref !== 'string') continue;
       rows.push({
         ref: c.ref,
-        providerLabel: (typeof entry.labelKey === 'string' && entry.labelKey.length > 0) ? t(entry.labelKey) : (typeof entry.label === 'string' && entry.label.length > 0 ? entry.label : t('ui.subscription')),
         labelText: (typeof c.labelKey === 'string' && c.labelKey.length > 0) ? t(c.labelKey) : null,
         hintText: (typeof c.hintKey === 'string' && c.hintKey.length > 0) ? t(c.hintKey) : t('ui.credentialGenericHint'),
         configured: false,
         source: null,
-        writable: false,
         kimiLoginReused: false,
       });
     }
+    if (rows.length > 0) groups.push({ id: entry.id, providerLabel: providerLabelOf(entry), bound: false, credentials: rows });
   }
-  return rows;
+  return groups;
 }
 
+// v1.24.1：设置页「额度凭据」折叠卡。
+// 用户大多只关心自己已经绑定的服务商：折叠卡标题直接给「已绑定 N 个」摘要，展开后先列这些，
+// 其余服务商收进「其他服务商（N）」二次折叠里；每行的长说明改为悬停提示，正文只留一行状态。
 function bibSetCredentialsSection(props) {
+  const [open, setOpen] = React.useState(false);
+  const [showOthers, setShowOthers] = React.useState(false);
   const state = props.credentialState;
   // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
   // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
@@ -2278,14 +2286,21 @@ function bibSetCredentialsSection(props) {
   const canWrite = loaded && state.canWrite === true;
   const drafts = props.credentialDrafts || {};
   const feedback = props.credentialFeedback;
-  const rows = bibSetCredentialRowsFromCatalog(state);
-  const blocks = rows.map(function (row) {
+  const groups = bibSetCredentialGroups(state);
+  const boundGroups = groups.filter(function (g) { return g.bound; });
+  const otherGroups = groups.filter(function (g) { return !g.bound; });
+  const boundNames = boundGroups.map(function (g) { return g.providerLabel; });
+  const summaryNames = boundNames.slice(0, 3).join('、') + (boundNames.length > 3 ? ' +' + String(boundNames.length - 3) : '');
+  const summary = boundGroups.length > 0
+    ? t('ui.credentialSummaryBound', { count: boundGroups.length, names: summaryNames })
+    : t('ui.credentialSummaryNone');
+  function renderRow(row) {
     const busy = props.credentialBusyRef === row.ref;
     const draft = typeof drafts[row.ref] === 'string' ? drafts[row.ref] : '';
     const labelId = 'bib-set-credential-' + row.ref + '-label';
-    // 标签单一来源：有专属 labelKey 用专属文案，否则用通用模板键（{provider} · {ref}），
-    // 不在客户端拼接字符串 —— 文案改一处即可，也不会绕开 locale 测试的键覆盖检查。
-    const labelText = row.labelText || t('ui.credentialGenericLabel', { provider: row.providerLabel, ref: row.ref });
+    // 行标签只写「区别于同组其它凭据」的部分：有专属 labelKey 用专属文案，否则直接用 ref；
+    // 服务商名已经由上面的分组标题给出，不再重复。
+    const labelText = row.labelText || row.ref;
     const statusText = row.kimiLoginReused
       ? t('ui.credentialKimiLoginReused')
       : (row.configured
@@ -2294,7 +2309,6 @@ function bibSetCredentialsSection(props) {
     return React.createElement('div', { key: row.ref, className: 'bib-set-fieldblock' },
       React.createElement('div', { className: 'bib-set-fieldblock-copy' },
         React.createElement('span', { id: labelId, className: 'bib-set-fieldblock-label' }, labelText),
-        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, row.hintText),
         React.createElement('span', { className: 'bib-set-fieldblock-hint' }, statusText)),
       React.createElement('div', { className: 'bib-set-fieldblock-control' },
         bibSetInput({
@@ -2307,6 +2321,7 @@ function bibSetCredentialsSection(props) {
             spellCheck: false,
             maxLength: 512,
             placeholder: t('ui.credentialPlaceholder'),
+            title: row.hintText,
             value: draft,
             disabled: !canWrite || busy,
             onChange: function (event) { props.onCredentialDraft(row.ref, event && event.target ? event.target.value : ''); },
@@ -2324,21 +2339,54 @@ function bibSetCredentialsSection(props) {
             onClick: function () { props.onCredentialClear(row.ref); },
             children: t('ui.credentialClear'),
           }) : null)));
-  });
+  }
+  function renderBoundGroups() {
+    const nodes = [];
+    for (let i = 0; i < boundGroups.length; i++) {
+      const group = boundGroups[i];
+      nodes.push(React.createElement('p', { key: 'g-' + group.id, className: 'bib-set-fieldblock-label' }, group.providerLabel));
+      for (let j = 0; j < group.credentials.length; j++) nodes.push(renderRow(group.credentials[j]));
+    }
+    if (nodes.length === 0) nodes.push(React.createElement('p', { key: 'none-bound', className: 'bib-set-fieldblock-hint' }, t('ui.credentialNoneBound')));
+    return nodes;
+  }
+  function renderOtherGroups() {
+    const nodes = [];
+    for (let i = 0; i < otherGroups.length; i++) {
+      const group = otherGroups[i];
+      nodes.push(React.createElement('p', { key: 'og-' + group.id, className: 'bib-set-fieldblock-label' }, group.providerLabel));
+      for (let j = 0; j < group.credentials.length; j++) nodes.push(renderRow(group.credentials[j]));
+    }
+    return nodes;
+  }
+  const body = React.createElement('div', { id: 'bib-set-credentials-body', className: 'bib-set-fieldblocks', hidden: !open },
+    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
+    renderBoundGroups(),
+    otherGroups.length > 0 ? React.createElement('div', null,
+      React.createElement(bibSetButton({
+        onClick: function () { setShowOthers(function (v) { return !v; }); },
+        children: (showOthers ? t('ui.collapse') : t('ui.expand')) + ' · ' + t('ui.credentialOthers', { count: otherGroups.length }),
+      })),
+      showOthers ? renderOtherGroups() : null) : null,
+    loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
+    feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
+    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
+    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')));
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
     bibSetCardHeader({
-      static: true,
       titleId: 'bib-set-credentials-title',
       title: t('ui.credentialsTitle'),
-      description: t('ui.credentialsDesc'),
+      description: summary,
+      expanded: open,
+      onToggle: function () {
+        // 一个都没绑定时，展开卡片就直接把「其他服务商」一起打开：不让用户连点两次。
+        if (!open && boundGroups.length === 0) setShowOthers(true);
+        setOpen(function (v) { return !v; });
+      },
+      contentId: 'bib-set-credentials-body',
     }),
-    React.createElement('div', { className: 'bib-set-fieldblocks' }, blocks),
-    loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')),
-    feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null);
+    body);
 }
-
 const BIB_SET_SECTIONS = [
   { id: 'timeDate', render: function (deps) { return bibSetTimeDateSection({ fieldOn: deps.fieldOn, timeZonesOf: deps.timeZonesOf, onTimeZoneChange: deps.setTimeZone }); } },
   { id: 'customText', render: function (deps) { return bibSetCustomTextSection({ fieldOn: deps.fieldOn, customTextDraft: deps.customTextDraft, customTextOf: deps.customTextOf, onCustomTextChange: deps.onCustomTextChange, onCustomTextCommit: deps.commitCustomText }); } },
