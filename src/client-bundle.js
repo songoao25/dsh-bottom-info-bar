@@ -914,6 +914,13 @@ function installStyles() {
           --dshgo-ink: #1E232E; --dshgo-label: #4F5562; --dshgo-muted: #646974; --dshgo-faint: #646974; --dshgo-ghost: #A1A5AC;
           --dshgo-line: rgba(30, 35, 46, 0.07);
           --dshgo-card: rgba(255, 255, 255, 0.62); --dshgo-card-rim: rgba(255, 255, 255, 0.70);
+          /* 卡片实体感：底色比页面背景亮一档 + 极轻投影，边界靠「亮 + 影 + 发丝线」三层，
+             不靠色差（surface-low #F6F9FE 与背景 #FAFBFE 只差 4 个灰阶，白底上等于没有卡片）。 */
+          --dshgo-card-bg: #FFFFFF;
+          --dshgo-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 10px 24px -16px rgba(16, 24, 40, 0.26);
+          /* 展开面板是「从卡片下方抽出的抽屉」：比卡片低一档，上层亮、下层沉，层次一眼分得开。 */
+          --dshgo-sheet-bg: #F1F4FB;
+          --dshgo-sheet-shadow: 0 12px 28px -20px rgba(16, 24, 40, 0.22);
           /* 几何（§3） */
           --dshgo-hairline: 0.5px;
           --dshgo-radius-card: 20px; --dshgo-radius-sheet: 28px; --dshgo-radius-control: 14px; --dshgo-radius-segment: 18px;
@@ -938,18 +945,23 @@ function installStyles() {
           --dshgo-ink: #E6E9F0; --dshgo-label: #B6BBC5; --dshgo-muted: #9A9EA9; --dshgo-faint: #9A9EA9; --dshgo-ghost: #656971;
           --dshgo-line: rgba(230, 233, 240, 0.08);
           --dshgo-card: rgba(255, 255, 255, 0.05); --dshgo-card-rim: rgba(255, 255, 255, 0);
+          /* 暗色里投影没有意义（背景比卡片更暗），修正一层：卡片比背景亮一档自身就是边界。 */
+          --dshgo-card-bg: #232730; --dshgo-card-shadow: none;
+          --dshgo-sheet-bg: #1F232C; --dshgo-sheet-shadow: none;
         }
       }
       /* ---------- DSH Go 信息栏三列卡 + 展开面板（DESIGN-FINAL §3/§4/§5；无分割线） ----------
          只在门控内生效（DSH Go 网页版/整页岛 + 触屏 + 手机宽度）；桌面与纯浏览器保持现行为。
          三列之间不画竖线：12px 列内边距 + 8px 列间距；卡内行间 2px 空隙、分组 16。 */
       @media (pointer: coarse) {
-        :root[data-dsh-app-layout] .bi-root.bi-go-bar, :root[data-dsh-go-island] .bi-root.bi-go-bar { display: block; width: 100%; max-width: 100%; min-height: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
+        /* 卡片与上方内容（DSH Go 宿主自带的原生统计行 / 对话区）之间留 8px 呼吸：
+           宿主那行 pill 是它自己的 DOM，删不得，只能把卡片往下让一档，两者才不会粘成一片。 */
+        :root[data-dsh-app-layout] .bi-root.bi-go-bar, :root[data-dsh-go-island] .bi-root.bi-go-bar { display: block; width: 100%; max-width: 100%; min-height: 0; padding: 0 var(--dshgo-page-x, 16px); margin: var(--dshgo-gap, 8px) 0 0; box-sizing: border-box; cursor: pointer; text-align: left; }
         /* 三列卡已承载完整信息：原生统计行在 Go 模式整体隐藏（结构保留，靠 CSS 收合，不条件渲染）。 */
         :root[data-dsh-app-layout] .bi-root.bi-go-bar .bi-density-extra, :root[data-dsh-go-island] .bi-root.bi-go-bar .bi-density-extra { display: none; }
         :root[data-dsh-app-layout] .bi-go-row2, :root[data-dsh-go-island] .bi-go-row2 { display: block; width: 100%; }
-        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { display: grid; grid-template-columns: calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) var(--dshgo-chevron-cell, 28px); box-sizing: border-box; width: 100%; height: 56px; padding: 0 4px 0 0; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-card, 20px); background: var(--dshgo-surface-low); overflow: hidden; -webkit-tap-highlight-color: transparent; transition: background-color 120ms linear; }
-        :root[data-dsh-app-layout] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-strip:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, var(--dshgo-surface-low)); }
+        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { display: grid; grid-template-columns: calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) calc((100% - var(--dshgo-chevron-cell, 28px)) / 3) var(--dshgo-chevron-cell, 28px); box-sizing: border-box; width: 100%; height: 56px; padding: 0 4px 0 0; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-card, 20px); background: var(--dshgo-card-bg, #FFFFFF); box-shadow: var(--dshgo-card-shadow, none); overflow: hidden; -webkit-tap-highlight-color: transparent; transition: background-color 120ms linear; }
+        :root[data-dsh-app-layout] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-strip:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, var(--dshgo-card-bg, #FFFFFF)); }
         :root[data-dsh-app-layout] .bi-go-strip[data-slots="2"], :root[data-dsh-go-island] .bi-go-strip[data-slots="2"] { grid-template-columns: calc((100% - var(--dshgo-chevron-cell, 28px)) / 2) calc((100% - var(--dshgo-chevron-cell, 28px)) / 2) var(--dshgo-chevron-cell, 28px); }
         :root[data-dsh-app-layout] .bi-go-strip[data-slots="1"], :root[data-dsh-go-island] .bi-go-strip[data-slots="1"] { grid-template-columns: calc(100% - var(--dshgo-chevron-cell, 28px)) var(--dshgo-chevron-cell, 28px); }
         :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 0 12px; }
@@ -958,19 +970,19 @@ function installStyles() {
         :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: var(--dshgo-font-value, 16px); font-weight: 600; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 11px; letter-spacing: -0.5px; }
         :root[data-dsh-app-layout] .bi-go-val--low, :root[data-dsh-go-island] .bi-go-val--low { color: var(--dshgo-danger); }
-        :root[data-dsh-app-layout] .bi-go-ph, :root[data-dsh-go-island] .bi-go-ph { display: block; width: 64px; max-width: 100%; height: 8px; margin-top: 4px; border-radius: 2px; background: var(--dshgo-ghost); opacity: 0.5; }
+        :root[data-dsh-app-layout] .bi-go-ph, :root[data-dsh-go-island] .bi-go-ph { display: block; width: 64px; max-width: 100%; height: 10px; margin-top: 6px; border-radius: 4px; background: var(--dshgo-ghost); opacity: 0.34; }
         :root[data-dsh-app-layout] .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-ringrow { display: flex; align-items: center; gap: 5px; min-width: 0; }
         :root[data-dsh-app-layout] .bi-go-ring, :root[data-dsh-go-island] .bi-go-ring { flex: none; display: block; }
         :root[data-dsh-app-layout] .bi-go-ring-track, :root[data-dsh-go-island] .bi-go-ring-track { stroke: var(--dshgo-line); }
         :root[data-dsh-app-layout] .bi-go-ring-fill, :root[data-dsh-go-island] .bi-go-ring-fill { stroke: var(--dshgo-accent); }
         :root[data-dsh-app-layout] .bi-go-chev, :root[data-dsh-go-island] .bi-go-chev { display: flex; align-items: center; justify-content: center; color: var(--dshgo-faint); opacity: 0.85; }
         /* 展开面板：卡内无分割线（行间 2px、分组 16）；动作行无上边框，靠 16 上间距 + 右对齐。 */
-        :root[data-dsh-app-layout] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-sheet { flex: 0 0 100%; order: 2; box-sizing: border-box; display: flex; flex-direction: column; max-height: var(--dshgo-panel-max, 40vh); margin: var(--dshgo-gap, 8px) 0 0; overflow: hidden; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-sheet, 28px); background: var(--dshgo-surface-low); color: var(--dshgo-ink); text-align: left; }
+        :root[data-dsh-app-layout] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-sheet { flex: 0 0 100%; order: 2; box-sizing: border-box; display: flex; flex-direction: column; max-height: var(--dshgo-panel-max, 40vh); margin: var(--dshgo-gap, 8px) 0 0; overflow: hidden; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-sheet, 28px); background: var(--dshgo-sheet-bg, #F1F4FB); box-shadow: var(--dshgo-sheet-shadow, none); color: var(--dshgo-ink); text-align: left; }
         :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 8px 0 16px; flex: none; }
         :root[data-dsh-app-layout] .bi-go-sheet-title, :root[data-dsh-go-island] .bi-go-sheet-title { font-size: var(--dshgo-font-panel-title, 16px); font-weight: 600; line-height: 1.4; color: var(--dshgo-ink); }
         :root[data-dsh-app-layout] .bi-go-sheet-collapse, :root[data-dsh-go-island] .bi-go-sheet-collapse { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-muted); font: inherit; font-size: 13px; cursor: pointer; }
         :root[data-dsh-app-layout] .bi-go-sheet-collapse:active, :root[data-dsh-go-island] .bi-go-sheet-collapse:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, transparent); }
-        :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { flex: 1 1 auto; min-height: 0; padding: 0 16px 8px; overflow: hidden auto; overscroll-behavior: contain; }
+        :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { flex: 1 1 auto; min-height: 0; padding: 0 16px 8px; overflow: hidden auto; overscroll-behavior: contain; -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 12px), transparent 100%); mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 12px), transparent 100%); }
         :root[data-dsh-app-layout] .bi-go-sec, :root[data-dsh-go-island] .bi-go-sec { margin-top: var(--dshgo-section-gap, 16px); }
         :root[data-dsh-app-layout] .bi-go-sec:first-child, :root[data-dsh-go-island] .bi-go-sec:first-child { margin-top: 0; }
         :root[data-dsh-app-layout] .bi-go-sec-lbl, :root[data-dsh-go-island] .bi-go-sec-lbl { margin: 0 0 4px; font-size: var(--dshgo-font-caption, 12px); font-weight: 600; line-height: 16px; letter-spacing: 0.4px; color: var(--dshgo-muted); }
@@ -988,6 +1000,18 @@ function installStyles() {
         :root[data-dsh-app-layout] .bi-go-acts, :root[data-dsh-go-island] .bi-go-acts { display: flex; align-items: center; justify-content: flex-end; gap: 24px; min-height: 56px; margin-top: 16px; padding: 0 16px; flex: none; }
         :root[data-dsh-app-layout] .bi-go-act, :root[data-dsh-go-island] .bi-go-act { min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--dshgo-accent); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
         :root[data-dsh-app-layout] .bi-go-empty, :root[data-dsh-go-island] .bi-go-empty { padding: 8px 0 4px; font-size: 13px; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-muted); }
+      }
+      /* ---------- DSH Go 窄屏自适应（≤360，SE 一档） ----------
+         412 定稿的 12px 列内边距 + 16px 数值在 320 上放不下：可用宽只剩 60px，
+         「¥123万」和「上下文用量」都会被省略号吞掉。窄屏收边距并各降一档字号，
+         宁可小一档也不丢信息。必须写成组合媒体查询（CSS 不支持 @media 套 @media）。 */
+      @media (pointer: coarse) and (max-width: 360px) {
+        :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { padding: 0 7px; }
+        :root[data-dsh-app-layout] .bi-go-col:first-child, :root[data-dsh-go-island] .bi-go-col:first-child { padding-left: 12px; }
+        :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { font-size: 11px; letter-spacing: 0.1px; }
+        :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: 15px; }
+        :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 12px; letter-spacing: -0.3px; }
+        :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { padding: 0 8px 0 14px; }
       }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
 ` + FIELD_COLOR_CSS + `
@@ -2841,9 +2865,7 @@ function BibSetGoSwitch(props) {
     disabled: props.disabled === true,
     className: 'bib-go-switch' + (checked ? ' bib-go-switch--on' : ''),
     onClick: function () { if (props.disabled !== true && props.onToggle) props.onToggle(!checked); },
-  }, React.createElement('span', { className: 'bib-go-switch-thumb', 'aria-hidden': 'true' },
-    checked ? React.createElement('svg', { viewBox: '0 0 16 16', width: 12, height: 12 },
-      React.createElement('path', { d: 'M3.5 8.5l3 3 6-7', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' })) : null));
+  }, React.createElement('span', { className: 'bib-go-switch-thumb', 'aria-hidden': 'true' }));
 }
 function BibSetGoSegmented(props) {
   const options = props.options || [];
@@ -4857,9 +4879,9 @@ module.exports = {
         const text = scaled.toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
         return symbol + (n < 0 ? '-' : '') + text + unit;
       };
-      // 金额：≤360 用紧凑单位；>10 字符且 >360 用 11px/-0.5 字距（不截断）；面板永远精确值。
+      // 金额：≤360 用紧凑单位；窄屏 >8 / 宽屏 >10 字符降一档字号（不截断）；面板永远精确值。
       const goMoneySlot = function (currency, value) {
-        if (goNarrow) return { text: goMoneyCompact(currency, value), shrink: false };
+        if (goNarrow) { const compact = goMoneyCompact(currency, value); return { text: compact, shrink: compact.length > 8 }; }
         const full = goMoneyFull(currency, value);
         return { text: full, shrink: full.length > 10 };
       };

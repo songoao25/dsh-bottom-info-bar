@@ -146,10 +146,11 @@ check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.05)'), true);
 check('token 块只定义变量、不改任何现有元素视觉（视觉规则单独成块）',
   !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
-check('三列卡：56 高 / 20 圆角 / 面 low / 0.5 发丝 / 28 chevron 格，三列无竖线',
+check('三列卡：56 高 / 20 圆角 / 纯白卡面 / 0.5 发丝 / 28 chevron 格，三列无竖线',
   visualBlock.includes('.bi-go-strip') && visualBlock.includes('height: 56px')
   && visualBlock.includes('border-radius: var(--dshgo-radius-card, 20px)')
-  && visualBlock.includes('background: var(--dshgo-surface-low)')
+  && visualBlock.includes('background: var(--dshgo-card-bg, #FFFFFF)')
+  && tokenBlock.includes('--dshgo-card-bg: #FFFFFF')
   && visualBlock.includes('var(--dshgo-chevron-cell, 28px)')
   && !visualBlock.includes('.bi-go-col + .bi-go-col::before'), true);
 check('面板：28 圆角 / 40vh 内滚 / 行间 2px 空隙 / 分组 16 / 无行分割线 / 动作行无上边框',
