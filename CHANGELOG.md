@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.25.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.0...v1.25.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **info-bar:** 重启生效/更新失败短标记与行内文字同中线 ([#297](https://github.com/songoao25/dsh-bottom-info-bar/issues/297)) ([479f04f](https://github.com/songoao25/dsh-bottom-info-bar/commit/479f04f7d3da1e1e4bf0caf30fc003c2fa228bc2))
+
 ## [1.25.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.6...v1.25.0) (2026-11-13)
 
 
