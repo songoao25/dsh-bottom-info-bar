@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.5...v1.24.6) (2026-11-13)
+
+
+### Bug Fixes
+
+* Alibaba Token Plan quota docs + FAQ and native install dialog ([#293](https://github.com/songoao25/dsh-bottom-info-bar/issues/293)) ([8e58908](https://github.com/songoao25/dsh-bottom-info-bar/commit/8e5890863f6c6d5e490fdc697a76bdbe01d245b2))
+
 ## [1.24.5](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.4...v1.24.5) (2026-11-13)
 
 
