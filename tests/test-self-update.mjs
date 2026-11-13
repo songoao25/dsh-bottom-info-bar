@@ -812,6 +812,29 @@ await okAsync('备份只保留最近 keepBackups 份，不无限占用户空间'
   } finally { fx.cleanup() }
 })
 
+// 备份目录按语义化版本排序，不是字符串排序：'1.10.0' 字典序排在 '1.9.0' 前面，
+// 用字符串 sort 会在 x.9 → x.10 升级时把刚建好的最新备份当「最旧」删掉，回滚逃生门失效。
+await okAsync('备份清理按语义化版本排序（跨 x.9 → x.10 不误删最新备份）', async () => {
+  const fx = makeFixture({ version: '1.0.0' })
+  try {
+    for (const version of ['1.9.0', '1.10.0']) {
+      const payload = makePayload(version)
+      const updater = createSelfUpdater({
+        packageDir: fx.packageDir,
+        dataDir: fx.dataDir,
+        runningVersion: '1.0.0',
+        keepBackups: 1,
+        fetch: async (url) => (url.endsWith('/latest')
+          ? jsonResponse({ version, dist: { integrity: payload.integrity } })
+          : bufferResponse(payload.tarball)),
+      })
+      await updater.run()
+    }
+    const backups = readdirSync(join(fx.dataDir, 'update-backup'))
+    assert.deepEqual(backups, ['1.10.0'], '最新备份 1.10.0 必须留下（字符串排序会误删它）')
+  } finally { fx.cleanup() }
+})
+
 // =====================================================================================
 // 13. host / client 接线（验收 7 的接线侧）
 // =====================================================================================

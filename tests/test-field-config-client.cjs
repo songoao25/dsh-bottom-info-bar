@@ -110,7 +110,7 @@ check('分组：原生组 = 新宿主两个按钮开关 + 旧宿主七个统计�
 check('分组：上下文圆环归入插件组（它住在主行，两种模式都可见）',
   FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
 check('分组：提醒组已移除（不再有任何字段归 notice）', FIELD_REGISTRY.every((f) => f.group !== 'notice'), true);
-check('分组：插件组 20 条（19 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 20
+check('分组：插件组 22 条（21 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 22
   && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
 check('分组：两组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
   ['group.native.desc', 'group.plugin.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
@@ -818,16 +818,19 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     const layouts = [];
     const reLayout = /layout:\s*'([^']+)'/g;
     while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
-    // 7 处 fallbackClassName = 5 个输入框（search / customText / credential / hex 两处）+ 2 个下拉（时区 / 语言，见 ⑤-4）。
-    // layout 只有输入框用：恰好 5 条，且都在白名单内。
-    return fallbacks.length === 7
+    // 10 处 fallbackClassName：桌面设置页 7 处（search / customText / credential / hex 两处 + 时区 / 语言两个下拉）
+    // + DSH Go 配置页 3 处（自定义文字 + 主/世界时区，见 BibSetDshGoPage）。
+    // layout 只有输入框用：恰好 8 条（桌面 5 + Go 页 3），且全部在白名单内。
+    // 仍取确切数而不是下限：新增输入框必须同步改这里，否则外观类会悄悄漂移。
+    return fallbacks.length === 10
       && fallbacks.indexOf('bib-set-search') !== -1
       && fallbacks.indexOf('bib-set-custom-text-input') !== -1
       && fallbacks.indexOf('bib-set-credential-input') !== -1
       && fallbacks.filter(function (x) { return x === 'bib-set-hex'; }).length === 2
+      && fallbacks.filter(function (x) { return x === 'bib-set-custom-text-input'; }).length === 2
       && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length === 1
-      && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 1
-      && layouts.length === 5
+      && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 3
+      && layouts.length === 8
       && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
   })(), true);
 
@@ -1073,11 +1076,13 @@ function withFakeDocument(run) {
     && clientSrc.includes('const removalRegistry = nativePills')
     && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
-  check('D6：构建产物含注入的两类分组常量（设置页渲染不落空；提醒组已移除）', (function () {
+  check('D6：构建产物含注入的分组常量，且分组标签表只有 native / plugin（提醒组已移除）', (function () {
     const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
+    // 只看 FIELD_GROUP_LABELS 这一处（`notice: "group.notice"`）；不能直接搜 `"group.notice"` ——
+    // DSH Go 展开面板的提醒分区标题也复用这个键，字典里必然有它，按整串判会误报。
     return lib.indexOf("['native', 'plugin']") !== -1
       && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"')
-      && !lib.includes('"group.notice"');
+      && !lib.includes('notice: "group.notice"');
   })(), true);
   // 2026-10-14：守卫从 bibSetPalette 扩到设置页全部含 hooks 的组件——新增 bibSetSelect
   // （语言/时区共用下拉）后，同一条铁律必须覆盖它，否则裸调用会让 hook 记到父组件账上（React #310）。

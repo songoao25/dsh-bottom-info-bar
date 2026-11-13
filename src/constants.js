@@ -379,6 +379,12 @@ export const FIELD_REGISTRY = [
   // 主/世界时间：时区在设置页「时间与日期」中独立配置；显示统一用通用格式
   { id: 'mainTime', label: "field.mainTime.label", group: 'plugin', section: 'common', defaultOff: true, colorKind: 'inherit', note: "field.mainTime.note" },
   { id: 'worldTime', label: "field.worldTime.label", group: 'plugin', section: 'common', defaultOff: true, colorKind: 'inherit', note: "field.worldTime.note" },
+  // 宽屏增量列（DSH Go，2026-11-13）：宽度够时信息栏自动多出这两列，手机档不占位。
+  // 默认开启；用户在设置页关掉就不参与「按宽度补列」，与其它字段同一套显隐规则。
+  // goOnly：只有 DSH Go 配置页列这两行；桌面信息栏没有对应渲染分支，
+  // 桌面设置页再摆一个「点了没效果」的开关只会误导（用户 2026-11-13 拍板）。
+  { id: 'todaySpend', label: "field.todaySpend.label", group: 'plugin', section: 'common', colorKind: 'inherit', note: "field.todaySpend.note", goOnly: true },
+  { id: 'last30dSpend', label: "field.last30dSpend.label", group: 'plugin', section: 'common', colorKind: 'inherit', note: "field.last30dSpend.note", goOnly: true },
   // 上下文占用圆环（DSH 原生 ContextMeter 的接管版）：外观、几何与交互面板与原生一致，显隐/配色并入本插件字段体系；
   // 固定在主行最右端，原生那一份由样式隐藏。归 plugin 组是结论而非笔误：它住在主行，而主行两种模式都可见。
   { id: 'contextUsage', label: "field.contextUsage.label", group: 'plugin', section: 'common', colorKind: 'meter', note: "field.contextUsage.note" },
@@ -457,8 +463,8 @@ export const FIELD_MODES = {
   // 前两个是新宿主 Harness 自己注册的按钮（整行两种开关）；后七个是旧宿主统计行的字段。
   // 两组不会同时渲染：原生入口探测结果决定用哪一组（见 client-bundle 的 nativePills）。
   native: ['nativeActivity', 'nativeUsage', 'turnsSteps', 'llmTime', 'toolTime', 'avgTTFT', 'outputSpeed', 'cacheHit', 'tokensIO'],
-  balance: ['customText', 'anchorGroup', 'mainTime', 'worldTime', 'unmapped', 'noKeyHint', 'balance', 'balanceError', 'period', 'countdown', 'sessionCost', 'usageError'],
-  subscription: ['customText', 'subServiceGroup', 'mainTime', 'worldTime', 'expiry', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'subBalance', 'sessionCost'],
+  balance: ['customText', 'anchorGroup', 'mainTime', 'worldTime', 'unmapped', 'noKeyHint', 'balance', 'balanceError', 'period', 'countdown', 'sessionCost', 'todaySpend', 'last30dSpend', 'usageError'],
+  subscription: ['customText', 'subServiceGroup', 'mainTime', 'worldTime', 'expiry', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'subBalance', 'sessionCost', 'todaySpend', 'last30dSpend'],
   billing: ['customText', 'billingServiceGroup', 'mainTime', 'worldTime', 'billingSpend', 'budget', 'freeQuota'],
   // 公共尾部（提醒 + 圆环）三种模式共用。提醒（refreshFailure/persistWarning/updateNotice/
   // updateFailure）没有用户开关 —— 显隐只由各自的数据条件决定（2026-11-12 起移除提醒开关组）。

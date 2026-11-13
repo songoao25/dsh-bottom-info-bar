@@ -281,6 +281,13 @@ function settingsFieldsForHost(pills) {
     return !NATIVE_PILL_FIELDS.some(function (entry) { return entry.fieldId === field.id; });
   });
 }
+// 桌面设置页的字段清单：goOnly 字段（今天花费 / 近 30 天花费这类 DSH Go 宽屏增量列）
+// 只在 Go 配置页出现。桌面信息栏没有对应渲染分支，开关在这里点了没有效果，
+// 所以桌面设置页既不列行、也不计入「已启用 N 项」（用户 2026-11-13 拍板）。
+// Go 配置页仍走 settingsFieldsForHost 全量，行为不变。
+function settingsFieldsForPage(pills) {
+  return settingsFieldsForHost(pills).filter(function (field) { return field.goOnly !== true; });
+}
 // 新宿主原生按钮的字段 id ↔ 宿主 data-composer-stat 值。设置页开关只隐藏对应入口，
 // 不复制、不重注册宿主组件 —— 按钮的弹窗、快捷键与 Harness 设置全部保持宿主所有。
 const NATIVE_PILL_FIELDS = [
@@ -593,6 +600,103 @@ function infoBarShouldRemoveAll(registry, isVisible) {
   return registry.length > 0;
 }
 
+// ---------- 触屏基础适配：hover 明细 → 点按内联面板（2026-11-12） ----------
+// 信息栏的明细（余额构成、今天/近一月/全部花费、定价模式、订阅窗口明细、错误原因）历来只挂在
+// title 属性上：桌面端 hover 可读，触屏设备没有 hover，这些内容等于永远看不到（DSH Go 网页版、
+// 手机浏览器同理；issue #274 的红色「刷新失败」原因就只写在 title 里）。
+// 这里在「hover 不可用 / coarse pointer」的设备上把整栏点击改成「展开内联明细」：
+//   · 面板是信息栏的兄弟节点、在文档流里展开，不覆盖输入框，也不改动任何字段显隐
+//     （字段开关仍是唯一显隐来源；面板只搬运本来就存在的 title 文案）；
+//   · 桌面端不渲染面板、行为与像素零变化（matchMedia 不可用 / hover 可用 → 保持原样）；
+//   · 触屏上完整/简洁切换改由面板里的按钮触发，原「点整栏切换」在触屏让位给「看明细」。
+function touchDetailsEnabled() {
+  try {
+    if (typeof window === 'undefined' || !window || typeof window.matchMedia !== 'function') return false;
+    const hover = window.matchMedia('(hover: hover)');
+    if (hover && hover.matches) return false;
+    const coarse = window.matchMedia('(pointer: coarse)');
+    if (coarse && coarse.matches) return true;
+    return typeof navigator !== 'undefined' && navigator !== null && navigator.maxTouchPoints > 0;
+  } catch (err) {
+    // 媒体查询不可用的极简宿主：按桌面处理，绝不让适配逻辑挡住信息栏本身。
+    return false;
+  }
+}
+
+// 收集栏内各字段的 hover 明细（title 原文，与桌面端看到的是同一份文案）。
+// 只收「当前真正可见」的节点：简洁模式收起的原生行高度为 0，不能把用户已收起的明细再列出来；
+// 同一段文案只列一次（嵌套节点会重复），顺序即字段在栏内的视觉顺序。
+function collectInfoBarDetails(rootEl) {
+  if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return [];
+  const nodes = rootEl.querySelectorAll('[title]');
+  const seen = new Set();
+  const out = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
+    const raw = el.getAttribute('title');
+    if (typeof raw !== 'string') continue;
+    const text = raw.trim();
+    if (text.length === 0 || seen.has(text)) continue;
+    // 标题与可见文本逐字相同 = 这行没有额外信息（如自定义文字），不占面板篇幅。
+    const visibleText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (visibleText === text.replace(/\s+/g, ' ').trim()) continue;
+    let node = el;
+    let visible = true;
+    while (node && node !== rootEl) {
+      let rect = null;
+      try { if (typeof node.getBoundingClientRect === 'function') rect = node.getBoundingClientRect(); } catch (err) { rect = null; }
+      if (rect && (!(rect.width > 0) || !(rect.height > 0))) { visible = false; break; }
+      let style = null;
+      try {
+        if (typeof window !== 'undefined' && window && typeof window.getComputedStyle === 'function') style = window.getComputedStyle(node);
+      } catch (err) { style = null; }
+      if (style && (style.visibility === 'hidden' || style.display === 'none')) { visible = false; break; }
+      node = node.parentElement;
+    }
+    if (!visible) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+// ---------- DSH Go 皮肤层门控（2026-11-12，只做门控与信号归一，不含视觉） ----------
+// DSH Go 的网页版/整页 WebView 岛会在 <html> 上留下三种信号之一：
+//   ① data-dsh-app-layout（网页版：drawer / desktop，见 dsh-Go assets/web/dsh_web_phone.js）
+//   ② data-dsh-go-island（若宿主直接注入）
+//   ③ location.hash 里的 dsh-go-island= 片段，或注入的 window.DshGoIsland 通道（整页岛）
+// 这里把 ②③ 归一成 data-dsh-go-island 属性，CSS 与 JS 共用同一个信号；桌面浏览器三者皆无，
+// 属性不存在 → 皮肤层不生效（桌面像素不变）。视觉规则等 design-go v2 稿再落地。
+function dshGoSurfaceEnabled() {
+  try {
+    if (typeof document === 'undefined' || !document || !document.documentElement) return false;
+    const root = document.documentElement;
+    if (root.getAttribute('data-dsh-app-layout') !== null) return true;
+    if (root.getAttribute('data-dsh-go-island') !== null) return true;
+    let island = false;
+    try {
+      island = typeof window !== 'undefined' && window && typeof window.DshGoIsland !== 'undefined';
+    } catch (err) { island = false; }
+    if (!island && typeof window !== 'undefined' && window && window.location) {
+      island = String(window.location.hash || '').indexOf('dsh-go-island=') !== -1;
+    }
+    if (island) {
+      try { root.setAttribute('data-dsh-go-island', '1'); } catch (err) { /* 写不了属性就只靠 JS 判定 */ }
+      return true;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+// DSH Go 形态：只要在 DSH Go 表面内就套 Go 皮肤，不再额外要求触屏。
+// DSH Go 跑在平板、大窗或被鼠标操作时依然是 DSH Go，不能退回桌面那条双行 pill；
+// 尺寸差异交给 CSS 断点（≤360 / 常规 / ≥600），形态与行为保持一套。
+// 桌面 DSH 没有上面任何一个信号，dshGoSurfaceEnabled() 为 false，像素不变。
+function dshGoCompactEnabled() {
+  return dshGoSurfaceEnabled();
+}
+
 // 余额悬停明细（2026-10-07 用户拍板）：底栏只放得下一个总数，但用户想知道其中「充的钱」与
 // 「送的钱」各是多少 —— 两者的来源与规则不同，并成一个数就分不清了。
 // 文案与 DSH 设置页逐字对齐（充值余额 / 赠金余额，见 src/locales.js）：宿主已经这么叫，
@@ -772,6 +876,211 @@ function installStyles() {
          不绑 DSH 的哈希类名，只认结构——「同一个 dock 行 + 直接子级 span + 内含 14px 圆环按钮」，
          并要求该 span 内不含本插件信息栏（避免误伤包着信息栏的插槽包装元素）。 */
       [class*="_dock"]:has(.bi-root) > span:not(:has(.bi-root)):has(button[aria-haspopup="dialog"] svg[viewBox="0 0 14 14"]) { display: none !important; }
+      /* ---------- 触屏点按明细（hover 不可用时的替代路径，2026-11-12） ----------
+         只有组件判定为触屏（hover 不可用 / coarse pointer）时才渲染这个面板；桌面端没有这个 DOM，
+         像素零变化。面板是信息栏的兄弟节点、在文档流里展开（不 position:fixed），因此不会盖住
+         输入框，也不依赖任何浮层定位；明细内容就是各字段原有的 title 文案。 */
+      .bi-mobile-details { box-sizing: border-box; width: 100%; max-height: 40vh; overflow: hidden auto; overscroll-behavior: contain; flex: 0 0 100%; order: 2; margin: 4px 0 0; padding: 8px 12px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2)); color: var(--dsw-alias-label-secondary, #5a6169); font-size: var(--dsh-content-font-size-secondary, 13px); line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); text-align: left; user-select: text; -webkit-user-select: text; }
+      .bi-mobile-details-list { margin: 0; padding: 0; list-style: none; }
+      .bi-mobile-details-item { padding: 6px 0; white-space: pre-line; overflow-wrap: anywhere; }
+      .bi-mobile-details-item + .bi-mobile-details-item { border-top: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.14)); }
+      .bi-mobile-details-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .bi-mobile-details-button { flex: 1 1 140px; min-height: 44px; margin: 0; padding: 8px 12px; border: 1px solid var(--dsw-alias-border-l3, rgba(128, 128, 128, 0.35)); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary, #1f2328); font: inherit; line-height: 1.3; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .bi-mobile-details-button:active { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.14)); }
+      /* 手机宽度（含 320px 极窄）与横屏矮视口的基础适配：全部规则落在媒体查询里，
+         桌面端一条都不生效（像素零变化）。几何仍取宿主令牌，插件只表达意图：
+         触控目标、可折行、分隔符不悬空、安全区不重叠。 */
+      @media (max-width: 480px), (orientation: landscape) and (max-height: 480px) {
+        /* 触控目标：整栏本身是一个 role=button。DSH Go 网页版对 [data-slot="main"] 里的
+           button/[role=button] 强制 44px（assets/web/dsh_web_phone.css）；独立移动浏览器没有
+           这条，这里补同一意图。min-height 只在单行时生效（多行本来就高），
+           上下内边距保持 4px，避免为了触控把整条底栏撑高。 */
+        .bi-root { min-height: 44px; padding: 4px 0 max(4px, env(safe-area-inset-bottom, 0px)); justify-content: center; }
+        /* 折行：桌面上「一个字段组不拆行」是版式；窄屏下单个 nowrap 组（长模型名、三个订阅窗口、
+           长错误提示、自定义文字）会撑破容器。允许组内折行，桌面端不变。 */
+        .bi-root > .bi-row2 > span:not(.bi-tail) { white-space: normal; overflow-wrap: anywhere; }
+        /* 分隔符是独立 flex 项：折行时会孤零零落在行首或行尾（320px 实测每行都有）。
+           窄屏改用间距分组（组间 8px），分隔符不参与排版；圆环尾巴仍整体不折行，
+           避免圆环被单独挤到下一行（2026-09-24 修过的回归）。 */
+        .bi-root > .bi-row2, .bi-root > .bi-density-extra .bi-native-row { column-gap: 8px; }
+        .bi-root > .bi-row2 > .bi-sep, .bi-root > .bi-density-extra .bi-native-row > .bi-sep { display: none; }
+        /* 上下文圆环按钮原高 22px：用伪元素把命中区扩到 44px，而不把整行撑到 44px。
+           DSH Go 网页版已由宿主对按钮强制 44px；独立移动浏览器用这条补同一意图。 */
+        .bi-ctx-trigger { position: relative; }
+        .bi-ctx-trigger::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+      }
+      /* 横屏矮视口：把上下留白再压回一点，高度还给对话区。 */
+      @media (orientation: landscape) and (max-height: 480px) {
+        .bi-root { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom, 0px)); }
+      }
+      /* ---------- DSH Go 皮肤层：门控 + token（DESIGN-FINAL 定稿，只定义变量，不改现有视觉） ----------
+         门控信号：:root[data-dsh-app-layout]（DSH Go 网页版）或 :root[data-dsh-go-island]
+         （整页 WebView 岛，由模块级 dshGoSurfaceEnabled 从 hash / DshGoIsland 通道归一）。
+         不再叠 pointer:coarse：DSH Go 在平板 / 大窗 / 鼠标环境里还是 DSH Go，皮肤跟着表面走，
+         尺寸差异由断点处理。桌面 DSH 两者皆无 → 不生效，像素不变。
+         数值唯一来源：.private/mobile-design/DESIGN-FINAL.md §1/§2/§3/§7（真机 412×915）。 */
+      :root[data-dsh-app-layout], :root[data-dsh-go-island] {
+        /* 颜色（§1） */
+        --dshgo-accent: #4B67B4; --dshgo-accent-soft: #DEE8FF; --dshgo-danger: #A54743;
+        --dshgo-bg-1: #F1F4FB; --dshgo-bg-2: #FAFBFE;
+        --dshgo-surface: #FBFCFF; --dshgo-surface-low: #F6F9FE;
+        --dshgo-ink: #1E232E; --dshgo-label: #4F5562; --dshgo-muted: #646974; --dshgo-faint: #646974; --dshgo-ghost: #A1A5AC;
+        --dshgo-line: rgba(30, 35, 46, 0.07);
+        --dshgo-card: rgba(255, 255, 255, 0.62); --dshgo-card-rim: rgba(255, 255, 255, 0.70);
+        /* 卡片实体感：底色比页面背景亮一档 + 极轻投影，边界靠「亮 + 影 + 发丝线」三层，
+           不靠色差（surface-low #F6F9FE 与背景 #FAFBFE 只差 4 个灰阶，白底上等于没有卡片）。 */
+        --dshgo-card-bg: #FFFFFF;
+        --dshgo-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 10px 24px -16px rgba(16, 24, 40, 0.26);
+        /* 展开面板是「从卡片下方抽出的抽屉」：比卡片低一档，上层亮、下层沉，层次一眼分得开。 */
+        --dshgo-sheet-bg: #F1F4FB;
+        --dshgo-sheet-shadow: 0 12px 28px -20px rgba(16, 24, 40, 0.22);
+        /* 几何（§3） */
+        --dshgo-hairline: 0.5px;
+        --dshgo-radius-card: 20px; --dshgo-radius-sheet: 28px; --dshgo-radius-control: 14px; --dshgo-radius-segment: 18px;
+        --dshgo-page-x: 16px; --dshgo-config-page-x: 20px;
+        --dshgo-gap: 8px; --dshgo-group-gap: 24px; --dshgo-card-pad: 16px; --dshgo-row-gap: 2px;
+        --dshgo-row-h: 56px; --dshgo-row-h2: 64px; --dshgo-panel-row: 40px; --dshgo-panel-row2: 56px;
+        --dshgo-switch-w: 52px; --dshgo-switch-h: 32px; --dshgo-switch-thumb: 28px;
+        --dshgo-seg-h: 36px; --dshgo-seg-thumb: 30px;
+        --dshgo-control-h: 44px;
+        --dshgo-panel-max: 40vh;
+        /* 字号 / 行高（§2） */
+        --dshgo-font-title: 26px; --dshgo-font-panel-title: 16px; --dshgo-font-value: 16px;
+        --dshgo-font-row: 15px; --dshgo-font-label: 14px; --dshgo-font-setting: 14px;
+        --dshgo-font-desc: 13px; --dshgo-font-caption: 12px; --dshgo-font-micro: 11px;
+        --dshgo-lh-value: 20px; --dshgo-lh-panel: 22px; --dshgo-lh-body: 1.4; --dshgo-lh-desc: 1.45;
+        --dshgo-safe-bottom: var(--dsh-app-inset-bottom, env(safe-area-inset-bottom, 0px));
+      }
+      :root[data-dsh-app-layout] body[data-ds-dark-theme], :root[data-dsh-go-island] body[data-ds-dark-theme] {
+        --dshgo-accent: #97B1F0; --dshgo-accent-soft: #2E3C5F; --dshgo-danger: #E69089;
+        --dshgo-bg-1: #1D222C; --dshgo-bg-2: #171920;
+        --dshgo-surface: #232730; --dshgo-surface-low: #232730;
+        --dshgo-ink: #E6E9F0; --dshgo-label: #B6BBC5; --dshgo-muted: #9A9EA9; --dshgo-faint: #9A9EA9; --dshgo-ghost: #656971;
+        --dshgo-line: rgba(230, 233, 240, 0.08);
+        --dshgo-card: rgba(255, 255, 255, 0.05); --dshgo-card-rim: rgba(255, 255, 255, 0);
+        /* 暗色里投影没有意义（背景比卡片更暗），修正一层：卡片比背景亮一档自身就是边界。 */
+        --dshgo-card-bg: #232730; --dshgo-card-shadow: none;
+        --dshgo-sheet-bg: #1F232C; --dshgo-sheet-shadow: none;
+      }
+      /* ---------- DSH Go 信息栏三列卡 + 展开面板（DESIGN-FINAL §3/§4/§5；无分割线） ----------
+         只在 Go 表面内生效；三档断点：≤360 收边距降字号、360–599 定稿值、≥600 收版心居中。
+         三列之间不画竖线：页边 16、间隙用 space-between 均分；卡内行间 2px 空隙、分组 16。 */
+      /* 卡片与上方内容（DSH Go 宿主自带的原生统计行 / 对话区）之间留 8px 呼吸：
+         宿主那行 pill 是它自己的 DOM，删不得，只能把卡片往下让一档，两者才不会粘成一片。 */
+      /* 一个容器承载「条 + 明细」：收起时卡面在 strip 上，展开时卡面整个交给容器，
+         strip 与 sheet 都变成内部区域（无边框、无间距、无第二层背景），
+         所以展开后是同一张卡往下长，而不是条下面再摆一张卡。 */
+      :root[data-dsh-app-layout] .bi-go-card, :root[data-dsh-go-island] .bi-go-card { display: block; width: calc(100% - var(--dshgo-page-x, 16px) * 2); box-sizing: border-box; margin: var(--dshgo-gap, 8px) auto 0; padding: 0; }
+      :root[data-dsh-app-layout] .bi-go-card[data-open="1"], :root[data-dsh-go-island] .bi-go-card[data-open="1"] { overflow: hidden; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-card, 20px); background: var(--dshgo-card-bg, #FFFFFF); box-shadow: var(--dshgo-card-shadow, none); }
+      :root[data-dsh-app-layout] .bi-root.bi-go-bar, :root[data-dsh-go-island] .bi-root.bi-go-bar { display: block; width: 100%; max-width: 100%; min-height: 0; padding: 0; margin: 0; box-sizing: border-box; cursor: pointer; text-align: left; }
+      /* 三列卡已承载完整信息：原生统计行在 Go 模式整体隐藏（结构保留，靠 CSS 收合，不条件渲染）。 */
+      :root[data-dsh-app-layout] .bi-root.bi-go-bar .bi-density-extra, :root[data-dsh-go-island] .bi-root.bi-go-bar .bi-density-extra { display: none; }
+      /* 宿主 StatsPills 直挂在同一个 composer.dock slot 里，与插件根是兄弟；
+         Go 模式下它的内容全部在「原生信息」分组里有了，样式又是宿主自己的，故收合。 */
+      :root[data-dsh-app-layout] [data-slot="conversation.composer.dock"] > span:not([class*="bi-"]),
+      :root[data-dsh-go-island] [data-slot="conversation.composer.dock"] > span:not([class*="bi-"]) { display: none !important; }
+      :root[data-dsh-app-layout] .bi-go-row2, :root[data-dsh-go-island] .bi-go-row2 { display: block; width: 100%; }
+      :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; box-sizing: border-box; width: 100%; height: 56px; padding: 0 16px; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-card, 20px); background: var(--dshgo-card-bg, #FFFFFF); box-shadow: var(--dshgo-card-shadow, none); overflow: hidden; -webkit-tap-highlight-color: transparent; transition: background-color 120ms linear; }
+      :root[data-dsh-app-layout] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-strip:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, var(--dshgo-card-bg, #FFFFFF)); }
+      /* 三列按内容宽度排布，再用 space-between 均分剩余空间：
+         首列贴左页边、末列贴右页边、三块之间的两个间隙严格相等。
+         如果用等分网格再各自左对齐，末列内容短的时候右边就会空出一大块。 */
+      :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; max-width: calc((100% - 20px) / 3); padding: 0; }
+      :root[data-dsh-app-layout] .bi-go-col:last-child, :root[data-dsh-go-island] .bi-go-col:last-child { align-items: flex-end; text-align: right; }
+      /* 列内元素按内容收缩（不撑满列宽），但不得超过列宽，省略号才会正常出现。 */
+      :root[data-dsh-app-layout] .bi-go-col > .bi-go-cap, :root[data-dsh-go-island] .bi-go-col > .bi-go-cap,
+      :root[data-dsh-app-layout] .bi-go-col > .bi-go-val, :root[data-dsh-go-island] .bi-go-col > .bi-go-val,
+      :root[data-dsh-app-layout] .bi-go-col > .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-col > .bi-go-ringrow { max-width: 100%; }
+      :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { margin-bottom: 2px; font-size: var(--dshgo-font-caption, 12px); font-weight: 500; line-height: 16px; letter-spacing: 0.2px; color: var(--dshgo-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: var(--dshgo-font-value, 16px); font-weight: 600; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 11px; letter-spacing: -0.5px; }
+      :root[data-dsh-app-layout] .bi-go-val--low, :root[data-dsh-go-island] .bi-go-val--low { color: var(--dshgo-danger); }
+      :root[data-dsh-app-layout] .bi-go-ph, :root[data-dsh-go-island] .bi-go-ph { display: block; width: 64px; max-width: 100%; height: 10px; margin-top: 6px; border-radius: 4px; background: var(--dshgo-ghost); opacity: 0.34; }
+      :root[data-dsh-app-layout] .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-ringrow { display: flex; align-items: center; gap: 5px; min-width: 0; }
+      :root[data-dsh-app-layout] .bi-go-ring, :root[data-dsh-go-island] .bi-go-ring { flex: none; display: block; }
+      :root[data-dsh-app-layout] .bi-go-ring-track, :root[data-dsh-go-island] .bi-go-ring-track { stroke: var(--dshgo-line); }
+      :root[data-dsh-app-layout] .bi-go-ring-fill, :root[data-dsh-go-island] .bi-go-ring-fill { stroke: var(--dshgo-accent); }
+      /* 展开面板：卡内无分割线（行间 2px、分组 16）；动作行无上边框，靠 16 上间距 + 右对齐。 */
+      :root[data-dsh-app-layout] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-sheet { flex: 0 0 100%; order: 2; box-sizing: border-box; display: flex; flex-direction: column; max-height: var(--dshgo-panel-max, 40vh); margin: var(--dshgo-gap, 8px) 0 0; overflow: hidden; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-sheet, 28px); background: var(--dshgo-sheet-bg, #F1F4FB); box-shadow: var(--dshgo-sheet-shadow, none); color: var(--dshgo-ink); text-align: left; }
+      :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-strip, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-strip { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+      :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-strip:active { background: transparent; }
+      :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-sheet { margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+      :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 8px 0 16px; flex: none; }
+      :root[data-dsh-app-layout] .bi-go-sheet-title, :root[data-dsh-go-island] .bi-go-sheet-title { font-size: var(--dshgo-font-panel-title, 16px); font-weight: 600; line-height: 1.4; color: var(--dshgo-ink); }
+      :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { flex: 1 1 auto; min-height: 0; padding: 0 16px 16px; overflow: hidden auto; overscroll-behavior: contain; }
+      :root[data-dsh-app-layout] .bi-go-sheet-body[data-more="1"], :root[data-dsh-go-island] .bi-go-sheet-body[data-more="1"] { -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%); mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%); }
+      :root[data-dsh-app-layout] .bi-go-sec, :root[data-dsh-go-island] .bi-go-sec { margin-top: var(--dshgo-section-gap, 16px); }
+      :root[data-dsh-app-layout] .bi-go-sec:first-child, :root[data-dsh-go-island] .bi-go-sec:first-child { margin-top: 0; }
+      :root[data-dsh-app-layout] .bi-go-sec-lbl, :root[data-dsh-go-island] .bi-go-sec-lbl { margin: 0 0 4px; font-size: var(--dshgo-font-caption, 12px); font-weight: 600; line-height: 16px; letter-spacing: 0.4px; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bi-go-rows, :root[data-dsh-go-island] .bi-go-rows { display: flex; flex-direction: column; gap: var(--dshgo-row-gap, 2px); }
+      :root[data-dsh-app-layout] .bi-go-row, :root[data-dsh-go-island] .bi-go-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; min-height: var(--dshgo-panel-row, 40px); padding: 8px 0; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bi-go-row--sub, :root[data-dsh-go-island] .bi-go-row--sub { min-height: var(--dshgo-panel-row2, 56px); align-items: flex-start; }
+      :root[data-dsh-app-layout] .bi-go-k, :root[data-dsh-go-island] .bi-go-k { flex: none; font-size: var(--dshgo-font-label, 14px); line-height: var(--dshgo-lh-panel, 22px); color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bi-go-v-wrap, :root[data-dsh-go-island] .bi-go-v-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; text-align: right; }
+      :root[data-dsh-app-layout] .bi-go-v, :root[data-dsh-go-island] .bi-go-v { font-size: var(--dshgo-font-row, 15px); font-weight: 600; line-height: var(--dshgo-lh-panel, 22px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      :root[data-dsh-app-layout] .bi-go-v--low, :root[data-dsh-go-island] .bi-go-v--low { color: var(--dshgo-danger); }
+      :root[data-dsh-app-layout] .bi-go-small, :root[data-dsh-go-island] .bi-go-small { font-size: var(--dshgo-font-caption, 12px); font-weight: 400; line-height: 16px; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bi-go-progress, :root[data-dsh-go-island] .bi-go-progress { display: block; width: 132px; max-width: 100%; height: 4px; margin-top: 3px; border-radius: 2px; background: var(--dshgo-line); overflow: hidden; }
+      :root[data-dsh-app-layout] .bi-go-progress-fill, :root[data-dsh-go-island] .bi-go-progress-fill { display: block; height: 100%; border-radius: 2px; background: var(--dshgo-accent); }
+      :root[data-dsh-app-layout] .bi-go-progress--low .bi-go-progress-fill, :root[data-dsh-go-island] .bi-go-progress--low .bi-go-progress-fill { background: var(--dshgo-danger); }
+      /* 额度行整行宽两段式：头行左窗口名/右百分比+倒计时，进度条铺满整行，消除右侧窄列留下的大片左空白。 */
+      :root[data-dsh-app-layout] .bi-go-row--meter, :root[data-dsh-go-island] .bi-go-row--meter { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; }
+      :root[data-dsh-app-layout] .bi-go-meter-head, :root[data-dsh-go-island] .bi-go-meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+      :root[data-dsh-app-layout] .bi-go-meter-val, :root[data-dsh-go-island] .bi-go-meter-val { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+      :root[data-dsh-app-layout] .bi-go-row--meter .bi-go-progress, :root[data-dsh-go-island] .bi-go-row--meter .bi-go-progress { width: 100%; margin-top: 0; }
+      /* 标题行唯一动作「刷新」：15/600 accent、右对齐、44 热区（用户拍板 A：收起靠点信息栏本体）。 */
+      :root[data-dsh-app-layout] .bi-go-act, :root[data-dsh-go-island] .bi-go-act { display: inline-flex; align-items: center; min-height: 44px; margin-left: auto; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-accent); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+      :root[data-dsh-app-layout] .bi-go-act:active, :root[data-dsh-go-island] .bi-go-act:active { opacity: 0.7; }
+      :root[data-dsh-app-layout] .bi-go-empty, :root[data-dsh-go-island] .bi-go-empty { padding: 8px 0 4px; font-size: 13px; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-muted); }
+      /* ---------- DSH Go 窄屏自适应（≤360，SE 一档） ----------
+         412 定稿的 12px 列内边距 + 16px 数值在 320 上放不下：可用宽只剩 60px，
+         「¥123万」和「上下文用量」都会被省略号吞掉。窄屏收边距并各降一档字号，
+         宁可小一档也不丢信息。必须写成组合媒体查询（CSS 不支持 @media 套 @media）。 */
+      @media (max-width: 360px) {
+        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { gap: 8px; padding: 0 12px; }
+        :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { max-width: calc((100% - 16px) / 3); }
+        :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { font-size: 11px; letter-spacing: 0.1px; }
+        :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: 15px; }
+        :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 12px; letter-spacing: -0.3px; }
+        :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-strip, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-strip { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+        :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-strip:active { background: transparent; }
+        :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-sheet { margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+        :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { padding: 0 8px 0 14px; }
+      }
+      /* ---------- DSH Go 宽屏自适应（≥600，平板竖屏 / 桌面浏览器大窗） ----------
+         卡片始终跟输入框同宽（100% − 16 页边），宽出来的空间不放空、也不把三列硬拉开：
+         ① 收起态按宽度递进补列（今天 / 近 30 天 / 累计），一屏能看到的花费越来越多；
+         ② 展开面板 ≥760 变双栏，同一块 40vh 高度里一屏能读完两倍的行。
+         形态仍是 Go 的卡（20 圆角 / 发丝线 / 三列语言），不退回桌面那条双行 pill。 */
+      @media (min-width: 600px) {
+        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { padding: 0 20px; }
+        :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { padding: 0 8px 0 20px; }
+        :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { padding: 0 20px 20px; }
+      }
+      /* 增量列默认不占位：DOM 里存在，display:none 后不参与 space-between 的分配，
+         手机档与定稿逐像素一致。 */
+      :root[data-dsh-app-layout] .bi-go-col[data-extra], :root[data-dsh-go-island] .bi-go-col[data-extra] { display: none; }
+      @media (min-width: 760px) {
+        :root[data-dsh-app-layout] .bi-go-col[data-extra="1"], :root[data-dsh-go-island] .bi-go-col[data-extra="1"] { display: flex; }
+        /* 用百分比而不是 fr：信息栏样式表里有「不得出现 fr 轨道」的节奏锁（历史回归）。 */
+        :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body {
+          display: grid; grid-template-columns: calc(50% - 22px) calc(50% - 22px);
+          column-gap: 44px; row-gap: 24px; align-items: start;
+        }
+        :root[data-dsh-app-layout] .bi-go-sheet-body .bi-go-sec, :root[data-dsh-go-island] .bi-go-sheet-body .bi-go-sec { margin-top: 0; }
+        :root[data-dsh-app-layout] .bi-go-progress, :root[data-dsh-go-island] .bi-go-progress { width: 160px; }
+      }
+      /* 档位按「加一列后列间距仍落在 ~160px」推出来，而不是拍数字：
+         4 列 = 40 内边距 + 222 内容 + 3×160 ≈ 736 卡宽（视口 768）；
+         5 列 ≈ 990 卡宽（视口 1022）；6 列 ≈ 1206 卡宽（视口 1238）。
+         取 760 / 960 / 1180 留出余量，顺带让 1024、1280 这两个常见窗口
+         各自落进正确档位——否则 1024 会卡在 1040 门口，中间空出一大片。 */
+      @media (min-width: 960px) {
+        :root[data-dsh-app-layout] .bi-go-col[data-extra="2"], :root[data-dsh-go-island] .bi-go-col[data-extra="2"] { display: flex; }
+      }
+      @media (min-width: 1180px) {
+        :root[data-dsh-app-layout] .bi-go-col[data-extra="3"], :root[data-dsh-go-island] .bi-go-col[data-extra="3"] { display: flex; }
+      }
       /* 字段级颜色消费规则由注册表生成，拼接在样式表顶层（任何环境生效）——严禁并入上方 @media 块（D1 回归警戒） */
 ` + FIELD_COLOR_CSS + `
     `;
@@ -1510,6 +1819,68 @@ function bibSetInstallStyles() {
       .bib-set-quota-mode-opt[aria-checked="true"] { background: var(--bib-set-brand-strong); color: #fff; font-weight: 600; }
       .bib-set-quota-mode-opt[aria-checked="true"]:hover { background: var(--bib-set-brand-strong); color: #fff; }
       @media (forced-colors: active) { .bib-set-quota-mode-opt[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+      /* DSH Go 皮肤层：token 定义在 installStyles 的 :root 门控块里（同一文档只定义一次），
+         设置页规则只消费 --dshgo-*，不重复定义；视觉规则等 design-go v2 稿再落地。 */
+      /* ---------- DSH Go 配置页（DESIGN-FINAL §2/§3/§6；412×915；卡内无分割线） ----------
+         只在 Go 表面内生效；桌面设置页结构/像素不变。控件全部自绘，数值走 --dshgo-* token。 */
+      :root[data-dsh-app-layout] .bib-go-page, :root[data-dsh-go-island] .bib-go-page { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; padding: 16px var(--dshgo-config-page-x, 20px) calc(24px + var(--dshgo-safe-bottom, 0px)); background: linear-gradient(180deg, var(--dshgo-bg-1), var(--dshgo-bg-2)); color: var(--dshgo-ink); display: flex; flex-direction: column; gap: var(--dshgo-group-gap, 24px); }
+      :root[data-dsh-app-layout] .bib-go-head, :root[data-dsh-go-island] .bib-go-head { padding: 0 0 0; }
+      :root[data-dsh-app-layout] .bib-go-title, :root[data-dsh-go-island] .bib-go-title { margin: 0; font-size: var(--dshgo-font-title, 26px); font-weight: 600; line-height: 1.3; letter-spacing: 0; color: var(--dshgo-ink); }
+      :root[data-dsh-app-layout] .bib-go-subtitle, :root[data-dsh-go-island] .bib-go-subtitle { margin: 8px 0 0; font-size: var(--dshgo-font-row, 15px); font-weight: 400; line-height: 1.45; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-section, :root[data-dsh-go-island] .bib-go-section { display: flex; flex-direction: column; gap: var(--dshgo-gap, 8px); }
+      :root[data-dsh-app-layout] .bib-go-section-label, :root[data-dsh-go-island] .bib-go-section-label { padding: 0 4px; font-size: var(--dshgo-font-desc, 13px); font-weight: 600; line-height: 1.4; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-hint, :root[data-dsh-go-island] .bib-go-hint { margin: 0; padding: 0 4px; font-size: var(--dshgo-font-desc, 13px); line-height: 1.45; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-card, :root[data-dsh-go-island] .bib-go-card { box-sizing: border-box; width: 100%; min-width: 0; padding: 4px 0; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-card, 20px); background: var(--dshgo-card); box-shadow: inset 0 0 0 0.5px var(--dshgo-card-rim); }
+      :root[data-dsh-app-layout] .bib-go-srow, :root[data-dsh-go-island] .bib-go-srow { display: flex; align-items: center; gap: 12px; min-height: var(--dshgo-row-h, 56px); padding: 0 16px; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-srow--tall, :root[data-dsh-go-island] .bib-go-srow--tall { min-height: var(--dshgo-row-h2, 64px); }
+      :root[data-dsh-app-layout] .bib-go-srow-main, :root[data-dsh-go-island] .bib-go-srow-main { flex: 1 1 auto; min-width: 0; }
+      :root[data-dsh-app-layout] .bib-go-srow-title, :root[data-dsh-go-island] .bib-go-srow-title { font-size: var(--dshgo-font-row, 15px); font-weight: 600; line-height: 1.4; color: var(--dshgo-ink); }
+      :root[data-dsh-app-layout] .bib-go-srow-desc, :root[data-dsh-go-island] .bib-go-srow-desc { margin-top: 2px; font-size: var(--dshgo-font-desc, 13px); font-weight: 400; line-height: 1.45; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-srow-control, :root[data-dsh-go-island] .bib-go-srow-control { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+      :root[data-dsh-app-layout] .bib-go-group-label, :root[data-dsh-go-island] .bib-go-group-label { padding: 12px 16px 4px; font-size: var(--dshgo-font-caption, 12px); font-weight: 600; line-height: 1.4; letter-spacing: 0.4px; color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-group-label:first-child, :root[data-dsh-go-island] .bib-go-group-label:first-child { padding-top: 8px; }
+        :root[data-dsh-app-layout] .bib-go-switch, :root[data-dsh-go-island] .bib-go-switch { position: relative; flex: none; width: var(--dshgo-switch-w, 52px); height: var(--dshgo-switch-h, 32px); padding: 0; border: 0; border-radius: var(--dshgo-radius-pill, 999px); background: var(--dshgo-surface-low); box-shadow: inset 0 0 0 var(--dshgo-hairline, 0.5px) var(--dshgo-line); cursor: pointer; transition: background-color 160ms ease; }
+        /* 描边走 inset 阴影而不是 border：0.5px 的 border 会被浏览器取整成 1px，
+           上下各吃掉 1px 后轨道内高只剩 30，28 的滑块贴底、右侧顶边 —— 看起来整排开关都是歪的。 */
+        :root[data-dsh-app-layout] .bib-go-switch--on, :root[data-dsh-go-island] .bib-go-switch--on { background: var(--dshgo-accent); box-shadow: none; }
+      :root[data-dsh-app-layout] .bib-go-switch-thumb, :root[data-dsh-go-island] .bib-go-switch-thumb { position: absolute; top: 2px; left: 2px; width: var(--dshgo-switch-thumb, 28px); height: var(--dshgo-switch-thumb, 28px); display: flex; align-items: center; justify-content: center; border-radius: var(--dshgo-radius-pill, 999px); background: #fff; color: var(--dshgo-accent); transition: transform 160ms ease; }
+      :root[data-dsh-app-layout] .bib-go-switch--on .bib-go-switch-thumb, :root[data-dsh-go-island] .bib-go-switch--on .bib-go-switch-thumb { transform: translateX(20px); }
+      :root[data-dsh-app-layout] .bib-go-seg, :root[data-dsh-go-island] .bib-go-seg { display: inline-flex; align-items: center; gap: 2px; padding: 3px; height: var(--dshgo-seg-h, 36px); box-sizing: border-box; border-radius: var(--dshgo-radius-segment, 18px); background: var(--dshgo-surface-low); border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); }
+      :root[data-dsh-app-layout] .bib-go-seg-opt, :root[data-dsh-go-island] .bib-go-seg-opt { appearance: none; height: var(--dshgo-seg-thumb, 30px); padding: 0 12px; border: 0; border-radius: calc(var(--dshgo-radius-segment, 18px) - 2px); background: transparent; color: var(--dshgo-muted); font: inherit; font-size: var(--dshgo-font-setting, 14px); font-weight: 400; cursor: pointer; white-space: nowrap; }
+      :root[data-dsh-app-layout] .bib-go-seg-opt--active, :root[data-dsh-go-island] .bib-go-seg-opt--active { background: var(--dshgo-accent-soft); color: var(--dshgo-ink); font-weight: 600; }
+      :root[data-dsh-app-layout] .bib-go-btn, :root[data-dsh-go-island] .bib-go-btn { appearance: none; min-height: var(--dshgo-control-h, 44px); padding: 0 16px; border: var(--dshgo-hairline, 0.5px) solid var(--dshgo-line); border-radius: var(--dshgo-radius-control, 14px); background: var(--dshgo-surface); color: var(--dshgo-ink); font: inherit; font-size: var(--dshgo-font-row, 15px); font-weight: 600; cursor: pointer; }
+      :root[data-dsh-app-layout] .bib-go-btn--primary, :root[data-dsh-go-island] .bib-go-btn--primary { border-color: transparent; background: var(--dshgo-accent); color: #fff; }
+      :root[data-dsh-app-layout] .bib-go-btn--danger, :root[data-dsh-go-island] .bib-go-btn--danger { border-color: var(--dshgo-danger); background: transparent; color: var(--dshgo-danger); }
+      :root[data-dsh-app-layout] .bib-go-btn:disabled, :root[data-dsh-go-island] .bib-go-btn:disabled { opacity: 0.5; cursor: default; }
+      :root[data-dsh-app-layout] .bib-go-disclosure, :root[data-dsh-go-island] .bib-go-disclosure { display: block; }
+      :root[data-dsh-app-layout] .bib-go-disclosure-head, :root[data-dsh-go-island] .bib-go-disclosure-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: var(--dshgo-row-h, 56px); padding: 0 16px; border: 0; background: transparent; text-align: left; font: inherit; cursor: pointer; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-chevron, :root[data-dsh-go-island] .bib-go-chevron { flex: none; display: flex; align-items: center; justify-content: center; color: var(--dshgo-faint); transition: transform 160ms ease; }
+      :root[data-dsh-app-layout] .bib-go-chevron--up, :root[data-dsh-go-island] .bib-go-chevron--up { transform: rotate(180deg); }
+      :root[data-dsh-app-layout] .bib-go-disclosure-body, :root[data-dsh-go-island] .bib-go-disclosure-body { padding-bottom: 4px; }
+      :root[data-dsh-app-layout] .bib-go-static-row, :root[data-dsh-go-island] .bib-go-static-row { display: flex; align-items: center; min-height: 44px; padding: 0 16px; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-actions, :root[data-dsh-go-island] .bib-go-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; padding: 8px 16px; }
+      @media (max-width: 600px) {
+        :root[data-dsh-app-layout] .bib-go-srow--stack, :root[data-dsh-go-island] .bib-go-srow--stack { flex-direction: column; align-items: stretch; gap: 8px; }
+        :root[data-dsh-app-layout] .bib-go-srow--stack .bib-go-srow-control, :root[data-dsh-go-island] .bib-go-srow--stack .bib-go-srow-control { flex: none; justify-content: flex-start; }
+      }
+      :root[data-dsh-app-layout] .bib-go-preview, :root[data-dsh-go-island] .bib-go-preview { display: grid; grid-template-columns: calc((100% - 28px) / 3) calc((100% - 28px) / 3) calc((100% - 28px) / 3) 28px; align-items: stretch; height: 56px; padding: 0 4px 0 0; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-preview-col, :root[data-dsh-go-island] .bib-go-preview-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 0 12px; }
+      :root[data-dsh-app-layout] .bib-go-preview-col:first-child, :root[data-dsh-go-island] .bib-go-preview-col:first-child { padding-left: 16px; }
+      :root[data-dsh-app-layout] .bib-go-preview-cap, :root[data-dsh-go-island] .bib-go-preview-cap { margin-bottom: 2px; font-size: var(--dshgo-font-caption, 12px); font-weight: 500; line-height: 16px; color: var(--dshgo-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bib-go-preview-val, :root[data-dsh-go-island] .bib-go-preview-val { font-size: var(--dshgo-font-value, 16px); font-weight: 600; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bib-go-preview-ring, :root[data-dsh-go-island] .bib-go-preview-ring { display: flex; align-items: center; gap: 5px; color: var(--dshgo-accent); }
+      :root[data-dsh-app-layout] .bib-go-preview-ring span, :root[data-dsh-go-island] .bib-go-preview-ring span { color: var(--dshgo-ink); }
+      :root[data-dsh-app-layout] .bib-go-preview-chevron, :root[data-dsh-go-island] .bib-go-preview-chevron { display: flex; align-items: center; justify-content: center; color: var(--dshgo-faint); }
+      :root[data-dsh-app-layout] .bib-go-preview-card, :root[data-dsh-go-island] .bib-go-preview-card { padding: 0; }
+      :root[data-dsh-app-layout] .bib-go-feedback, :root[data-dsh-go-island] .bib-go-feedback { padding: 0 4px; font-size: var(--dshgo-font-desc, 13px); color: var(--dshgo-muted); }
+      :root[data-dsh-app-layout] .bib-go-footer, :root[data-dsh-go-island] .bib-go-footer { padding: 8px 4px 0; text-align: center; font-size: var(--dshgo-font-caption, 12px); line-height: 1.5; color: var(--dshgo-faint); }
+      :root[data-dsh-app-layout] .bib-go-page .bib-set-dots, :root[data-dsh-go-island] .bib-go-page .bib-set-dots { display: flex; align-items: center; gap: 6px; }
+      :root[data-dsh-app-layout] .bib-go-page .bib-set-dot, :root[data-dsh-go-island] .bib-go-page .bib-set-dot { width: 28px; height: 28px; }
+      /* 宽屏（平板 / 浏览器大窗）：Go 配置页按表单阅读宽度收在 720 居中；
+         不铺满整屏，否则行标题与开关之间空出 1000px，眼睛要在两点之间来回找。 */
+      @media (min-width: 600px) {
+        :root[data-dsh-app-layout] .bib-go-page, :root[data-dsh-go-island] .bib-go-page { max-width: 720px; margin: 0 auto; padding: 24px var(--dshgo-config-page-x, 20px) calc(40px + var(--dshgo-safe-bottom, 0px)); }
+      }
       @media (prefers-reduced-motion: reduce) { .bib-set-card-header, .bib-set-chevron-icon, .bib-set-chevron-glyph, .bib-set-collapse, .bib-set-btn, .bib-set-switch-track, .bib-set-switch-thumb, .bib-set-quota-mode-opt { transition: none; } .bib-set-collapse--collapsed { grid-template-rows: 0fr; visibility: hidden; } .bib-set-collapse--expanded { grid-template-rows: 1fr; visibility: visible; } }
     `;
   document.head.appendChild(style);
@@ -2000,7 +2371,8 @@ function bibSetFieldBlocks(visibleFields, props) {
 function bibSetFieldGroups(props) {
   const groups = [];
   // 设置页只列「当前宿主真正有效」的开关：新宿主 = 两个原生按钮开关；旧宿主 = 旧统计行七个字段。
-  const hostFields = settingsFieldsForHost(props.nativePills);
+  // 桌面页再用 settingsFieldsForPage 去掉 goOnly 字段（只在 DSH Go 配置页出现）。
+  const hostFields = settingsFieldsForPage(props.nativePills);
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
     const groupFields = hostFields.filter(function (field) { return field.group === group; });
@@ -2826,8 +3198,334 @@ function bibSetDataCard(props) {
           bibSetButton({ destructive: true, disabled: disabled, onClick: props.onClear, children: t('ui.clearBillingRecords') })))));
 }
 
+// ---------- DSH Go 配置页（DESIGN-FINAL §6，2026-11-12） ----------
+// 只在 DSH Go 表面（网页版/整页岛，见 dshGoCompactEnabled）下渲染；桌面走原设置页，结构与像素不变。
+// 不额外要求触屏或手机宽度：平板/大窗/鼠标仍是 DSH Go，尺寸差异交给 CSS 断点。
+// 控件全部自绘（开关 52×32 / 分段 36 / 按钮 44）；卡片玻璃面、卡内无分割线（行间 2、分组 24）。
+// 动作全部复用原设置页的同一批函数（rpc / 字段语义不变）。
+const BIB_GO_MINIMAL_FIELDS = ['contextUsage', 'balance', 'subBalance', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'billingSpend'];
+const BIB_GO_ACCOUNT_FIELDS = ['anchorGroup', 'subServiceGroup', 'billingServiceGroup', 'balance', 'subBalance', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'resetCountdown', 'expiry', 'billingSpend', 'budget', 'freeQuota'];
+// 宽屏增量列（todaySpend / last30dSpend）与花费同组：只在卡片宽到装得下时出现，
+// 但开关在这里就得能关——用户不必猜「为什么宽屏多了一列」。
+const BIB_GO_COST_FIELDS = ['sessionCost', 'todaySpend', 'last30dSpend', 'period', 'countdown', 'contextUsage'];
+const BIB_GO_ADVANCED_FIELDS = ['customText', 'mainTime', 'worldTime'];
+const BIB_GO_PRESETS = [
+  { id: 'minimal', labelKey: 'ui.presetMinimal' },
+  { id: 'standard', labelKey: 'ui.presetStandard' },
+  { id: 'full', labelKey: 'ui.presetFull' },
+];
+function bibSetGoDesired(field, preset) {
+  if (preset === 'full') return true;
+  if (preset === 'minimal') return BIB_GO_MINIMAL_FIELDS.indexOf(field.id) !== -1;
+  return field.defaultOff !== true;
+}
+function BibSetGoSwitch(props) {
+  const checked = props.checked === true;
+  return React.createElement('button', {
+    type: 'button', role: 'switch', 'aria-checked': checked, 'aria-label': props.label,
+    disabled: props.disabled === true,
+    className: 'bib-go-switch' + (checked ? ' bib-go-switch--on' : ''),
+    onClick: function () { if (props.disabled !== true && props.onToggle) props.onToggle(!checked); },
+  }, React.createElement('span', { className: 'bib-go-switch-thumb', 'aria-hidden': 'true' }));
+}
+function BibSetGoSegmented(props) {
+  const options = props.options || [];
+  const disabled = props.disabled === true;
+  return React.createElement('div', { className: 'bib-go-seg', role: 'tablist', 'aria-label': props.label },
+    options.map(function (option) {
+      const active = option.value === props.value;
+      return React.createElement('button', {
+        key: option.value, type: 'button', role: 'tab', 'aria-selected': active,
+        disabled: disabled,
+        className: 'bib-go-seg-opt' + (active ? ' bib-go-seg-opt--active' : ''),
+        onClick: function () { if (!disabled && !active && props.onChange) props.onChange(option.value); },
+      }, option.label);
+    }));
+}
+function BibSetGoButton(props) {
+  return React.createElement('button', {
+    type: 'button',
+    disabled: props.disabled === true,
+    className: 'bib-go-btn' + (props.variant ? ' bib-go-btn--' + props.variant : ''),
+    onClick: props.onClick,
+  }, props.children);
+}
+function BibSetGoRow(props) {
+  return React.createElement('div', { className: 'bib-go-srow' + (props.desc ? ' bib-go-srow--tall' : '') + (props.stack ? ' bib-go-srow--stack' : '') },
+    React.createElement('div', { className: 'bib-go-srow-main' },
+      React.createElement('div', { className: 'bib-go-srow-title' }, props.title),
+      props.desc ? React.createElement('div', { className: 'bib-go-srow-desc' }, props.desc) : null),
+    props.control != null ? React.createElement('div', { className: 'bib-go-srow-control' }, props.control) : null);
+}
+function BibSetGoCard(props) {
+  return React.createElement('div', { className: 'bib-go-card' + (props.className ? ' ' + props.className : '') }, props.children);
+}
+function BibSetGoDisclosure(props) {
+  return React.createElement('div', { className: 'bib-go-disclosure' },
+    React.createElement('button', {
+      type: 'button', className: 'bib-go-disclosure-head', 'aria-expanded': props.open === true,
+      onClick: function () { if (props.onToggle) props.onToggle(!(props.open === true)); },
+    },
+      React.createElement('div', { className: 'bib-go-srow-main' },
+        React.createElement('div', { className: 'bib-go-srow-title' }, props.title),
+        props.desc ? React.createElement('div', { className: 'bib-go-srow-desc' }, props.desc) : null),
+      React.createElement('span', { className: 'bib-go-chevron' + (props.open === true ? ' bib-go-chevron--up' : ''), 'aria-hidden': 'true' },
+        React.createElement('svg', { viewBox: '0 0 16 16', width: 16, height: 16 },
+          React.createElement('path', { d: 'M4 6l4 4 4-4', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' })))),
+    props.open === true ? React.createElement('div', { className: 'bib-go-disclosure-body' }, props.children) : null);
+}
+function BibSetDshGoPage(props) {
+  const deps = props.deps;
+  const [bibGoAdvancedOpen, setBibGoAdvancedOpen] = React.useState(false);
+  const [bibGoColorsOpen, setBibGoColorsOpen] = React.useState(false);
+  const hostFields = settingsFieldsForHost(deps.nativePills);
+  const byIds = function (ids) {
+    return ids.map(function (id) {
+      for (let i = 0; i < hostFields.length; i++) if (hostFields[i].id === id) return hostFields[i];
+      return null;
+    }).filter(Boolean);
+  };
+  const rowFor = function (field) {
+    return React.createElement(BibSetGoRow, {
+      key: field.id,
+      title: t(field.label),
+      desc: field.note ? t(field.note) : null,
+      control: React.createElement(BibSetGoSwitch, {
+        label: t('ui.show', { label: t(field.label) }),
+        checked: deps.fieldOn(field.id),
+        onToggle: function (next) { deps.onFieldToggle(field.id, next); },
+      }),
+    });
+  };
+  const rowsFor = function (ids) { return byIds(ids).map(rowFor); };
+  const densityOptions = BIB_GO_PRESETS.map(function (preset) { return { value: preset.id, label: t(preset.labelKey) }; });
+  const activePreset = deps.activePreset();
+  const preview = React.createElement(BibSetGoCard, { className: 'bib-go-preview-card' },
+    React.createElement('div', { className: 'bib-go-preview' },
+      React.createElement('div', { className: 'bib-go-preview-col' },
+        React.createElement('span', { className: 'bib-go-preview-cap' }, t('ui.balance.pushBalanceGroups')),
+        React.createElement('span', { className: 'bib-go-preview-val' }, '¥123.45')),
+      React.createElement('div', { className: 'bib-go-preview-col' },
+        React.createElement('span', { className: 'bib-go-preview-cap' }, t('ui.session')),
+        React.createElement('span', { className: 'bib-go-preview-val' }, '¥1.23')),
+      React.createElement('div', { className: 'bib-go-preview-col' },
+        React.createElement('span', { className: 'bib-go-preview-cap' }, t('field.contextUsage.label')),
+        React.createElement('span', { className: 'bib-go-preview-val bib-go-preview-ring' },
+          React.createElement('svg', { viewBox: '0 0 20 20', width: 17, height: 17, 'aria-hidden': 'true' },
+            React.createElement('circle', { cx: 10, cy: 10, r: 7.5, fill: 'none', stroke: 'currentColor', strokeOpacity: 0.25, strokeWidth: 2.5 }),
+            React.createElement('circle', { cx: 10, cy: 10, r: 7.5, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeDasharray: 47.1, strokeDashoffset: 32.5, transform: 'rotate(-90 10 10)' })),
+          React.createElement('span', null, '31%'))),
+      React.createElement('span', { className: 'bib-go-preview-chevron', 'aria-hidden': 'true' },
+        React.createElement('svg', { viewBox: '0 0 16 16', width: 16, height: 16 },
+          React.createElement('path', { d: 'M4 6l4 4 4-4', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' })))));
+  const colorRows = hostFields.filter(function (field) { return field.noColor !== true; }).map(function (field) {
+    return React.createElement(BibSetGoRow, {
+      key: 'c-' + field.id,
+      title: t(field.label),
+      desc: null,
+      stack: true,
+      control: React.createElement(bibSetPalette, {
+        label: t('ui.presetColor', { label: t(field.label) }),
+        value: deps.colorOf(field.id),
+        onSelect: function (next) { deps.onColorChange(field.id, next); },
+      }),
+    });
+  });
+  // 版本/更新区与桌面 bibSetVersionSection 同一套判定（结论→事实→动作→方式→兜底），
+  // 只是换成 Go 的行语言。旧 Go 版只摆运行/最新两行 + 一个自动开关 + 右挤按钮排，
+  // 缺结论/上次检查/失败原因/回滚逃生门，且「允许更新到 X」误接回滚、暂缓时仍摆安装按钮。
+  const update = deps.updateState || {};
+  // 读不到更新状态（首次加载 / 旧宿主没有 getUpdateState）时不能谎报「检查更新没成功」并摆出会报错的按钮：
+  // 结论与桌面 bibSetVersionSection 一致（无错误=还没读到，有错误=旧宿主），但 Go 页有固定分区骨架，
+  // 所以这里给一行占位（桌面那边则整块隐藏），不能留一张空卡。
+  const upNull = deps.updateState == null;
+  const upBusy = deps.updateBusy === true;
+  const upPhase = deps.updatePhase === 'check' || deps.updatePhase === 'install' ? deps.updatePhase : null;
+  const upDisabled = update.disabled === true;
+  const upManual = update.autoUpdate === false;
+  const upShown = function (v) { return typeof v === 'string' && v.length > 0 ? v : t('ui.versionUnknown'); };
+  const upRestartKind = bibSetRestartKind(update);
+  const upLatest = typeof update.latest === 'string' && update.latest.length > 0 ? update.latest : null;
+  const upAvailable = update.available === true && upLatest !== null;
+  const upHeld = typeof update.holdVersion === 'string' && update.holdVersion.length > 0 && update.holdVersion === update.latest;
+  const upCanRollback = upRestartKind === 'update' || !!update.lastError;
+  const upShowFallback = !upDisabled && (upCanRollback || upHeld);
+  const upShowInstall = !upDisabled && upAvailable && !upHeld;
+  let upStatus = t(upLatest ? 'ui.updateUpToDate' : 'ui.updateErrorCheckFailed');
+  if (upDisabled) upStatus = t('ui.updateDisabled');
+  else if (upBusy && upPhase === 'install' && upLatest) upStatus = t('ui.updateInstalling', { version: upLatest });
+  else if (upRestartKind === 'update') upStatus = t('ui.updatePendingRestart', { version: upShown(update.diskVersion) });
+  else if (upRestartKind === 'rollback') upStatus = t('ui.updateRolledBack', { version: upShown(update.diskVersion) });
+  else if (upRestartKind === 'downgrade') upStatus = t('ui.updateDowngradePending', { version: upShown(update.diskVersion), running: upShown(update.runningVersion) });
+  else if (update.lastError) upStatus = t('ui.updateFailed');
+  else if (upHeld) upStatus = t('ui.updateHeld', { version: update.holdVersion });
+  else if (upAvailable) upStatus = t('ui.updateAvailableNow', { version: upLatest });
+  const upFacts = [
+    t('ui.versionRunning', { version: upShown(update.runningVersion) }),
+    t('ui.versionLatest', { version: upShown(update.latest) }),
+  ];
+  const upCheckedAt = bibSetRelativeTime(update.lastCheckAt);
+  if (upCheckedAt) upFacts.push(t('ui.versionLastCheck', { time: upCheckedAt }));
+  // 统一卡片语言：行只放设置/状态控件，所有「动作按钮」收进卡底 .bib-go-actions 一条，
+  // 不再出现「按钮挤在行右 / 按钮垫在状态字下面 / 重置按钮串到别的卡」三种摆法混用。
+  const upButtons = [];
+  if (!upDisabled) {
+    upButtons.push(React.createElement(BibSetGoButton, { key: 'check', variant: 'secondary', disabled: upBusy, onClick: deps.onCheckUpdate },
+      upBusy && upPhase === 'check' ? t('ui.updateChecking') : t('ui.updateCheckNow')));
+    if (upShowInstall) upButtons.push(React.createElement(BibSetGoButton, { key: 'install', variant: 'primary', disabled: upBusy, onClick: deps.onInstallUpdate },
+      upBusy && upPhase === 'install' ? t('ui.updateInstalling', { version: upLatest }) : t('ui.updateInstallNow', { version: upLatest })));
+    if (upCanRollback) upButtons.push(React.createElement(BibSetGoButton, { key: 'rb', variant: 'secondary', disabled: upBusy, onClick: deps.onRollbackUpdate }, t('ui.updateRollback')));
+    if (upHeld) upButtons.push(React.createElement(BibSetGoButton, { key: 'held', variant: 'secondary', disabled: upBusy, onClick: deps.onForceUpdate }, t('ui.updateAllowHeld', { version: update.holdVersion })));
+  }
+  const upActionBar = upButtons.length > 0 ? React.createElement('div', { className: 'bib-go-actions' }, upButtons) : null;
+  const upStatusRow = React.createElement(BibSetGoRow, {
+    title: upStatus,
+    desc: upDisabled
+      ? t('ui.versionRunning', { version: upShown(update.runningVersion) }) + ' · ' + t('ui.updateDisabledWhy')
+      : upFacts.join(' · '),
+  });
+  const upErrorRow = (update.lastError && !upDisabled) ? React.createElement('div', { className: 'bib-go-static-row' },
+    React.createElement('span', { className: 'bib-go-srow-desc' }, updateErrorText(update.lastErrorKind || update.lastError))) : null;
+  const upModeRow = upDisabled ? null : React.createElement(BibSetGoRow, {
+    title: t('ui.autoUpdateTitle'),
+    desc: upManual ? t('ui.updateModeManualDesc') : t('ui.updateModeAutoDesc'),
+    stack: true,
+    control: React.createElement(BibSetGoSegmented, {
+      label: t('ui.autoUpdateTitle'), value: upManual ? 'manual' : 'auto', disabled: upBusy,
+      options: [
+        { value: 'auto', label: t('ui.updateModeAuto') },
+        { value: 'manual', label: t('ui.updateModeManual') },
+      ],
+      onChange: function (value) { if (!upBusy) deps.onToggleUpdateAuto(value !== 'manual'); },
+    }),
+  });
+  const upFallbackRow = upShowFallback ? React.createElement('div', { className: 'bib-go-static-row' },
+    React.createElement('span', { className: 'bib-go-srow-desc' }, upCanRollback ? t('ui.updateFallbackWhy') : t('ui.updateHoldWhy'))) : null;
+  return React.createElement('div', { ref: deps.rootRef, className: 'bib-set-root bib-settings bib-go-page' },
+    React.createElement('header', { className: 'bib-go-head' },
+      React.createElement('h1', { className: 'bib-go-title' }, t('ui.infoBarSettings')),
+      React.createElement('p', { className: 'bib-go-subtitle' }, t('meta.description'))),
+    React.createElement('div', { className: 'bib-go-section' },
+      React.createElement('div', { className: 'bib-go-section-label' }, t('ui.preview')),
+      preview,
+      React.createElement(BibSetGoCard, null,
+        React.createElement(BibSetGoRow, {
+          title: t('ui.densityTitle'),
+          desc: t('ui.densityDesc'),
+          stack: true,
+          control: React.createElement(BibSetGoSegmented, { label: t('ui.densityTitle'), options: densityOptions, value: activePreset || 'standard', onChange: deps.applyPreset }),
+        })),
+      React.createElement('p', { className: 'bib-go-hint' }, t('ui.densityHint'))),
+    React.createElement('div', { className: 'bib-go-section' },
+      React.createElement('div', { className: 'bib-go-section-label' }, t('ui.visibleFields')),
+      React.createElement(BibSetGoCard, null,
+        React.createElement('div', { className: 'bib-go-group-label' }, t('ui.account')),
+        rowsFor(BIB_GO_ACCOUNT_FIELDS),
+        React.createElement('div', { className: 'bib-go-group-label' }, t('ui.spend')),
+        rowsFor(BIB_GO_COST_FIELDS),
+        React.createElement(BibSetGoDisclosure, {
+          title: t('ui.advanced'),
+          desc: t('ui.advancedDesc'),
+          open: bibGoAdvancedOpen,
+          onToggle: setBibGoAdvancedOpen,
+        },
+          React.createElement('div', { className: 'bib-go-group-label' }, t('field.customText.label')),
+          React.createElement(BibSetGoRow, {
+            title: t('field.customText.label'),
+            desc: t('field.customText.note'),
+            stack: true,
+            control: bibSetInput({
+              layout: 'bib-set-input--block',
+              fallbackClassName: 'bib-set-custom-text-input',
+              attrs: {
+                type: 'text', maxLength: 64,
+                value: deps.customTextDraft !== null ? deps.customTextDraft : deps.customTextOf(),
+                placeholder: t('field.customText.note'),
+                'aria-label': t('field.customText.label'),
+                onChange: function (event) { deps.onCustomTextChange(event && event.target ? event.target.value : ''); },
+                onBlur: function () { deps.onCustomTextCommit(); },
+              },
+            }),
+          }),
+          React.createElement('div', { className: 'bib-go-group-label' }, t('ui.timeDateTitle')),
+          React.createElement(BibSetGoRow, {
+            title: t('ui.mainTime'),
+            control: bibSetInput({
+              layout: 'bib-set-input--field', fallbackClassName: 'bib-set-time-zone',
+              attrs: { type: 'text', value: deps.timeZonesOf().main, 'aria-label': t('ui.mainTime'), onChange: function (event) { deps.onTimeZoneChange('main', event && event.target ? event.target.value : ''); } },
+            }),
+          }),
+          React.createElement(BibSetGoRow, {
+            title: t('ui.worldTime'),
+            control: bibSetInput({
+              layout: 'bib-set-input--field', fallbackClassName: 'bib-set-time-zone',
+              attrs: { type: 'text', value: deps.timeZonesOf().world, 'aria-label': t('ui.worldTime'), onChange: function (event) { deps.onTimeZoneChange('world', event && event.target ? event.target.value : ''); } },
+            }),
+          }),
+          React.createElement('div', { className: 'bib-go-group-label' }, t('group.native')),
+          rowsFor(['nativeActivity', 'nativeUsage'])),
+        React.createElement('div', { className: 'bib-go-actions' },
+          React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.requestReset('fields'); } }, t('ui.resetLabels'))))),
+      React.createElement('div', { className: 'bib-go-section' },
+        React.createElement('div', { className: 'bib-go-section-label' }, t('ui.appearance')),
+        React.createElement(BibSetGoCard, null,
+          React.createElement(BibSetGoRow, {
+            title: t('ui.quotaDisplayModeTitle'),
+            desc: t('ui.quotaDisplayModeDesc'),
+            stack: true,
+            control: React.createElement(BibSetGoSegmented, {
+              label: t('ui.quotaDisplayModeTitle'),
+              options: [{ value: 'remaining', label: t('ui.quotaDisplayRemaining') }, { value: 'used', label: t('ui.quotaDisplayUsed') }],
+              value: deps.quotaDisplayModeOf(),
+              onChange: deps.setQuotaDisplayMode,
+            }),
+          }),
+          React.createElement(BibSetGoDisclosure, { title: t('ui.colors'), desc: null, open: bibGoColorsOpen, onToggle: setBibGoColorsOpen }, colorRows),
+          React.createElement('div', { className: 'bib-go-actions' },
+            React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.requestReset('colors'); } }, t('ui.resetColors'))))),
+      // 额度凭据：直接复用宿主的凭据卡（自带标题与折叠、自带错误边界）。
+      // 不在这里用 Go 自绘控件重写一遍 —— 那会把凭据校验、错误码、OAuth 复用等逻辑分叉成两份。
+      React.createElement('div', { className: 'bib-go-section' },
+        bibSetCredentialsSection({
+          credentialState: deps.credentialState,
+          credentialDrafts: deps.credentialDrafts,
+          credentialBusyRef: deps.credentialBusyRef,
+          credentialFeedback: deps.credentialFeedback,
+          onCredentialDraft: deps.onCredentialDraft,
+          onCredentialSave: deps.onCredentialSave,
+          onCredentialClear: deps.onCredentialClear,
+        })),
+      React.createElement('div', { className: 'bib-go-section' },
+        React.createElement('div', { className: 'bib-go-section-label' }, t('ui.dataAndBilling')),
+        React.createElement(BibSetGoCard, null,
+          React.createElement(BibSetGoRow, { title: t('ui.exportBillingRecords'), desc: t('ui.exportBillingRecordsDesc') }),
+          React.createElement(BibSetGoRow, { title: t('ui.clearBillingRecords'), desc: t('ui.clearBillingRecordsDesc') }),
+          React.createElement('div', { className: 'bib-go-actions' },
+            React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.runExport('csv'); } }, t('ui.exportBillingCsv')),
+            React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.runExport('json'); } }, t('ui.exportBillingJson')),
+            React.createElement(BibSetGoButton, { variant: 'danger', disabled: deps.busy === true, onClick: deps.runClearRecords }, t('ui.clearBillingRecords'))))),
+      React.createElement('div', { className: 'bib-go-section' },
+        React.createElement('div', { className: 'bib-go-section-label' }, t('ui.versionAndUpdateTitle')),
+        React.createElement(BibSetGoCard, null,
+          upNull
+            ? React.createElement(BibSetGoRow, { title: deps.updateError ? t('ui.versionUnavailable') : t('ui.loadingInfoBarSettings') })
+            : upStatusRow,
+          upNull ? null : upErrorRow,
+          upNull ? null : upModeRow,
+          upNull ? null : upFallbackRow,
+          upNull ? null : upActionBar)),
+    deps.feedback ? React.createElement('div', { className: 'bib-go-feedback' }, deps.feedback) : null,
+    deps.alerts.length > 0 ? React.createElement('div', { className: 'bib-go-alerts' }, deps.alerts) : null,
+    deps.resetDialog,
+    deps.installDialog,
+    React.createElement('footer', { className: 'bib-go-footer' }, t('meta.title') + ' · DSH Go' + (typeof update.runningVersion === 'string' ? ' · ' + update.runningVersion : '')));
+}
+
 function InfoBarSettingsSection() {
   const [snapshot, setSnapshot] = React.useState(null);
+  // DSH Go 配置页门控（见模块级 dshGoCompactEnabled）：桌面端 false，走原设置页。
+  // 用普通常量而不是 useState：门控在页面生命周期内不变，也避免测试装置的 hook 顺序被新状态挤位。
+  const dshGoPage = dshGoCompactEnabled();
   const [status, setStatus] = React.useState('loading');
   const [loadError, setLoadError] = React.useState(null);
   const [opError, setOpError] = React.useState(null);
@@ -3311,12 +4009,35 @@ function InfoBarSettingsSection() {
     }).finally(function () { setDataBusy(false); });
   }
 
+  // DSH Go 三档密度预设：复用同一批字段开关（RPC 语义不变）。
+  function applyFieldPreset(preset) {
+    const hostFields = settingsFieldsForHost(nativePills);
+    for (let i = 0; i < hostFields.length; i++) {
+      const field = hostFields[i];
+      const desired = bibSetGoDesired(field, preset);
+      if (fieldOn(field.id) !== desired) setFieldFlag(field.id, desired);
+    }
+  }
+  function activeFieldPreset() {
+    const hostFields = settingsFieldsForHost(nativePills);
+    const matches = function (preset) {
+      for (let i = 0; i < hostFields.length; i++) {
+        if (fieldOn(hostFields[i].id) !== bibSetGoDesired(hostFields[i], preset)) return false;
+      }
+      return true;
+    };
+    if (matches('minimal')) return 'minimal';
+    if (matches('full')) return 'full';
+    if (matches('standard')) return 'standard';
+    return null;
+  }
+
   // ---- 渲染 ----
   // 搜索只负责筛选；输入时两分组自动展开（决策 2），但用户随后仍可明确折叠，
   // 箭头和 aria-expanded 始终反映真实 DOM 状态。
   const searchActive = searchQuery.trim().length > 0;
-  const fieldsEnabledCount = settingsFieldsForHost(nativePills).filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsMatchCount = settingsFieldsForHost(nativePills).filter(function (f) { return matchesSearch(f, searchQuery); }).length;
+  const fieldsEnabledCount = settingsFieldsForPage(nativePills).filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsMatchCount = settingsFieldsForPage(nativePills).filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const groupsChildren = bibSetFieldGroups({
     nativePills: nativePills,
     query: searchQuery,
@@ -3401,6 +4122,59 @@ function InfoBarSettingsSection() {
       },
     })
     : null;
+  // DSH Go 配置页（4 屏单页）：只换呈现层与信息架构，动作全部复用上面的函数。
+  if (dshGoPage) {
+    return React.createElement(BibSetDshGoPage, {
+      deps: {
+        nativePills: nativePills,
+        fieldOn: fieldOn,
+        onFieldToggle: setFieldFlag,
+        applyPreset: applyFieldPreset,
+        activePreset: activeFieldPreset,
+        colorOf: colorOf,
+        onColorChange: setColor,
+        timeZonesOf: timeZonesOf,
+        onTimeZoneChange: setTimeZone,
+        customTextDraft: customTextDraft,
+        customTextOf: customTextOf,
+        onCustomTextChange: onCustomTextChange,
+        onCustomTextCommit: commitCustomText,
+        quotaDisplayModeOf: quotaDisplayModeOf,
+        setQuotaDisplayMode: setQuotaDisplayMode,
+        // 额度凭据是 v1.24 才有的设置分区（Go 分支分叉时还不存在）。Go 页整个替换掉设置页，
+        // 不接这一组依赖的话，DSH Go 用户就没有任何入口配置额度凭据了。
+        credentialState: credentialState,
+        credentialDrafts: credentialDrafts,
+        credentialBusyRef: credentialBusyRef,
+        credentialFeedback: credentialFeedback,
+        onCredentialDraft: onCredentialDraft,
+        onCredentialSave: onCredentialSave,
+        onCredentialClear: onCredentialClear,
+        busy: saving || dataBusy,
+        runExport: runExport,
+        runClearRecords: runClearRecords,
+        updateState: updateState,
+        updateError: updateError,
+        updateBusy: updateBusy,
+        updatePhase: updatePhase,
+        onToggleUpdateAuto: onToggleUpdateAuto,
+        onCheckUpdate: onCheckUpdate,
+        onInstallUpdate: onInstallUpdate,
+        onForceUpdate: onForceUpdate,
+        onRollbackUpdate: onRollbackUpdate,
+        languageRuntime: languageRuntime,
+        onLanguageError: setOpError,
+        feedback: feedback,
+        alerts: alerts,
+        resetDialog: resetDialog,
+        // 安装确认弹窗与重置弹窗同源：Go 页整个替换设置页，不传这一项的话，
+        // Go 模式点「更新到 X」只会设确认态却不弹窗，安装动作永远落不了地。
+        installDialog: installDialog,
+        requestReset: requestReset,
+        rootRef: settingsRootRef,
+      },
+    });
+  }
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
     React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('ui.visibleFields') },
@@ -3505,6 +4279,9 @@ function InfoBarBundleConfig(props) {
 module.exports = {
   inject: ['slots', 'locale'],
   async apply(ctx) {
+    // 先把 DSH Go 表面信号归一成 data-dsh-go-island（见 dshGoSurfaceEnabled 注释）：
+    // 必须在样式安装与组件挂载之前，CSS 门控才能第一时间生效。
+    dshGoSurfaceEnabled();
     // locale 是 inject 里声明过的服务，但宿主版本差异与测试替身都可能缺席/抛错；
     // 取值与注册全部 try/catch，失败就退回浏览器语言（见 createTranslator）。
     try { localeService = ctx.locale; } catch (err) { localeService = null; }
@@ -3665,7 +4442,7 @@ module.exports = {
         errors: { balance: null, pricing: null, usage: null, billingMode: null, sub: null, billing: null },
       });
       // 版本信息由 host 在启动时从 package.json 读取；无论是否有新版，都用于服务商/模型 hover 展示。
-      const [, setLanguageRevision] = React.useState(0);
+      const [languageRevision, setLanguageRevision] = React.useState(0);
       React.useEffect(function () {
         return languageRuntime.subscribe(function () { setLanguageRevision(function (value) { return value + 1; }); });
       }, []);
@@ -3676,6 +4453,15 @@ module.exports = {
       const [sessionModel, setSessionModel] = React.useState(null);
       const [displayDensity, setDisplayDensity] = React.useState(props.density);
       const [isDensitySaving, setIsDensitySaving] = React.useState(toggling);
+      // 触屏基础适配（见模块级 touchDetailsEnabled / collectInfoBarDetails 注释）：
+      // 桌面端 touchDetails=false，本组状态与面板都不参与渲染，像素零变化。
+      const [touchDetails] = React.useState(touchDetailsEnabled);
+      // DSH Go 三列卡门控（见模块级 dshGoCompactEnabled）：桌面/纯浏览器 false。
+      const [dshGoCompact] = React.useState(dshGoCompactEnabled);
+      if (typeof window !== 'undefined') { try { window.__dshGoDebug = { compact: dshGoCompact, direct: dshGoCompactEnabled(), surface: dshGoSurfaceEnabled(), touch: touchDetailsEnabled() }; } catch (e) { window.__dshGoDebug = String(e); } }
+      const [detailsOpen, setDetailsOpen] = React.useState(false);
+      const [detailsItems, setDetailsItems] = React.useState([]);
+      const barRef = React.useRef(null);
 
       // 外层持有持久化后的密度；组件只订阅数值变化，避免 slot 卸载重建打断动画。
       React.useEffect(function () {
@@ -3702,6 +4488,38 @@ module.exports = {
         setFieldConfigTick(fieldConfigVersion);
         return function () { fieldConfigListeners.delete(listener); };
       }, []);
+
+      // 点按明细面板的内容取自栏内各字段的 title（与桌面 hover 同一份文案）。
+      // 面板打开期间数据/字段配置/语言变化都会重取；渲染完成后读取 DOM，避免把 title 文案
+      // 在渲染层再抄一份（抄一份就多一处会和真实 tooltip 漂移的来源）。
+      React.useEffect(function () {
+        if (!touchDetails || !detailsOpen) return undefined;
+        setDetailsItems(collectInfoBarDetails(barRef.current));
+        return undefined;
+      }, [touchDetails, detailsOpen, state, fieldConfigTick, languageRevision]);
+      // 点卡外收起（DESIGN-FINAL §3「关闭方式」）：面板与信息栏之外按下即关闭。
+      React.useEffect(function () {
+        if (!detailsOpen) return undefined;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+        const onPointerDown = function (event) {
+          const target = event && event.target;
+          const root = barRef.current;
+          if (root && target && root.contains(target)) return;
+          if (target && typeof target.closest === 'function' && target.closest('.bi-go-sheet')) return;
+          if (target && typeof target.closest === 'function' && target.closest('.bi-mobile-details')) return;
+          setDetailsOpen(false);
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        return function () { document.removeEventListener('pointerdown', onPointerDown, true); };
+      }, [detailsOpen]);
+      // 触屏面板可用 Esc 收起（键盘/外接键盘场景）。
+      React.useEffect(function () {
+        if (!detailsOpen) return undefined;
+        if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+        const onKeyDown = function (event) { if (event && event.key === 'Escape') setDetailsOpen(false); };
+        document.addEventListener('keydown', onKeyDown);
+        return function () { document.removeEventListener('keydown', onKeyDown); };
+      }, [detailsOpen]);
 
       // 当前会话 ID 多路获取：slotProps 标准 kit → session 快照 → 运行时 sessions 服务
       // （DSH 各版本注入方式不同，任一路可用即拿到真实会话 ID，避免回退到上一会话的账）
@@ -4330,6 +5148,10 @@ module.exports = {
          const kind = error && error.kind;
          const serviceName = subscriptionServiceName(source);
          const message = errorText(error);
+         // Issue #274：宿主 appAuth 通道（DSH Go / 安卓 App）的错误自带完整指引（例如「到 DSH App
+         // 的账号页授权 ChatGPT」），且已按用户语言本地化。通用兜底文案会把这条最有用的原因盖掉，
+         // 而手机上没有 hover，只能靠这个 title 说清为什么刷新失败（点按展开由移动适配面板负责）。
+         if (error && typeof error.code === 'string' && error.code.indexOf('subscription.app-auth-') === 0) return message;
          // HTTP 状态优先取宿主给的 params（结构化、跨语言稳定），退回从文案里解析（旧快照）。
          const statusMatch = message.match(/HTTP (\d{3})/);
          const status = error && error.params && error.params.status != null ? String(error.params.status) : (statusMatch ? statusMatch[1] : '');
@@ -4600,6 +5422,279 @@ module.exports = {
         pushBalanceGroups(groups, trailingErrorGroups);
       }
 
+      // ---- DSH Go 信息栏三列卡（DESIGN-FINAL §3/§4/§5）----
+      // 只在 DSH Go 表面（网页版/整页岛，dshGoCompact）下替换整行；尺寸差异交给 CSS 断点，不要求触屏。
+      // 数据只读 renderedState / fieldVisible，不新增 RPC；字段开关仍是唯一显隐来源。
+      const goErrors = renderedState.errors || {};
+      const goPending = waitForSessionModel || (renderedState.loading === true && !renderedState.billingMode);
+      const goUnknownMode = !visibleBillingMode || visibleBillingMode.mode === 'unknown';
+      const goContextInfo = fieldVisible('contextUsage') ? contextOccupancy(pressureProj) : null;
+      const goWindowMode = activeQuotaDisplayMode();
+      const goLanguage = languageRuntime && typeof languageRuntime.locale === 'function' ? languageRuntime.locale() : 'zh';
+      const goNarrow = (function () { try { return typeof window !== 'undefined' && window && typeof window.innerWidth === 'number' && window.innerWidth <= 360; } catch (err) { return false; } })();
+      const goUnit = function (key) { return t(key); };
+      const goMoneyFull = function (currency, value) {
+        const symbol = currency === 'USD' ? '$' : '¥';
+        const n = typeof value === 'number' && isFinite(value) ? value : 0;
+        const fixed = Math.abs(n).toFixed(2);
+        const whole = fixed.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return symbol + (n < 0 ? '-' : '') + whole + '.' + fixed.split('.')[1];
+      };
+      const goMoneyCompact = function (currency, value) {
+        const symbol = currency === 'USD' ? '$' : '¥';
+        const n = typeof value === 'number' && isFinite(value) ? value : 0;
+        const abs = Math.abs(n);
+        const cjk = goLanguage === 'zh' || goLanguage === 'zh-hant' || goLanguage === 'ja' || goLanguage === 'ko';
+        let scaled = abs;
+        let unit = '';
+        if (cjk) {
+          if (abs >= 1e8) { scaled = abs / 1e8; unit = goUnit('number.compactYi'); }
+          else if (abs >= 1e4) { scaled = abs / 1e4; unit = goUnit('number.compactWan'); }
+        } else if (abs >= 1e9) { scaled = abs / 1e9; unit = goUnit('number.compactB'); }
+        else if (abs >= 1e6) { scaled = abs / 1e6; unit = goUnit('number.compactM'); }
+        else if (abs >= 1e3) { scaled = abs / 1e3; unit = goUnit('number.compactK'); }
+        if (unit === '') return goMoneyFull(currency, n);
+        const digits = scaled >= 100 ? 0 : (scaled >= 10 ? 1 : 2);
+        const text = scaled.toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
+        return symbol + (n < 0 ? '-' : '') + text + unit;
+      };
+      // 金额：≤360 用紧凑单位；窄屏 >8 / 宽屏 >10 字符降一档字号（不截断）；面板永远精确值。
+      const goMoneySlot = function (currency, value) {
+        if (goNarrow) { const compact = goMoneyCompact(currency, value); return { text: compact, shrink: compact.length > 8 }; }
+        const full = goMoneyFull(currency, value);
+        return { text: full, shrink: full.length > 10 };
+      };
+      const goPercent = function (value) {
+        const n = typeof value === 'number' && isFinite(value) ? value : 0;
+        return Math.max(0, Math.min(100, Math.round(n))) + '%';
+      };
+      const goWindows = (function () {
+        if (!isSub || !renderedState.sub || !Array.isArray(renderedState.sub.windows)) return [];
+        return renderedState.sub.windows.filter(function (w) {
+          return w && typeof w.usedPercent === 'number' && windowFieldVisible(w.key);
+        }).slice().sort(function (a, b) {
+          const ma = windowMeta(a.key);
+          const mb = windowMeta(b.key);
+          return (ma ? ma.priority : 99) - (mb ? mb.priority : 99);
+        });
+      })();
+      const goSlots = [];
+      const goPushMoney = function (key, caption, currency, value) {
+        const money = goMoneySlot(currency, value);
+        goSlots.push({ key: key, caption: caption, value: money.text, shrink: money.shrink });
+      };
+      // 选列按计费方案智能适配（2026-11-13 用户拍板）：订阅制主列铺额度窗口（5h/周/月），
+      // 不把「本会话花了多少钱」这种按量概念摆给订阅用户；按量/账单制才用钱列。
+      // 上下文环 / 输出速率作补充列；每列仍受设置页同一套显隐开关约束（可自定义）。
+      const goCtxSlot = function () {
+        if (!fieldVisible('contextUsage')) return null;
+        if (goContextInfo !== null) return { key: 'ctx', caption: t('field.contextUsage.label'), percent: goContextInfo.percent };
+        return { key: 'ctx', caption: t('field.contextUsage.label'), value: '—' };
+      };
+      const goSpeedSlot = function () {
+        if (statsProj && fieldVisible('outputSpeed') && statsProj.decodeMs > 0) {
+          return { key: 'speed', caption: t('field.outputSpeed.label'), value: formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s' };
+        }
+        return null;
+      };
+      if (goPending) {
+        // 加载骨架：三列都先给 caption + 占位条（DESIGN-FINAL §5）。
+        goSlots.push({ key: 'account', caption: t('ui.balance.pushBalanceGroups'), loading: true });
+        goSlots.push({ key: 'cost', caption: t('ui.session'), loading: true });
+        goSlots.push({ key: 'ctx', caption: t('field.contextUsage.label'), loading: true });
+      } else if (isSub) {
+        // 订阅：额度窗口按优先级铺主列；满 3 个时上下文环降为宽屏增量列，不足时环补主列。
+        const winSlots = goWindows.map(function (w) {
+          return { key: 'quota-' + w.key, caption: compactWindowLabel(w.key), value: goPercent(quotaWindowPercent(w, goWindowMode)), low: remainingPercent(w) <= 20 };
+        });
+        if (winSlots.length > 0) {
+          winSlots.forEach(function (s) { goSlots.push(s); });
+        } else {
+          const sub = renderedState.sub;
+          if (sub && typeof sub.balance === 'number' && fieldVisible('subBalance')) goPushMoney('subbal', t('ui.availableBalanceLabel'), 'CNY', sub.balance);
+          else if (sub && sub.plan) goSlots.push({ key: 'plan', caption: t('ui.account'), value: hostText(sub.plan) });
+          else if (sub && sub.error && subscriptionSetupHint(sub.error)) goSlots.push({ key: 'setup', caption: t('ui.account'), value: t('ui.credentialNotConfigured') });
+          else goSlots.push({ key: 'unbound', caption: t('ui.account'), value: t('ui.accountSignedOut') });
+        }
+        const speed = goSpeedSlot();
+        if (speed) { speed.extra = winSlots.length >= 3 ? 2 : 1; goSlots.push(speed); }
+        const ctxSlot = goCtxSlot();
+        if (ctxSlot) { if (winSlots.length >= 3) ctxSlot.extra = 1; goSlots.push(ctxSlot); }
+      } else {
+        // 按量/账单/未知：账户位 + 本会话 + 上下文；宽屏递进补今天/近30天/速率（插在环前）。
+        if (isBilling) {
+          // 本月花费列受设置页 billingSpend 开关约束（与桌面 pushBillingGroups 同一套显隐）。
+          if (fieldVisible('billingSpend')) {
+            const bill = renderedState.billing;
+            const d = bill && bill.data;
+            if (d && d.currentPeriodSpend != null) goPushMoney('bill', t('ui.thisMonth'), d.currency, d.currentPeriodSpend);
+            else if (d && d.usage != null) goSlots.push({ key: 'bill', caption: t('ui.thisMonthSUsage'), value: String(d.usage) + (d.usageUnit ? ' ' + d.usageUnit : '') });
+            else goSlots.push({ key: 'bill', caption: t('ui.thisMonth'), value: '—' });
+          }
+        } else {
+          const bal = renderedState.balance;
+          if (bal && bal.data && fieldVisible('balance')) {
+            goPushMoney('balance', t('ui.balance.pushBalanceGroups'), bal.currency, bal.data.total);
+            if (bal.alert && bal.alert.active) goSlots[goSlots.length - 1].low = true;
+          } else if (bal && bal.error) {
+            goSlots.push({ key: 'unbound', caption: t('ui.account'), value: t('ui.accountSignedOut') });
+          } else if (goErrors.balance) {
+            goSlots.push({ key: 'error', caption: t('ui.account'), value: '—' });
+          } else if (goUnknownMode) {
+            const pr = visiblePricing;
+            goSlots.push({ key: 'model', caption: t('ui.unknown'), value: pr ? (pr.modelDisplay || pr.model || '—') : '—' });
+          } else if (fieldVisible('balance')) {
+            goSlots.push({ key: 'account', caption: t('ui.account'), value: '—' });
+          }
+        }
+        // 本会话花费（无价格表退化 token；无数据则隐藏该列，宽度让给其余列）
+        if (fieldVisible('sessionCost')) {
+          const usg = renderedState.usage;
+          const cs = usg && usg.currentSession;
+          const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
+          const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
+          if (costCNY != null || costUSD != null) {
+            goPushMoney('cost', t('ui.session'), costCNY != null ? 'CNY' : 'USD', costCNY != null ? costCNY : costUSD);
+          } else if (cs && cs.tokens > 0) {
+            goSlots.push({ key: 'cost', caption: t('ui.session'), value: formatTokens(cs.tokens) + ' tok' });
+          } else if (usg || goErrors.usage) {
+            goSlots.push({ key: 'cost', caption: t('ui.session'), value: '—' });
+          }
+        }
+        const ctxSlot = goCtxSlot();
+        if (ctxSlot) goSlots.push(ctxSlot);
+        // 宽屏增量列：今天 → 近 30 天 → 输出速率；data-extra 档位显隐由 CSS 断点决定，
+        // 手机档不占位；上下文环始终最后（圆环贴右），增量插在它前面。
+        if (renderedState.usage && (fieldVisible('todaySpend') || fieldVisible('last30dSpend'))) {
+          const goUsage = renderedState.usage;
+          const goInsertExtra = function (slot) {
+            const ctxAt = goSlots.findIndex(function (s) { return s.key === 'ctx'; });
+            if (ctxAt >= 0) goSlots.splice(ctxAt, 0, slot);
+            else goSlots.push(slot);
+          };
+          const extraSlot = function (key, caption, value, tier) {
+            if (value == null || !isFinite(value)) return;
+            const money = goMoneySlot('CNY', value);
+            goInsertExtra({ key: key, caption: caption, value: money.text, shrink: money.shrink, extra: tier });
+          };
+          extraSlot('today', t('field.todaySpend.label'), fieldVisible('todaySpend') ? goUsage.todaySpend : null, 1);
+          extraSlot('month', t('field.last30dSpend.label'), fieldVisible('last30dSpend') ? goUsage.last30dSpend : null, 2);
+          const speed = goSpeedSlot();
+          if (speed) { speed.extra = 3; goInsertExtra(speed); }
+        }
+      }
+      const useGoCard = dshGoCompact && goSlots.length > 0;
+
+      // ---- 展开面板数据（DESIGN-FINAL §3/§5；无分割线：行间 2px、分组 16）----
+      const goSheetSections = [];
+      const goSection = function (label, rows) {
+        const list = rows.filter(function (row) { return row && row.v != null && String(row.v).length > 0; });
+        if (list.length > 0) goSheetSections.push({ label: label, rows: list });
+      };
+      if (useGoCard) {
+        const accountRows = [];
+        const pr = visiblePricing;
+        if (pr) {
+          const modelText = [pr.providerDisplay, pr.modelDisplay || pr.model].filter(Boolean).join(' · ');
+          if (modelText) accountRows.push({ k: t('section.identity.label'), v: modelText });
+        }
+        if (isSub) {
+          const sub = renderedState.sub;
+          if (sub && sub.plan) accountRows.push({ k: t('ui.subscription'), v: hostText(sub.plan) });
+          if (sub && sub.expiryAt) accountRows.push({ k: t('ui.expires'), v: formatDate(sub.expiryAt) });
+          if (sub && typeof sub.balance === 'number' && sub.balanceUnit !== 'credits') accountRows.push({ k: t('ui.availableBalanceLabel'), v: goMoneyFull('CNY', sub.balance) });
+        } else if (isBilling) {
+          const bill = renderedState.billing;
+          const d = bill && bill.data;
+          if (d && d.currentPeriodSpend != null) accountRows.push({ k: t('ui.thisMonth'), v: goMoneyFull(d.currency, d.currentPeriodSpend) });
+          if (d && d.budgetPercent != null) accountRows.push({ k: t('ui.budget'), v: Math.round(d.budgetPercent) + '%' });
+          if (d && d.freeRemaining != null) accountRows.push({ k: t('ui.free'), v: String(d.freeRemaining) });
+        } else {
+          const bal = renderedState.balance;
+          if (bal && bal.data) {
+            const granted = typeof bal.data.granted === 'number' && isFinite(bal.data.granted) ? bal.data.granted : 0;
+            const toppedUp = typeof bal.data.toppedUp === 'number' && isFinite(bal.data.toppedUp) ? bal.data.toppedUp : 0;
+            accountRows.push({
+              k: t('ui.balance.pushBalanceGroups'),
+              v: goMoneyFull(bal.currency, bal.data.total),
+              small: granted > 0 ? t('ui.balanceDetailToppedUp', { symbol: bal.currency === 'USD' ? '$' : '¥', value: goMoneyFull(bal.currency, toppedUp).slice(1) }) + ' · ' + t('ui.balanceDetailGranted', { symbol: bal.currency === 'USD' ? '$' : '¥', value: goMoneyFull(bal.currency, granted).slice(1) }) : null,
+            });
+          }
+        }
+        if (goPending) accountRows.push({ k: t('ui.loadingInfoBarSettings'), v: '' });
+        goSection(t('ui.account'), accountRows);
+        if (!goPending && !isSub && !isBilling && renderedState.balance && renderedState.balance.error) {
+          const hint = configHintFor(renderedState.balance.error);
+          if (hint) goSection(t('ui.account'), [{ k: t('ui.account'), v: t('ui.accountSignedOut'), small: hint.title }]);
+        }
+        if (isSub && goWindows.length > 0) {
+          goSection(t('ui.subscriptionQuota'), goWindows.map(function (w) {
+            const remaining = remainingPercent(w);
+            return { k: quotaWindowLabel(w), v: goPercent(quotaWindowPercent(w, goWindowMode)), low: remaining <= 20, bar: quotaWindowPercent(w, goWindowMode), small: (w.resetsAt && fieldVisible('resetCountdown')) ? fmtResetCountdown(w.resetsAt - now) : null };
+          }));
+        }
+        const spendRows = [];
+        const usg = renderedState.usage;
+        if (usg) {
+          const cs = usg.currentSession;
+          const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
+          const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
+          if (costCNY != null || costUSD != null) { if (fieldVisible('sessionCost')) spendRows.push({ k: t('ui.session'), v: goMoneyFull(costCNY != null ? 'CNY' : 'USD', costCNY != null ? costCNY : costUSD) }); }
+          if (usg.todaySpend != null && fieldVisible('todaySpend')) spendRows.push({ k: t('ui.today', { symbol: '¥', value: '' }).replace(/\s*¥?\s*$/, '').trim(), v: goMoneyFull('CNY', usg.todaySpend) });
+          if (usg.last30dSpend != null && fieldVisible('last30dSpend')) spendRows.push({ k: t('ui.lastDays', { symbol: '¥', value: '' }).replace(/\s*¥?\s*$/, '').trim(), v: goMoneyFull('CNY', usg.last30dSpend) });
+          if (usg.totalSpend != null) spendRows.push({ k: t('ui.allTime', { symbol: '¥', value: '' }).replace(/\s*¥?\s*$/, '').trim(), v: goMoneyFull('CNY', usg.totalSpend) });
+        }
+        goSection(t('ui.spend'), spendRows);
+        // 宿主原生统计行的全部指标：不再以宿主样式单独占一行，收进同一套行里。
+        const nativeRows = [];
+        if (statsProj) {
+          if (fieldVisible('turnsSteps')) nativeRows.push({ k: t('field.turnsSteps.label'), v: t(statsProj.turns === 1 ? 'ui.turnCount' : 'ui.turnCountPlural', { count: statsProj.turns }) + ' · ' + t(statsProj.steps === 1 ? 'ui.stepCount' : 'ui.stepCountPlural', { count: statsProj.steps }) });
+          if (statsProj.llmMs > 0 && fieldVisible('llmTime')) nativeRows.push({ k: t('field.llmTime.label'), v: formatDuration(statsProj.llmMs) });
+          if (statsProj.toolMs > 0 && fieldVisible('toolTime')) nativeRows.push({ k: t('ui.tools'), v: formatDuration(statsProj.toolMs) });
+          if (statsProj.ttftSteps > 0 && fieldVisible('avgTTFT')) nativeRows.push({ k: t('ui.avgTTFT'), v: formatDuration(statsProj.ttftMs / statsProj.ttftSteps) });
+          if (statsProj.decodeMs > 0 && fieldVisible('outputSpeed')) nativeRows.push({ k: t('field.outputSpeed.label'), v: formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s' });
+        }
+        if (usageProj) {
+          const nativeDenom = billedInput(usageProj);
+          const nativeCache = usageProj.cacheReadTokens || 0;
+          if (nativeDenom > 0 && fieldVisible('cacheHit')) nativeRows.push({ k: t('ui.cacheHit'), v: (Math.round((nativeCache / nativeDenom) * 1000) / 10) + '%' });
+          if (nativeDenom > 0 || (usageProj.outputTokens || 0) > 0) nativeRows.push({ k: t('field.tokensIO.label'), v: formatTokens(nativeDenom) + ' / ' + formatTokens(usageProj.outputTokens || 0) });
+        }
+        goSection(t('group.native'), nativeRows);
+        const periodRows = [];
+        if (pr && pr.mode === 'peak-valley' && fieldVisible('period')) periodRows.push({ k: t('field.period.label'), v: pr.period === 'peak' ? t('ui.peakPrice') : t('ui.offPeakPrice') });
+        if (pr && pr.mode === 'peak-valley' && pr.nextSwitch && fieldVisible('countdown')) periodRows.push({ k: t('ui.until') + (pr.period === 'peak' ? t('ui.offPeak') : t('ui.peak')), v: fmtCountdown(pr.nextSwitch.at - now) });
+        goSection(t('field.period.label'), periodRows);
+        if (goContextInfo !== null) {
+          goSection(t('field.contextUsage.label'), [
+            { k: t('ui.contextUsed'), v: contextTokenText(goContextInfo.usedTokens) + ' / ' + contextTokenText(goContextInfo.contextWindow) },
+            { k: t('ui.percent'), v: goPercent(goContextInfo.percent) },
+          ]);
+        }
+        const noticeRows = [];
+        if (renderedState.balance && renderedState.balance.error) {
+          const hint = configHintFor(renderedState.balance.error);
+          noticeRows.push({ k: t('ui.refreshFailed'), v: hint ? hint.text : t('ui.balanceUnavailable') });
+        }
+        if (goErrors.balance) noticeRows.push({ k: t('ui.refreshFailed'), v: t('ui.balanceUnavailable') });
+        if (isSub && renderedState.sub && renderedState.sub.error) {
+          // 缺插件专属凭据时给可自助的配置引导（与桌面 noKeyHint 槽位同源），
+          // 不再退回通用「未找到登录凭证·请重新授权」——重新授权对缺 AK/SK 无效。
+          const subSetupHint = subscriptionSetupHint(renderedState.sub.error);
+          noticeRows.push({ k: t('ui.refreshFailed'), v: subSetupHint ? subSetupHint.text : subscriptionFailureHint(renderedState.sub.error, visibleBillingMode && visibleBillingMode.provider) });
+        }
+        if (isSub && goErrors.sub) noticeRows.push({ k: t('ui.refreshFailed'), v: subscriptionFailureHint({ kind: 'exception', message: String(goErrors.sub) }, visibleBillingMode && visibleBillingMode.provider) });
+        if (isBilling && renderedState.billing && renderedState.billing.error) noticeRows.push({ k: t('ui.refreshFailed'), v: billingFailureHint(renderedState.billing.error, visibleBillingMode && visibleBillingMode.provider) });
+        if (isBilling && goErrors.billing) noticeRows.push({ k: t('ui.refreshFailed'), v: billingFailureHint({ kind: 'exception', message: String(goErrors.billing) }, visibleBillingMode && visibleBillingMode.provider) });
+        if (goErrors.usage) noticeRows.push({ k: t('ui.spendUnavailable'), v: t('ui.spendIsTemporarilyUnavailableChat') });
+        if (goErrors.pricing) noticeRows.push({ k: t('ui.pricing'), v: t('ui.refreshFailed') });
+        if (goErrors.billingMode) noticeRows.push({ k: t('ui.mode'), v: t('ui.refreshFailed') });
+        if (renderedState.usage && renderedState.usage.persistence && renderedState.usage.persistence.state && renderedState.usage.persistence.state !== 'ok') {
+          noticeRows.push({ k: t('ui.spend'), v: renderedState.usage.persistence.state === 'snapshot-stale' ? t('ui.ledgerUpdatePending') : t('ui.spendNotSaved') });
+        }
+        goSection(t('group.notice'), noticeRows);
+      }
+
       // 全局降级提示：任一端点失败 → 旧数据照常渲染 + 角落提示（title 列出失败项），仅失败项降级
       const errors = renderedState.errors || {};
       const failedLabels = [];
@@ -4675,7 +5770,35 @@ module.exports = {
          context: contextInfo,
          breakdown: breakdownProj,
        });
+       // DSH Go 三列卡：无竖线，三列等分，首/中/末分别贴左、居中、贴右。
+       const goRingRadius = 8;
+       const goRingLength = 2 * Math.PI * goRingRadius;
+       const goStrip = !useGoCard ? null : React.createElement('div', { className: 'bi-go-strip', 'data-slots': String(goSlots.length) },
+         goSlots.map(function (slot) {
+           const cap = React.createElement('span', { key: 'cap', className: 'bi-go-cap' }, slot.caption);
+           let body;
+           if (slot.loading) {
+             body = React.createElement('span', { key: 'ph', className: 'bi-go-ph', 'aria-hidden': 'true' });
+           } else if (slot.percent != null) {
+             body = React.createElement('span', { key: 'val', className: 'bi-go-ringrow' },
+               React.createElement('svg', { className: 'bi-go-ring', viewBox: '0 0 20 20', width: 17, height: 17, 'aria-hidden': 'true' },
+                 React.createElement('circle', { className: 'bi-go-ring-track', cx: 10, cy: 10, r: goRingRadius, fill: 'none', strokeWidth: 3 }),
+                 React.createElement('circle', { className: 'bi-go-ring-fill', cx: 10, cy: 10, r: goRingRadius, fill: 'none', strokeWidth: 3, strokeLinecap: 'round', strokeDasharray: goRingLength, strokeDashoffset: goRingLength * (1 - slot.percent / 100), transform: 'rotate(-90 10 10)' })),
+               React.createElement('span', { className: 'bi-go-val' }, slot.percent + '%'));
+           } else {
+             body = React.createElement('span', { key: 'val', className: 'bi-go-val' + (slot.low ? ' bi-go-val--low' : '') + (slot.shrink ? ' bi-go-val--shrink' : '') }, slot.value);
+           }
+           return React.createElement('div', {
+             key: slot.key,
+             className: 'bi-go-col',
+             'data-slot': slot.key,
+             'data-extra': slot.extra || undefined,
+           }, cap, body);
+         }));
+       // 桌面/纯浏览器：主行无条件渲染（圆环与末节点同组），保持原有结构与像素。
        const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }, ...attachContextMeter(nodes, contextNode, React.createElement));
+       // DSH Go：同一位置换成三列卡（主行仍然无条件渲染，只是内容不同）。
+       const goRow2 = useGoCard ? React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2 bi-go-row2' }, goStrip) : row2;
 
       let row1 = null;
       if (statsProj && !nativePills) {
@@ -4796,7 +5919,8 @@ module.exports = {
       const removalRegistry = nativePills
         ? FIELD_REGISTRY.filter(function (field) { return field.group !== 'native'; })
         : FIELD_REGISTRY;
-      if (infoBarShouldRemoveAll(removalRegistry, fieldVisible) || (row1 === null && nodes.length === 0 && contextNode === null)) {
+      // DSH Go 三列卡始终有内容（账户位永不为空），允许加载态先渲染骨架；全部字段关闭仍整体移除。
+      if (infoBarShouldRemoveAll(removalRegistry, fieldVisible) || (!useGoCard && (row1 === null && nodes.length === 0 && contextNode === null))) {
         return null;
       }
 
@@ -4804,54 +5928,143 @@ module.exports = {
       // This row is still the Full/Compact switch: clicking any plugin field toggles the
       // density (the user decision from 2026-10-17), while the native buttons above keep
       // their own click behavior. Nested plugin controls stop propagation themselves.
-      if (nativePills) return React.createElement('div', {
-        className: 'bi-root',
-        'data-native-pills': 'true',
-        onClick: function () { props.onToggleDensity(); },
-        onKeyDown: function (event) {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            props.onToggleDensity();
+      // 触屏例外（2026-11-12）：hover 不可用时整栏点击改为展开明细面板，密度切换移到面板按钮上
+      // （见模块级 touchDetailsEnabled 注释）；桌面端这条分支不生效。
+      // DSH Go 卡（2026-11-13）：Go 皮肤按表面门控、不要求触屏（平板/大窗/鼠标环境也是 Go），
+      // 而 Go 卡没有桌面那条双行密度切换——点整栏的语义永远是「展开/收起明细面板」。
+      // 所以只要走 Go 卡就展开面板，不能再依赖 touchDetails，否则 hover 可用的 Go 表面上面板永远打不开。
+      const barExpandsSheet = useGoCard || touchDetails;
+      const onBarActivate = function () {
+        if (barExpandsSheet) {
+          setDetailsOpen(function (open) { return !open; });
+          return;
+        }
+        props.onToggleDensity();
+      };
+      const onBarKeyDown = function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          if (barExpandsSheet) {
+            setDetailsOpen(function (open) { return !open; });
+            return;
           }
-        },
-        role: 'button',
-        tabIndex: 0,
-        'aria-labelledby': 'dsh-bottom-info-bar-primary',
-        'aria-describedby': 'dsh-bottom-info-bar-action',
-        'aria-pressed': full,
-        'aria-busy': isDensitySaving,
-        'aria-disabled': isDensitySaving,
-        'data-density': displayDensity,
-        'data-density-saving': isDensitySaving,
-        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
-      }, row2,
-      React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
-        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
-
+          props.onToggleDensity();
+        }
+      };
       const animatedRow1 = row1 === null ? null : React.createElement('div', { className: 'bi-density-extra', ref: extraRowRef }, row1);
-      const rootCls = 'bi-root';
-      return React.createElement('div', {
-        className: rootCls,
-        onClick: function () { props.onToggleDensity(); },
-        onKeyDown: function (event) {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            props.onToggleDensity();
-          }
-        },
+      const actionNode = React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
+        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar'));
+      const barProps = {
+        className: 'bi-root' + (useGoCard ? ' bi-go-bar' : ''),
+        ref: barRef,
+        onClick: onBarActivate,
+        onKeyDown: onBarKeyDown,
         role: 'button',
         tabIndex: 0,
-        'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
         'aria-describedby': 'dsh-bottom-info-bar-action',
         'aria-pressed': full,
+        // 触屏/Go 卡上的点击语义是「展开明细」，不是「切换密度」：用 aria-expanded 如实表达。
+        'aria-expanded': barExpandsSheet ? detailsOpen : undefined,
         'aria-busy': isDensitySaving,
         'aria-disabled': isDensitySaving,
         'data-density': displayDensity,
         'data-density-saving': isDensitySaving,
-        title: isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact'),
-      }, animatedRow1, row2,
-      React.createElement('span', { id: 'dsh-bottom-info-bar-action', className: 'bi-sr-only' },
-        full ? t('ui.pressEnterOrSpaceFor') : t('ui.pressEnterOrSpaceFor.BottomInfoBar')));
+        // 触屏没有 hover：title 提示没有意义，还会让长按弹出无用提示；桌面端保持原文案。
+        title: barExpandsSheet ? undefined : (isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact')),
+      };
+      const barNode = nativePills
+        ? React.createElement('div', Object.assign({}, barProps, {
+          'data-native-pills': 'true',
+          'aria-labelledby': 'dsh-bottom-info-bar-primary',
+        }), goRow2, actionNode)
+        : React.createElement('div', Object.assign({}, barProps, {
+          'aria-labelledby': nativeRowShown ? 'dsh-bottom-info-bar-native dsh-bottom-info-bar-primary' : 'dsh-bottom-info-bar-primary',
+        }), animatedRow1, goRow2, actionNode);
+
+      // DSH Go 展开面板（DESIGN-FINAL §3/§5）：28 圆角、面 low、16 内边距、40vh 内滚；
+      // 卡内无分割线（行间 2px、分组 16）；动作行只保留「刷新」（设置无导航 API，隐藏）。
+      // 面板底部渐隐只在「下面还有内容」时出现：滚到底就撤掉，
+      // 否则最后一行会一直蒙着一层灰，看起来像被裁坏了。
+      const goSheetSyncFade = function (el) {
+        if (!el) return;
+        var more = el.scrollHeight - el.scrollTop - el.clientHeight > 2;
+        if (more) el.setAttribute('data-more', '1');
+        else el.removeAttribute('data-more');
+      };
+      const goSheet = !(useGoCard && detailsOpen) ? null : React.createElement('div', {
+        className: 'bi-go-sheet',
+        role: 'region',
+        'aria-label': t('ui.infoDetails'),
+      },
+        React.createElement('div', { className: 'bi-go-sheet-head' },
+          React.createElement('span', { className: 'bi-go-sheet-title' }, t('ui.infoDetails')),
+          // 标题行只留「刷新」一个动作（2026-11-13 用户拍板 A）：
+          // 信息栏整条本身就能点开/点收，再摆一个「收起」属于重复入口，删掉。
+          React.createElement('button', {
+            type: 'button',
+            className: 'bi-go-act',
+            onClick: function () { if (typeof load === 'function') load(); },
+          }, t('ui.refresh'))),
+        React.createElement('div', {
+          className: 'bi-go-sheet-body',
+          ref: goSheetSyncFade,
+          onScroll: function (e) { goSheetSyncFade(e.currentTarget); },
+        },
+          goSheetSections.length === 0
+            ? React.createElement('div', { className: 'bi-go-empty' }, goPending ? t('ui.loadingInfoBarSettings') : t('ui.unknown'))
+            : goSheetSections.map(function (section, sectionIndex) {
+              return React.createElement('div', { key: 'gs' + sectionIndex, className: 'bi-go-sec' },
+                React.createElement('div', { className: 'bi-go-sec-lbl' }, section.label),
+                React.createElement('div', { className: 'bi-go-rows' }, section.rows.map(function (row, rowIndex) {
+                  // 带进度条的额度行：整行宽两段式——头行左窗口名、右百分比+倒计时，下面整行宽进度条。
+                  // 旧版把条塞进右侧窄列（132px），左半边整片空白，与上面左标签右值的行不成体系。
+                  if (row.bar != null) {
+                    return React.createElement('div', { key: 'gr' + rowIndex, className: 'bi-go-row bi-go-row--meter' },
+                      React.createElement('div', { className: 'bi-go-meter-head' },
+                        React.createElement('span', { className: 'bi-go-k' }, row.k),
+                        React.createElement('span', { className: 'bi-go-meter-val' },
+                          React.createElement('span', { className: 'bi-go-v' + (row.low ? ' bi-go-v--low' : '') }, row.v),
+                          row.small ? React.createElement('small', { className: 'bi-go-small' }, row.small) : null)),
+                      React.createElement('span', { className: 'bi-go-progress' + (row.low ? ' bi-go-progress--low' : ''), 'aria-hidden': 'true' },
+                        React.createElement('span', { className: 'bi-go-progress-fill', style: { width: Math.max(0, Math.min(100, row.bar)) + '%' } })));
+                  }
+                  return React.createElement('div', { key: 'gr' + rowIndex, className: 'bi-go-row' + (row.small ? ' bi-go-row--sub' : '') },
+                    React.createElement('span', { className: 'bi-go-k' }, row.k),
+                    React.createElement('span', { className: 'bi-go-v-wrap' },
+                      React.createElement('span', { className: 'bi-go-v' + (row.low ? ' bi-go-v--low' : '') }, row.v),
+                      row.small ? React.createElement('small', { className: 'bi-go-small' }, row.small) : null));
+                })));
+            })));
+
+      // 非 DSH Go 手机浏览器：保留上一版的 title 明细面板（桌面端不渲染）。
+      const detailsNode = useGoCard ? goSheet : !(touchDetails && detailsOpen) ? null : React.createElement('div', {
+        className: 'bi-mobile-details',
+        role: 'region',
+        'aria-label': t('ui.infoBarSettings'),
+      },
+        React.createElement('ul', { className: 'bi-mobile-details-list' },
+          detailsItems.map(function (item, index) {
+            return React.createElement('li', { key: 'md' + index, className: 'bi-mobile-details-item' }, item);
+          })),
+        React.createElement('div', { className: 'bi-mobile-details-actions' },
+          React.createElement('button', {
+            key: 'md-density',
+            type: 'button',
+            className: 'bi-mobile-details-button',
+            onClick: function () { props.onToggleDensity(); },
+          }, isDensitySaving ? t('ui.savingView') : t('ui.clickToSwitchFullCompact')),
+          React.createElement('button', {
+            key: 'md-close',
+            type: 'button',
+            className: 'bi-mobile-details-button',
+            onClick: function () { setDetailsOpen(false); },
+          }, t('ui.collapse'))));
+
+      // Go 模式：条与明细同属一张卡，展开是这张卡往下长，不是下面再放一张。
+      // 容器必须始终存在：页边与宽度都挂在它身上，收起态也不能少。
+      if (useGoCard) return React.createElement('div', { className: 'bi-go-card', 'data-open': detailsOpen ? '1' : '0' }, barNode, detailsNode);
+      if (detailsNode === null) return barNode;
+      return React.createElement(React.Fragment, null, barNode, detailsNode);
     }
   },
 };

@@ -827,6 +827,77 @@ function parseCodexJwt(token) {
   return { planType: planType, expiryMs: expiryMs }
 }
 
+// ---------- Issue #274：DSH Go / 安卓 App 的引擎侧授权服务（appAuth）→ ChatGPT 订阅额度 ----------
+// 背景：DSH Go 的 ChatGPT 登录由宿主侧 appAuth 服务完成（App 的 app/assets/engine/auth/index.mjs
+// 把 bridge.mjs 挂成名为 appAuth 的 Remote 服务），OAuth grant 存在 $DSH_HOME/.credentials.yaml
+// （record key llm-pi-ai/openai-codex，见 bridge.mjs 的 recordKeyFor），不会写 ~/.codex/auth.json。
+// 安卓 proot 里没有桌面登录文件 → 旧实现只能报 no-key，客户端显示红色「刷新失败」。
+// 该服务 usage(provider) 的返回（bridge.mjs 的 usage/#queryUsage）：
+//   { provider, status: 'ok' | 'not_signed_in' | 'unavailable' | 'unsupported',
+//     windows: [{ id: 'primary' | 'secondary', usedPercent, resetAt: ISO 字符串 | null, windowSeconds? }],
+//     plan?（plan_type）, reason?（invalid_response / expired / auth_required / permission_denied /
+//     network / rate_limited） }
+// 下面两个函数只做纯映射（不读凭据、不发请求）：状态 → 错误码的翻译在 apply 内的 appAuthCodexError。
+const APP_AUTH_CODEX_PROVIDER = 'openai-codex'
+// appAuth 成功结果缓存：bridge 对同一 provider 有 10 秒节流（窗口内再问会返回 rate_limited），
+// 而客户端打开页面/手动刷新会绕过 60 秒快照周期连续强制刷新；20 秒缓存把落在节流窗口里的
+// 第二次调用挡在插件侧，避免「刚刷新成功再点一次就变红」。
+const APP_AUTH_USAGE_CACHE_MS = 20000
+// 撞上节流时，手上 2 分钟内的成功快照仍然可信，直接沿用，不把一次节流显示成失败。
+const APP_AUTH_RATE_LIMIT_FALLBACK_MS = 120000
+
+// appAuth 窗口 → 插件窗口键：优先按接口给的时长（windowSeconds）判真实窗口，没给时长再按
+// ChatGPT 的历史语义兜底（primary = 5 小时滚动窗口，secondary = 周窗口）。未知 id 且无时长 → null。
+// 不认识的窗口一律跳过，不猜测时长（沿用「未知跳过」的既有哲学）。
+function appAuthWindowKey(id, windowSeconds) {
+  const seconds = typeof windowSeconds === 'number' && isFinite(windowSeconds) && windowSeconds > 0 ? windowSeconds : null
+  if (seconds != null) {
+    if (seconds <= 6 * 3600) return 'five_hour'
+    if (seconds <= 8 * 86400) return 'seven_day'
+    return 'monthly'
+  }
+  if (id === 'primary' || id === 'five_hour') return 'five_hour'
+  if (id === 'secondary' || id === 'seven_day') return 'seven_day'
+  if (id === 'monthly') return 'monthly'
+  return null
+}
+
+// appAuth.usage 返回值 → 归一化结构 { status, reason, plan, planType, windows }。
+// usedPercent 沿用插件语义「已用百分比」（客户端默认显示 100 - usedPercent = 剩余），
+// 与接口方向一致，不做翻转；resetsAt 统一成毫秒（ISO 字符串 → Date.parse）。
+function parseAppAuthCodexUsage(result, windowLabels) {
+  const wl = windowLabels || WINDOW_LABELS
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return { status: 'unavailable', reason: 'invalid_response', plan: null, planType: null, windows: [] }
+  }
+  const status = typeof result.status === 'string' ? result.status : ''
+  const reason = typeof result.reason === 'string' && result.reason.length > 0 ? result.reason : null
+  const planType = typeof result.plan === 'string' && result.plan.length > 0 ? result.plan : null
+  const plan = planType ? planDisplayName(planType) : null
+  const windows = []
+  const seen = {}
+  const source = Array.isArray(result.windows) ? result.windows : []
+  for (let i = 0; i < source.length; i++) {
+    const win = source[i]
+    if (!win || typeof win !== 'object') continue
+    const percent = parsePercent(win.usedPercent)
+    if (percent == null) continue
+    const key = appAuthWindowKey(win.id, win.windowSeconds)
+    if (!key || seen[key]) continue
+    seen[key] = true
+    windows.push({
+      key: key,
+      label: wl[key],
+      usedPercent: Math.round(percent),
+      resetsAt: normalizeResetAt(win.resetAt),
+    })
+  }
+  if (status === 'ok') return { status: 'ok', reason: null, plan: plan, planType: planType, windows: windows }
+  if (status === 'not_signed_in') return { status: 'not_signed_in', reason: null, plan: plan, planType: planType, windows: [] }
+  if (status === 'unsupported') return { status: 'unsupported', reason: reason, plan: plan, planType: planType, windows: [] }
+  return { status: 'unavailable', reason: reason, plan: plan, planType: planType, windows: [] }
+}
+
 // ---------- FR-9 / D8：小米 MiMo 解析（数值一律容错：字符串/数字、百分比 0-1 或 0-100 双形态） ----------
 function xiaomiRegionBaseUrl(region) {
   if (region === 'sgp') return 'https://token-plan-sgp.xiaomimimo.com'
@@ -2717,12 +2788,105 @@ export default {
     const subscriptionSourceProvider = Object.create(null); // { [sourceKey]: providerId }——记住请求该源时的 provider（zai 系按 provider 路由 host/凭据），供引擎路由参数用
     // 快照状态（snapshots/seq/inFlight/requested/lastFailAt）收进下面的两个引擎实例，不再各写一套。
 
-    // FR-8 / D7：Codex / ChatGPT 订阅卡（纯本地通道）
+    // FR-8 / D7：Codex / ChatGPT 订阅卡（两条通道，按宿主能力选择；Issue #274）
+    // ① 宿主有引擎侧 appAuth 服务（DSH Go / 安卓 App）：授权与额度都在宿主手里，优先用它的
+    //    usage('openai-codex')。桌面老宿主没有这个服务，回调不触发 → ② 逐字节保持原逻辑。
+    // ② 桌面文件通道：只读 ~/.codex/auth.json 的 id_token，本地解码 JWT claims
+    //    (chatgpt_plan_type / subscription_active_until) → 套餐名与到期日（无额度窗口）。
+    // 为什么 appAuth 优先：安卓 proot 里根本没有 ~/.codex/auth.json（授权写在 DSH credentials），
+    // 文件通道在那边只会得到 no-key；反过来，appAuth 报未登录/不可用时仍先试文件通道，
+    // 取到数据就用文件的数据——桌面已有的显示不因为多出一个服务而退化。
+    // appAuth 是可选服务：用 ctx.inject 声明式获取（服务缺席时回调不触发、不抛错；
+    // 严禁裸写 ctx.appAuth —— cordis 4 的 Context 是 Proxy，读未声明属性会抛 without inject），
+    // 再用 ctx.get 兜底探测一次（inject 回调可能晚于 apply 才触发）。
+    let appAuthService = null
+    try {
+      if (typeof ctx.inject === 'function') {
+        ctx.inject(['appAuth'], function (authCtx) {
+          const service = authCtx.appAuth
+          appAuthService = service && typeof service.usage === 'function' ? service : null
+          return function () { appAuthService = null }
+        })
+      }
+    } catch (err) { /* 老宿主没有动态 inject：只走下面的 ctx.get 兜底 */ }
+
+    function appAuthServiceForQuota() {
+      if (appAuthService) return appAuthService
+      try {
+        if (typeof ctx.get === 'function') {
+          const service = ctx.get('appAuth')
+          if (service && typeof service.usage === 'function') return service
+        }
+      } catch (err) { /* 没有该服务 → 桌面文件通道 */ }
+      return null
+    }
+
+    // appAuth 通道 → { data } | { error } | null（null = 宿主没有该服务，交给文件通道）
+    const appAuthUsageCache = { at: 0, data: null }
+    async function fetchCodexUsageViaAppAuth() {
+      const service = appAuthServiceForQuota()
+      if (!service) return null
+      const now = Date.now()
+      if (appAuthUsageCache.data && now - appAuthUsageCache.at < APP_AUTH_USAGE_CACHE_MS) {
+        return { data: appAuthUsageCache.data }
+      }
+      let raw = null
+      try {
+        raw = await service.usage(APP_AUTH_CODEX_PROVIDER)
+      } catch (err) {
+        // 服务存在但调用失败（旧 bridge 没有 usage / 服务内部异常）→ 退回桌面文件通道；
+        // 这条降级路径保证「有 appAuth 但不可用」的宿主不把信息栏打挂。
+        return null
+      }
+      const parsed = parseAppAuthCodexUsage(raw, windowLabels)
+      if (parsed.status === 'ok' && parsed.windows.length > 0) {
+        const data = { provider: 'codex', plan: parsed.plan, planType: parsed.planType, expiryAt: null, windows: parsed.windows }
+        appAuthUsageCache.at = now
+        appAuthUsageCache.data = data
+        return { data: data }
+      }
+      // 撞上 bridge 的 10 秒节流（短时间内第二次刷新）→ 沿用 2 分钟内的成功快照，
+      // 不把一次节流显示成「刷新失败」。
+      if (parsed.status === 'unavailable' && parsed.reason === 'rate_limited'
+        && appAuthUsageCache.data && now - appAuthUsageCache.at < APP_AUTH_RATE_LIMIT_FALLBACK_MS) {
+        return { data: appAuthUsageCache.data }
+      }
+      return { error: appAuthCodexError(parsed) }
+    }
+
+    // appAuth 状态/原因 → 插件错误对象（code 稳定，文案在 error.subscription.app-auth-*）。
+    // unsupported 与 unavailable 给出各自的 kind/code，客户端能显示原因而不是笼统的「刷新失败」。
+    function appAuthCodexError(parsed) {
+      const reason = parsed && parsed.reason
+      const params = reason ? { reason: reason } : undefined
+      if (parsed && parsed.status === 'not_signed_in') {
+        return { kind: 'no-key', code: 'subscription.app-auth-not-signed-in', message: t('error.subscription.app-auth-not-signed-in') }
+      }
+      if (parsed && parsed.status === 'unsupported') {
+        return { kind: 'unsupported', code: 'subscription.app-auth-unsupported', message: t('error.subscription.app-auth-unsupported'), params: params }
+      }
+      if (reason === 'expired' || reason === 'auth_required') {
+        return { kind: 'auth', code: 'subscription.app-auth-expired', message: t('error.subscription.app-auth-expired'), params: params }
+      }
+      if (reason === 'permission_denied') {
+        return { kind: 'auth', code: 'subscription.app-auth-denied', message: t('error.subscription.app-auth-denied'), params: params }
+      }
+      if (reason === 'network') {
+        return { kind: 'timeout', code: 'subscription.app-auth-network', message: t('error.subscription.app-auth-network'), params: params }
+      }
+      if (reason === 'rate_limited') {
+        return { kind: 'http', code: 'subscription.app-auth-rate-limited', message: t('error.subscription.app-auth-rate-limited'), params: params }
+      }
+      // invalid_response / 未知原因 / ok 但零窗口：明确标成 unavailable，不再伪装成普通请求失败
+      return { kind: 'unavailable', code: 'subscription.app-auth-unavailable', message: t('error.subscription.app-auth-unavailable'), params: params }
+    }
+
+    // 桌面文件通道（v1.7 原行为，逐字节保持不变）
     // 只读令牌：令牌由独立插件 dsh-chatgpt-sub 维护，本插件不续期、不写回、不注入凭据；
     // 读 tokens.id_token 本地解码 JWT claims（chatgpt_plan_type / subscription_active_until）→ 真实套餐名与到期日。
     // 解码/字段缺失 → 静默降级（不显式报错、不访问远程订阅接口）；
     // 令牌缺失 → no-key（客户端显示"未绑定"引导）。
-    async function fetchCodexUsage() {
+    function fetchCodexUsageFromFile() {
       const read = readCodexAuthFile(CODEX_AUTH_FILE);
       if (!read.ok) {
         return { error: { kind: 'no-key', code: 'subscription.not-connected', message: t('error.subscription.not-connected') } };
@@ -2740,6 +2904,19 @@ export default {
       }
       const plan = parsed.planType ? planDisplayName(parsed.planType) : null;
       return { data: { provider: 'codex', plan: plan, planType: parsed.planType, expiryAt: parsed.expiryMs, windows: [] } };
+    }
+
+    async function fetchCodexUsage() {
+      // ① appAuth 优先：拿到额度窗口就用它（DSH Go 的唯一可用通道）
+      const viaAppAuth = await fetchCodexUsageViaAppAuth();
+      if (viaAppAuth && viaAppAuth.data) return viaAppAuth;
+      // ② 桌面文件通道：取到数据就用文件的数据，不被 appAuth 的失败状态遮住
+      const fromFile = fetchCodexUsageFromFile();
+      if (fromFile && fromFile.data) return fromFile;
+      // ③ 两条都失败：appAuth 存在时返回它的明确原因（「去 DSH App 授权」等），
+      //    否则保持桌面原有的 no-key 文案，行为与旧版完全一致。
+      if (viaAppAuth && viaAppAuth.error) return viaAppAuth;
+      return fromFile;
     }
 
     // OpenCode Go key 解析：DSH credentials（OPENCODE_GO_API_KEY）→ opencode auth.json（opencode-go → opencode）
