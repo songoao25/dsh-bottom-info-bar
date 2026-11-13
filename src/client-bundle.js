@@ -1000,8 +1000,6 @@ function installStyles() {
       :root[data-dsh-app-layout] .bi-go-card[data-open="1"] .bi-go-sheet, :root[data-dsh-go-island] .bi-go-card[data-open="1"] .bi-go-sheet { margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
       :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 8px 0 16px; flex: none; }
       :root[data-dsh-app-layout] .bi-go-sheet-title, :root[data-dsh-go-island] .bi-go-sheet-title { font-size: var(--dshgo-font-panel-title, 16px); font-weight: 600; line-height: 1.4; color: var(--dshgo-ink); }
-      :root[data-dsh-app-layout] .bi-go-sheet-collapse, :root[data-dsh-go-island] .bi-go-sheet-collapse { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-muted); font: inherit; font-size: 13px; cursor: pointer; }
-      :root[data-dsh-app-layout] .bi-go-sheet-collapse:active, :root[data-dsh-go-island] .bi-go-sheet-collapse:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, transparent); }
       :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { flex: 1 1 auto; min-height: 0; padding: 0 16px 16px; overflow: hidden auto; overscroll-behavior: contain; }
       :root[data-dsh-app-layout] .bi-go-sheet-body[data-more="1"], :root[data-dsh-go-island] .bi-go-sheet-body[data-more="1"] { -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%); mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 24px), transparent 100%); }
       :root[data-dsh-app-layout] .bi-go-sec, :root[data-dsh-go-island] .bi-go-sec { margin-top: var(--dshgo-section-gap, 16px); }
@@ -1023,10 +1021,9 @@ function installStyles() {
       :root[data-dsh-app-layout] .bi-go-meter-head, :root[data-dsh-go-island] .bi-go-meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
       :root[data-dsh-app-layout] .bi-go-meter-val, :root[data-dsh-go-island] .bi-go-meter-val { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
       :root[data-dsh-app-layout] .bi-go-row--meter .bi-go-progress, :root[data-dsh-go-island] .bi-go-row--meter .bi-go-progress { width: 100%; margin-top: 0; }
-      :root[data-dsh-app-layout] .bi-go-head-acts, :root[data-dsh-go-island] .bi-go-head-acts { display: flex; align-items: center; gap: 2px; margin: 0 0 0 auto; flex: none; }
-      /* 刷新与「收起」共用一套文字按钮：同字号、同色阶、同 44 热区，不额外造按钮形态。 */
-      :root[data-dsh-app-layout] .bi-go-act, :root[data-dsh-go-island] .bi-go-act { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-muted); font: inherit; font-size: 13px; cursor: pointer; }
-      :root[data-dsh-app-layout] .bi-go-act:active, :root[data-dsh-go-island] .bi-go-act:active { background: color-mix(in srgb, var(--dshgo-ink) 6%, transparent); }
+      /* 标题行唯一动作「刷新」：15/600 accent、右对齐、44 热区（用户拍板 A：收起靠点信息栏本体）。 */
+      :root[data-dsh-app-layout] .bi-go-act, :root[data-dsh-go-island] .bi-go-act { display: inline-flex; align-items: center; min-height: 44px; margin-left: auto; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-accent); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+      :root[data-dsh-app-layout] .bi-go-act:active, :root[data-dsh-go-island] .bi-go-act:active { opacity: 0.7; }
       :root[data-dsh-app-layout] .bi-go-empty, :root[data-dsh-go-island] .bi-go-empty { padding: 8px 0 4px; font-size: 13px; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-muted); }
       /* ---------- DSH Go 窄屏自适应（≤360，SE 一档） ----------
          412 定稿的 12px 列内边距 + 16px 数值在 320 上放不下：可用宽只剩 60px，
@@ -5993,17 +5990,13 @@ module.exports = {
       },
         React.createElement('div', { className: 'bi-go-sheet-head' },
           React.createElement('span', { className: 'bi-go-sheet-title' }, t('ui.infoDetails')),
-          React.createElement('div', { className: 'bi-go-head-acts' },
-            React.createElement('button', {
-              type: 'button',
-              className: 'bi-go-act',
-              onClick: function () { if (typeof load === 'function') load(); },
-            }, t('ui.refresh')),
-            React.createElement('button', {
-              type: 'button',
-              className: 'bi-go-sheet-collapse',
-              onClick: function () { setDetailsOpen(false); },
-            }, t('ui.collapse')))),
+          // 标题行只留「刷新」一个动作（2026-11-13 用户拍板 A）：
+          // 信息栏整条本身就能点开/点收，再摆一个「收起」属于重复入口，删掉。
+          React.createElement('button', {
+            type: 'button',
+            className: 'bi-go-act',
+            onClick: function () { if (typeof load === 'function') load(); },
+          }, t('ui.refresh'))),
         React.createElement('div', {
           className: 'bi-go-sheet-body',
           ref: goSheetSyncFade,

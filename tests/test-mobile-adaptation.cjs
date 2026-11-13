@@ -180,6 +180,13 @@ check('宽屏展开面板变双栏（把宽度换成信息密度，而不是把�
   visualBlock.includes('grid-template-columns: calc(50% - 22px) calc(50% - 22px)'), true);
 check('窄屏断点不再要求触屏（只按宽度分档）',
   visualBlock.includes('@media (max-width: 360px) {') && !visualBlock.includes('and (max-width: 360px)'), true);
+check('面板标题行只留「刷新」一个动作：15/600 accent，无重复的「收起」按钮（点信息栏本体收起）',
+  clientSrc.includes("className: 'bi-go-act'")
+  && clientSrc.includes("t('ui.refresh')")
+  && !clientSrc.includes("className: 'bi-go-sheet-collapse'")
+  && !clientSrc.includes("className: 'bi-go-head-acts'")
+  && visualBlock.includes('color: var(--dshgo-accent)')
+  && visualBlock.includes('.bi-go-act'), true);
 check('面板：28 圆角 / 40vh 内滚 / 行间 2px 空隙 / 分组 16 / 无行分割线 / 动作行无上边框',
   visualBlock.includes('border-radius: var(--dshgo-radius-sheet, 28px)')
   && visualBlock.includes('max-height: var(--dshgo-panel-max, 40vh)')
