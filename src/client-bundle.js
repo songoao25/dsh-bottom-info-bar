@@ -281,6 +281,13 @@ function settingsFieldsForHost(pills) {
     return !NATIVE_PILL_FIELDS.some(function (entry) { return entry.fieldId === field.id; });
   });
 }
+// 桌面设置页的字段清单：goOnly 字段（今天花费 / 近 30 天花费这类 DSH Go 宽屏增量列）
+// 只在 Go 配置页出现。桌面信息栏没有对应渲染分支，开关在这里点了没有效果，
+// 所以桌面设置页既不列行、也不计入「已启用 N 项」（用户 2026-11-13 拍板）。
+// Go 配置页仍走 settingsFieldsForHost 全量，行为不变。
+function settingsFieldsForPage(pills) {
+  return settingsFieldsForHost(pills).filter(function (field) { return field.goOnly !== true; });
+}
 // 新宿主原生按钮的字段 id ↔ 宿主 data-composer-stat 值。设置页开关只隐藏对应入口，
 // 不复制、不重注册宿主组件 —— 按钮的弹窗、快捷键与 Harness 设置全部保持宿主所有。
 const NATIVE_PILL_FIELDS = [
@@ -2364,7 +2371,8 @@ function bibSetFieldBlocks(visibleFields, props) {
 function bibSetFieldGroups(props) {
   const groups = [];
   // 设置页只列「当前宿主真正有效」的开关：新宿主 = 两个原生按钮开关；旧宿主 = 旧统计行七个字段。
-  const hostFields = settingsFieldsForHost(props.nativePills);
+  // 桌面页再用 settingsFieldsForPage 去掉 goOnly 字段（只在 DSH Go 配置页出现）。
+  const hostFields = settingsFieldsForPage(props.nativePills);
   for (let g = 0; g < FIELD_GROUP_ORDER.length; g++) {
     const group = FIELD_GROUP_ORDER[g];
     const groupFields = hostFields.filter(function (field) { return field.group === group; });
@@ -4028,8 +4036,8 @@ function InfoBarSettingsSection() {
   // 搜索只负责筛选；输入时两分组自动展开（决策 2），但用户随后仍可明确折叠，
   // 箭头和 aria-expanded 始终反映真实 DOM 状态。
   const searchActive = searchQuery.trim().length > 0;
-  const fieldsEnabledCount = settingsFieldsForHost(nativePills).filter(function (f) { return fieldOn(f.id); }).length;
-  const fieldsMatchCount = settingsFieldsForHost(nativePills).filter(function (f) { return matchesSearch(f, searchQuery); }).length;
+  const fieldsEnabledCount = settingsFieldsForPage(nativePills).filter(function (f) { return fieldOn(f.id); }).length;
+  const fieldsMatchCount = settingsFieldsForPage(nativePills).filter(function (f) { return matchesSearch(f, searchQuery); }).length;
   const groupsChildren = bibSetFieldGroups({
     nativePills: nativePills,
     query: searchQuery,

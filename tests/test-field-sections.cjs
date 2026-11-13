@@ -200,12 +200,14 @@ const bibSetFieldBlocks = (function () {
   const React = { createElement(type, props, ...children) { return { type, props: props || {}, children }; } };
   const nativePillFields = new Function('return (' + /const NATIVE_PILL_FIELDS = (\[[\s\S]*?\]);/.exec(clientSrc)[1] + ');')();
   const settingsFieldsForHost = new Function('FIELD_REGISTRY', 'NATIVE_PILL_FIELDS', 'return (' + extractFunctionFrom(clientSrc, 'settingsFieldsForHost') + ');')(FIELD_REGISTRY, nativePillFields);
+  const settingsFieldsForPage = new Function('settingsFieldsForHost',
+    'return (' + extractFunctionFrom(clientSrc, 'settingsFieldsForPage') + ');')(settingsFieldsForHost);
   const groups = new Function('React', 't', 'FIELD_REGISTRY', 'FIELD_GROUP_ORDER', 'FIELD_GROUP_LABELS',
-    'FIELD_GROUP_DESC_KEYS', 'bibSetDisclosure', 'bibSetFieldBlocks', 'settingsFieldsForHost',
+    'FIELD_GROUP_DESC_KEYS', 'bibSetDisclosure', 'bibSetFieldBlocks', 'settingsFieldsForPage',
     'return (' + extractFunctionFrom(clientSrc, 'bibSetFieldGroups') + ');')(
       React, t, FIELD_REGISTRY, FIELD_GROUP_ORDER, FIELD_GROUP_LABELS,
       { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' },
-      'disclosure', bibSetFieldBlocks, settingsFieldsForHost);
+      'disclosure', bibSetFieldBlocks, settingsFieldsForPage);
   const props = { nativePills: true, matchesSearch: () => true, groupOpenOf: () => true, onGroupToggle: () => {} };
   const modern = groups(props);
   const legacyNativeIds = ['turnsSteps', 'llmTime', 'toolTime', 'avgTTFT', 'outputSpeed', 'cacheHit', 'tokensIO'];
@@ -231,6 +233,16 @@ const bibSetFieldBlocks = (function () {
     && !pillIds.some(id => fieldsForHost(false).some(f => f.id === id)), true);
   check('新版搜索无结果时不夹入无关原生说明',
     !textOf(groups({ ...props, searchActive: true, matchesSearch: () => false })).includes(t('group.native.desc.pills')), true);
+  // 2026-11-13 用户拍板：goOnly 字段（DSH Go 宽屏增量列）只在 Go 配置页列开关；
+  // 桌面设置页不摆「点了没效果」的行，也不计入启用/搜索计数。
+  const goOnlyIds = ['todaySpend', 'last30dSpend'];
+  check('桌面设置页（含搜索/启用计数）不列 goOnly 字段',
+    !goOnlyIds.some(id => settingsFieldsForPage(true).some(f => f.id === id))
+    && !goOnlyIds.some(id => settingsFieldsForPage(false).some(f => f.id === id)), true);
+  check('Go 配置页仍拿全量字段（goOnly 字段照常可开关）',
+    goOnlyIds.every(id => fieldsForHost(true).some(f => f.id === id))
+    && clientSrc.indexOf('settingsFieldsForHost(deps.nativePills)') > 0
+    && clientSrc.indexOf('BIB_GO_COST_FIELDS = [\'sessionCost\', \'todaySpend\', \'last30dSpend\'') > 0, true);
 }
 
 // ---------- ⑤ 入库产物一致（lib/ 是构建产物，必须已重建） ----------
