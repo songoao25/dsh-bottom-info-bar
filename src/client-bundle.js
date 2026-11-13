@@ -1018,6 +1018,11 @@ function installStyles() {
       :root[data-dsh-app-layout] .bi-go-progress, :root[data-dsh-go-island] .bi-go-progress { display: block; width: 132px; max-width: 100%; height: 4px; margin-top: 3px; border-radius: 2px; background: var(--dshgo-line); overflow: hidden; }
       :root[data-dsh-app-layout] .bi-go-progress-fill, :root[data-dsh-go-island] .bi-go-progress-fill { display: block; height: 100%; border-radius: 2px; background: var(--dshgo-accent); }
       :root[data-dsh-app-layout] .bi-go-progress--low .bi-go-progress-fill, :root[data-dsh-go-island] .bi-go-progress--low .bi-go-progress-fill { background: var(--dshgo-danger); }
+      /* 额度行整行宽两段式：头行左窗口名/右百分比+倒计时，进度条铺满整行，消除右侧窄列留下的大片左空白。 */
+      :root[data-dsh-app-layout] .bi-go-row--meter, :root[data-dsh-go-island] .bi-go-row--meter { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; }
+      :root[data-dsh-app-layout] .bi-go-meter-head, :root[data-dsh-go-island] .bi-go-meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+      :root[data-dsh-app-layout] .bi-go-meter-val, :root[data-dsh-go-island] .bi-go-meter-val { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+      :root[data-dsh-app-layout] .bi-go-row--meter .bi-go-progress, :root[data-dsh-go-island] .bi-go-row--meter .bi-go-progress { width: 100%; margin-top: 0; }
       :root[data-dsh-app-layout] .bi-go-head-acts, :root[data-dsh-go-island] .bi-go-head-acts { display: flex; align-items: center; gap: 2px; margin: 0 0 0 auto; flex: none; }
       /* 刷新与「收起」共用一套文字按钮：同字号、同色阶、同 44 热区，不额外造按钮形态。 */
       :root[data-dsh-app-layout] .bi-go-act, :root[data-dsh-go-island] .bi-go-act { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border: 0; border-radius: 12px; background: transparent; color: var(--dshgo-muted); font: inherit; font-size: 13px; cursor: pointer; }
@@ -5551,7 +5556,7 @@ module.exports = {
         if (isSub && goWindows.length > 0) {
           goSection(t('ui.subscriptionQuota'), goWindows.map(function (w) {
             const remaining = remainingPercent(w);
-            return { k: quotaWindowLabel(w.key), v: goPercent(quotaWindowPercent(w, goWindowMode)), low: remaining <= 20, bar: quotaWindowPercent(w, goWindowMode), small: w.resetsAt ? fmtResetCountdown(w.resetsAt - now) : null };
+            return { k: quotaWindowLabel(w), v: goPercent(quotaWindowPercent(w, goWindowMode)), low: remaining <= 20, bar: quotaWindowPercent(w, goWindowMode), small: w.resetsAt ? fmtResetCountdown(w.resetsAt - now) : null };
           }));
         }
         const spendRows = [];
@@ -5937,13 +5942,23 @@ module.exports = {
               return React.createElement('div', { key: 'gs' + sectionIndex, className: 'bi-go-sec' },
                 React.createElement('div', { className: 'bi-go-sec-lbl' }, section.label),
                 React.createElement('div', { className: 'bi-go-rows' }, section.rows.map(function (row, rowIndex) {
-                  return React.createElement('div', { key: 'gr' + rowIndex, className: 'bi-go-row' + (row.small || row.bar != null ? ' bi-go-row--sub' : '') },
+                  // 带进度条的额度行：整行宽两段式——头行左窗口名、右百分比+倒计时，下面整行宽进度条。
+                  // 旧版把条塞进右侧窄列（132px），左半边整片空白，与上面左标签右值的行不成体系。
+                  if (row.bar != null) {
+                    return React.createElement('div', { key: 'gr' + rowIndex, className: 'bi-go-row bi-go-row--meter' },
+                      React.createElement('div', { className: 'bi-go-meter-head' },
+                        React.createElement('span', { className: 'bi-go-k' }, row.k),
+                        React.createElement('span', { className: 'bi-go-meter-val' },
+                          React.createElement('span', { className: 'bi-go-v' + (row.low ? ' bi-go-v--low' : '') }, row.v),
+                          row.small ? React.createElement('small', { className: 'bi-go-small' }, row.small) : null)),
+                      React.createElement('span', { className: 'bi-go-progress' + (row.low ? ' bi-go-progress--low' : ''), 'aria-hidden': 'true' },
+                        React.createElement('span', { className: 'bi-go-progress-fill', style: { width: Math.max(0, Math.min(100, row.bar)) + '%' } })));
+                  }
+                  return React.createElement('div', { key: 'gr' + rowIndex, className: 'bi-go-row' + (row.small ? ' bi-go-row--sub' : '') },
                     React.createElement('span', { className: 'bi-go-k' }, row.k),
                     React.createElement('span', { className: 'bi-go-v-wrap' },
                       React.createElement('span', { className: 'bi-go-v' + (row.low ? ' bi-go-v--low' : '') }, row.v),
-                      row.small ? React.createElement('small', { className: 'bi-go-small' }, row.small) : null,
-                      row.bar != null ? React.createElement('span', { className: 'bi-go-progress' + (row.low ? ' bi-go-progress--low' : ''), 'aria-hidden': 'true' },
-                        React.createElement('span', { className: 'bi-go-progress-fill', style: { width: Math.max(0, Math.min(100, row.bar)) + '%' } })) : null));
+                      row.small ? React.createElement('small', { className: 'bi-go-small' }, row.small) : null));
                 })));
             })));
 
