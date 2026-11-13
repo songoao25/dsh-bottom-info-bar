@@ -475,9 +475,11 @@ export function createSelfUpdater(options) {
   }
 
   // 备份目录只保留最近若干份，避免长期堆积占用户空间。
+  // 必须按语义化版本排序，不能用字符串 sort：'1.10.0' 字典序排在 '1.7.0' 前面，
+  // 跨 x.9→x.10 升级时刚建好的最新备份会被当成「最旧」删掉，回滚逃生门随即失效（no-backup）。
   function pruneBackups() {
     try {
-      const names = readdirSync(backupRoot).filter((name) => name !== 'previous').sort()
+      const names = readdirSync(backupRoot).filter((name) => name !== 'previous').sort(compareSemver)
       for (const name of names.slice(0, Math.max(0, names.length - keepBackups))) {
         rmSync(join(backupRoot, name), { recursive: true, force: true })
       }
