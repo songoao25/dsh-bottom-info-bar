@@ -86,7 +86,11 @@ const testEnv = Object.assign({}, process.env, { DSH_BOTTOM_INFO_BAR_SELF_UPDATE
 for (const [name, args, cwd, cmd = process.execPath] of cases) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', env: testEnv })
   const ok = r.status === 0
-  const output = (r.stdout || r.stderr || '').split('\n').filter(Boolean)
+  // 失败时 stdout 与 stderr 都要展示：子进程可能所有 check 都 PASS 但进程级崩溃
+  // （未捕获异常/worker 崩溃只写 stderr）——过去 stdout 非空会把 stderr 吞掉，CI 上只剩盲区。
+  const output = ok
+    ? (r.stdout || r.stderr || '').split('\n').filter(Boolean)
+    : ((r.stdout || '') + '\n' + (r.stderr || '')).split('\n').filter(Boolean)
   const summary = ok ? output.slice(-3).join(' | ') : output.slice(-60).join(' | ')
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  →  ${summary || r.stderr}`)
   if (!ok) failed += 1
