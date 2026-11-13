@@ -852,9 +852,14 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     while ((m = re.exec(cssOnly)) !== null) {
       blocks++;
       const body = m[1] !== undefined ? m[1] : m[2];
+      // placeholder 可读性修正（2026-11-13）：宿主原生 Input 的 ::placeholder 在浅色主题下
+      // 近白不可读（实测 rgb(225,229,238)），插件域内取宿主自己的 tertiary token 修正。
+      // 这是缺陷修正而非外观重绘（值 = 宿主同一令牌，明暗两主题都不劣化），故在白名单放行。
+      const isPlaceholderFix = (m[0] || '').includes('::placeholder');
       body.split(';').map(function (d) { return d.trim(); }).filter(Boolean).forEach(function (d) {
         if (d === 'border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20))') return;
         if (d.indexOf('font-family:') === 0) return;
+        if (isPlaceholderFix && (d === 'color: var(--dsw-alias-label-tertiary)' || d === 'opacity: 1')) return;
         if (FORBIDDEN.test(d)) offenders.push(d);
       });
     }
