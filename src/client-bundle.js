@@ -1856,6 +1856,17 @@ function bibSetInstallStyles() {
       :root[data-dsh-app-layout] .bib-go-inline, :root[data-dsh-go-island] .bib-go-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
       :root[data-dsh-app-layout] .bib-go-inline--end, :root[data-dsh-go-island] .bib-go-inline--end { justify-content: flex-end; padding: 8px 16px; }
       :root[data-dsh-app-layout] .bib-go-static-row, :root[data-dsh-go-island] .bib-go-static-row { display: flex; align-items: center; min-height: 44px; padding: 0 16px; box-sizing: border-box; }
+      /* 版本/更新区：宽屏结论左、动作右同一行；窄屏结论在上、动作左对齐换行在下，不再右挤成一团。 */
+      :root[data-dsh-app-layout] .bib-go-update-row, :root[data-dsh-go-island] .bib-go-update-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: var(--dshgo-row-h2, 64px); padding: 8px 16px; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-update-copy, :root[data-dsh-go-island] .bib-go-update-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      :root[data-dsh-app-layout] .bib-go-update-actions, :root[data-dsh-go-island] .bib-go-update-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+      :root[data-dsh-app-layout] .bib-go-actions, :root[data-dsh-go-island] .bib-go-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; padding: 8px 16px; }
+      @media (max-width: 600px) {
+        :root[data-dsh-app-layout] .bib-go-update-row, :root[data-dsh-go-island] .bib-go-update-row { grid-template-columns: 1fr; gap: 8px; }
+        :root[data-dsh-app-layout] .bib-go-update-actions, :root[data-dsh-go-island] .bib-go-update-actions { justify-content: flex-start; }
+        :root[data-dsh-app-layout] .bib-go-srow--stack, :root[data-dsh-go-island] .bib-go-srow--stack { flex-direction: column; align-items: stretch; gap: 8px; }
+        :root[data-dsh-app-layout] .bib-go-srow--stack .bib-go-srow-control, :root[data-dsh-go-island] .bib-go-srow--stack .bib-go-srow-control { flex: none; justify-content: flex-start; }
+      }
       :root[data-dsh-app-layout] .bib-go-preview, :root[data-dsh-go-island] .bib-go-preview { display: grid; grid-template-columns: calc((100% - 28px) / 3) calc((100% - 28px) / 3) calc((100% - 28px) / 3) 28px; align-items: stretch; height: 56px; padding: 0 4px 0 0; box-sizing: border-box; }
       :root[data-dsh-app-layout] .bib-go-preview-col, :root[data-dsh-go-island] .bib-go-preview-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 0 12px; }
       :root[data-dsh-app-layout] .bib-go-preview-col:first-child, :root[data-dsh-go-island] .bib-go-preview-col:first-child { padding-left: 16px; }
@@ -3221,13 +3232,15 @@ function BibSetGoSwitch(props) {
 }
 function BibSetGoSegmented(props) {
   const options = props.options || [];
+  const disabled = props.disabled === true;
   return React.createElement('div', { className: 'bib-go-seg', role: 'tablist', 'aria-label': props.label },
     options.map(function (option) {
       const active = option.value === props.value;
       return React.createElement('button', {
         key: option.value, type: 'button', role: 'tab', 'aria-selected': active,
+        disabled: disabled,
         className: 'bib-go-seg-opt' + (active ? ' bib-go-seg-opt--active' : ''),
-        onClick: function () { if (!active && props.onChange) props.onChange(option.value); },
+        onClick: function () { if (!disabled && !active && props.onChange) props.onChange(option.value); },
       }, option.label);
     }));
 }
@@ -3240,7 +3253,7 @@ function BibSetGoButton(props) {
   }, props.children);
 }
 function BibSetGoRow(props) {
-  return React.createElement('div', { className: 'bib-go-srow' + (props.desc ? ' bib-go-srow--tall' : '') },
+  return React.createElement('div', { className: 'bib-go-srow' + (props.desc ? ' bib-go-srow--tall' : '') + (props.stack ? ' bib-go-srow--stack' : '') },
     React.createElement('div', { className: 'bib-go-srow-main' },
       React.createElement('div', { className: 'bib-go-srow-title' }, props.title),
       props.desc ? React.createElement('div', { className: 'bib-go-srow-desc' }, props.desc) : null),
@@ -3319,15 +3332,71 @@ function BibSetDshGoPage(props) {
       }),
     });
   });
-  const versionRows = [];
+  // 版本/更新区与桌面 bibSetVersionSection 同一套判定（结论→事实→动作→方式→兜底），
+  // 只是换成 Go 的行语言。旧 Go 版只摆运行/最新两行 + 一个自动开关 + 右挤按钮排，
+  // 缺结论/上次检查/失败原因/回滚逃生门，且「允许更新到 X」误接回滚、暂缓时仍摆安装按钮。
   const update = deps.updateState || {};
-  if (typeof update.runningVersion === 'string') versionRows.push({ k: t('ui.versionRunning', { version: update.runningVersion }), v: '' });
-  if (typeof update.latest === 'string') versionRows.push({ k: t('ui.versionLatest', { version: update.latest }), v: '' });
-  const updateActions = [];
-  updateActions.push(React.createElement(BibSetGoButton, { key: 'check', variant: 'secondary', disabled: deps.updateBusy === true, onClick: deps.onCheckUpdate }, t('ui.updateCheckNow')));
-  if (update.available && typeof update.latest === 'string') updateActions.push(React.createElement(BibSetGoButton, { key: 'install', variant: 'primary', disabled: deps.updateBusy === true, onClick: deps.onInstallUpdate }, t('ui.updateInstallNow', { version: update.latest })));
-  if (update.pendingRestart) updateActions.push(React.createElement(BibSetGoButton, { key: 'force', variant: 'secondary', disabled: deps.updateBusy === true, onClick: deps.onForceUpdate }, t('ui.updateInstallNow', { version: update.diskVersion || '' })));
-  if (update.holdVersion) updateActions.push(React.createElement(BibSetGoButton, { key: 'held', variant: 'secondary', disabled: deps.updateBusy === true, onClick: deps.onRollbackUpdate }, t('ui.updateAllowHeld', { version: update.holdVersion })));
+  const upBusy = deps.updateBusy === true;
+  const upPhase = deps.updatePhase === 'check' || deps.updatePhase === 'install' ? deps.updatePhase : null;
+  const upDisabled = update.disabled === true;
+  const upManual = update.autoUpdate === false;
+  const upShown = function (v) { return typeof v === 'string' && v.length > 0 ? v : t('ui.versionUnknown'); };
+  const upRestartKind = bibSetRestartKind(update);
+  const upLatest = typeof update.latest === 'string' && update.latest.length > 0 ? update.latest : null;
+  const upAvailable = update.available === true && upLatest !== null;
+  const upHeld = typeof update.holdVersion === 'string' && update.holdVersion.length > 0 && update.holdVersion === update.latest;
+  const upCanRollback = upRestartKind === 'update' || !!update.lastError;
+  const upShowFallback = !upDisabled && (upCanRollback || upHeld);
+  const upShowInstall = !upDisabled && upAvailable && !upHeld;
+  let upStatus = t(upLatest ? 'ui.updateUpToDate' : 'ui.updateErrorCheckFailed');
+  if (upDisabled) upStatus = t('ui.updateDisabled');
+  else if (upBusy && upPhase === 'install' && upLatest) upStatus = t('ui.updateInstalling', { version: upLatest });
+  else if (upRestartKind === 'update') upStatus = t('ui.updatePendingRestart', { version: upShown(update.diskVersion) });
+  else if (upRestartKind === 'rollback') upStatus = t('ui.updateRolledBack', { version: upShown(update.diskVersion) });
+  else if (upRestartKind === 'downgrade') upStatus = t('ui.updateDowngradePending', { version: upShown(update.diskVersion), running: upShown(update.runningVersion) });
+  else if (update.lastError) upStatus = t('ui.updateFailed');
+  else if (upHeld) upStatus = t('ui.updateHeld', { version: update.holdVersion });
+  else if (upAvailable) upStatus = t('ui.updateAvailableNow', { version: upLatest });
+  const upFacts = [
+    t('ui.versionRunning', { version: upShown(update.runningVersion) }),
+    t('ui.versionLatest', { version: upShown(update.latest) }),
+  ];
+  const upCheckedAt = bibSetRelativeTime(update.lastCheckAt);
+  if (upCheckedAt) upFacts.push(t('ui.versionLastCheck', { time: upCheckedAt }));
+  const upActions = upDisabled ? null : React.createElement('div', { className: 'bib-go-update-actions' },
+    React.createElement(BibSetGoButton, { key: 'check', variant: 'secondary', disabled: upBusy, onClick: deps.onCheckUpdate },
+      upBusy && upPhase === 'check' ? t('ui.updateChecking') : t('ui.updateCheckNow')),
+    upShowInstall ? React.createElement(BibSetGoButton, { key: 'install', variant: 'primary', disabled: upBusy, onClick: deps.onInstallUpdate },
+      upBusy && upPhase === 'install' ? t('ui.updateInstalling', { version: upLatest }) : t('ui.updateInstallNow', { version: upLatest })) : null);
+  const upStatusRow = React.createElement('div', { className: 'bib-go-update-row' },
+    React.createElement('div', { className: 'bib-go-update-copy' },
+      React.createElement('div', { className: 'bib-go-srow-title' }, upStatus),
+      React.createElement('div', { className: 'bib-go-srow-desc' }, upDisabled
+        ? t('ui.versionRunning', { version: upShown(update.runningVersion) }) + ' · ' + t('ui.updateDisabledWhy')
+        : upFacts.join(' · '))),
+    upActions);
+  const upErrorRow = (update.lastError && !upDisabled) ? React.createElement('div', { className: 'bib-go-update-row' },
+    React.createElement('div', { className: 'bib-go-update-copy' },
+      React.createElement('div', { className: 'bib-go-srow-desc' }, updateErrorText(update.lastErrorKind || update.lastError)))) : null;
+  const upModeRow = upDisabled ? null : React.createElement(BibSetGoRow, {
+    title: t('ui.autoUpdateTitle'),
+    desc: upManual ? t('ui.updateModeManualDesc') : t('ui.updateModeAutoDesc'),
+    stack: true,
+    control: React.createElement(BibSetGoSegmented, {
+      label: t('ui.autoUpdateTitle'), value: upManual ? 'manual' : 'auto', disabled: upBusy,
+      options: [
+        { value: 'auto', label: t('ui.updateModeAuto') },
+        { value: 'manual', label: t('ui.updateModeManual') },
+      ],
+      onChange: function (value) { if (!upBusy) deps.onToggleUpdateAuto(value !== 'manual'); },
+    }),
+  });
+  const upFallbackRow = upShowFallback ? React.createElement('div', { className: 'bib-go-update-row' },
+    React.createElement('div', { className: 'bib-go-update-copy' },
+      React.createElement('div', { className: 'bib-go-srow-desc' }, upCanRollback ? t('ui.updateFallbackWhy') : t('ui.updateHoldWhy'))),
+    React.createElement('div', { className: 'bib-go-update-actions' },
+      upCanRollback ? React.createElement(BibSetGoButton, { key: 'rb', variant: 'secondary', disabled: upBusy, onClick: deps.onRollbackUpdate }, t('ui.updateRollback')) : null,
+      upHeld ? React.createElement(BibSetGoButton, { key: 'held', variant: 'secondary', disabled: upBusy, onClick: deps.onForceUpdate }, t('ui.updateAllowHeld', { version: update.holdVersion })) : null)) : null;
   return React.createElement('div', { ref: deps.rootRef, className: 'bib-set-root bib-settings bib-go-page' },
     React.createElement('header', { className: 'bib-go-head' },
       React.createElement('h1', { className: 'bib-go-title' }, t('ui.infoBarSettings')),
@@ -3420,6 +3489,7 @@ function BibSetDshGoPage(props) {
         React.createElement(BibSetGoCard, null,
           React.createElement(BibSetGoRow, {
             title: t('ui.exportBillingRecords'), desc: t('ui.exportBillingRecordsDesc'),
+            stack: true,
             control: React.createElement('div', { className: 'bib-go-inline' },
               React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.runExport('csv'); } }, t('ui.exportBillingCsv')),
               React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.runExport('json'); } }, t('ui.exportBillingJson'))),
@@ -3431,19 +3501,11 @@ function BibSetDshGoPage(props) {
       React.createElement('div', { className: 'bib-go-section' },
         React.createElement('div', { className: 'bib-go-section-label' }, t('ui.versionAndUpdateTitle')),
         React.createElement(BibSetGoCard, null,
-          versionRows.map(function (row, index) {
-            return React.createElement('div', { key: 'v' + index, className: 'bib-go-static-row' }, React.createElement('span', { className: 'bib-go-srow-title' }, row.k));
-          }),
-          React.createElement(BibSetGoRow, {
-            title: t('ui.autoUpdateTitle'),
-            desc: t('ui.versionAndUpdateDesc'),
-            control: React.createElement(BibSetGoSwitch, {
-              label: t('ui.autoUpdateTitle'), checked: update.autoUpdate !== false, disabled: deps.updateBusy === true,
-              onToggle: deps.onToggleUpdateAuto,
-            }),
-          }),
-          React.createElement('div', { className: 'bib-go-inline bib-go-inline--end' }, updateActions),
-          React.createElement('div', { className: 'bib-go-inline bib-go-inline--end' },
+          upStatusRow,
+          upErrorRow,
+          upModeRow,
+          upFallbackRow,
+          React.createElement('div', { className: 'bib-go-actions' },
             React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.requestReset('fields'); } }, t('ui.resetLabels')),
             React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.requestReset('colors'); } }, t('ui.resetColors'))))),
     deps.feedback ? React.createElement('div', { className: 'bib-go-feedback' }, deps.feedback) : null,
