@@ -165,11 +165,14 @@ check('宽屏（≥600）卡片与输入框同宽，只调内边距，不缩版�
   && !visualBlock.includes('max-width: 560px')
   && visualBlock.includes('padding: 0 20px')
   && visualBlock.includes('padding: 0 20px 20px;'), true);
-check('宽屏增量列按档位递进（760 / 1040 / 1320），手机档不占位',
+check('宽屏增量列按档位递进（760 / 960 / 1180），手机档不占位',
   visualBlock.includes('.bi-go-col[data-extra]') && visualBlock.includes('display: none')
   && visualBlock.includes('@media (min-width: 760px)') && visualBlock.includes('[data-extra="1"]')
-  && visualBlock.includes('@media (min-width: 1040px)') && visualBlock.includes('[data-extra="2"]')
-  && visualBlock.includes('@media (min-width: 1320px)') && visualBlock.includes('[data-extra="3"]'), true);
+  && visualBlock.includes('@media (min-width: 960px)') && visualBlock.includes('[data-extra="2"]')
+  && visualBlock.includes('@media (min-width: 1180px)') && visualBlock.includes('[data-extra="3"]'), true);
+check('档位让 1024 / 1280 两个常见窗口各落进正确档位（1040 会把 1024 卡在门外）',
+  !visualBlock.includes('@media (min-width: 1040px)')
+  && !visualBlock.includes('@media (min-width: 1320px)'), true);
 check('宽屏展开面板变双栏（把宽度换成信息密度，而不是把行拉长）',
   visualBlock.includes('grid-template-columns: calc(50% - 22px) calc(50% - 22px)'), true);
 check('窄屏断点不再要求触屏（只按宽度分档）',
