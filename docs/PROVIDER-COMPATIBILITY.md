@@ -37,7 +37,7 @@ Custom provider `volcengine-ark` is recognized without an account balance API. B
 
 ### 阿里 Token Plan（百炼 Credits 订阅）
 
-Provider id `qwen-token-plan`、`qwen-token-plan-individual`（国际站 `ap-southeast-1`）与 `qwen-token-plan-cn`（中国站 `cn-beijing`），信息栏显示名统一为 Qwen Token Plan；两个站点的额度快照各自独立，不串账。额度没有 API Key 数据面端点：推理套餐 Key（`sk-sp-…`）只能推理，读不到额度，所以改用阿里云 AccessKey（`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`，RAM 用户即可），走两条只读链路——一是官方 OpenAPI `GetSubscriptionStats`（按席位汇总总/剩余 Credits，系统策略 `AliyunTokenPlanReadOnlyAccess` 即可），二是官方 CLI 同款链路（AK/SK 换控制台临时令牌，再从控制台网关取月度已用百分比与重置时间，需要额外自定义策略授予 `modelstudio:GenerateCLIAccessToken`）。任一链路成功即显示对应窗口；都失败时按“未配置 / 凭据或权限不足 / 未订阅 / 无法识别”给可操作提示，并保留上一份成功快照，不显示 0%。凭据可以在插件设置页的「额度凭据」里直接填（写入 DSH 凭据存储，不写插件配置），也可以走环境变量。两条链路都只读，不读浏览器 Cookie，也不写远端状态。验证程度：签名与解析按官方文档、官方 CLI 源码实现并有单测覆盖，但尚未用真实订阅账号做端到端实测——个人版 `GetSubscriptionStats` 的返回形态与国际站网关组合以实机为准。
+Provider id `qwen-token-plan`、`qwen-token-plan-individual`（国际站 `ap-southeast-1`）与 `qwen-token-plan-cn`（中国站 `cn-beijing`），信息栏显示名统一为 Qwen Token Plan；两个站点的额度快照各自独立，不串账。额度没有 API Key 数据面端点：推理套餐 Key（`sk-sp-…`）只能推理，读不到额度，所以改用阿里云 AccessKey（`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`，RAM 用户即可），走两条只读链路——一是官方 OpenAPI `GetSubscriptionStats`（按席位汇总总/剩余 Credits），二是官方 CLI 同款链路（AK/SK 换控制台临时令牌，再从控制台网关取月度已用百分比与重置时间）。RAM 用户需由主账号在 RAM 控制台同时授予系统策略 `AliyunTokenPlanReadOnlyAccess` 与 `AliyunBSSReadOnlyAccess`，并在百炼控制台「账号管理」分配管理员或订阅套餐权限（只授系统策略、漏掉这步分配，额度仍读不到）；控制台链路还需额外自定义策略授予 `modelstudio:GenerateCLIAccessToken`。任一链路成功即显示对应窗口；都失败时按“未配置 / 凭据或权限不足 / 未订阅 / 无法识别”给可操作提示，并保留上一份成功快照，不显示 0%。凭据可以在插件设置页的「额度凭据」里直接填（写入 DSH 凭据存储，不写插件配置），也可以走环境变量。两条链路都只读，不读浏览器 Cookie，也不写远端状态。验证程度：签名与解析按官方文档、官方 CLI 源码实现并有单测覆盖，但尚未用真实订阅账号做端到端实测——个人版 `GetSubscriptionStats` 的返回形态与国际站网关组合以实机为准。
 
 ### Kimi For Coding
 
