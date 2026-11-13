@@ -379,12 +379,12 @@ export const FIELD_REGISTRY = [
   // 主/世界时间：时区在设置页「时间与日期」中独立配置；显示统一用通用格式
   { id: 'mainTime', label: "field.mainTime.label", group: 'plugin', section: 'common', defaultOff: true, colorKind: 'inherit', note: "field.mainTime.note" },
   { id: 'worldTime', label: "field.worldTime.label", group: 'plugin', section: 'common', defaultOff: true, colorKind: 'inherit', note: "field.worldTime.note" },
-  // 上下文占用圆环（DSH 原生 ContextMeter 的接管版）：外观、几何与交互面板与原生一致，显隐/配色并入本插件字段体系；
-  // 固定在主行最右端，原生那一份由样式隐藏。归 plugin 组是结论而非笔误：它住在主行，而主行两种模式都可见。
   // 宽屏增量列（DSH Go，2026-11-13）：宽度够时信息栏自动多出这两列，手机档不占位。
   // 默认开启；用户在设置页关掉就不参与「按宽度补列」，与其它字段同一套显隐规则。
   { id: 'todaySpend', label: "field.todaySpend.label", group: 'plugin', section: 'common', colorKind: 'inherit', note: "field.todaySpend.note" },
   { id: 'last30dSpend', label: "field.last30dSpend.label", group: 'plugin', section: 'common', colorKind: 'inherit', note: "field.last30dSpend.note" },
+  // 上下文占用圆环（DSH 原生 ContextMeter 的接管版）：外观、几何与交互面板与原生一致，显隐/配色并入本插件字段体系；
+  // 固定在主行最右端，原生那一份由样式隐藏。归 plugin 组是结论而非笔误：它住在主行，而主行两种模式都可见。
   { id: 'contextUsage', label: "field.contextUsage.label", group: 'plugin', section: 'common', colorKind: 'meter', note: "field.contextUsage.note" },
   // ---------- 插件信息 · 余额制（balance） ----------
   // 本会话花费：余额制与"订阅 · 充值余额"形态共用（见 pushSessionCost）

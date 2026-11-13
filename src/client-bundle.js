@@ -3194,7 +3194,8 @@ function bibSetDataCard(props) {
 }
 
 // ---------- DSH Go 配置页（DESIGN-FINAL §6，2026-11-12） ----------
-// 只在 DSH Go 网页版/整页岛 + 触屏 + 手机宽度下渲染；桌面走原设置页，结构与像素不变。
+// 只在 DSH Go 表面（网页版/整页岛，见 dshGoCompactEnabled）下渲染；桌面走原设置页，结构与像素不变。
+// 不额外要求触屏或手机宽度：平板/大窗/鼠标仍是 DSH Go，尺寸差异交给 CSS 断点。
 // 控件全部自绘（开关 52×32 / 分段 36 / 按钮 44）；卡片玻璃面、卡内无分割线（行间 2、分组 24）。
 // 动作全部复用原设置页的同一批函数（rpc / 字段语义不变）。
 const BIB_GO_MINIMAL_FIELDS = ['contextUsage', 'balance', 'subBalance', 'subWindow5h', 'subWindowWeek', 'subWindowMonth', 'billingSpend'];
@@ -5411,7 +5412,7 @@ module.exports = {
       }
 
       // ---- DSH Go 信息栏三列卡（DESIGN-FINAL §3/§4/§5）----
-      // 只在 DSH Go 网页版/整页岛 + 触屏 + 手机宽度（dshGoCompact）下替换整行；
+      // 只在 DSH Go 表面（网页版/整页岛，dshGoCompact）下替换整行；尺寸差异交给 CSS 断点，不要求触屏。
       // 数据只读 renderedState / fieldVisible，不新增 RPC；字段开关仍是唯一显隐来源。
       const goErrors = renderedState.errors || {};
       const goPending = waitForSessionModel || (renderedState.loading === true && !renderedState.billingMode);
