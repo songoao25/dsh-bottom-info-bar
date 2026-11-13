@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.25.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.1...v1.25.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **dshgo:** 设置页预览卡去掉残留箭头并恢复真实卡比例 ([#299](https://github.com/songoao25/dsh-bottom-info-bar/issues/299)) ([59d553d](https://github.com/songoao25/dsh-bottom-info-bar/commit/59d553d7a3dd32b79841625d5e163cb0d470a18b))
+
 ## [1.25.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.0...v1.25.1) (2026-11-13)
 
 
