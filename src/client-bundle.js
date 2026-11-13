@@ -1870,15 +1870,16 @@ function bibSetInstallStyles() {
         :root[data-dsh-app-layout] .bib-go-srow--stack, :root[data-dsh-go-island] .bib-go-srow--stack { flex-direction: column; align-items: stretch; gap: 8px; }
         :root[data-dsh-app-layout] .bib-go-srow--stack .bib-go-srow-control, :root[data-dsh-go-island] .bib-go-srow--stack .bib-go-srow-control { flex: none; justify-content: flex-start; }
       }
-      :root[data-dsh-app-layout] .bib-go-preview, :root[data-dsh-go-island] .bib-go-preview { display: grid; grid-template-columns: calc((100% - 28px) / 3) calc((100% - 28px) / 3) calc((100% - 28px) / 3) 28px; align-items: stretch; height: 56px; padding: 0 4px 0 0; box-sizing: border-box; }
-      :root[data-dsh-app-layout] .bib-go-preview-col, :root[data-dsh-go-island] .bib-go-preview-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 0 12px; }
-      :root[data-dsh-app-layout] .bib-go-preview-col:first-child, :root[data-dsh-go-island] .bib-go-preview-col:first-child { padding-left: 16px; }
-      :root[data-dsh-app-layout] .bib-go-preview-cap, :root[data-dsh-go-island] .bib-go-preview-cap { margin-bottom: 2px; font-size: var(--dshgo-font-caption, 12px); font-weight: 500; line-height: 16px; color: var(--dshgo-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* 预览卡与真实卡同一套几何（2026-11-13 用户指出）：56 高、20 圆角、16 页边、
+         三列按 content 均分且无 chevron；不再用 28px 箭头列和每列 12px 内边距把比例拉歪。 */
+      :root[data-dsh-app-layout] .bib-go-preview, :root[data-dsh-go-island] .bib-go-preview { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 100%; padding: 0 16px; box-sizing: border-box; }
+      :root[data-dsh-app-layout] .bib-go-preview-col, :root[data-dsh-go-island] .bib-go-preview-col { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; max-width: calc((100% - 20px) / 3); padding: 0; }
+      :root[data-dsh-app-layout] .bib-go-preview-col:last-child, :root[data-dsh-go-island] .bib-go-preview-col:last-child { align-items: flex-end; text-align: right; }
+      :root[data-dsh-app-layout] .bib-go-preview-cap, :root[data-dsh-go-island] .bib-go-preview-cap { margin-bottom: 2px; font-size: var(--dshgo-font-caption, 12px); font-weight: 500; line-height: 16px; letter-spacing: 0.2px; color: var(--dshgo-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       :root[data-dsh-app-layout] .bib-go-preview-val, :root[data-dsh-go-island] .bib-go-preview-val { font-size: var(--dshgo-font-value, 16px); font-weight: 600; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       :root[data-dsh-app-layout] .bib-go-preview-ring, :root[data-dsh-go-island] .bib-go-preview-ring { display: flex; align-items: center; gap: 5px; color: var(--dshgo-accent); }
       :root[data-dsh-app-layout] .bib-go-preview-ring span, :root[data-dsh-go-island] .bib-go-preview-ring span { color: var(--dshgo-ink); }
-      :root[data-dsh-app-layout] .bib-go-preview-chevron, :root[data-dsh-go-island] .bib-go-preview-chevron { display: flex; align-items: center; justify-content: center; color: var(--dshgo-faint); }
-      :root[data-dsh-app-layout] .bib-go-preview-card, :root[data-dsh-go-island] .bib-go-preview-card { padding: 0; }
+      :root[data-dsh-app-layout] .bib-go-preview-card, :root[data-dsh-go-island] .bib-go-preview-card { height: 56px; padding: 0; box-sizing: border-box; }
       :root[data-dsh-app-layout] .bib-go-feedback, :root[data-dsh-go-island] .bib-go-feedback { padding: 0 4px; font-size: var(--dshgo-font-desc, 13px); color: var(--dshgo-muted); }
       :root[data-dsh-app-layout] .bib-go-footer, :root[data-dsh-go-island] .bib-go-footer { padding: 8px 4px 0; text-align: center; font-size: var(--dshgo-font-caption, 12px); line-height: 1.5; color: var(--dshgo-faint); }
       :root[data-dsh-app-layout] .bib-go-page .bib-set-dots, :root[data-dsh-go-island] .bib-go-page .bib-set-dots { display: flex; align-items: center; gap: 6px; }
@@ -3321,10 +3322,7 @@ function BibSetDshGoPage(props) {
           React.createElement('svg', { viewBox: '0 0 20 20', width: 17, height: 17, 'aria-hidden': 'true' },
             React.createElement('circle', { cx: 10, cy: 10, r: 7.5, fill: 'none', stroke: 'currentColor', strokeOpacity: 0.25, strokeWidth: 2.5 }),
             React.createElement('circle', { cx: 10, cy: 10, r: 7.5, fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round', strokeDasharray: 47.1, strokeDashoffset: 32.5, transform: 'rotate(-90 10 10)' })),
-          React.createElement('span', null, '31%'))),
-      React.createElement('span', { className: 'bib-go-preview-chevron', 'aria-hidden': 'true' },
-        React.createElement('svg', { viewBox: '0 0 16 16', width: 16, height: 16 },
-          React.createElement('path', { d: 'M4 6l4 4 4-4', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' })))));
+          React.createElement('span', null, '31%')))));
   const colorRows = hostFields.filter(function (field) { return field.noColor !== true; }).map(function (field) {
     return React.createElement(BibSetGoRow, {
       key: 'c-' + field.id,
