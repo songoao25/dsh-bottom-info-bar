@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.25.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.6...v1.25.0) (2026-11-13)
+
+
+### Features
+
+* **dshgo:** adapt the info bar and settings page to DSH Go ([#295](https://github.com/songoao25/dsh-bottom-info-bar/issues/295)) ([cf262e3](https://github.com/songoao25/dsh-bottom-info-bar/commit/cf262e38fc93b8387f9ef21f3a9ce2542856e90a))
+
 ## [1.24.6](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.5...v1.24.6) (2026-11-13)
 
 
