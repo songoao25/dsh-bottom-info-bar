@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.24.4](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.3...v1.24.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* rebuild the settings page on the DSH 0.2.2 card system ([#274](https://github.com/songoao25/dsh-bottom-info-bar/issues/274) follow-up) ([#288](https://github.com/songoao25/dsh-bottom-info-bar/issues/288)) ([3b4586c](https://github.com/songoao25/dsh-bottom-info-bar/commit/3b4586c7d8ff297a6fc1809ae605fa7e778d7830))
+
 ## [1.24.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.24.2...v1.24.3) (2026-11-12)
 
 
