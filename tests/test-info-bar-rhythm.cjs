@@ -173,5 +173,16 @@ check('面板保留宿主阴影（层级感不丢）', panelDecl.includes('box-s
 check('面板底色声明里没有 rgba/透明关键字',
   /background[^;]*\b(rgba|transparent)\b/.test(panelDecl), false);
 
+// ---------- 8) 更新短标记与同一行文字共享中线（2026-11-13 用户报告「重启生效」上沿超出） ----------
+// 根因：16px 胶囊在 20px 行里用 vertical-align: top，盒子上沿贴行框顶，视觉上比文字高 2px；
+// 字号档变大（行高 24）时更明显。修法：胶囊本身按文本光学中心对齐，字段容器再撑满行高 flex 居中。
+// 该规则写作「.bi-update-badge{」，选择器后没有空格，不能复用 declarations()。
+const badgeAt = css.indexOf('.bi-update-badge{');
+const badgeDecl = badgeAt < 0 ? '' : css.slice(badgeAt, css.indexOf('}', badgeAt));
+check('更新短标记按文本中线对齐（不再 top 顶出）',
+  badgeDecl.includes('vertical-align: middle') && !badgeDecl.includes('vertical-align: top'), true);
+check('两枚更新标记的字段容器撑满行高并 flex 居中（字号档变化仍同一中线）',
+  css.includes('.bi-row2 span[data-field="updateNotice"], .bi-row2 span[data-field="updateFailure"] { display: inline-flex; align-items: center; height: var(--bi-line); }'), true);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
