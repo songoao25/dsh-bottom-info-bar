@@ -191,5 +191,18 @@ check('三列卡数值：caption 12/500、value 16/600、tabular-nums、长金�
   && visualBlock.includes('.bi-go-val--shrink') && visualBlock.includes('font-size: 11px; letter-spacing: -0.5px;')
   && visualBlock.includes('.bi-go-bar') && visualBlock.includes('height: 4px'), true);
 
+// ---------- R1（2026-11-13）：缺额度凭据的配置引导必须到达 DSH Go 卡与面板 ----------
+// 桌面缺凭据（sub.error no-key + params.setup=plugin）走 subscriptionSetupHint，给「打开插件设置 →
+// 额度凭据填写」的可自助引导。Go 三列卡此前误显示「账号未登录」、面板只给通用「请重新授权」，
+// 对缺 AK/SK 无效。修复后：卡列显「未配置」，面板提醒行优先用 setup 引导文案。
+check('Go 卡第 1 列：缺插件凭据时显「未配置」而非「账号未登录」',
+  clientSrc.includes("sub && sub.error && subscriptionSetupHint(sub.error)")
+  && clientSrc.includes("goSlots.push({ key: 'setup', caption: t('ui.account'), value: t('ui.credentialNotConfigured') });"), true);
+check('Go 面板提醒行：缺凭据优先用 subscriptionSetupHint 文案，不退回通用「请重新授权」',
+  clientSrc.includes('const subSetupHint = subscriptionSetupHint(renderedState.sub.error);')
+  && clientSrc.includes('v: subSetupHint ? subSetupHint.text : subscriptionFailureHint(renderedState.sub.error'), true);
+check('配置引导复用既有 13 语言键，不新造文案（credentialNotConfigured / quotaCredentialSetupText）',
+  clientSrc.includes("t('ui.credentialNotConfigured')") && clientSrc.includes('subSetupHint.text'), true);
+
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
