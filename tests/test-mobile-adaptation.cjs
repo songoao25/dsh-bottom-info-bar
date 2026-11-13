@@ -112,6 +112,11 @@ const gateStart = css.indexOf(':root[data-dsh-app-layout], :root[data-dsh-go-isl
 check('Go 皮肤层由宿主属性门控，不依赖触屏（DSH Go 在任何指针环境都套 Go 形态）',
   tokenStart > 0 && gateStart > tokenStart
   && !css.slice(tokenStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', tokenStart)).includes('@media (pointer: coarse)'), true);
+check('Go 设置页预览卡与真实卡同构：无 chevron、16 页边、56 高、三列按内容分布',
+  !clientSrc.includes('bib-go-preview-chevron')
+  && clientSrc.includes('justify-content: space-between; gap: 10px; height: 100%; padding: 0 16px')
+  && clientSrc.includes('bib-go-preview-card, :root[data-dsh-go-island] .bib-go-preview-card { height: 56px; padding: 0; box-sizing: border-box; }')
+  && clientSrc.includes('.bib-go-preview-col:last-child, :root[data-dsh-go-island] .bib-go-preview-col:last-child { align-items: flex-end; text-align: right; }'), true);
 check('Go 形态判定不再要求触屏（平板/大窗/鼠标环境仍是 DSH Go）',
   /function dshGoCompactEnabled\(\) \{\s*return dshGoSurfaceEnabled\(\);/.test(clientSrc), true);
 const tokenBlock = css.slice(gateStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', gateStart));
