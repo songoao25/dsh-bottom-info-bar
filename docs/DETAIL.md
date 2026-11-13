@@ -4,7 +4,7 @@
 - Picks balance, subscription quota, or cloud bill per provider automatically
 - Tracks spend for this session, today, the last 30 days, and all time; figures stay on this machine
 - Click a field to switch between the full and compact layouts
-- Dedicated quota keys (Alibaba AccessKey, Kimi/MiniMax/Xiaomi/Command Code/OpenCode Go) go under "Quota credentials" in the plugin settings, collapsed by default; other providers reuse the model keys from DSH Settings → Models
+- Only Alibaba needs its own read-only AccessKey — enter it under "Quota credentials" in the plugin settings (collapsed by default); all other providers reuse the model keys from DSH Settings → Models
 
 **Announcement**: v1.24.1 may crash on update; updating to 1.24.2 or newer fixes it.
 

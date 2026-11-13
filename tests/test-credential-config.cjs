@@ -832,6 +832,39 @@ async function main() {
   ok('H7 所有 ROUTES 返回结果都不含凭据值/OAuth token',
     results.every(function (res) { return !leaks(res) }), results.length + ' 个结果')
 
+  // ================= H8-H10 文档口径守卫（2026-11-13）=================
+  // 插件页「额度凭据」只收 inline 服务商；公告（DETAIL）/README/INSTALL 里的收录描述必须与
+  // CATALOG 同步——文档列出已删除的输入入口会把用户引到不存在的绑定流程。用户要求
+  // 「每次更新都要把公告一起更新」，这里用测试锁死：文档漂移 = 测试红。
+  const DOC_FILES = [
+    'docs/DETAIL.md', 'docs/DETAIL.zh.md', 'docs/DETAIL.zh-Hant.md',
+    'README.md', 'README.zh-CN.md', 'docs/INSTALL.md',
+  ]
+  // 非 inline 服务商的显示名黑名单：这些名字与「额度凭据」出现在同一句 = 文档仍在教用户去插件页绑它们。
+  // 未来若有新 inline 服务商加入 CATALOG，需要同步调整 H8 的期望与本名单。
+  const NON_INLINE_NAMES = ['Kimi', 'MiniMax', '小米', 'Xiaomi', 'Command Code', 'OpenCode', '智谱', 'Zhipu', 'Moonshot', 'OpenRouter', 'Together', 'Fireworks']
+  const QUOTA_CRED_PHRASE = /(额度凭据|額度憑證|Quota credentials)/
+  // 句切分：中文按 。！？；；换行；英文按 ". "（后跟大写才切，避开 v1.24.1 这类版本号）。
+  function docSentences(text) {
+    return String(text).split(/[。！？；\n]+|\.\s+(?=[A-Z—])/).map(function (s) { return s.trim() }).filter(Boolean)
+  }
+  ok('H8 目录 inline 服务商只有阿里（插件页只收阿里凭据）',
+    JSON.stringify(inlineEntries.map(function (entry) { return entry.id })), JSON.stringify(['alibaba']))
+  const docProblems = []
+  for (const rel of DOC_FILES) {
+    const text = readFileSync(join(root, rel), 'utf8')
+    for (const sentence of docSentences(text)) {
+      if (!QUOTA_CRED_PHRASE.test(sentence)) continue
+      const hit = NON_INLINE_NAMES.filter(function (name) { return sentence.indexOf(name) !== -1 })
+      if (hit.length) docProblems.push(rel + '：「' + sentence.slice(0, 70) + '…」命中 ' + hit.join('/'))
+    }
+    if (/^docs\/DETAIL\./.test(rel) && !docSentences(text).some(function (s) {
+      return QUOTA_CRED_PHRASE.test(s) && /Only Alibaba|只有阿里/.test(s)
+    })) docProblems.push(rel + '：缺少「只有阿里 + 额度凭据」同句锚点（公告未同步新口径）')
+  }
+  ok('H9 公告/README/INSTALL 的「额度凭据」语境不得再列非 inline 服务商', docProblems.length === 0,
+    docProblems.slice(0, 3).join(' | '))
+
   console.log(String.fromCharCode(10) + (fail === 0 ? '全部通过' : fail + ' 项失败') + '：' + pass + ' passed, ' + fail + ' failed')
   process.exit(fail === 0 ? 0 : 1)
 }
