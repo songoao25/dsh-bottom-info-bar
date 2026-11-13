@@ -49,7 +49,7 @@ check('每块都带 id/label/desc，id 唯一且非空',
   && new Set(sectionIds).size === FIELD_SECTIONS.length, true);
 // 漏标一个字段的后果很隐蔽：那一行会掉进兜底块，排到最后，看起来像「多了个没有标题的行」。
 check('每个插件字段必须且只能落在一个已知小节里（漏标 / 错标即失败）',
-  pluginFields.length === 20
+  pluginFields.length === 22
   && pluginFields.every((f) => sectionIds.includes(f.section)), true);
 check('原生组与提醒组不设小节（它们本来就只有一块，多一层标题只是噪音）',
   FIELD_REGISTRY.filter((f) => f.group !== 'plugin').every((f) => f.section === undefined), true);
@@ -60,11 +60,11 @@ check('归属正确：身份锚点各就各位（通用锚点 / 订阅锚点 / �
   FIELD_REGISTRY.find((f) => f.id === 'anchorGroup').section === 'identity'
   && FIELD_REGISTRY.find((f) => f.id === 'subServiceGroup').section === 'identity'
   && FIELD_REGISTRY.find((f) => f.id === 'billingServiceGroup').section === 'identity', true);
-check('归属正确：余额 4 项 / 订阅 6 项 / 账单 3 项 / 通用 4 项',
+check('归属正确：余额 4 项 / 订阅 6 项 / 账单 3 项 / 通用 6 项',
   idsInSection('balance').join(',') === 'sessionCost,balance,period,countdown'
   && idsInSection('subscription').join(',') === 'expiry,subWindow5h,subWindowWeek,subWindowMonth,resetCountdown,subBalance'
-  && idsInSection('billing').join(',') === 'billingSpend,budget,freeQuota'
-  && idsInSection('common').join(',') === 'customText,mainTime,worldTime,contextUsage', true);
+  && idsInSection('common').join(',') === 'customText,mainTime,worldTime,todaySpend,last30dSpend,contextUsage'
+  && idsInSection('billing').join(',') === 'billingSpend,budget,freeQuota', true);
 // 最容易搞错的两个跨形态字段：订阅的「可用余额或剩余额度」不是余额制的「余额」；
 // 余额制的「本次会话花费」虽然订阅 · 充值余额形态也会用，但它属于余额口径。
 check('归属正确：subBalance 归订阅、balance 归余额（两个名字像、形态不同）',
@@ -164,10 +164,10 @@ const bibSetFieldBlocks = (function () {
 
 {
   const blocks = bibSetFieldBlocks(pluginFields, {});
-  check('渲染级：20 个插件字段 → 5 个小节块（无兜底块）',
+  check('渲染级：22 个插件字段 → 5 个小节块（无兜底块）',
     blocks.length === 5
     && blocks.map((b) => b.props.key).join(',') === 's-identity,s-balance,s-subscription,s-billing,s-common', true);
-  check('渲染级：输出是输入的完整划分（20 进 20 出，无重复无遗漏，行序 = 小节顺序）',
+  check('渲染级：输出是输入的完整划分（22 进 22 出，无重复无遗漏，行序 = 小节顺序）',
     rowIdsOf(blocks).join(',') === settingsOrder.join(',')
     && new Set(rowIdsOf(blocks)).size === pluginFields.length, true);
   check('渲染级：每块第一层是标题（标题原文 + 说明原文），行在标题之后',
