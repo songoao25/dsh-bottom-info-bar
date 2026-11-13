@@ -73,6 +73,22 @@ Every model response records one entry (usage × unit price, locked the moment t
 
 Remove the plugin on the DSH plugin page (or `dsh plugin --profile web remove dsh-bottom-info-bar`) and restart DSH: the native stats row comes back by itself and no plugin files are left behind. The ledger is kept on purpose — export or clear it from **Billing data** before removing the plugin if you want a clean slate. To go back a version instead, the update section offers **roll back to the previous version** while a newer build is waiting for a restart, and after a failed update. Details: [docs/INSTALL.md](docs/INSTALL.md).
 
+## FAQ
+
+**The bar shows "not configured" or "Refresh failed" — is it broken?**
+
+No. When it can't read data, the bar keeps the last good snapshot and never shows a fake 0%. First make sure you **restarted DSH** after installing (a page refresh is not enough). Hover the affected field to see the reason; touch hosts (DSH Go) have no hover, so check the plugin settings page instead. Per-provider credential setup is in [docs/INSTALL.md](docs/INSTALL.md).
+
+**I configured an AccessKey for Alibaba Token Plan as documented, but it still says "Refresh failed".**
+
+Usually the authorization is incomplete — `AliyunTokenPlanReadOnlyAccess` alone is not enough. Have the primary account do the following for that RAM user:
+
+1. In the RAM console, grant **both** system policies `AliyunTokenPlanReadOnlyAccess` and `AliyunBSSReadOnlyAccess`;
+2. In the Bailian console's **Account Management**, assign the RAM user admin or Subscription Package permission — granting only the system policies and skipping this assignment still leaves quota unreadable (the bar reports Refresh failed);
+3. Personal-plan monthly percentages use the console path, which also needs a custom policy granting `modelstudio:GenerateCLIAccessToken`.
+
+Also, inference plan keys (`sk-sp-…`) can only run inference and cannot read quota — you must use an Alibaba Cloud AccessKey (`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`), entered under **Quota credentials** in the plugin settings (collapsed by default), or in DSH credentials / same-named environment variables. The bar's hover only gives a generic "reauthorize" hint; the full authorization checklist above also appears in the settings **Quota credentials** card, with step-by-step details in [docs/INSTALL.md](docs/INSTALL.md).
+
 ## Languages
 
 The plugin includes English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, Portuguese, French, German, Italian, Russian, Hindi and Indonesian. It follows DSH’s language by default. Choose **Language** on this plugin’s settings page to use a different language independently; the choice is saved in this browser. Regional variants such as Spanish (Mexico) and Portuguese (Brazil) use the corresponding built-in language. Unsupported languages fall back to English.

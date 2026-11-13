@@ -73,6 +73,22 @@ API 密钥填在 DSH 的**设置 → 模型**；订阅类（Codex、OpenCode、�
 
 在 DSH 插件页移除（或 `dsh plugin --profile web remove dsh-bottom-info-bar`）后**重启 DSH**：原生统计栏会自动恢复，插件代码不留残留。账本是有意保留的——想彻底清零，先在设置页「账单数据」里导出或清除，再卸载。只想退回上一版的话，在有新版本等待重启时、以及更新失败后，设置页的更新区会给出**回滚到上一版**。细节见 [docs/INSTALL.md](docs/INSTALL.md)。
 
+## 常见问题
+
+**信息栏显示「未配置」或「刷新失败」，是坏了吗？**
+
+不是。读不到数据时信息栏会保留上一份成功快照，绝不显示假的 0%。先确认装好后**重启过 DSH**（只刷新页面不够）。把鼠标停在出问题的字段上能看到原因；触屏宿主（DSH Go）没有悬停，改看插件设置页。各服务商的凭据配置见 [docs/INSTALL.md](docs/INSTALL.md)。
+
+**阿里 Token Plan 照文档配了 AccessKey，还是「刷新失败」？**
+
+多半是授权没配全——只授 `AliyunTokenPlanReadOnlyAccess` 不够。请由主账号为该 RAM 用户完成：
+
+1. 在 RAM 控制台**同时**授予系统策略 `AliyunTokenPlanReadOnlyAccess` 与 `AliyunBSSReadOnlyAccess`；
+2. 到百炼控制台「账号管理」给该 RAM 用户分配管理员或订阅套餐权限——只授系统策略、漏掉这步分配，额度照样读不到（信息栏就会报刷新失败）；
+3. 个人版的月度百分比走控制台链路，还需一个自定义策略授予 `modelstudio:GenerateCLIAccessToken`。
+
+另外，推理套餐 Key（`sk-sp-…`）只能推理、读不到额度，必须改用阿里云 AccessKey（`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`），填在插件设置页「额度凭据」（默认折叠），或 DSH 凭据 / 同名环境变量。信息栏悬停只给笼统的「重新授权」提示，上面这份完整授权清单在设置页「额度凭据」卡片里也能看到；逐步说明见 [docs/INSTALL.md](docs/INSTALL.md)。
+
 ## 语言
 
 插件内置简体中文、繁体中文、英语、日语、韩语、西班牙语、葡萄牙语、法语、德语、意大利语、俄语、印地语和印度尼西亚语。默认跟随 DSH 的语言；也可以在本插件设置页的**语言**中单独选择，选择会保存在当前浏览器。墨西哥西班牙语、巴西葡萄牙语等地区变体使用对应的内置语言；不支持的语言显示英语。
