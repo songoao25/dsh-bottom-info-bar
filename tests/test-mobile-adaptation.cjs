@@ -83,12 +83,15 @@ check('面板含完整/简洁切换与收起按钮（触屏上原「点整栏切
   clientSrc.includes("className: 'bi-mobile-details-button'") && clientSrc.includes('onClick: function () { props.onToggleDensity(); }')
   && clientSrc.includes('onClick: function () { setDetailsOpen(false); }'), true);
 check('面板样式只在触屏渲染（桌面没有该 DOM）', css.includes('.bi-mobile-details {') && css.includes('.bi-mobile-details-button {'), true);
-check('触屏整栏点击展开明细，桌面仍切换密度',
-  clientSrc.includes('if (touchDetails) {') && clientSrc.includes('setDetailsOpen(function (open) { return !open; });')
+check('整栏点击展开明细（Go 卡或触屏），桌面仍切换密度',
+  clientSrc.includes('const barExpandsSheet = useGoCard || touchDetails;')
+  && clientSrc.includes('if (barExpandsSheet) {') && clientSrc.includes('setDetailsOpen(function (open) { return !open; });')
   && clientSrc.includes('props.onToggleDensity();'), true);
-check('触屏根节点如实暴露 aria-expanded，并去掉无用的 hover title',
-  clientSrc.includes("'aria-expanded': touchDetails ? detailsOpen : undefined")
-  && clientSrc.includes('title: touchDetails ? undefined :'), true);
+check('Go 卡不依赖触屏也能展开（hover 可用的 Go 表面不再打不开面板）',
+  clientSrc.includes('const barExpandsSheet = useGoCard || touchDetails;'), true);
+check('根节点如实暴露 aria-expanded，并去掉无用的 hover title',
+  clientSrc.includes("'aria-expanded': barExpandsSheet ? detailsOpen : undefined")
+  && clientSrc.includes('title: barExpandsSheet ? undefined :'), true);
 check('面板打开时可用 Esc 收起', clientSrc.includes("event.key === 'Escape'") && clientSrc.includes("document.addEventListener('keydown', onKeyDown)"), true);
 check('面板高度受限、可内部滚动（不把输入框挤出视口）',
   css.includes('max-height: 40vh') && css.includes('overflow: hidden auto'), true);
@@ -203,6 +206,37 @@ check('Go 面板提醒行：缺凭据优先用 subscriptionSetupHint 文案，�
   && clientSrc.includes('v: subSetupHint ? subSetupHint.text : subscriptionFailureHint(renderedState.sub.error'), true);
 check('配置引导复用既有 13 语言键，不新造文案（credentialNotConfigured / quotaCredentialSetupText）',
   clientSrc.includes("t('ui.credentialNotConfigured')") && clientSrc.includes('subSetupHint.text'), true);
+
+// ---------- R2（2026-11-13）：接手时收尾的门控修复 ----------
+// ① Go 设置页更新卡：updateState 还没读到（首屏 / 旧宿主没有 getUpdateState）时，
+//   不能把「无状态」渲染成「检查更新没成功」，也不能摆出会报错的更新动作。
+check('Go 更新卡：读不到状态时按「旧宿主错误 / 加载中」分流，不谎报检查失败',
+  clientSrc.includes('const upNull = deps.updateState == null;')
+  && clientSrc.includes("? React.createElement(BibSetGoRow, { title: deps.updateError ? t('ui.versionUnavailable') : t('ui.loadingInfoBarSettings') })")
+  && clientSrc.includes('upNull ? null : upErrorRow')
+  && clientSrc.includes('upNull ? null : upModeRow')
+  && clientSrc.includes('upNull ? null : upFallbackRow')
+  && clientSrc.includes('upNull ? null : upActionBar'), true);
+check('Go 更新卡空态复用既有 13 语言键（versionUnavailable / loadingInfoBarSettings）',
+  clientSrc.includes("t('ui.versionUnavailable')") && clientSrc.includes("t('ui.loadingInfoBarSettings')"), true);
+
+// ② Go 三列卡 / 展开面板与桌面共用同一套字段显隐：用户关掉的字段不能在 Go 表面继续出现。
+check('Go 三列卡：本月花费列受 billingSpend 开关约束（与桌面 pushBillingGroups 一致）',
+  clientSrc.includes('// 本月花费列受设置页 billingSpend 开关约束')
+  && clientSrc.includes("if (fieldVisible('billingSpend')) {"), true);
+check('Go 三列卡：余额列受 balance 开关约束（含「账户 —」占位也一并隐藏）',
+  clientSrc.includes("if (bal && bal.data && fieldVisible('balance')) {")
+  && clientSrc.includes("} else if (fieldVisible('balance')) {"), true);
+check('Go 面板：额度窗口的重置倒计时受 resetCountdown 开关约束',
+  clientSrc.includes("small: (w.resetsAt && fieldVisible('resetCountdown')) ? fmtResetCountdown(w.resetsAt - now) : null"), true);
+check('Go 面板：本会话 / 今天 / 近 30 天花费各自受 sessionCost / todaySpend / last30dSpend 约束',
+  clientSrc.includes("if (costCNY != null || costUSD != null) { if (fieldVisible('sessionCost')) spendRows.push(")
+  && clientSrc.includes("if (usg.todaySpend != null && fieldVisible('todaySpend')) spendRows.push(")
+  && clientSrc.includes("if (usg.last30dSpend != null && fieldVisible('last30dSpend')) spendRows.push("), true);
+
+// ③ 订阅制多窗口：三列卡每列 key 必须带窗口名，否则 React 复用同一 key 会让窗口数据串位。
+check('Go 三列卡：额度窗口列 key 带窗口名（多窗口不同列不串数据）',
+  clientSrc.includes("return { key: 'quota-' + w.key, caption: compactWindowLabel(w.key)"), true);
 
 console.log('\n结果：' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail > 0 ? 1 : 0);
