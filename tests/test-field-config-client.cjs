@@ -109,7 +109,7 @@ check('分组：上下文圆环归入插件组（它住在主行，两种模式�
   FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
 check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
   === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);
-check('分组：插件组 20 条（19 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 20
+check('分组：插件组 22 条（21 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 22
   && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
 check('分组：三组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
   ['group.native.desc', 'group.plugin.desc', 'group.notice.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)

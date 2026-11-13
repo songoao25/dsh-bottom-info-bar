@@ -104,10 +104,13 @@ check('整页岛信号会归一成 data-dsh-go-island 属性（CSS 与 JS 共用
 check('apply 在安装样式前调用门控（CSS 首帧即可生效）',
   clientSrc.indexOf('dshGoSurfaceEnabled();') > 0
   && clientSrc.indexOf('dshGoSurfaceEnabled();') < clientSrc.indexOf('const disposeStyles = installStyles();'), true);
-const tokenStart = css.indexOf('--dshgo-accent');
-const gateStart = css.indexOf('@media (pointer: coarse)');
-check('token 层只存在于 pointer:coarse 门控内（桌面不生效）',
-  gateStart > 0 && tokenStart > gateStart, true);
+const tokenStart = css.indexOf('/* ---------- DSH Go 皮肤层');
+const gateStart = css.indexOf(':root[data-dsh-app-layout], :root[data-dsh-go-island] {', tokenStart);
+check('Go 皮肤层由宿主属性门控，不依赖触屏（DSH Go 在任何指针环境都套 Go 形态）',
+  tokenStart > 0 && gateStart > tokenStart
+  && !css.slice(tokenStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', tokenStart)).includes('@media (pointer: coarse)'), true);
+check('Go 形态判定不再要求触屏（平板/大窗/鼠标环境仍是 DSH Go）',
+  /function dshGoCompactEnabled\(\) \{\s*return dshGoSurfaceEnabled\(\);/.test(clientSrc), true);
 const tokenBlock = css.slice(gateStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', gateStart));
 const visualBlock = css.slice(css.indexOf('/* ---------- DSH Go 信息栏三列卡', gateStart), css.indexOf('/* 字段级颜色消费规则', gateStart));
 check('门控选择器覆盖 DSH Go 网页版与整页岛两种信号',
@@ -146,13 +149,31 @@ check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.05)'), true);
 check('token 块只定义变量、不改任何现有元素视觉（视觉规则单独成块）',
   !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
-check('三列卡：56 高 / 20 圆角 / 纯白卡面 / 0.5 发丝 / 28 chevron 格，三列无竖线',
+check('三列卡：56 高 / 20 圆角 / 纯白卡面 / 0.5 发丝 / 页边 16 / 等间隙分布 / 末列贴右 / 无箭头格',
   visualBlock.includes('.bi-go-strip') && visualBlock.includes('height: 56px')
   && visualBlock.includes('border-radius: var(--dshgo-radius-card, 20px)')
   && visualBlock.includes('background: var(--dshgo-card-bg, #FFFFFF)')
   && tokenBlock.includes('--dshgo-card-bg: #FFFFFF')
-  && visualBlock.includes('var(--dshgo-chevron-cell, 28px)')
+  && visualBlock.includes('justify-content: space-between')
+  && visualBlock.includes('height: 56px; padding: 0 16px;')
+  && visualBlock.includes('max-width: calc((100% - 20px) / 3)')
+  && visualBlock.includes('.bi-go-col:last-child') && visualBlock.includes('align-items: flex-end')
+  && !visualBlock.includes('bi-go-chev')
   && !visualBlock.includes('.bi-go-col + .bi-go-col::before'), true);
+check('宽屏（≥600）卡片与输入框同宽，只调内边距，不缩版心',
+  visualBlock.includes('@media (min-width: 600px) {')
+  && !visualBlock.includes('max-width: 560px')
+  && visualBlock.includes('padding: 0 20px')
+  && visualBlock.includes('padding: 0 20px 20px;'), true);
+check('宽屏增量列按档位递进（760 / 1040 / 1320），手机档不占位',
+  visualBlock.includes('.bi-go-col[data-extra]') && visualBlock.includes('display: none')
+  && visualBlock.includes('@media (min-width: 760px)') && visualBlock.includes('[data-extra="1"]')
+  && visualBlock.includes('@media (min-width: 1040px)') && visualBlock.includes('[data-extra="2"]')
+  && visualBlock.includes('@media (min-width: 1320px)') && visualBlock.includes('[data-extra="3"]'), true);
+check('宽屏展开面板变双栏（把宽度换成信息密度，而不是把行拉长）',
+  visualBlock.includes('grid-template-columns: calc(50% - 22px) calc(50% - 22px)'), true);
+check('窄屏断点不再要求触屏（只按宽度分档）',
+  visualBlock.includes('@media (max-width: 360px) {') && !visualBlock.includes('and (max-width: 360px)'), true);
 check('面板：28 圆角 / 40vh 内滚 / 行间 2px 空隙 / 分组 16 / 无行分割线 / 动作行无上边框',
   visualBlock.includes('border-radius: var(--dshgo-radius-sheet, 28px)')
   && visualBlock.includes('max-height: var(--dshgo-panel-max, 40vh)')
