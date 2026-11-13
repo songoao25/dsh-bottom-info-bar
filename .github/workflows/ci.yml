@@ -18,6 +18,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      # devDependencies（react / react-test-renderer）只服务 tests/test-credential-card-render.mjs
+      # —— v1.24.1 事故防线（真实 React 渲染炸 hooks 契约错误），必须在 CI 上真跑，不能跳过。
+      - name: Install dev dependencies
+        run: npm ci
       - name: Build
         run: npm run build
       # lib/ 是提交入库的构建产物：用户直接把 GitHub 仓库地址粘进 DSH 就能装，

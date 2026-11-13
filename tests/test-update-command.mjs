@@ -21,8 +21,8 @@ const client = readFileSync(join(root, 'src/client-bundle.js'), 'utf8')
 // 「有新版本可复制命令」的旧标签仍然不许回来 —— 桌面端执行不了那些命令。
 check(
   '客户端只在待重启 / 更新失败时给短标记，不回到「有新版就挂标签」',
-  client.includes("if (restartVersion && fieldVisible('updateNotice'))")
-  && client.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  client.includes("if (restartVersion) {")
+  && client.includes("if (updateFailed) {")
   && !client.includes('updateInfo.available && fieldVisible')
 )
 check('客户端不复制可能失效的更新命令', !client.includes('copyTextToClipboard') && !client.includes('setUpdateCopied'))

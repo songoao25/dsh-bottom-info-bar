@@ -93,7 +93,7 @@ dsh --profile web --dump-config | grep -A2 dsh-bottom-info-bar
 
 ## 配置订阅额度（可选，v1.1.0）
 
-**最省事的方式**：插件设置页里新增了「额度凭据」区（阿里云 AccessKey ID / AccessKey Secret、Kimi API Key 三个输入框），粘贴后点保存即可——值会写进 DSH 凭据存储（本机 `.credentials.yaml`，权限 0600），不写插件配置文件，也不用重启 DSH，保存后信息栏会立即重查一次。下面也保留环境变量的配置方式，适合不想在界面里填的人。
+**最省事的方式**：插件设置页里有「额度凭据」区（默认折叠），只收录需要单独额度凭据的服务商——目前只有阿里云（Token Plan 的额度接口不认推理套餐 Key）：阿里云 AccessKey ID / Secret。其余服务商直接复用 DSH「设置 → 模型」里配的推理 Key，不用在插件页重复填写，也没在用的套餐不会出现在信息栏；切换过去时信息栏会提示去哪里配。要填阿里的话粘贴后点保存即可——值会写进 DSH 凭据存储（本机 `.credentials.yaml`，权限 0600），不写插件配置文件，也不用重启 DSH，保存后信息栏会立即重查一次。下面也保留环境变量的配置方式，适合不想在界面里填的人。
 
 信息栏按当前服务商自动选择三种口径之一（互斥，无需手动切换）：**余额制**（DeepSeek 等）显示官方接口的真实余额，**订阅制**（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱、阿里 Token Plan、Kimi For Coding）显示各额度窗口剩余额度与重置倒计时，**云账单制**（Together、Fireworks 等）显示官方账单的本月真实花费。订阅额度数据源：
 

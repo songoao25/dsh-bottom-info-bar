@@ -838,10 +838,11 @@ async function main() {
       return PROVIDER_IDENTITY[id] && PROVIDER_IDENTITY[id].subscription
     }), ['alibaba-intl', 'alibaba-cn', 'alibaba-intl'])
   check('G4 kimi-coding 的订阅源 = kimi-coding', PROVIDER_IDENTITY['kimi-coding'] && PROVIDER_IDENTITY['kimi-coding'].subscription, 'kimi-coding')
+  // 2026-11-12：fetch 外包了 annotateSubscriptionNoKey（no-key 引导参数），断言放宽到「仍接同一 fetch 函数」
   ok('G5 host.js：alibaba-cn / alibaba-intl 各为独立源',
-    hostSrc.indexOf("'alibaba-cn': { fetch: function () { return fetchAlibabaTokenPlanUsage('cn'); } }") >= 0
-    && hostSrc.indexOf("'alibaba-intl': { fetch: function () { return fetchAlibabaTokenPlanUsage('intl'); } }") >= 0)
-  ok('G6 host.js：kimi-coding 接 fetchKimiCodingUsage', hostSrc.indexOf("'kimi-coding': { fetch: fetchKimiCodingUsage }") >= 0)
+    hostSrc.indexOf("'alibaba-cn': { fetch: function () { return fetchAlibabaTokenPlanUsage('cn')") >= 0
+    && hostSrc.indexOf("'alibaba-intl': { fetch: function () { return fetchAlibabaTokenPlanUsage('intl')") >= 0)
+  ok('G6 host.js：kimi-coding 接 fetchKimiCodingUsage', hostSrc.indexOf("'kimi-coding': { fetch: function () { return fetchKimiCodingUsage()") >= 0)
   ok('G7 host.js：展示名映射含阿里三 id 与 kimi-coding',
     ["'qwen-token-plan': t('ui.qwenTokenPlan')", "'qwen-token-plan-cn': t('ui.qwenTokenPlan')",
       "'qwen-token-plan-individual': t('ui.qwenTokenPlan')", "'kimi-coding': t('ui.kimiCoding')"].every(function (needle) {

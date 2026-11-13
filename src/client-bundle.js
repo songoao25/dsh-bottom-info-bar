@@ -118,21 +118,24 @@ function bibSetLanguagePicker(props) {
   const runtime = props.runtime;
   const options = [{ id: 'auto', label: t('language.auto') }].concat(
     runtime.options().map(function (language) { return { id: language.id, label: language.label }; }));
-  return React.createElement('div', { className: 'bib-set-row' },
-    React.createElement('div', { className: 'bib-set-rowText' },
-      React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
-      React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
-    React.createElement(bibSetSelect, {
-      id: 'bib-language',
-      value: runtime.preference(),
-      label: t('language.title'),
-      options: options,
-      fallbackClassName: 'bib-set-language',
-      onChange: function (next) {
-        try { runtime.setPreference(next); props.onError(null); }
-        catch { props.onError({ text: function () { return t('language.saveFailed'); } }); }
-      },
-    }));
+  // 2026-11-12 卡片化统一：语言选择是独立一张设置卡（与其它区块同一张面），
+  // 不再是悬在页面顶部的裸行 —— 整页每个区块共用同一套卡面（fill/stroke/radius-xl）。
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('language.title') },
+    React.createElement('div', { className: 'bib-set-row' },
+      React.createElement('div', { className: 'bib-set-rowText' },
+        React.createElement('label', { htmlFor: 'bib-language', className: 'bib-set-rowTitle' }, t('language.title')),
+        React.createElement('p', { className: 'bib-set-rowDesc' }, t('language.description'))),
+      React.createElement(bibSetSelect, {
+        id: 'bib-language',
+        value: runtime.preference(),
+        label: t('language.title'),
+        options: options,
+        fallbackClassName: 'bib-set-language',
+        onChange: function (next) {
+          try { runtime.setPreference(next); props.onError(null); }
+          catch { props.onError({ text: function () { return t('language.saveFailed'); } }); }
+        },
+      })));
 }
 /*__LANGUAGE_RUNTIME__*/
 let languageRuntime;
@@ -697,7 +700,11 @@ function installStyles() {
       /* 状态标签用 600；核心数值才用 700，避免颜色、字重双重过度强调。 */
       .bi-peak    { color: var(--bi-state-alert); font-weight: 600; }
       .bi-offpeak { color: var(--bi-state-price-low); font-weight: 600; }
-      .bi-err, .bi-stale { color: var(--bi-state-alert); font-weight: 600; }
+      /* 状态标签统一软底胶囊（2026-11-12 重设计，与 DSH 原生状态徽章同语言）：
+         底色由文字色派生（color-mix currentColor 14%）—— 字段自定义色照常生效（改色时底色跟着走），
+         明暗主题都不引入新的前景/背景配对；去掉旧 1px 描边胶囊，色块自成形，更轻、更原生。
+         高度锁 16px 与信息栏行高对齐；超长引导文案缩略、完整说明保留在 title 悬停。 */
+      .bi-err, .bi-stale { display: inline-flex; align-items: center; box-sizing: border-box; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 16px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); color: var(--bi-state-alert); font-weight: 600; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
       .bi-muted{ color: var(--bi-label-supporting); }
       /* 低余额/低额度是数值的状态修饰，而非独立组件：无框“低”字避免制造第二个视觉焦点。 */
       .bi-low-status { margin-left: 3px; color: var(--bi-state-alert); font-weight: 600; }
@@ -707,13 +714,11 @@ function installStyles() {
          （test-update-check 有「无下划线」的专项断言）。 */
       .bi-update{ color: var(--bi-state-alert); font-weight: 600; cursor: pointer; }
       /* 自更新状态短标记：只在「已下载待重启」或「上次自动更新失败」时出现，重启/修复后自动消失。
-         与 .bi-update 区分：它不需要用户点击，所以用默认光标 + 1px currentColor 描边成胶囊，
-         明确「这是状态标签，不是可点链接」。
-         反色铁律：只描边、不加背景色，文字仍落在信息栏自身底色上（与 .bi-err 同色同底），
-         不引入任何新的前景/背景配对，明暗主题都沿用既有已验证的对比度。 */
-      .bi-update-badge{ margin-left: 6px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-weight: 600; color: var(--bi-state-alert); cursor: default; }
-      /* 失败态比「待重启」（可预期的正常流程）更需要被看见：同色加到 700，靠字重分层而非换颜色。 */
-      .bi-update-badge--error{ font-weight: 700; }
+         与 .bi-update 区分：它不需要用户点击，用默认光标 + 软底胶囊（同 .bi-err 语法），
+         明确「这是状态标签，不是可点链接」。失败态用更高浓度底色分层，不换颜色不加字重。 */
+      .bi-update-badge{ margin-left: 6px; display: inline-flex; align-items: center; box-sizing: border-box; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 16px; padding: 0 7px; border: 0; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); color: var(--bi-state-alert); font-weight: 600; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: default; }
+      /* 失败态比「待重启」（可预期的正常流程）更需要被看见：底色浓度分层（24% vs 14%）。 */
+      .bi-update-badge--error{ background: color-mix(in srgb, currentColor 24%, transparent); }
       /* 视觉能力是模型属性，不是告警：电光蓝实色、白字；高度收紧到字形范围内，避免压过同一行文字。 */
       /* 服务商、圆点、视觉胶囊在同一 20px flex 行内居中，避免混用文字基线造成上下漂移。 */
       .bi-model-group { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; min-width: 0; min-height: var(--bi-line); vertical-align: top; }
@@ -988,7 +993,7 @@ const FIELD_GROUP_LABELS = /*__FIELD_GROUP_LABELS__*/{};
 // 三组的分工说明（2026-09-25 用户拍板新增第三组「提醒信息」）：只在这里给「整组一句」，
 // 不在每个字段上重复解释 —— 字段行的小字继续只讲「什么条件下会出现」。
 // 这一句也是唯一说明「开关与显示模式的关系」的地方，不另设模式开关。
-const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc', notice: 'group.notice.desc' };
+const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc' };
 // 设置页小节（顺序 + 标题 + 一句话说明），构建时从 src/constants.js 注入。
 // 只有「插件信息」这一组有 section；native / notice 两个组本来就只有一块，不设小节。
 const FIELD_SECTIONS = /*__FIELD_SECTIONS__*/[];
@@ -1145,27 +1150,34 @@ function bibSetInstallStyles() {
         /* 配置区只是详情页里的**一个** section：区块间距取宿主 .X_2TxG_detailSection 的 12px，
            不取 .X_2TxG_detailSections 的 32px（那是区块之间的间距，套进来会凭空多出大段空白）。
            同一区块中的独立操作组 16px；卡片内部 16px；相邻行 0px。 */
-        /* 2026-10-14 与姊妹插件统一到宿主自己的区块节奏：
-           .detailSections{gap:32px} → 区块之间 32px；.detailSection{gap:12px} → 区块内部 12px。 */
-        --bib-sec-gap: 32px;
-        --bib-sec-inner: 12px;
+        /* 2026-11-12 设计体系迁移（DSH 0.2.2 settings-form 实测）：
+           原生设置表单已经卡片化 —— tUAPGa_rowCard { .5px settings-card-stroke / settings-card-fill /
+           radius-xl / 12px 14px 内衬 }，卡片列表 rows { gap:8px }，字段 .field { 列向 gap:6px }，
+           行与行、组与组之间**没有任何分隔线**，分层全靠留白与卡片表面。
+           本页随之整体迁移：区块 = 设置卡（fill + stroke + radius-xl），行间只留白，废除全部发丝线。 */
+        --bib-sec-gap: 24px;      /* 卡片之间（页面留白） */
+        --bib-sec-inner: 12px;    /* 卡片内部（标题/行/提示条之间的节奏） */
+        --bib-card-fill: var(--dsw-alias-settings-card-fill, var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.05)));
+        --bib-card-stroke: var(--dsw-alias-settings-card-stroke, var(--dsw-alias-border-l4, rgba(128,128,128,0.22)));
+        --bib-card-radius: var(--dsw-radius-xl, 20px);
+        --bib-card-pad-block: 14px; --bib-card-pad-inline: 16px;
         --bib-group-gap: 16px;
         --bib-head-gap: 10px;
         --bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;
         --bib-sub-label-size: 12px; --bib-sub-label-weight: 600; --bib-sub-label-line: 18px;
         --bib-desc-size: 13px; --bib-desc-line: 18px;
-        --bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;
+        --bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;
         --bib-row-gap: 16px;
         --bib-row-label-size: 13.5px; --bib-row-label-weight: 500; --bib-row-label-line: 20px;
         --bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;
         --bib-control-radius: 8px;
         --bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius); --bib-btn-pad-inline: 10px; --bib-btn-size: 12px; --bib-btn-line: 18px;
-        /* 兜底输入框（老宿主取不到 primitives）：几何照宿主 settings-form fields.module.css 的 .input
-           —— 34px / r12 / 0 12px / 13px。圆角必须单独取 --dsw-radius-md（12px），**不能**跟
-           --bib-control-radius（8px）走：后者管的是卡片分组、色块、警示条、分段控件槽、系统取色井
-           那一类「8px 形状」，两者形状不同，共用一个变量会连带变形。 */
-        --bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 12px; --bib-input-size: 13px;
-        --bib-rule: 0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.16));
+        /* 兜底输入框（老宿主取不到 primitives）：几何照宿主 0.2.2 settings-form fields.module.css 的 .input
+           —— 32px / r12 / 0 10px / 14px / .5px border-l4 / bg-layer-1（2026-11-12 复测 tUAPGa_input）。
+           圆角必须单独取 --dsw-radius-md（12px），**不能**跟 --bib-control-radius（8px）走：后者管的是
+           行 hover 填充、色块、警示条、分段控件槽那类「8px 形状」，两者形状不同。 */
+        --bib-input-height: 32px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 10px; --bib-input-size: 14px;
+        --bib-input-bg: var(--dsw-alias-bg-layer-1, transparent);
         --bib-swatch-size: 20px; --bib-swatch-radius: var(--bib-control-radius);
         --bib-menu-dot-size: 12px;
         box-sizing: border-box; max-inline-size: 100%; min-inline-size: 0;
@@ -1181,35 +1193,22 @@ function bibSetInstallStyles() {
       .bib-settings, .bib-set-field-list, [data-dsh-bib-hide-scrollbars="true"] { scrollbar-width: none; -ms-overflow-style: none; }
       .bib-settings::-webkit-scrollbar, .bib-set-field-list::-webkit-scrollbar, [data-dsh-bib-hide-scrollbars="true"]::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
       /* 区块说明：原生 pageIntro 的 13/20 二级色（宿主 .X_2TxG_pageIntro）。 */
-      /* 搜索行：左侧输入框吃满剩余宽度，右侧计数用 auto 轨道。
-         计数框原来是写死的 104px + nowrap，文案一变长就会被切——改成 auto 轨道，永不裁切。 */
+      /* 搜索行：独立一张安静的面（卡片内首行），不再画下边线 —— 行间分层只靠留白。 */
       .bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }
-      /* 搜索也是一行：下边线与其它行同规则，整页保持「一条条分割线」的读法。 */
-      .bib-set-search-row { display: block; width: 100%; min-width: 0; min-height: var(--bib-input-height); padding: 0 0 var(--bib-row-pad-block); border-bottom: var(--bib-rule); }
+      .bib-set-search-row { display: block; width: 100%; min-width: 0; min-height: var(--bib-input-height); padding: 0 0 8px; }
       .bib-set-search-shell { position: relative; width: 100%; min-width: 0; }
-      .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: var(--bib-input-height); min-height: var(--bib-input-height); padding: 0 30px 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-search { box-sizing: border-box; display: block; width: 100%; height: var(--bib-input-height); min-height: var(--bib-input-height); padding: 0 30px 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-search::placeholder { color: var(--dsw-alias-label-tertiary); }
       .bib-set-search:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
       .bib-set-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-      /* ===== 区块：完全照宿主插件详情页（dsh-client-ui-plugin-manager 的 X_2TxG_*）=====
-         .X_2TxG_detailSections { flex-direction:column; gap:32px }   → .bib-settings 的 32px
-         .X_2TxG_detailSection  { flex-direction:column; gap:12px }   → .bib-set-card
-         .X_2TxG_sectionHead    { align-items:baseline; gap:10px; padding:0 } → .bib-set-card-header
-         .X_2TxG_sectionTitle   { 14/500/20 }                         → .bib-set-card-title
-         .X_2TxG_sectionCount   { 12/18 二级色 }                       → .bib-set-card-desc / .bib-set-count
-         .X_2TxG_rows           { flex-direction:column; gap:0; padding:0 }    → .bib-set-field-list
-         .X_2TxG_row            { padding:12px 2px; border-bottom:.5px solid border-l2 } → .bib-set-row
-         .X_2TxG_row:last-child { border-bottom:0 }
-         .X_2TxG_rowLine        { align-items:center; gap:16px }        → .bib-set-row-main 的列间距
-         .X_2TxG_rowId          { 13.5/500/20 }                        → .bib-set-rowTitle
-         ===== 实测数字（2026-09-22，宿主 0.1.7-alpha.1）=====
-         .X_2TxG_row{padding:12px 2px; border-bottom:.5px solid var(--dsw-alias-border-l2)}
-         .X_2TxG_row:last-child{border-bottom:0}
-         .X_2TxG_rowLine{align-items:center; gap:16px; min-width:0}
-         .X_2TxG_rowMain{flex-direction:column; flex:1; gap:2px; min-width:0}
-         .X_2TxG_rowId{font-size:13.5px; font-weight:500; line-height:20px}
-         注意：行**没有** margin:0 -8px，也**没有**圆角和 hover 填充——那是插件列表的
-         .X_2TxG_card 那一套，不是详情页的行。 */
+      /* ===== 区块：2026-11-12 迁移到 DSH 0.2.2 原生设置表单的卡片语法（tUAPGa_rowCard）=====
+         原生设置表单（模型/凭据/服务器等配置页）现在是一张张设置卡：
+           rowCard { border:.5px settings-card-stroke; background:settings-card-fill;
+                     border-radius:radius-xl(20px); padding:12px 14px; 内部 column gap:12px }
+           rows    { 列向 gap:8px，无分隔线 }
+         行与行、组与组之间没有任何线 —— 分层靠卡片表面 + 留白。本页所有顶层区块跟随该语法：
+         .bib-set-card--panel 即一张设置卡；内部行保留两栏语法但废除发丝线，
+         行自带 8px 纵向留白与 8px 圆角 hover 填充（宿主 --dsw-alias-interactive-bg-hover）。 */
       .bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner); flex: 0 0 auto; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; overflow: visible; border: 0; background: transparent; border-radius: 0; }
       .bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
       .bib-set-card-header:not(.bib-set-card-header--static) { cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -1246,51 +1245,39 @@ function bibSetInstallStyles() {
          做区块分界（照姊妹插件的 .cgpt-updates：border-top 1px border-primary + padding-top 16px），
          组内/行间的分隔一律靠 .5px 分割线。 */
       .bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; }
-      /* 区块之间只用间距，不画线：宿主 .detailSections 就是 gap:32px（没有 border）。 */
-      .bib-set-card--panel { border: 0; padding: 0; }
+      /* 区块即设置卡：表面/描边/圆角/内衬全部取宿主 rowCard 同款 token（值见 token 层注释）。
+         卡片自身不再画任何线 —— 区块与区块之间只有 --bib-sec-gap 的留白。 */
+      .bib-set-card--panel { border: 0.5px solid var(--bib-card-stroke); background: var(--bib-card-fill); border-radius: var(--bib-card-radius); padding: var(--bib-card-pad-block) var(--bib-card-pad-inline); }
       .bib-set-group-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .bib-set-group-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line); color: var(--dsw-alias-label-primary); }
       /* 分组说明（三组区分 + 模式归属）走次要色 12/1.5，与字段行小字同一套排版基线。 */
       /* 分组说明与行说明同一套排版基线（11.5/16 三级色），不再自带 12/1.5 那一档。 */
       .bib-set-group-desc { display: block; min-width: 0; font-size: var(--bib-row-hint-size); font-weight: 400; line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }
-      /* 设置页小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
-         2026-10-14 收敛为三级（页面标题行已删除）：
-           区块标题 14/500 主色 → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色 + 说明另起一行。
-         小节眉故意做成单行眉题（标题与说明同行、说明超长省略），与上下两级的双行堆叠
-         形成对比；节与节之间一条细线。 */
+      /* 小节：只做阅读分组，让「余额制 / 订阅制 / 账单制 / 通用」一眼分得开。
+         三级层级不变：卡片标题 14/500 主色 → 小节眉 12/600 次色单行眉题 → 字段行 13.5/500 主色。
+         节与节之间不再画线，只靠眉题上方的留白分组（12px 眉题 + 8px 行距）。 */
       .bib-set-subsection { display: flex; flex-direction: column; gap: 0; min-width: 0; }
-      .bib-set-subsection + .bib-set-subsection { border-top: var(--bib-rule); }
-      .bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }
+      .bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 16px var(--bib-row-pad-inline) 2px; }
       .bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }
       .bib-set-subsection-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--bib-sub-label-size); font-weight: 400; line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-tertiary); }
       /* 分组头也是一行：左「名称 + 分工说明」、右「展开/收起 + 箭头」，几何与 .bib-set-row 同源
-         （12px 2px 内边距 + .5px 下边线），整块仍是可点击面。 */
-      .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
-      .bib-set-group-fallback-head:hover { background: var(--dsw-alias-fill-tsp-secondary, rgba(128,128,128,0.08)); }
+         （8px 10px 内边距 + 8px 圆角），整块仍是可点击面；行间不再画线。 */
+      .bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
+      .bib-set-group-fallback-head:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       .bib-set-group-fallback-head:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--bib-set-brand); outline-offset: -2px; }
-      /* 末组不再多一条收尾线（与 .X_2TxG_row:last-child 同规则）。 */
-      .bib-set-group:last-child .bib-set-group-fallback-head { border-bottom: 0; }
       /* 展开/收起不再用品牌蓝：宿主自己的 DisclosureRow 是三级色起、hover 升二级色，
          姊妹插件的行里也没有任何彩色文字。统一成中性色，hover 时提一级。 */
       .bib-set-group-action { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }
       .bib-set-group-fallback-head:hover .bib-set-group-action { color: var(--dsw-alias-label-primary); }
       .bib-set-group-action .bib-set-chevron { color: currentColor; }
       .bib-set-group .bib-set-body { padding: 0; }
-      /* 行 = 原生详情页的 .X_2TxG_row：padding 12px 2px、下边线 .5px、最后一行无线、
-         无圆角、无 hover 填充、无负外边距。
-         之前照插件列表的 .X_2TxG_card 写成「margin 0 -8px + padding 8px + r12」，又被
-         overflow:hidden 的折叠容器裁掉右侧控件；后来改成「行不越界 + 内容左右各内缩 8px」，
-         虽然不裁了，却把整行文字推离了宿主的 323.2 左边界。现在按详情页行的真实值来，
-         既对齐又不越界。 */
-      /* 行的两栏语法与姊妹插件（dsh-chatgpt-sub 的 .cgpt-row）逐条一致：
-         「标题 + 说明」在左、控件靠右（justify-content: space-between），行间一条 .5px 分割线。
-         控件单列时直接作为第二个子节点；需要竖排（输入框 + 计数）时用 .bib-set-fieldblock-control 包一层。 */
-      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
-      /* 列表首行去上内边距、末行去下内边距与边线（同姊妹插件 .cgpt-row:first-child/:last-child）：
-         列表与所属区块齐平，不再在顶部/底部留一段看不见的空白。 */
-
-      .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }
-      .bib-set-row:last-child { border-bottom: 0; }
+      /* 行 = 设置卡内的标准行：两栏语法不变（左「标题 + 说明」、右控件），但废除 .5px 下边线 ——
+         行与行之间只有行自带的 8px 纵向留白（两行相邻 = 16px 呼吸）。
+         行是可交互面：8px 圆角 + hover 浅填充（宿主 --dsw-alias-interactive-bg-hover，
+         ≈6% 墨色，与原生设置卡的行 hover 同款），指针扫过时行自己浮起来。 */
+      .bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
+      .bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: var(--bib-row-pad-block); }
       .bib-set-row--field { flex-direction: column; align-items: stretch; gap: 0; }
       /* 字段行 = 单行网格：「标签」col1、「开关」col2、「色块」col3。不再有第二行
          （决策 1：调色板收进色块弹层；决策 3：时区/格式/自定义文字拆去独立设置区）。
@@ -1301,7 +1288,7 @@ function bibSetInstallStyles() {
       /* 语言下拉的兜底形态（仅老宿主没有原生 Menu 时走）：几何照宿主 .input —— 34px 高 / r12 /
          0.5px border-l4 / bg-layer-3 / 13px，与同一页的输入框、时区下拉同高同形。
          原生 Menu 分支不读这条规则（锚点是宿主 Button，外观归宿主）。 */
-      .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-language { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       /* 行内两栏 = 宿主 .rowLine(flex/gap16) + .rowMain(flex:1/column/gap2)：
          文字块吃掉剩余宽度，控件自然贴右，不再靠 space-between 硬推。 */
       .bib-set-rowText { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
@@ -1396,25 +1383,49 @@ function bibSetInstallStyles() {
          .field 列向 + gap 6 + padding 12px 0；相邻字段块之间 .5px 细线；label 13/500；
          输入框 34px / r8 / 0 12px；hint 12/1.5。全部度量走 --bib-* token。 */
       .bib-set-fieldblocks { display: flex; flex-direction: column; gap: 0; width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; }
-      /* 参数区（时区 / 自定义文字 / 百分比方向）复用同一条行语法：左「标题 + 说明」、右控件、
-         .5px 下边线；末行去线去内边距，与 .X_2TxG_row:last-child 同规则。 */
-      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border-bottom: var(--bib-rule); }
-      /* 只保留宿主也有的那条：末行去线。首行/末行去内边距是自创覆写，已删除。 */
-      .bib-set-fieldblocks > .bib-set-fieldblock:last-child { border-bottom: 0; }
+      /* 参数区（时区 / 自定义文字 / 额度凭据）行与字段节的通用几何。
+         【对齐铁律】行 / 字段节 / 组头 / 可点击卡头的横向内衬只用于 hover 填充外扩，
+         文字必须仍压在卡面 16px 内衬线上 —— 用负 margin 抵掉横向 padding。
+         没有这条，行内文字会比卡头缩进多 10px，出现「标题一层缩进、行文字另一层缩进」
+         的碎节奏（2026-11-12 用户截图点名）。 */
+      .bib-set-row, .bib-set-fieldblock, .bib-set-data-row, .bib-set-group-fallback-head,
+      .bib-set-subsection-head, .bib-set-field, .bib-set-card-header:not(.bib-set-card-header--static) { margin-inline: calc(-1 * var(--bib-row-pad-inline)); }
+      .bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-fieldblock:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       /* 行左侧的「标题 + 说明」两行堆叠（与 .bib-set-rowText 同构）。 */
       .bib-set-fieldblock-copy { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }
       .bib-set-fieldblock-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
       /* 行右侧的控件列：竖排（控件在下、计数/说明在上或下）时右对齐，单控件时也走这一层。 */
-      .bib-set-fieldblock-control { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; min-width: 0; }
+      .bib-set-fieldblock-control { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; min-width: 0; }
       /* 需要横跨整行的附属说明（如分段控件的 tabpanel）：换行到控件下方，仍是同一行的一部分。 */
       .bib-set-fieldblock-panel { flex: 1 0 100%; }
       .bib-set-fieldblock-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-      .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      /* ===== 字段节（2026-11-12 体系化）=====
+         参数型字段（凭据、自定义文字）照 DSH 0.2.2 原生 settings-form 的 .field 语法排：
+         列向 gap 6px —— 第一行「标签 + 状态」、第二行说明、第三行控件（输入框满宽 + 动作按钮同行）。
+         与两栏「行」是两套语义：行承载开关与入口（copy 左 + 控件右），字段节承载输入。
+         凭据行原先把三行文字挤在左、窄输入框和孤立按钮堆在右，正是没有这套语义的产物
+         （2026-11-12 用户在真实客户端截图点名「突然多出来两节」）。 */
+      .bib-set-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; box-sizing: border-box; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-field:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
+      .bib-set-field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--bib-row-gap); min-width: 0; }
+      .bib-set-field-label { flex: none; min-width: 0; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); color: var(--dsw-alias-label-primary); }
+      .bib-set-field-hint { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+      .bib-set-field-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; min-width: 0; }
+      /* 字段节里的输入框吃满剩余宽度：512 长度的凭据值在 260px 窄框里没法核对首尾。
+         原生分支吃 layout 类（--block），兜底分支吃外观类，两条都要覆盖。 */
+      .bib-set-field-control .bib-set-input--block,
+      .bib-set-field-control .bib-set-credential-input { flex: 1 1 240px; }
+      /* 状态胶囊：与信息栏软底徽章同一语言（14% 同色底 + 999 胶囊）。已配置=次要色胶囊、
+         未配置=三级色裸文字 —— 一眼分出两态，不引入红绿装饰色。 */
+      .bib-set-status-pill { display: inline-flex; align-items: center; height: 16px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, var(--dsw-alias-label-secondary) 14%, transparent); color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
+      .bib-set-status-plain { font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); white-space: nowrap; }
+      .bib-set-custom-text-input { box-sizing: border-box; width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       /* v1.24.0：额度凭据输入框与自定义文字同一套自绘外观（宿主没有原生 Input 时走这里）。
          独立声明块而不是合并选择器：几何守卫按类逐个检查 --bib-input-radius。 */
-      .bib-set-credential-input { box-sizing: border-box; width: 260px; max-width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-credential-input { box-sizing: border-box; width: 260px; max-width: 100%; height: var(--bib-input-height); padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-custom-text-input:focus-visible, .bib-set-credential-input:focus-visible, .bib-set-time-zone:focus-visible, .bib-set-language:focus-visible { outline: 2px solid var(--bib-set-brand); outline-offset: 1px; }
-      .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
+      .bib-set-time-zone { box-sizing: border-box; height: var(--bib-input-height); max-width: 100%; min-width: 0; padding: 0 var(--bib-input-pad-inline); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg); color: var(--dsw-alias-label-primary); font: inherit; font-size: var(--bib-input-size); line-height: 1.5; }
       .bib-set-dots { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
       /* 色板：预设色不再描边（描边 + 虚线圈是「手绘控件」的观感），选中用宿主主文字色的双环，
          hover 用一层浅环；「默认」用一个带斜杠的空圈，与原生「无/恢复默认」的语义一致。 */
@@ -1454,7 +1465,7 @@ function bibSetInstallStyles() {
       .bib-set-hex[data-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, var(--dsw-alias-label-error, #d92d20)); }
       /* 页脚操作行已被「恢复默认」行取代：它现在是「显示内容」区块里的最后一个
          .bib-set-data-row（同「导出账单」的行几何），不再悬浮在页面右下角。 */
-      .bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }
+      .bib-set-reset-row { margin-top: 4px; }
       .bib-set-reset-row .bib-set-data-copy { display: flex; flex-direction: column; gap: 2px; }
       /* 按钮优先渲染宿主原生 Button（.sm = h28 / r8 / 12px / 0 10px）；
          下面这份只是宿主没有 Button 时的等价兜底。 */
@@ -1464,10 +1475,9 @@ function bibSetInstallStyles() {
       .bib-set-btn:disabled { opacity: 0.5; cursor: default; }
       .bib-set-notice { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; flex: 1 1 auto; min-width: 0; }
       .bib-set-data-actions { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; }
-      /* 账单数据行同样是原生 .X_2TxG_row 的几何（12px 2px + .5px 下边线，末行无线）。 */
-      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }
-      .bib-set-data-actions > .bib-set-data-row:first-child { padding-top: 0; }
-      .bib-set-data-row:last-child { padding-bottom: 0; border-bottom: 0; }
+      /* 账单数据行同样是设置卡内的标准行几何（8px 10px 内衬 + 圆角 hover，无线）。 */
+      .bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }
+      .bib-set-data-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }
       .bib-set-data-copy { min-width: 0; }
       .bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }
       .bib-set-data-desc { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); }
@@ -1736,7 +1746,9 @@ function bibSetCardHeader(props) {
   const main = React.createElement('span', { className: 'bib-set-card-header-main' },
     title,
     props.static ? null : bibSetChevron({ expanded: props.expanded }));
-  const description = React.createElement('span', { className: 'bib-set-card-desc' }, props.description);
+  const description = props.description
+    ? React.createElement('span', { className: 'bib-set-card-desc' }, props.description)
+    : null;
   if (props.static) return React.createElement('div', { className: className }, main, description);
   return React.createElement('button', {
     type: 'button',
@@ -2016,25 +2028,22 @@ function bibSetTimeDateSection(props) {
   const mainOn = props.fieldOn('mainTime');
   const worldOn = props.fieldOn('worldTime');
   if (!mainOn && !worldOn) return null;
+  const zoneRow = function (key, labelKey, zone) {
+    // 与「语言」卡同一行语义：label 左、控件右（B 型参数行）。select 右对齐后
+    // 两行的控件边缘齐线，不再随 label 宽度漂移（2026-11-12 概览审计）。
+    return React.createElement('div', { key: key, className: 'bib-set-fieldblock' },
+      React.createElement('div', { className: 'bib-set-fieldblock-copy' },
+        React.createElement('span', { className: 'bib-set-fieldblock-label' }, t(labelKey))),
+      React.createElement('div', { className: 'bib-set-fieldblock-control' },
+        React.createElement(bibSetTimeZonePicker, {
+          label: t(labelKey),
+          value: zone,
+          onChange: function (value) { props.onTimeZoneChange(key === 'main-zone' ? 'main' : 'world', value); },
+        })));
+  };
   const blocks = [];
-  if (mainOn) {
-    blocks.push(React.createElement('div', { key: 'main-zone', className: 'bib-set-fieldblock' },
-      React.createElement('span', { className: 'bib-set-fieldblock-label' }, t('ui.mainTimeZone')),
-      React.createElement(bibSetTimeZonePicker, {
-        label: t('ui.mainTimeZone'),
-        value: props.timeZonesOf().main,
-        onChange: function (value) { props.onTimeZoneChange('main', value); },
-      })));
-  }
-  if (worldOn) {
-    blocks.push(React.createElement('div', { key: 'world-zone', className: 'bib-set-fieldblock' },
-      React.createElement('span', { className: 'bib-set-fieldblock-label' }, t('ui.worldTimeZone')),
-      React.createElement(bibSetTimeZonePicker, {
-        label: t('ui.worldTimeZone'),
-        value: props.timeZonesOf().world,
-        onChange: function (value) { props.onTimeZoneChange('world', value); },
-      })));
-  }
+  if (mainOn) blocks.push(zoneRow('main-zone', 'ui.mainTimeZone', props.timeZonesOf().main));
+  if (worldOn) blocks.push(zoneRow('world-zone', 'ui.worldTimeZone', props.timeZonesOf().world));
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-time-date-title' },
     bibSetCardHeader({
       static: true,
@@ -2045,18 +2054,24 @@ function bibSetTimeDateSection(props) {
     React.createElement('div', { className: 'bib-set-fieldblocks' }, blocks));
 }
 
-// 「自定义文字」独立设置区（决策 3）：输入框 + 字数提示；对应开关关闭时整区隐藏。
+// 「自定义文字」独立设置区（决策 3）：与其它区块同一张卡面 + 同一个一级卡头，
+// 输入框是字段节（C 型）：控件满宽在上、字数提示在下（照原生 field「控件上、说明下」）。
+// 对应开关关闭时整区隐藏。
 function bibSetCustomTextSection(props) {
   if (!props.fieldOn('customText')) return null;
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-custom-text-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-custom-text-title',
+      // 与字段开关同一名字（field.customText.label「自定义文字」）：ui.customTextTitle 是
+      // 「自定义文本」，同一东西两个名字会被读成两个功能（概览审计抓出）。
+      title: t('field.customText.label'),
+      description: t('ui.customTextSectionDesc'),
+    }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
-      React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-          React.createElement('span', { id: 'bib-set-custom-text-title', className: 'bib-set-fieldblock-label' }, t('field.customText.label')),
-          React.createElement('span', { className: 'bib-set-fieldblock-hint' }, t('ui.customTextSectionDesc'))),
-        React.createElement('div', { className: 'bib-set-fieldblock-control' },
+      React.createElement('div', { className: 'bib-set-field' },
         bibSetInput({
-          layout: 'bib-set-input--field',
+          layout: 'bib-set-input--block',
           fallbackClassName: 'bib-set-custom-text-input',
           attrs: {
             id: 'bib-set-custom-text-input',
@@ -2067,11 +2082,11 @@ function bibSetCustomTextSection(props) {
             onChange: function (event) { props.onCustomTextChange(event.target.value); },
             onBlur: props.onCustomTextCommit,
             onKeyDown: function (event) { if (event.key === 'Enter') { event.preventDefault(); props.onCustomTextCommit(); } },
-            'aria-label': t('ui.customTextTitle'),
+            'aria-label': t('field.customText.label'),
           },
         }),
-        React.createElement('p', { className: 'bib-set-fieldblock-hint' },
-          t('ui.customTextCount', { value: props.customTextOf().length }))))));
+        React.createElement('p', { className: 'bib-set-field-hint' },
+          t('ui.customTextCount', { value: props.customTextOf().length })))));
 }
 
 // ===== 插件设置页的通用两段式分段控件 =====
@@ -2174,18 +2189,19 @@ function bibSetQuotaDisplaySection(props) {
       hidden: value !== mode,
     }, desc);
   }) : null;
-  // 行语法照宿主 .rowLine / .rowMain：标题与说明都在左侧文字列里，分段控件在右。
-  // 原生分段控件是 tablist，说明就是它的 tabpanel——放在文字列里既满足 aria 契约，
-  // 又与姊妹插件的「更新方式」行同一形态（说明跟着选中项变，不另起一行）。
+  // 卡头承载「标题」与其他区块同一层级；说明不进卡头 —— 原生分支里说明是选中的那条
+  // 可见 tabpanel（控件下方，随选中项切换），卡头再放一份就是重复文案（概览审计抓出）；
+  // 兜底分支没有 tabpanel，说明留在卡头。
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-quota-mode-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-quota-mode-title',
+      title: t('ui.quotaDisplayModeTitle'),
+      description: native ? undefined : desc,
+    }),
     React.createElement('div', { className: 'bib-set-fieldblocks' },
-      React.createElement('div', { className: 'bib-set-fieldblock' },
-        React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-          React.createElement('span', { id: 'bib-set-quota-mode-title', className: 'bib-set-fieldblock-label' }, t('ui.quotaDisplayModeTitle')),
-          panels === null
-            ? React.createElement('span', { className: 'bib-set-fieldblock-hint' }, desc)
-            : panels),
-        React.createElement('div', { className: 'bib-set-fieldblock-control' },
+      React.createElement('div', { className: 'bib-set-field' },
+        React.createElement('div', { className: 'bib-set-field-control' },
           React.createElement(bibSetQuotaMode, {
             id: BIB_SET_QUOTA_MODE_ID,
             label: t('ui.quotaDisplayModeTitle'),
@@ -2194,7 +2210,8 @@ function bibSetQuotaDisplaySection(props) {
             // 布局类：原生控件是 inline-grid，落在列向 flex 里会被 stretch 拉满整行；
             // 只做 align-self / 最大宽度这类布局声明，外观仍全部交还宿主。
             className: native ? 'bib-set-segmented' : null,
-          })))));
+          })),
+        native ? panels : null)));
 }
 
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
@@ -2270,7 +2287,89 @@ function bibSetCredentialRowsFromCatalog(state) {
   return rows;
 }
 
-function bibSetCredentialsSection(props) {
+// host groups（含 bound）或目录 fallback → 分组行视图。老宿主没返回 bound 时全部归「其他」。
+// 行字段与 bibSetCredentialRowsFromCatalog 一致（labelText 通用模板键、hintText 悬停提示）。
+function bibSetCredentialGroupsFromCatalog(state) {
+  const makeRow = function (group, c, kimiLoginReused) {
+    return {
+      ref: c.ref,
+      providerLabel: (typeof group.labelKey === 'string' && group.labelKey.length > 0) ? t(group.labelKey) : (typeof group.label === 'string' && group.label.length > 0 ? group.label : t('ui.subscription')),
+      labelText: (typeof c.labelKey === 'string' && c.labelKey.length > 0) ? t(c.labelKey) : null,
+      hintText: (typeof c.hintKey === 'string' && c.hintKey.length > 0) ? t(c.hintKey) : t('ui.credentialGenericHint'),
+      configured: c.configured === true,
+      source: c.source || null,
+      writable: c.writable !== false,
+      kimiLoginReused: kimiLoginReused === true,
+    };
+  };
+  const hostGroups = state && Array.isArray(state.groups) ? state.groups : [];
+  if (hostGroups.length > 0) {
+    const kimiLoginOn = state && state.kimiLogin && state.kimiLogin.configured === true;
+    const groups = [];
+    for (let i = 0; i < hostGroups.length; i++) {
+      const group = hostGroups[i];
+      const credentials = group && Array.isArray(group.credentials) ? group.credentials : [];
+      const rows = [];
+      let kimiBound = false;
+      for (let j = 0; j < credentials.length; j++) {
+        const c = credentials[j];
+        if (!c || typeof c.ref !== 'string') continue;
+        const reused = c.ref === 'KIMI_API_KEY' && c.configured !== true && kimiLoginOn;
+        if (reused) kimiBound = true;
+        rows.push(makeRow(group, c, reused));
+      }
+      if (rows.length === 0) continue;
+      groups.push({ id: group.id, providerLabel: rows[0].providerLabel, bound: group.bound === true || kimiBound, credentials: rows });
+    }
+    return groups;
+  }
+  // 目录 fallback（老宿主无接口）：只列目录里的 inline 凭据，状态未知、写入不可用。
+  const groups = [];
+  for (let i = 0; i < CREDENTIAL_CATALOG.length; i++) {
+    const entry = CREDENTIAL_CATALOG[i];
+    const credentials = entry && Array.isArray(entry.credentials) ? entry.credentials : [];
+    const rows = [];
+    for (let j = 0; j < credentials.length; j++) {
+      const c = credentials[j];
+      if (!c || c.inline !== true || typeof c.ref !== 'string') continue;
+      rows.push(makeRow(entry, c, false));
+    }
+    if (rows.length === 0) continue;
+    groups.push({ id: entry.id, providerLabel: rows[0].providerLabel, bound: false, credentials: rows });
+  }
+  return groups;
+}
+
+// 额度凭据卡的错误边界（2026-11-12）：卡内任何渲染错误都收敛成一张警示条，
+// 不允许再出现「一个区块崩 → 整页设置打不开」（v1.24.1 事故）。宿主 React 缺少
+// Component（极端老宿主）时退回直通组件，至少不比没有边界更差。
+const bibCredentialsErrorBoundary = (typeof React === 'object' && React && typeof React.Component === 'function')
+  ? class extends React.Component {
+      constructor(props) { super(props); this.state = { failed: false }; }
+      static getDerivedStateFromError() { return { failed: true }; }
+      componentDidCatch(err) { try { console.warn('[dsh-bottom-info-bar] credentials card render failed: ' + ((err && err.message) || err)); } catch (e) { /* 日志失败无害 */ } }
+      render() {
+        if (this.state.failed) {
+          return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
+            bibSetCardHeader({ static: true, titleId: 'bib-set-credentials-title', title: t('ui.credentialsTitle'), description: t('ui.credentialsDesc') }),
+            bibSetAlert({ tone: 'error', children: t('ui.credentialCardCrashed') }));
+        }
+        return this.props.children;
+      }
+    }
+  : function (props) { return props.children; };
+
+// 额度凭据卡本体：真正的 React 组件。useState/useEffect 必须由 React 管理（v1.24.1 的 React #310
+// 教训：折叠卡如果作为普通函数在父渲染里内联执行，函数体里的 hooks 实际挂在父组件上，
+// 父渲染路径一变 hooks 计数就漂移，整个设置页崩）。
+// 结构完全走插件体系：卡片头与其它区块同款（static 头 + 动态摘要做说明），
+// 折叠用组卡同款的 bibSetDisclosure（展开/收起文字 + 原生箭头 + grid 收合动画），
+// 行用 v1.24.0 的 fieldblock 基线（copy=标签+说明+状态，control=原生 Input+保存/清除）。
+// 不自绘任何体系外的折叠头、组标题或展开按钮。
+function bibCredentialsCard(props) {
+  // 默认折叠（2026-11-12 用户拍板）：与「原生信息 / 插件信息」等折叠区块同一行为 ——
+  // 卡头可点、右侧展开箭头，摘要（已绑定 / 未检测到）常驻说明位。
+  const [open, setOpen] = React.useState(false);
   const state = props.credentialState;
   // 还没读到状态（首次加载/旧宿主没有该接口）时不显示"不支持写入"警告，避免闪一下；
   // 输入框在状态到达前保持禁用，读到 canWrite=true 后启用。
@@ -2278,8 +2377,16 @@ function bibSetCredentialsSection(props) {
   const canWrite = loaded && state.canWrite === true;
   const drafts = props.credentialDrafts || {};
   const feedback = props.credentialFeedback;
-  const rows = bibSetCredentialRowsFromCatalog(state);
-  const blocks = rows.map(function (row) {
+  // 目录口径：只有必须单独填写额度凭据的服务商（当前仅阿里百炼）会出现。
+  // 其余服务商全部复用推理 Key / 登录态自动检测，没在用就不占设置页一寸地方。
+  const groups = bibSetCredentialGroupsFromCatalog(state);
+  const boundGroups = groups.filter(function (g) { return g.bound; });
+  const boundNames = boundGroups.map(function (g) { return g.providerLabel; });
+  const summaryNames = boundNames.slice(0, 3).join('、') + (boundNames.length > 3 ? ' +' + String(boundNames.length - 3) : '');
+  const summary = boundGroups.length > 0
+    ? t('ui.credentialSummaryBound', { count: boundGroups.length, names: summaryNames })
+    : t('ui.credentialSummaryNone');
+  function renderRow(row) {
     const busy = props.credentialBusyRef === row.ref;
     const draft = typeof drafts[row.ref] === 'string' ? drafts[row.ref] : '';
     const labelId = 'bib-set-credential-' + row.ref + '-label';
@@ -2291,14 +2398,18 @@ function bibSetCredentialsSection(props) {
       : (row.configured
         ? t('ui.credentialConfigured', { source: bibSetCredentialSourceLabel(row.source) })
         : t('ui.credentialNotConfigured'));
-    return React.createElement('div', { key: row.ref, className: 'bib-set-fieldblock' },
-      React.createElement('div', { className: 'bib-set-fieldblock-copy' },
-        React.createElement('span', { id: labelId, className: 'bib-set-fieldblock-label' }, labelText),
-        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, row.hintText),
-        React.createElement('span', { className: 'bib-set-fieldblock-hint' }, statusText)),
-      React.createElement('div', { className: 'bib-set-fieldblock-control' },
+    // 字段节（C 型，照原生 .field 列向语法）：「标签 + 状态」在上、说明居中、控件满宽在下。
+    // 状态是同一行里与标签相对的胶囊/裸文字，不再混进说明堆里（2026-11-12 用户点名）。
+    return React.createElement('div', { key: row.ref, className: 'bib-set-field' },
+      React.createElement('div', { className: 'bib-set-field-head' },
+        React.createElement('label', { id: labelId, htmlFor: 'bib-set-credential-' + row.ref, className: 'bib-set-field-label' }, labelText),
+        row.configured
+          ? React.createElement('span', { className: 'bib-set-status-pill' }, statusText)
+          : React.createElement('span', { className: 'bib-set-status-plain' }, statusText)),
+      React.createElement('span', { className: 'bib-set-field-hint' }, row.hintText),
+      React.createElement('div', { className: 'bib-set-field-control' },
         bibSetInput({
-          layout: 'bib-set-input--field',
+          layout: 'bib-set-input--block',
           fallbackClassName: 'bib-set-credential-input',
           attrs: {
             id: 'bib-set-credential-' + row.ref,
@@ -2313,30 +2424,57 @@ function bibSetCredentialsSection(props) {
             'aria-labelledby': labelId,
           },
         }),
-        React.createElement('div', { className: 'bib-set-data-button-group' },
-          bibSetButton({
-            disabled: !canWrite || busy || draft.trim().length === 0,
-            onClick: function () { props.onCredentialSave(row.ref); },
-            children: t('ui.credentialSave'),
-          }),
-          row.configured ? bibSetButton({
-            disabled: !canWrite || busy,
-            onClick: function () { props.onCredentialClear(row.ref); },
-            children: t('ui.credentialClear'),
-          }) : null)));
-  });
+        bibSetButton({
+          disabled: !canWrite || busy || draft.trim().length === 0,
+          onClick: function () { props.onCredentialSave(row.ref); },
+          children: t('ui.credentialSave'),
+        }),
+        row.configured ? bibSetButton({
+          disabled: !canWrite || busy,
+          onClick: function () { props.onCredentialClear(row.ref); },
+          children: t('ui.credentialClear'),
+        }) : null));
+  }
+  function renderRows(list) {
+    const nodes = [];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = 0; j < list[i].credentials.length; j++) nodes.push(renderRow(list[i].credentials[j]));
+    }
+    return nodes;
+  }
+  // 卡头与「原生信息 / 插件信息」折叠组同一布局组件（bibSetDisclosure）：
+  // 左侧「标题 + 摘要说明」、右侧「展开 / 收起 ⌄」——展开标识与其它区块逐字逐形一致
+  //（2026-11-12 用户拍板：图标和“展开”两个字都要和其他的保持一样，布局组件写成同一个）。
   return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-credentials-title' },
-    bibSetCardHeader({
-      static: true,
-      titleId: 'bib-set-credentials-title',
-      title: t('ui.credentialsTitle'),
-      description: t('ui.credentialsDesc'),
-    }),
-    React.createElement('div', { className: 'bib-set-fieldblocks' }, blocks),
-    loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
-    React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote')),
-    feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null);
+    React.createElement(bibSetDisclosure, {
+      contentId: 'bib-set-credentials-body',
+      open: open,
+      onToggle: function () { setOpen(function (v) { return !v; }); },
+      title: React.createElement('span', { className: 'bib-set-group-head' },
+        React.createElement('span', { id: 'bib-set-credentials-title', className: 'bib-set-group-label' }, t('ui.credentialsTitle')),
+        React.createElement('span', { className: 'bib-set-group-desc' }, summary)),
+    },
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialGuide')),
+      React.createElement('div', { className: 'bib-set-fieldblocks' }, renderRows(groups)),
+      loaded && !canWrite ? bibSetAlert({ tone: 'warning', children: t('ui.credentialWriteUnsupported') }) : null,
+      feedback ? bibSetAlert({ tone: feedback.tone || 'info', children: feedback.text }) : null,
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialStorageHint')),
+      React.createElement('p', { className: 'bib-set-fieldblock-hint' }, t('ui.credentialFootnote'))));
+}
+
+// 设置页区块入口保持普通函数（render(deps) 内联调用）：hooks 全部在 bibCredentialsCard
+// 这个真组件里，由 React 管理 —— 这里只做 createElement，任何渲染路径下 hooks 计数恒定。
+function bibSetCredentialsSection(props) {
+  return React.createElement(bibCredentialsErrorBoundary, { key: 'bib-credentials-card' },
+    React.createElement(bibCredentialsCard, {
+      credentialState: props.credentialState,
+      credentialDrafts: props.credentialDrafts,
+      credentialBusyRef: props.credentialBusyRef,
+      credentialFeedback: props.credentialFeedback,
+      onCredentialDraft: props.onCredentialDraft,
+      onCredentialSave: props.onCredentialSave,
+      onCredentialClear: props.onCredentialClear,
+    }));
 }
 
 const BIB_SET_SECTIONS = [
@@ -3220,7 +3358,15 @@ function InfoBarSettingsSection() {
     : null;
   return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
     React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
-    React.createElement('section', { className: 'bib-set-card', 'aria-label': t('ui.visibleFields') },
+    React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-label': t('ui.visibleFields') },
+      // 卡头（2026-11-12）：与「账单数据 / 版本」等区块同一套「一级标题 + 汇总说明」，
+      // 整页层级拉齐 —— 之前这张卡只有搜索行和分组，缺一级标题，观感上高一级低一级不成体系。
+      bibSetCardHeader({
+        static: true,
+        titleId: 'bib-set-visible-fields-title',
+        title: t('ui.visibleFields'),
+        description: t('ui.visibleFieldsDesc'),
+      }),
       React.createElement('div', { className: 'bib-set-toolbar' },
         React.createElement('div', { className: 'bib-set-search-row' },
           React.createElement('div', { className: 'bib-set-search-shell' },
@@ -4022,25 +4168,19 @@ module.exports = {
 
         // v1.6 T7：未适配账户渲染"未适配"弱提示
         if (bal && bal.unmapped) {
-          if (fieldVisible('unmapped')) {
-            trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
-              React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
-          }
+          trailingErrorGroups.push(fieldSpan('unmapped', 'unmapped',
+            React.createElement('span', { className: 'bi-muted', title: t('ui.balanceLookupIsNotYet') }, t('ui.notSupported'))));
         }
         // 已纳入兼容性基线、但服务商没有公开的账户余额/配额接口：保留服务商、模型和
         // 本地 token 账本，不把“没有公开接口”误说成“插件未适配”。
         else if (bal && bal.accountDataUnavailable) {
-          if (fieldVisible('unmapped')) {
-            trailingErrorGroups.push(fieldSpan('unmapped', 'account-data-unavailable',
-              React.createElement('span', { className: 'bi-muted', title: t('ui.accountDataUnavailableDetail') }, t('ui.accountDataUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('unmapped', 'account-data-unavailable',
+            React.createElement('span', { className: 'bi-muted', title: t('ui.accountDataUnavailableDetail') }, t('ui.accountDataUnavailable'))));
         }
         // 配置引导（未配置 API Key / 内置账号未登录）：与数据展示互斥，占 noKeyHint 槽位
         else if (configHint) {
-          if (fieldVisible('noKeyHint')) {
-            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
-              React.createElement('span', { className: 'bi-err', title: configHint.title }, configHint.text)));
-          }
+          trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+            React.createElement('span', { className: 'bi-err', title: configHint.title }, configHint.text)));
         } else if (bal && bal.data) {
           const symbol = bal.currency === 'USD' ? '$' : '¥';
           const balTitle = bal.estimate
@@ -4057,21 +4197,17 @@ module.exports = {
             )));
           }
           // host 快照失败（bal.error）或本次 RPC 失败（errors.balance）→ 均保留旧数据 + 降级标记
-          if (fieldVisible('balanceError') && (bal.error || errors.balance)) {
+          if (bal.error || errors.balance) {
             trailingErrorGroups.push(fieldSpan('balanceError', 'balerr',
               React.createElement('span', { className: 'bi-stale', title: t('ui.balanceIsTemporarilyUnavailableShowing') }, t('ui.refreshFailed'))));
           }
         } else if (bal && bal.error) {
-          if (fieldVisible('balanceError')) {
-            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+            React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
         } else if (errors.balance) {
           // 本次 RPC 失败且无旧数据：只降级余额块，其余端点数据照常渲染
-          if (fieldVisible('balanceError')) {
-            trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
-              React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
-          }
+          trailingErrorGroups.push(fieldSpan('balanceError', 'berr',
+            React.createElement('span', { className: 'bi-err', title: t('ui.couldNotLoadBalanceCheck') }, t('ui.balanceUnavailable'))));
         }
 
         // 时段：仅峰谷价服务商显示"高峰价/空闲价"（flat/unknown 服务商不显示；hover 展示具体价格）
@@ -4135,7 +4271,7 @@ module.exports = {
               title: costTitle.join('\n') },
               metric(t('ui.session'), costTxt))));
           }
-        } else if (errs.usage && fieldVisible('usageError')) {
+        } else if (errs.usage) {
           trailingErrorGroups.push(fieldSpan('usageError', 'usageerr',
             React.createElement('span', { className: 'bi-err', title: t('ui.spendIsTemporarilyUnavailableChat') }, t('ui.spendUnavailable'))));
         }
@@ -4159,8 +4295,25 @@ module.exports = {
          if (status === '429') return t('ui.rateLimitReachedPleaseTry', { serviceName: serviceName });
          if (kind === 'timeout' || /timeout|timed out|abort/i.test(message)) return t('ui.timedOutCheckYourConnection', { serviceName: serviceName });
          if (kind === 'parse') return t('ui.returnedAnUnrecognizedResponsePlease', { serviceName: serviceName });
-         return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
-       }
+          return t('ui.isTemporarilyUnavailableCheckYour', { serviceName: serviceName });
+      }
+
+      // 订阅制「配置引导」（2026-11-12）：凭据缺失（kind:'no-key'）时不再只给悬停提示。
+      // host 按目录注入 error.params.setup：'plugin' = 该服务商需要插件设置页专属凭据
+      // （阿里 AK/SK、MiniMax Subscription Key 等），凭据名以字典键列表下发、在此翻译；
+      // 'models' 或缺参 → 返回 null，保持原有"刷新失败"降级，不改变既有行为。
+      function subscriptionSetupHint(error) {
+        if (!error || error.kind !== 'no-key') return null;
+        const params = error.params || {};
+        if (params.setup !== 'plugin') return null;
+        const keys = Array.isArray(params.credentialKeys) ? params.credentialKeys.filter(function (k) { return typeof k === 'string' && k.length > 0; }) : [];
+        const serviceName = subscriptionServiceName(visibleBillingMode && visibleBillingMode.provider);
+        const credential = keys.length > 0 ? keys.map(function (k) { return t(k); }).join(' / ') : serviceName;
+        return {
+          title: t('ui.quotaCredentialSetupTitle', { serviceName: serviceName, credential: credential }),
+          text: t('ui.quotaCredentialSetupText', { serviceName: serviceName, credential: credential }),
+        };
+      }
 
       function pushSubscriptionGroups(groups, trailingErrorGroups) {
         pushIdentityGroups(groups, 'subServiceGroup', subscriptionProviderGroup);
@@ -4172,7 +4325,7 @@ module.exports = {
             metric(t('ui.expires'), formatDate(sub.expiryAt)))));
         }
         if (!sub) {
-          if (errors.sub && fieldVisible('refreshFailure')) {
+          if (errors.sub) {
             // 本次 RPC 失败且无旧数据：显示失败信息而非永久"加载中…"
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'suberr',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint({ kind: 'exception', message: String(errors.sub) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
@@ -4189,10 +4342,28 @@ module.exports = {
         // no-key（无令牌/缺 access_token）与 auth（令牌失效 401）→ 统一"未绑定/重新绑定"引导——
         // 令牌由独立插件 dsh-chatgpt-sub 维护，本插件只读令牌显示额度，不自行绑定/续期
         if (sub.error && !hasData) {
-          if (fieldVisible('refreshFailure')) {
-            trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
-              React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
+          // 凭据缺失（host 按目录注入 params.setup）→ 与余额制同款的配置引导占 noKeyHint 槽位：
+          // 需要插件页专属凭据的服务商（阿里 AK/SK、MiniMax Subscription Key 等）直接给出路径，
+          // 不再只留一个悬停才看得见的"刷新失败"。
+          const setupHint = subscriptionSetupHint(sub.error);
+          if (setupHint) {
+            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+              React.createElement('span', { className: 'bi-err', title: setupHint.title }, setupHint.text)));
+            return;
           }
+          // 其余 no-key（Codex 令牌缺失 / 需在 DSH 设置 → 模型 配置推理 Key 的服务商）：
+          // 失败原因不能只放进 title —— 触屏宿主（DSH Go）没有悬停，用户只会看到裸"刷新失败"
+          // 而无法自助（Issue #274：已授权 ChatGPT 却只显示刷新失败）。可见文本直接给
+          // 「未找到登录凭证」引导（原悬停文案提升为可见），完整说明保留在 title。
+          if (sub.error.kind === 'no-key') {
+            const noKeySource = sub.source || (visibleBillingMode && visibleBillingMode.provider);
+            trailingErrorGroups.push(fieldSpan('noKeyHint', 'nokey',
+              React.createElement('span', { className: 'bi-err', title: subscriptionFailureHint(sub.error, noKeySource) },
+                t('ui.noSignInCredentialsFound', { serviceName: subscriptionServiceName(noKeySource) }))));
+            return;
+          }
+          trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
+            React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           return;
         }
         // v1.8：充值余额模式——无额度窗口但有 balance 字段（如智谱普通 API 余额用户）
@@ -4209,7 +4380,7 @@ module.exports = {
           // 充值余额用户按量付费，花销与余额同等重要 → 追加公共花费块（含子代理聚合）
           if (!isCreditsBalance) pushSessionCost(groups, trailingErrorGroups, false);
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 保留旧数据 + 降级标记
-          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+          if ((sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4262,7 +4433,7 @@ module.exports = {
             groups.push(React.createElement('span', { key: 'subwin', title: titleLines.join('\n') }, ...winNodes));
           }
           // host 快照失败（sub.error）或本次 RPC 失败（errors.sub）→ 均保留旧数据 + 降级标记
-          if (fieldVisible('refreshFailure') && (sub.error || errors.sub)) {
+          if ((sub.error || errors.sub)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'substale',
               React.createElement('span', { className: 'bi-stale', title: subscriptionFailureHint(sub.error || { kind: 'exception', message: String(errors.sub || '') }, sub.source || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4296,7 +4467,7 @@ module.exports = {
         const bill = renderedState.billing;
         const errors = renderedState.errors || {};
         if (!bill) {
-          if (errors.billing && fieldVisible('refreshFailure')) {
+          if (errors.billing) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billerr',
               React.createElement('span', { className: 'bi-stale', title: billingFailureHint({ kind: 'exception', message: String(errors.billing) }, visibleBillingMode && visibleBillingMode.provider) }, t('ui.refreshFailed'))));
           }
@@ -4305,10 +4476,8 @@ module.exports = {
         const d = bill.data;
         const hasSpend = !!(d && (d.currentPeriodSpend != null || d.usage != null));
         if (bill.error && !hasSpend) {
-          if (fieldVisible('refreshFailure')) {
-            trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
-              React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
-          }
+          trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
+            React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           return;
         }
         if (hasSpend) {
@@ -4337,7 +4506,7 @@ module.exports = {
           if (nodes.length > 0) {
             groups.push(React.createElement('span', { key: 'bill', title: titleLines.join('\n') }, ...nodes));
           }
-          if (fieldVisible('refreshFailure') && (bill.error || errors.billing)) {
+          if ((bill.error || errors.billing)) {
             trailingErrorGroups.push(fieldSpan('refreshFailure', 'billstale',
               React.createElement('span', { className: 'bi-stale', title: billingFailureHint(bill.error || { kind: 'exception', message: String(errors.billing || '') }, bill.type || (visibleBillingMode && visibleBillingMode.provider)) }, t('ui.refreshFailed'))));
           }
@@ -4394,13 +4563,13 @@ module.exports = {
       if (errors.billingMode) failedLabels.push(t('ui.mode'));
       if (errors.sub) failedLabels.push(t('ui.subscriptionQuota'));
       if (errors.billing) failedLabels.push(t('ui.billing'));
-      if (failedLabels.length > 0 && fieldVisible('refreshFailure')) {
+      if (failedLabels.length > 0) {
         trailingErrorGroups.push(fieldSpan('refreshFailure', 'degraded',
           React.createElement('span', { className: 'bi-stale', key: 'degraded',
             title: failedLabels.join(t('ui.listSeparator')) + t('ui.temporarilyUnavailableKeepingTheLast') }, t('ui.refreshFailed'))));
       }
       const persistence = renderedState.usage && renderedState.usage.persistence;
-      if (persistence && persistence.state && persistence.state !== 'ok' && fieldVisible('persistWarning')) {
+      if (persistence && persistence.state && persistence.state !== 'ok') {
         const snapshotOnly = persistence.state === 'snapshot-stale';
         trailingErrorGroups.push(fieldSpan('persistWarning', 'ledger-save', React.createElement('span', {
           className: snapshotOnly ? 'bi-stale' : 'bi-err',
@@ -4430,7 +4599,7 @@ module.exports = {
            ? t('ui.updatePendingRestart', { version: restartVersion })
            : t('ui.updateDowngradePending', { version: restartVersion, running: restartRunning }));
        const updateFailed = !!(updateStatus && updateStatus.lastError);
-       if (restartVersion && fieldVisible('updateNotice')) {
+       if (restartVersion) {
          trailingErrorGroups.push(fieldSpan('updateNotice', 'updatebadge', React.createElement('span', {
            key: 'updateBadge',
            className: 'bi-update-badge',
@@ -4439,7 +4608,7 @@ module.exports = {
            onKeyDown: function (event) { event.stopPropagation(); },
          }, t('ui.updateRestartBadge'))));
        }
-       if (updateFailed && fieldVisible('updateFailure')) {
+       if (updateFailed) {
          trailingErrorGroups.push(fieldSpan('updateFailure', 'updatefailed', React.createElement('span', {
            key: 'updateFailureBadge',
            className: 'bi-update-badge bi-update-badge--error',

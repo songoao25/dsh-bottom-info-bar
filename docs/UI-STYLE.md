@@ -7,8 +7,31 @@ of the contract rather than a local tweak.
 
 The numbers below were read from the installed host bundle, not from either plugin:
 `@deepseek-ai/dsh-client-ui-plugin-manager` ships its stylesheet as CSS Modules, so the class
-prefix changes with the host version (it was `X_2TxG` in 0.1.7, `ZVcBiW` in 0.2.x) — match the
-declarations, never the class names.
+prefix changes with the host version (it was `X_2TxG` in 0.1.7, `ZVcBiW` in 0.2.x, `w6M7KW`
+in 0.2.2) — match the declarations, never the class names.
+
+## 2026-11-12: settings-card migration (DSH 0.2.2)
+
+The host's own settings forms (`@deepseek-ai/dsh-client-ui` settings-form, module `tUAPGa`
+in 0.2.2-rc.1) have moved to **card surfaces with no separator lines**:
+
+| Element | Host rule | Value |
+| --- | --- | --- |
+| Settings card | `rowCard` | `.5px solid var(--dsw-alias-settings-card-stroke)` (= border-l4), `background: var(--dsw-alias-settings-card-fill)` (= bg-layer-2), `border-radius: var(--dsw-radius-xl)` = 20px, padding `12px 14px`, column gap 12px |
+| Card list | `rows` | column, `gap: 8px` — **no separator lines** |
+| Section | `section` | column, `gap: 12px` |
+| Input | `input` | height 32px, radius `var(--dsw-radius-md)` = 12px, `.5px` border-l4, `background: bg-layer-1`, padding `0 10px`, font 14px |
+| Hover fill | — | `var(--dsw-alias-interactive-bg-hover)` (≈6% ink) |
+
+The plugin follows this grammar: every top-level block (`.bib-set-card--panel`) is a settings
+card, rows keep the two-column grammar (text left, control right) with 8px/10px padding,
+8px radius and an interactive hover fill, and **no row draws a separator line** — layering
+comes from the card surface and whitespace only. The old hairline token (`--bib-rule`) and
+the host detail-page row metrics (`.5px border-l2` rows) are retired on this page.
+
+Deliberate deviation, recorded: the host *detail page* rows (plugin manager `w6M7KW_row`)
+still use `.5px` hairlines. The settings page intentionally follows the *settings-form*
+grammar instead, per user decision 2026-11-12 ("删掉廉价的分隔线，改用留白划分").
 
 ## Where the page lands
 
@@ -29,6 +52,10 @@ detailSections      { display: flex; flex-direction: column; gap: 32px; margin-t
 | No in-page title | — | the host already renders the plugin name (20/500/28) and description (14/22) |
 
 ## Rows
+
+> 2026-11-12: the settings page no longer copies these detail-page rows — see
+> "2026-11-12: settings-card migration" above. The table below stays as the
+> detail-page baseline it documents.
 
 | Element | Host rule | Value |
 | --- | --- | --- |

@@ -357,8 +357,8 @@ async function main() {
   ok('K73 DSH_PRESET_PROVIDERS 含 kimi-coding', DSH_PRESET_PROVIDERS.indexOf('kimi-coding') >= 0)
   check('K74 PROVIDER_IDENTITY[kimi-coding]：account 与 subscription 均独立', PROVIDER_IDENTITY['kimi-coding'],
     { account: 'kimi-coding', subscription: 'kimi-coding', billing: null })
-  ok('K75 host.js：订阅源接线 kimi-coding → fetchKimiCodingUsage',
-    hostSrc.indexOf("'kimi-coding': { fetch: fetchKimiCodingUsage }") >= 0)
+  ok('K75 host.js：订阅源接线 kimi-coding → fetchKimiCodingUsage（经 no-key 标注包装）',
+    hostSrc.indexOf("'kimi-coding': { fetch: function () { return fetchKimiCodingUsage().then(function (r) { return annotateSubscriptionNoKey('kimi-coding', r); }); } }") >= 0)
   ok('K76 host.js：展示名走 ui.kimiCoding 字典键', hostSrc.indexOf("'kimi-coding': t('ui.kimiCoding')") >= 0)
   const serviceFn = extractClientFnBody('subscriptionServiceName')
   ok('K77 client-bundle：subscriptionServiceName 含 kimi-coding 品牌分支',

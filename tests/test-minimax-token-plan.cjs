@@ -258,9 +258,9 @@ async function main() {
   check('⑥ base URL：未知/缺省 → Global 站点', [parseApi.minimaxBaseUrl(undefined), parseApi.minimaxBaseUrl('other')], ['https://api.minimax.io', 'https://api.minimax.io'])
   ok('⑥ constants：SUBSCRIPTION_PROVIDERS 含 minimax / minimax-cn', SUBSCRIPTION_PROVIDERS.indexOf('minimax') >= 0 && SUBSCRIPTION_PROVIDERS.indexOf('minimax-cn') >= 0, JSON.stringify(SUBSCRIPTION_PROVIDERS))
   ok('⑥ constants：订阅集合无重复项', new Set(SUBSCRIPTION_PROVIDERS).size === SUBSCRIPTION_PROVIDERS.length)
-  ok('⑥ SUBSCRIPTION_SOURCES：minimax / minimax-cn 各自独立源',
-    hostSrc.indexOf("minimax: { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax'); } }") >= 0
-    && hostSrc.indexOf("'minimax-cn': { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax-cn'); } }") >= 0)
+  ok('⑥ SUBSCRIPTION_SOURCES：minimax / minimax-cn 各自独立源（经 no-key 标注包装）',
+    hostSrc.indexOf("minimax: { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax').then(function (r) { return annotateSubscriptionNoKey('minimax', r); }); } }") >= 0
+    && hostSrc.indexOf("'minimax-cn': { fetch: function () { return fetchMinimaxTokenPlanUsage('minimax-cn').then(function (r) { return annotateSubscriptionNoKey('minimax-cn', r); }); } }") >= 0)
   ok('⑥ 展示名映射：minimax / minimax-cn → MiniMax', /minimax: 'MiniMax',\n\s*'minimax-cn': 'MiniMax',/.test(hostSrc))
 
   // ================= ⑦ fetch 层：凭据路由与请求形态 =================

@@ -229,8 +229,9 @@ check('④ 显隐判定只认这三个窗口字段（subWindow5h / subWindowWeek
   const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
   return body.indexOf("['subWindow5h', 'subWindowWeek', 'subWindowMonth']") !== -1;
 })(), true);
-// 2026-10-14：这一区不再有独立卡片头——标题改成行左侧的标题节点（与姊妹插件的行语法一致），
-// 说明在原生分段控件下是那条 tabpanel 的内容。文案键与 aria 配对关系不变，断言随之改判。
+// 2026-11-12：这一区回归一级卡头（与其他区块同一层级）——标题 id 由 bibSetCardHeader 的
+// titleId 承载，section 的 aria-labelledby 指向同一 id；说明走卡头 desc（原生分支另有
+// hidden tabpanel 满足分段控件的 aria 契约）。文案键与配对关系不变，断言随之改判。
 check('④ 区块标题 / 描述走已种下的文案键', (function () {
   const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
   return body.indexOf("t('ui.quotaDisplayModeTitle')") !== -1
@@ -240,7 +241,7 @@ check('④ 标题节点带 aria-labelledby 的目标 id，section 指向同一�
   const section = sectionOn(['subWindow5h']);
   const body = extractFunctionFrom(clientSrc, 'bibSetQuotaDisplaySection');
   return section.props['aria-labelledby'] === 'bib-set-quota-mode-title'
-    && body.indexOf("{ id: 'bib-set-quota-mode-title', className: 'bib-set-fieldblock-label' }") !== -1;
+    && body.indexOf("titleId: 'bib-set-quota-mode-title'") !== -1;
 })(), true);
 
 const renderMode = function (value, onSelect) {
@@ -381,10 +382,10 @@ check('④-n disabled / className 透传（className 只用于布局收口）', 
 })(), true);
 check('④-n 区块：两个 tabpanel 与 tab 的 id / aria-labelledby 成对，非选中项 hidden', (function () {
   const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'used'; }, onModeChange: function () {} });
-  // 2026-10-14 行语法照宿主 .rowLine/.rowMain：section > .bib-set-fieldblocks > .bib-set-fieldblock >
-  // [copy（标题 + tabpanel）, control（分段控件）]。tabpanel 就在文字列里，不再另起一行。
-  const fieldblock = section.children[0].children[0];
-  const panels = fieldblock.children[0].children[1];
+  // 2026-11-12 卡头化：section > [bibSetCardHeader, .bib-set-fieldblocks > .bib-set-field >
+  // [.bib-set-field-control（分段控件）, tabpanel 数组]]。tabpanel 跟在控件后面（hidden 不占位）。
+  const field = section.children[1].children[0];
+  const panels = field.children[1];
   return Array.isArray(panels) && panels.length === 2
     && panels[0].props.id === 'bib-set-quota-mode-remaining-panel'
     && panels[0].props['aria-labelledby'] === 'bib-set-quota-mode-remaining'
@@ -394,26 +395,29 @@ check('④-n 区块：两个 tabpanel 与 tab 的 id / aria-labelledby 成对，
     && panels[1].props['aria-labelledby'] === 'bib-set-quota-mode-used'
     && panels[1].props.hidden === false;
 })(), true);
-check('④-n 区块：说明只出现在 tabpanel 里，不再另起区块头重复同一句', (function () {
+check('④-n 区块：卡头承载标题；说明只在选中的 tabpanel 里，卡头不重复同一句', (function () {
   const section = quotaNative.section({ fieldOn: function () { return true; }, modeOf: function () { return 'remaining'; }, onModeChange: function () {} });
-  const fieldblock = section.children[0].children[0];
-  const panels = fieldblock.children[0].children[1];
-  // 标题走行左侧标题节点；这一区不再有独立卡片头（headerCalls 必须为空）
-  return quotaNative.headerCalls.length === 0
-    && fieldblock.children[0].children[0].children[0] === t('ui.quotaDisplayModeTitle')
+  // 2026-11-12 卡头化：标题走 bibSetCardHeader（titleId 与 section aria-labelledby 配对），
+  // 原生分支卡头不放 description（说明 = 选中的那条可见 tabpanel，否则同一句出现两遍）。
+  const head = quotaNative.headerCalls[quotaNative.headerCalls.length - 1];
+  const field = section.children[1].children[0];
+  const panels = field.children[1];
+  return quotaNative.headerCalls.length > 0
+    && head.titleId === 'bib-set-quota-mode-title'
+    && head.title === t('ui.quotaDisplayModeTitle')
+    && head.description === undefined
     && panels[0].children[0] === t('ui.quotaDisplayModeDesc');
 })(), true);
-check('④-n 兜底路径零回归：没有 SegmentedControl 时仍是自绘 radiogroup + 区块头说明，且不渲染 tabpanel', (function () {
+check('④-n 兜底路径零回归：没有 SegmentedControl 时仍是自绘 radiogroup，说明在卡头、不渲染 tabpanel', (function () {
   const section = sectionOn(['subWindow5h']);
-  const fieldblock = section.children[0].children[0];
-  const control = fieldblock.children[1].children[0];
-  const descNode = fieldblock.children[0].children[1];
+  const field = section.children[1].children[0];
+  const control = field.children[0].children[0];
+  const head = quotaUi.headerCalls[quotaUi.headerCalls.length - 1];
   return control.type === 'bibSetQuotaMode'
-    // 兜底路径没有 tablist：说明是普通的行说明节点，不带 role=tabpanel
-    && descNode.type === 'span'
-    && descNode.props.role === undefined
-    && quotaUi.headerCalls.length === 0
-    && descNode.children[0] === t('ui.quotaDisplayModeDesc');
+    // 兜底路径没有 tablist：不渲染 tabpanel（field 第二个子节点为 null），说明只在卡头里
+    && field.children[1] === null
+    && head.titleId === 'bib-set-quota-mode-title'
+    && head.description === t('ui.quotaDisplayModeDesc');
 })(), true);
 
 // ---------- ⑤ 对比度铁律：真实颜色计算 ----------

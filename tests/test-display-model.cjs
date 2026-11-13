@@ -505,8 +505,11 @@ try {
   for (const mode of ['native', 'balance', 'subscription', 'billing', 'trailing']) {
     for (const id of FIELD_MODES[mode]) if (modeUnion.indexOf(id) === -1) modeUnion.push(id);
   }
-  check('FIELD_MODES 并集恰好覆盖注册表（不多不少）',
-    modeUnion.length === registryIds.length && registryIds.every((id) => modeUnion.indexOf(id) !== -1), true);
+  // 提醒字段（2026-11-12 起无开关）：不在注册表，但仍在信息栏渲染 —— 只受数据条件触发。
+  const NOTICE_RENDER_ONLY = ['refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure', 'balanceError', 'usageError', 'noKeyHint', 'unmapped'];
+  check('FIELD_MODES 并集 = 注册表 ∪ 提醒渲染位（提醒无开关不在注册表，其余不多不少）',
+    registryIds.every((id) => modeUnion.indexOf(id) !== -1)
+    && modeUnion.every((id) => registryIds.indexOf(id) !== -1 || NOTICE_RENDER_ONLY.indexOf(id) !== -1), true);
   const gateLiterals = [...clientSrc.matchAll(/fieldVisible\('([A-Za-z0-9]+)'\)/g)].map((m) => m[1]);
   const indirect = ['anchorGroup', 'subServiceGroup', 'billingServiceGroup', 'subWindow5h', 'subWindowWeek', 'subWindowMonth'];
   check('渲染层门控字面量全部落在表里（防开关管不住的字段）',
@@ -515,9 +518,11 @@ try {
     ['anchorGroup', 'subServiceGroup', 'billingServiceGroup'].every((id) => clientSrc.includes("pushIdentityGroups(groups, '" + id + "'")), true);
   check('订阅窗口三字段走 WINDOW_META 间接门控（非字面量，显式登记）',
     ['subWindow5h', 'subWindowWeek', 'subWindowMonth'].every((id) => clientSrc.includes("'" + id + "'") && clientSrc.includes('windowMeta(')), true);
-  const directGated = modeUnion.filter((id) => indirect.indexOf(id) === -1);
+  const directGated = modeUnion.filter((id) => indirect.indexOf(id) === -1 && NOTICE_RENDER_ONLY.indexOf(id) === -1);
   check('表里其余每个 id 都在渲染层有直接门控',
     directGated.every((id) => gateLiterals.indexOf(id) !== -1), true);
+  check('提醒字段无开关：渲染层不得出现它们的 fieldVisible 门控',
+    NOTICE_RENDER_ONLY.every((id) => gateLiterals.indexOf(id) === -1), true);
 } catch (error) {
   fail++;
   console.log('FAIL  FIELD_MODES 锁 → ' + (error && error.message ? error.message : String(error)));

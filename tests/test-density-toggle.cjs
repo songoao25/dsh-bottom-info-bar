@@ -95,9 +95,9 @@ check('原生统计行随模式收合（CSS 由 data-density 驱动，而非条�
 // 插件字段与提醒字段都住在主行，而主行无条件渲染 —— 因此两种模式下都在。
 check('主行无条件渲染（插件字段与提醒字段两种模式都在）',
   clientCode.indexOf("const row2 = React.createElement('div', { id: 'dsh-bottom-info-bar-primary', className: 'bi-row2' }") !== -1, true);
-check('提醒字段只受开关控制（两种模式都在，且与模式变量无任何交集）',
-  clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
-  && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
+check('提醒字段无条件渲染（无开关，2026-11-12 移除提醒组；与模式变量无任何交集）',
+  clientSrc.includes("if (restartVersion) {")
+  && clientSrc.includes("if (updateFailed) {")
   && clientSrc.includes("trailingErrorGroups.push(fieldSpan('updateNotice'")
   && clientSrc.indexOf("if (restartVersion && full)") === -1, true);
 check('设置页不再重复提供简洁/完整选择；点击底栏仍由宿主接口持久化', !clientSrc.includes('function bibSetDensitySection(props)')

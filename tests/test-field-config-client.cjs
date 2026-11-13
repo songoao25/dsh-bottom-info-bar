@@ -39,13 +39,14 @@ check('原生统计行隐藏组不占版式（visCount 门控分隔符）', clie
   && clientSrc.includes("key: 'nsep' + i, className: 'bi-sep'"), true);
 check('本会话花费过滤在公共小部件内部（余额制/订阅制共用）', clientSrc.includes("if (fieldVisible('sessionCost')) {")
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
-check('所有可见信息都由字段开关控制（含更新两枚短标记，没有任何绕过开关的节点）',
+check('所有可见信息都由字段开关或数据条件控制（提醒类无开关，其余全部经字段开关）',
   !clientSrc.includes('const CORE_FIELD_IDS = new Set')
-  && clientSrc.includes("fieldVisible('refreshFailure')") && clientSrc.includes("fieldVisible('persistWarning')")
-  // 2026-09-25：更新提醒 / 更新失败提醒进入信息栏，但各自挂在「提醒信息」组的独立开关上，
-  // 且必须走 fieldSpan（着色体系）而不是裸节点 —— 否则关掉开关也藏不住。断言钉死两条门控。
-  && clientSrc.includes("if (restartVersion && fieldVisible('updateNotice'))")
-  && clientSrc.includes("if (updateFailed && fieldVisible('updateFailure'))")
+  // 2026-11-12：提醒字段不再有开关 —— 显隐只由数据条件决定，不得再出现 fieldVisible 门控；
+  // 两枚更新短标记必须走 fieldSpan（着色体系）而不是裸节点。
+  && !clientSrc.includes("fieldVisible('refreshFailure')") && !clientSrc.includes("fieldVisible('persistWarning')")
+  && !clientSrc.includes("fieldVisible('updateNotice')") && !clientSrc.includes("fieldVisible('updateFailure')")
+  && clientSrc.includes("if (restartVersion) {")
+  && clientSrc.includes("if (updateFailed) {")
   && clientSrc.includes("fieldSpan('updateNotice',"), true);
 
 // ---------- ② 默认配置渲染与旧版一致（未知/缺省一律显示） ----------
@@ -86,8 +87,9 @@ check('每个字段含 id/label/group/colorKind', FIELD_REGISTRY.every((f) => ty
   && typeof f.group === 'string' && FIELD_GROUP_ORDER.includes(f.group)
   && ['inherit', 'alert', 'period', 'provider', 'muted', 'meter'].includes(f.colorKind)), true);
 check('锚点组恰三个且标注 anchor', FIELD_REGISTRY.filter((f) => f.anchor === true).map((f) => f.id).join(',') === 'anchorGroup,subServiceGroup,billingServiceGroup', true);
-check('错误/提醒类字段标注建议保留', ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure']
-  .every((id) => FIELD_REGISTRY.find((f) => f.id === id).suggestKeep === true), true);
+check('提醒字段已整体移出注册表（无开关化：显隐只由数据条件决定，2026-11-12）',
+  ['noKeyHint', 'balanceError', 'usageError', 'refreshFailure', 'persistWarning', 'updateNotice', 'updateFailure', 'unmapped']
+    .every((id) => FIELD_REGISTRY.find((f) => f.id === id) === undefined), true);
 // 默认开关的单一真相源是注册表的 defaultOff：宿主 defaultFieldSettings 只读它，
 // 不再手抄一份「哪些是新字段」的名单（抄一份名单＝漏改一处就静默变成默认打开，没人发现）。
 // 只有「用户不主动打开就不该出现」的三条默认关闭：自定义文字 / 主时间 / 世界时间。
@@ -97,9 +99,9 @@ check('默认关闭的字段恰为自定义文字与主/世界时间（defaultOf
 check('每个会渲染的注册字段都在信息栏渲染层被引用', FIELD_REGISTRY.every((f) => clientSrc.includes("'" + f.id + "'")), true);
 check('预设色板非空（含语义色名）', Array.isArray(PRESET_COLOR_NAMES) && PRESET_COLOR_NAMES.length >= 5
   && PRESET_COLOR_NAMES.includes('red') && PRESET_COLOR_NAMES.includes('neutral'), true);
-check('分组：原生信息 / 插件信息 / 提醒信息三类且顺序固定（提醒信息在最后）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin', 'notice'])
+check('分组：原生信息 / 插件信息两类且顺序固定（提醒组已随开关一起移除）', JSON.stringify(FIELD_GROUP_ORDER) === JSON.stringify(['native', 'plugin'])
   && t(FIELD_GROUP_LABELS.native) === '原生信息' && t(FIELD_GROUP_LABELS.plugin) === '插件信息'
-  && t(FIELD_GROUP_LABELS.notice) === '提醒信息', true);
+  && FIELD_GROUP_LABELS.notice === undefined, true);
 check('分组：原生组 = 新宿主两个按钮开关 + 旧宿主七个统计字段（两个宿主互斥，整组只在完整模式出现）',
   FIELD_REGISTRY.filter((f) => f.group === 'native').map((f) => f.id).join(',')
   === 'nativeActivity,nativeUsage,turnsSteps,llmTime,toolTime,avgTTFT,outputSpeed,cacheHit,tokensIO', true);
@@ -107,14 +109,13 @@ check('分组：原生组 = 新宿主两个按钮开关 + 旧宿主七个统计�
 // 所以按插件组对待 —— 归原生组会让它在简洁模式下消失（因为原生组整组只在完整模式可见）。
 check('分组：上下文圆环归入插件组（它住在主行，两种模式都可见）',
   FIELD_REGISTRY.find((f) => f.id === 'contextUsage').group === 'plugin', true);
-check('分组：提醒组恰 8 条（更新 2 条 + 数据 4 条 + 配置 2 条，2026-09-25 从插件组独立）', FIELD_REGISTRY.filter((f) => f.group === 'notice').map((f) => f.id).join(',')
-  === 'updateNotice,updateFailure,balanceError,usageError,refreshFailure,persistWarning,noKeyHint,unmapped', true);
+check('分组：提醒组已移除（不再有任何字段归 notice）', FIELD_REGISTRY.every((f) => f.group !== 'notice'), true);
 check('分组：插件组 20 条（19 条插件字段 + 接管过来的上下文圆环），且没有字段落在三组之外', FIELD_REGISTRY.filter((f) => f.group === 'plugin').length === 20
   && FIELD_REGISTRY.every((f) => FIELD_GROUP_ORDER.includes(f.group)), true);
-check('分组：三组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
-  ['group.native.desc', 'group.plugin.desc', 'group.notice.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
+check('分组：两组都有分工说明文案，且原生组说明点名「完整模式」（开关与模式的关系只讲一次，不设模式开关）',
+  ['group.native.desc', 'group.plugin.desc'].every((key) => typeof t(key) === 'string' && t(key).length > 0)
   && t('group.native.desc').includes('完整模式')
-  && clientSrc.includes('const FIELD_GROUP_DESC_KEYS = { native: '), true);
+  && clientSrc.includes("const FIELD_GROUP_DESC_KEYS = { native: 'group.native.desc', plugin: 'group.plugin.desc' }"), true);
 check('构建注入锚点存在于客户端源码', clientSrc.includes('const FIELD_REGISTRY = /*__FIELD_REGISTRY__*/[]')
   && clientSrc.includes('const PRESET_COLORS = /*__PRESET_COLORS__*/[]'), true);
 
@@ -326,12 +327,11 @@ check('设置页布局不再依赖内联样式，卡片内容层与边界连续'
     && clientSrc.includes('.bib-set-body { width: 100%; inline-size: 100%; max-width: 100%; max-inline-size: 100%; min-width: 0; min-inline-size: 0;')
     && !clientSrc.includes('.bib-set-body { margin: 0 16px;');
 })(), true);
-// 原生风格对齐：设置面板必须与 DSH 原生设置页同一套观感——
-// 扁平列表 + .5px 细分隔线 + 原生字号阶梯 + 原生控件尺寸。
-// 这条测试锁住「不许再退回卡片式（边框/圆角/深色底）」，并要求排版照的是
-// **插件详情页那一套原生度量**（dsh-client-ui-plugin-manager 的 X_2TxG_*），
-// 而不是设置弹窗那套 .Pt1bsG_row（细分隔线）——我们的配置区渲染在详情页里。
-check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号与行几何', (function () {
+// 原生风格对齐（2026-11-12 二次迁移）：设置面板跟随 DSH 0.2.2 原生设置表单的卡片语法——
+// tUAPGa_rowCard { .5px settings-card-stroke / settings-card-fill / radius-xl / 12px 14px 内衬 }，
+// 行间没有任何分隔线，分层靠卡片表面 + 留白 + 行 hover 填充。
+// 这条测试锁住「必须使用宿主设置卡 token」，并要求排版照的是原生设置表单度量。
+check('设置面板为宿主设置卡语法（fill/stroke/radius-xl token），并保留原生字号与控件度量', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   return install.includes('.bib-set-card { box-sizing: border-box;')
     && install.includes('overflow: visible; border: 0; background: transparent; border-radius: 0;')
@@ -342,7 +342,11 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('--bib-desc-size: 13px; --bib-desc-line: 18px;')
     && install.includes('--bib-control-radius: 8px;')
     && install.includes('--bib-btn-height: 28px; --bib-btn-radius: var(--bib-control-radius);')
-    && install.includes('--bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px);')
+    && install.includes('--bib-input-height: 32px; --bib-input-radius: var(--dsw-radius-md, 12px);')
+    // 设置卡三件套 token（照 tUAPGa_rowCard 的 settings-card-fill/stroke + radius-xl）
+    && install.includes('--bib-card-fill: var(--dsw-alias-settings-card-fill,')
+    && install.includes('--bib-card-stroke: var(--dsw-alias-settings-card-stroke,')
+    && install.includes('--bib-card-radius: var(--dsw-radius-xl, 20px);')
     // 第二层：具体规则必须引用 token，而不是退回裸数字
     && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line);')
     && install.includes('.bib-set-rowTitle { display: flex; align-items: center; gap: 6px; font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line);')
@@ -351,16 +355,14 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-rowDesc { margin: 0; font-size: var(--bib-row-hint-size); line-height: var(--bib-row-hint-line); color: var(--dsw-alias-label-tertiary); }')
     && install.includes('.bib-set-card-desc { width: 100%; min-width: 0; margin: 0; font-size: var(--bib-desc-size); line-height: var(--bib-desc-line); color: var(--dsw-alias-label-secondary); }')
     && install.includes('.bib-set-data-title { margin: 0 0 2px; color: var(--dsw-alias-label-primary); font-size: var(--bib-row-label-size); font-weight: var(--bib-row-label-weight); line-height: var(--bib-row-label-line); }')
-    // 层级只剩三级：区块标题 14/500、小节眉 12/600 次色、字段行 13.5/500（页面标题行已随宿主重复标题一起删除）
-    // 2026-10-14 去卡片化：区块不再有描边/圆角/底色，只留一条 1px 顶线做分界（照姊妹插件 .cgpt-updates）
+    // 层级只剩三级：卡片标题 14/500、小节眉 12/600 次色、字段行 13.5/500
     && install.includes('.bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%;')
-    && install.includes('.bib-set-card--panel { border: 0; padding: 0; }')
-    && !install.includes('border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,0.06)); }')
+    && install.includes('.bib-set-card--panel { border: 0.5px solid var(--bib-card-stroke); background: var(--bib-card-fill); border-radius: var(--bib-card-radius); padding: var(--bib-card-pad-block) var(--bib-card-pad-inline); }')
     // 小节眉是单行眉题（与上下两级的双行堆叠形成对比），标题用次色小字
-    && install.includes('.bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 14px 0 2px; }')
+    && install.includes('.bib-set-subsection-head { display: flex; flex-direction: row; align-items: baseline; gap: 8px; min-width: 0; padding: 16px var(--bib-row-pad-inline) 2px; }')
     && install.includes('.bib-set-subsection-label { flex: none; min-width: 0; font-size: var(--bib-sub-label-size); font-weight: var(--bib-sub-label-weight); line-height: var(--bib-sub-label-line); color: var(--dsw-alias-label-secondary); white-space: nowrap; }')
-    // 输入框取宿主 primitives 的 .input 尺寸
-    && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--dsw-alias-bg-layer-3);')
+    // 输入框取宿主 0.2.2 primitives 的 .input 尺寸（底色走 --bib-input-bg = bg-layer-1）
+    && install.includes('border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--bib-input-radius); background: var(--bib-input-bg);')
     // 按钮：宿主没有原生 Button 时的兜底几何 = Button.module.css .sm（h28 / r8 / 12px / 0 10px）
     && install.includes('.bib-set-btn { appearance: none; font: inherit; cursor: pointer; display: inline-flex;')
     && install.includes('height: var(--bib-btn-height); border: 0.5px solid var(--dsw-alias-border-l3);')
@@ -372,9 +374,8 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
     && install.includes('.bib-set-alert--error { display: flex; align-items: center; gap: 10px; color: var(--dsw-alias-state-error-primary')
     && install.includes('.bib-set-alert--warning { background: color-mix(in srgb, var(--dsw-alias-state-warning-primary')
     && install.includes('.bib-set-alert--info { color: var(--dsw-alias-label-secondary); }')
-    // 不许再出现卡片视觉残留
-    && !install.includes('background: var(--bib-set-surface)')
-    && !install.includes('padding: 14px 16px');
+    // 不许再出现旧卡片视觉残留
+    && !install.includes('background: var(--bib-set-surface)');
 })(), true);
 // 2026-10-14 用户报「两个插件没有视觉统一」：底部信息栏的设置行要跟姊妹插件
 // （dsh-chatgpt-sub 的 .cgpt-row / .cgpt-rowText / .cgpt-controls）同一套行语法。
@@ -384,30 +385,28 @@ check('设置面板统一控件圆角，并保留 DSH 原生详情页的字号�
 // 而是从安装版宿主 plugin-manager 的 CSS 直接量出来的（class 前缀随版本变，当前 ZVcBiW_*）：
 //   .page/.detailSection/.detailSections/.sectionHead/.sectionTitle/.rows/.row/.rowLine/.rowMain/.rowId
 // 两个插件（本仓与 dsh-chatgpt-sub）逐条对齐同一组数值，任何一边漂移都会被各自的测试拦住。
-check('插件设置页统一行语法：区块 32/12 节奏 + 左标题右控件 + .5px 分割线 + 无卡片（对齐宿主 .row/.rowMain）', (function () {
+check('插件设置页统一行语法：设置卡 token + 左标题右控件 + 留白分层无分割线（对齐宿主 0.2.2 设置表单）', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   const cssOnly = install.replace(/\/\*[\s\S]*?\*\//g, '');
-  return install.includes('--bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;')
+  return install.includes('--bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;')
     && install.includes('--bib-row-gap: 16px;')
-    && install.includes('--bib-rule: 0.5px solid var(--dsw-alias-border-l2,')
-    && install.includes('--bib-row-label-size: 13.5px; --bib-row-label-weight: 500; --bib-row-label-line: 20px;')
-    && install.includes('--bib-row-hint-size: 11.5px; --bib-row-hint-line: 16px;')
+    // 整页不允许再出现分隔线 token 或任何行级 border-bottom（2026-11-12 废除发丝线）
+    && !install.includes('--bib-rule')
+    && !/\.bib-set-row[^{}]*\{[^}]*border-bottom/.test(cssOnly)
     // 控件靠右 = 宿主 .rowLine/.rowMain 的手法：文字块 flex:1，控件自然贴右（不用 space-between）
     && cssOnly.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap);')
     && cssOnly.includes('.bib-set-rowText { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }')
     && cssOnly.includes('.bib-set-fieldblock { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap);')
     && cssOnly.includes('.bib-set-fieldblock-copy { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }')
-    // 行说明清零 <p> 默认边距：不清零行高 86px，比姊妹插件的 62px 松 24px
+    // 行说明清零 <p> 默认边距：不清零行高 86px，比原生行松 24px
     && cssOnly.includes('.bib-set-rowDesc { margin: 0;')
-    // 区块不再是卡片（无描边/圆角/底色），只有一条 1px 顶线做分界
-    // 区块之间只用间距，不画线（宿主 .detailSections 就是 gap:32px，没有 border）
-    && cssOnly.includes('.bib-set-card--panel { border: 0; padding: 0; }')
-    && !/\.bib-set-(?:group|card--panel)[^{}]*\{[^}]*border-radius: var\(--bib-control-radius\)/.test(cssOnly)
-    && !/\.bib-set-(?:group|card--panel)[^{}]*\{[^}]*background: var\(--dsw-alias-bg-layer/.test(cssOnly)
-    // 区块节奏照宿主：区块之间 32px（.detailSections gap）、区块内部 12px（.detailSection gap）
-    && install.includes('--bib-sec-gap: 32px;')
+    // 区块即宿主设置卡（rowCard 语法：fill/stroke/radius-xl/内衬），行 hover 用宿主 interactive token
+    && cssOnly.includes('.bib-set-card--panel { border: 0.5px solid var(--bib-card-stroke); background: var(--bib-card-fill); border-radius: var(--bib-card-radius);')
+    && cssOnly.includes('.bib-set-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }')
+    // 卡片节奏：卡片之间 24px 留白（区块分界），卡片内部 12px
+    && install.includes('--bib-sec-gap: 24px;')
     && install.includes('--bib-sec-inner: 12px;')
-    // 区块头照宿主 .sectionHead + .sectionTitle：标题 14/500/20，说明 13/18 二级色
+    // 卡片头照宿主 .sectionHead + .sectionTitle：标题 14/500/20，说明 13/18 二级色
     && install.includes('.bib-set-card-title { min-width: 0; margin: 0; font-size: var(--bib-title-size); font-weight: var(--bib-title-weight); line-height: var(--bib-title-line);')
     && install.includes('--bib-title-size: 14px; --bib-title-weight: 500; --bib-title-line: 20px;')
     && install.includes('--bib-desc-size: 13px; --bib-desc-line: 18px;')
@@ -424,40 +423,28 @@ check('分组内并排控件垂直居中（防确定高度子项退化为顶边�
 // 区块节奏照同页原生区块（X_2TxG_detailSections / detailSection / sectionHead / rows / row）：
 // 区块之间 32px、区块内部 12px、区块头基线对齐 + 10px 间距；行是详情页的 .X_2TxG_row
 // —— padding 12px 2px + .5px 下边线（末行无线）、无圆角、无负外边距。
-check('区块排版使用统一的 12px/16px 节奏（配置区=详情页一个 section），行保持原生 .row 几何', (function () {
+check('区块排版使用设置卡节奏（卡片 24px 留白 + 卡内 12px），行保持圆角留白几何', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   return install.includes('.bib-set-card-header-main { display: flex; align-items: baseline; justify-content: flex-start; gap: var(--bib-head-gap); width: 100%; min-width: 0;')
     && install.includes('flex-direction: column; gap: var(--bib-sec-gap);')
     && install.includes('.bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner);')
-    // 第一层：节奏/行几何的 token 定义
-    // 2026-10-14 复核（安装版宿主 plugin-manager CSS，class 前缀随版本变，当前 ZVcBiW_*）：
-    //   .detailSections{gap:32px} → 区块之间 32px；.detailSection{gap:12px} → 区块内部 12px。
-    && install.includes('--bib-sec-gap: 32px;')
-    && !install.includes('--bib-sec-gap: 24px;')
+    // 第一层：节奏/行几何的 token 定义（2026-11-12：卡片化迁移，行间只有留白）
+    && install.includes('--bib-sec-gap: 24px;')
+    && !install.includes('--bib-sec-gap: 32px;')
     && install.includes('--bib-sec-inner: 12px;')
-    // 扁平化后分组行相邻，行间靠 .5px 分割线（宿主 .rows 也是 gap:0）
-    && install.includes('.bib-set-field-list { gap: 0; }')
     && install.includes('--bib-head-gap: 10px;')
     && install.includes('--bib-row-gap: 16px;')
-    && install.includes('--bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;')
-    && install.includes('--bib-rule: 0.5px solid var(--dsw-alias-border-l2,')
-    // 第二层：行必须引用 token，而不是退回裸数字
-    && install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }')
-    && install.includes('.bib-set-row:last-child { border-bottom: 0; }')
+    && install.includes('--bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;')
+    // 第二层：行必须引用 token，而不是退回裸数字；行间不再有任何边线
+    && install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }')
     // 行内两栏 = 宿主 .rowLine/.rowMain：文字块 flex:1，控件自然贴右
     && install.includes('.bib-set-rowText { display: flex; flex-direction: column; flex: 1; gap: 2px; min-width: 0; }')
-    // 列表首行去上内边距、末行去下内边距（同姊妹插件 .cgpt-row:first-child/:last-child）
-    // 宿主只有「末行去线」这一条，没有 first-child 去内边距的自创覆写
-    && !install.includes('.bib-set-collapse-inner > .bib-set-row:first-child')
-    && install.includes('.bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: 0; }')
-    && install.includes('.bib-set-data-actions > .bib-set-data-row:first-child { padding-top: 0; }')
-    && !install.includes('.bib-set-fieldblocks > .bib-set-fieldblock:first-child')
-    && install.includes('.bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0;')
-    && install.includes('.bib-set-data-row:last-child { padding-bottom: 0; border-bottom: 0; }')
-    // 行分隔靠 .5px 下边线（原生 .X_2TxG_row 就是这么写的），列表不额外留缝
+    && install.includes('.bib-set-collapse-inner > .bib-set-row:last-child { padding-bottom: var(--bib-row-pad-block); }')
+    && install.includes('.bib-set-data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }')
+    // 行分隔只靠留白：列表不额外留缝，也不再有 first/last 内边距覆写
     && install.includes('.bib-set-field-list { display: flex; flex-direction: column; gap: 0;')
-    // 页头不能自带横向内边距（对齐铁律见下一条用例）
-    // 内容块横向内边距一律为 0（页面标题行已删除，横向内缩只由行自己的 --bib-row-pad 提供）。
+    && !install.includes('.bib-set-data-actions > .bib-set-data-row:first-child')
+    // 页头不能自带横向内边距（卡片内衬统一由 --bib-card-pad-* 提供）
     // 先剥掉 CSS 注释再判定：注释里提到旧类名不算残留（本项目踩过「注释误伤」的坑）。
     && !install.replace(/\/\*[\s\S]*?\*\//g, '').includes('.bib-set-page-head')
     // 不该再用设置弹窗那套行留白
@@ -471,49 +458,46 @@ check('搜索行不显示冗余结果计数，但保留无障碍状态文本', (
     && install.includes('.bib-set-count { position: absolute; width: 1px; height: 1px;')
     && !install.includes('grid-template-columns: minmax(0, 1fr) 104px;');
 })(), true);
-// 回归（2026-09-22 真机二次复现）：两条互相打架的老错误
-//   ① 照抄插件列表的 .X_2TxG_card { margin: 0 -8px } → 行比容器宽 16px，
-//      外层 overflow:hidden 的折叠容器把右侧颜色井 / hex 输入框裁掉；
-//   ② 改成「行不越界 + 各内容块自己左右内缩 8px」→ 不裁了，但整页文字与右侧控件
-//      比宿主的 323.2 左边界右移 8px，与宿主自己渲染的区块错位（「什么都对不齐」）。
-// 正确解法 = 照详情页行的真实值（padding 12px 2px、无负外边距），并让所有内容块
-// **横向内边距归零**。本用例同时锁死「不越界」和「不自带横向内边距」两件事。
-check('横向既不自带内边距（否则与宿主 323.2 错位）也不越界（负外边距会被折叠容器裁掉）', (function () {
+// 回归（2026-09-22 真机二次复现）：行不越界（负外边距会被 overflow:hidden 的折叠容器裁掉）。
+// 2026-11-12 卡片化迁移：横向对齐改由卡片内衬统一提供（--bib-card-pad-*），行不再关心宿主左边界。
+check('行不越界（负外边距会被折叠容器裁掉），横向内缩统一由设置卡内衬提供', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   // 只看 CSS 声明块，避免把解释这条坑的注释本身当成违规
   const overflows = /\.bib-set-(?:row|data-row|data-actions|footer|alerts|body|field-list|collapse-inner)[^{}]*\{[^}]*?(?:margin:\s*0\s+-8px|width:\s*calc\(100%\s*\+\s*16px\))/.test(install);
-  const rowGeometry = install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule); border-radius: 0; }');
+  const rowGeometry = install.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius); transition: background-color 120ms ease; }');
   const paddedBlocks = /\.bib-set-(?:page-head|toolbar|card-header|footer|alerts|group-title|intro|note)\s*\{[^}]*?padding:\s*0\s+8px/.test(install);
   return !overflows
     && !paddedBlocks
-    // 行 = 原生 .X_2TxG_row 的真实几何（token 定义 + var() 引用两层）
-    && install.includes('--bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;')
+    // 行几何（token 定义 + var() 引用两层）
+    && install.includes('--bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;')
     && install.includes('--bib-row-gap: 16px;')
     && rowGeometry
-    // 各内容块横向内边距归零（页面标题行已删除，剩下这些块同样不得自带左右内边距）
+    // 卡片内衬是唯一的横向来源
+    && install.includes('--bib-card-pad-block: 14px; --bib-card-pad-inline: 16px;')
     && install.includes('.bib-set-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--bib-sec-inner);')
     && !install.replace(/\/\*[\s\S]*?\*\//g, '').includes('.bib-set-page-head')
     && install.includes('.bib-set-toolbar { width: 100%; max-width: 100%; min-width: 0; min-inline-size: 0; box-sizing: border-box; padding: 0; }')
     && install.includes('.bib-set-card-header { appearance: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0; padding: 0;')
     && install.includes('.bib-set-alerts { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; padding: 0; }')
-    // 「恢复默认」行：照「导出账单」的原生行几何挂在「显示内容」区块底部，不再有悬浮页脚
-    && install.includes('.bib-set-reset-row { border-top: var(--bib-rule); border-bottom: 0; }')
+    // 「恢复默认」行：普通行几何挂在「显示内容」区块底部，不再有悬浮页脚、不再画顶线
+    && install.includes('.bib-set-reset-row { margin-top: 4px; }')
     && !install.includes('.bib-set-footer');
 })(), true);
-// 兜底输入框几何（2026-10-13 复测 DSH 0.2.0-rc.2）：高 34px、圆角 12px —— 照宿主
-// primitives settings-form fields.module.css 的 .input（border-radius: var(--dsw-radius-md)）。
+// 兜底输入框几何（2026-11-12 复测 DSH 0.2.2-rc.1）：高 32px、圆角 12px、0 10px 内衬、14px 字号、
+// bg-layer-1 —— 照宿主 primitives settings-form fields.module.css 的 .input（tUAPGa_input 实测）。
 // 这四类输入框只服务「老宿主取不到 primitives」的兜底路径，原生 Input 分支不读这些值。
 // 圆角必须走独立的 --bib-input-radius（12px），**不能**跟 --bib-control-radius（8px）走：
-// 后者管的是分组卡片 / 色块 / 警示条 / 分段控件槽 / 系统取色井那一类 8px 形状，混用会连带变形。
-check('兜底输入框几何：34px 高 / 12px 圆角（= 宿主 .input 现值），且四类兜底规则都走独立的 --bib-input-radius', (function () {
+// 后者管的是行 hover 填充 / 色块 / 警示条 / 分段控件槽 / 系统取色井那一类 8px 形状，混用会连带变形。
+check('兜底输入框几何：32px 高 / 12px 圆角 / layer-1 底（= 宿主 0.2.2 .input 现值），且四类兜底规则都走独立的 --bib-input-radius', (function () {
   const install = extractFunctionFrom(clientSrc, 'bibSetInstallStyles');
   const fallbacks = ['.bib-set-search', '.bib-set-custom-text-input', '.bib-set-credential-input', '.bib-set-time-zone', '.bib-set-language', '.bib-set-hex'];
   const usesInputRadius = fallbacks.every(function (selector) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(escaped + '\\s*\\{[^}]*border-radius: var\\(--bib-input-radius\\)').test(install);
   });
-  return install.includes('--bib-input-height: 34px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 12px; --bib-input-size: 13px;')
-    // 共享的 8px 形状变量原地不动（它还要管分组卡片等别的形状）
+  return install.includes('--bib-input-height: 32px; --bib-input-radius: var(--dsw-radius-md, 12px); --bib-input-pad-inline: 10px; --bib-input-size: 14px;')
+    && install.includes('--bib-input-bg: var(--dsw-alias-bg-layer-1, transparent);')
+    // 共享的 8px 形状变量原地不动（它还要管行 hover 填充等别的形状）
     && install.includes('--bib-control-radius: 8px;')
     && install.includes('--bib-btn-radius: var(--bib-control-radius);')
     && usesInputRadius;
@@ -563,9 +547,9 @@ check('设置页分组具备明确的整块操作面和展开文字，不附带�
     && install.includes('.bib-set-group { display: flex; flex-direction: column; gap: 0; width: 100%;')
     && install.includes('border-radius: var(--bib-control-radius); background: var(--dsw-alias-bg-layer-3')
     && install.includes('.bib-set-group-fallback-head { appearance: none; display: grid; grid-template-columns: minmax(0, 1fr) auto;')
-    // 分组头与普通行同一套几何（12px 2px + .5px 下边线），不再是 48px 高的卡片头
-    && install.includes('gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-bottom: var(--bib-rule);')
-    && install.includes('.bib-set-group:last-child .bib-set-group-fallback-head { border-bottom: 0; }')
+    // 分组头与普通行同一套几何（8px 10px 内衬 + 8px 圆角 + hover 填充，无线）
+    && install.includes('gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline); border: 0; border-radius: var(--bib-control-radius);')
+    && install.includes('.bib-set-group-fallback-head:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.06)); }')
     && install.includes('.bib-set-group-action { display: inline-flex; align-items: center; gap: 4px;')
     && clientSrc.includes("open ? t('ui.collapse') : t('ui.expand')")
     && !clientSrc.includes('ui.nativeGroupDesc')
@@ -634,7 +618,7 @@ check('设置页隐藏滚动条轨道但保留滚动能力，且只标记滚动�
 // 决策 1/3 落地后的新事实：字段行是单行三列网格（左标题/说明，右开关 + 色块），
 // 色板/系统取色器/hex 只允许出现在「宿主没有原生 Menu」的兜底分支里。
 check('字段行改单行三列：开关与色块显式钉死，行内控件组只留兜底路径', clientSrc.includes('--bib-row-gap: 16px;')
-  && clientSrc.includes('--bib-row-pad-block: 12px; --bib-row-pad-inline: 2px;')
+  && clientSrc.includes('--bib-row-pad-block: 8px; --bib-row-pad-inline: 10px;')
   && clientSrc.includes('.bib-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bib-row-gap); width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: var(--bib-row-pad-block) var(--bib-row-pad-inline);')
   && clientSrc.includes('.bib-set-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;')
   && clientSrc.includes('.bib-set-row-main > .bib-set-switch-host { grid-column: 2; grid-row: 1; align-self: start; }')
@@ -1084,10 +1068,11 @@ function withFakeDocument(run) {
     && clientSrc.includes('const removalRegistry = nativePills')
     && clientSrc.indexOf('return null;') < clientSrc.indexOf('const animatedRow1')
     && clientSrc.includes('if (ngNodes.length === 0) row1 = null;'), true);
-  check('D6：构建产物含注入的三组分组常量（设置页渲染不落空）', (function () {
+  check('D6：构建产物含注入的两类分组常量（设置页渲染不落空；提醒组已移除）', (function () {
     const lib = fs.readFileSync(__dirname + '/../lib/client.js', 'utf8');
-    return lib.indexOf("['native', 'plugin', 'notice']") !== -1
-      && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"') && lib.includes('notice: "group.notice"');
+    return lib.indexOf("['native', 'plugin']") !== -1
+      && lib.includes('native: "group.native"') && lib.includes('plugin: "group.plugin"')
+      && !lib.includes('"group.notice"');
   })(), true);
   // 2026-10-14：守卫从 bibSetPalette 扩到设置页全部含 hooks 的组件——新增 bibSetSelect
   // （语言/时区共用下拉）后，同一条铁律必须覆盖它，否则裸调用会让 hook 记到父组件账上（React #310）。
