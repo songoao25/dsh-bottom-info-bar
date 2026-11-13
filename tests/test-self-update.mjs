@@ -956,10 +956,10 @@ ok('2026-09-26：检查与安装拆成两个按钮，检查按钮不再藏进「
   // 两个动词：检查 = checkUpdate（纯读），安装 = installUpdate（唯一的写动作）
   assert.match(client, /rpc\('checkUpdate'\)/)
   assert.match(client, /rpc\('enterUpdatePage'\)/)
-  assert.match(client, /state\.available === true && state\.pendingRestart !== true && confirmUpdate\(state\.latest\)/)
+  assert.match(client, /if \(state && state\.available === true && state\.pendingRestart !== true && state\.holdVersion !== state\.latest\) requestInstall\(state\.latest, false\);/)
   assert.match(client, /window\.confirm\(t\('ui\.updateConfirm', \{ version: version \}\)\)/)
-  assert.match(client, /rpc\('installUpdate'\)/)
-  assert.match(client, /rpc\('installUpdate', \{ force: true \}\)/)
+  // 2026-11-13：安装统一走 runConfirmedInstall —— 无参安装与强制安装（force:true）都从这一个入口发出
+  assert.match(client, /rpc\('installUpdate', force \? \{ force: true \} : undefined\)/)
   assert.doesNotMatch(client, /rpc\('runUpdateCheck'/, '新界面不得再调用「检查即安装」的老接口')
   // 按钮标签：检查中 → 检查中…；安装中 → 正在更新到 X；有新版才出现「更新到 X」
   assert.match(client, /children: busy && phase === 'check' \? t\('ui\.updateChecking'\) : t\('ui\.updateCheckNow'\)/)
@@ -974,29 +974,50 @@ ok('2026-09-26：检查与安装拆成两个按钮，检查按钮不再藏进「
   assert.match(client, /t\('ui\.updateHostOutdated'\)/)
 })
 
+// 2026-11-13：安装确认对齐 dsh-chatgpt-sub 同款 —— 新宿主开 RiskConfirmation 弹窗（只开窗不安装），
+// 确认动作由弹窗 onConfirm 统一走 runConfirmedInstall；旧宿主（组件缺失）保留同步 window.confirm 降级。
 await okAsync('手动检查发现新版：拒绝弹窗只检查，确认后才安装', async () => {
   const client = readFileSync(join(root, 'src', 'client-bundle.js'), 'utf8')
-  const start = client.indexOf('  function onCheckUpdate() {')
-  const end = client.indexOf('  function onInstallUpdate() {', start)
+  const start = client.indexOf('  function runConfirmedInstall(force) {')
+  const end = client.indexOf('  function onRollbackUpdate() {', start)
   assert.ok(start >= 0 && end > start)
   const source = client.slice(start, end)
-  async function drive(accepted) {
+  async function drive(native, accepted, checkResult) {
     const calls = []
-    const rpc = async (method) => {
-      calls.push(method)
+    const rpc = async (method, args) => {
+      calls.push(args && args.force ? method + ':force' : method)
       return method === 'checkUpdate'
-        ? { available: true, latest: '1.1.0', pendingRestart: false }
+        ? (checkResult || { available: true, latest: '1.1.0', pendingRestart: false })
         : { pendingRestart: true }
     }
     const runUpdateAction = async (_phase, factory) => factory()
-    const confirmUpdate = (version) => { assert.equal(version, '1.1.0'); return accepted }
-    const onCheckUpdate = Function('runUpdateAction', 'rpc', 'confirmUpdate',
-      source + '\nreturn onCheckUpdate')(runUpdateAction, rpc, confirmUpdate)
+    const t = (key, params) => key + ':' + JSON.stringify(params || {})
+    let installConfirm = null
+    const setInstallConfirm = (value) => { installConfirm = value }
+    const setInstallAck = () => {}
+    const win = { confirm: (msg) => { calls.push('confirm:' + msg); return accepted } }
+    const onCheckUpdate = Function('runUpdateAction', 'rpc', 't', 'BIB_SET_NATIVE_RISK_CONFIRM',
+      'setInstallConfirm', 'setInstallAck', 'window',
+      source + '\nreturn onCheckUpdate')(runUpdateAction, rpc, t, native, setInstallConfirm, setInstallAck, win)
     await onCheckUpdate()
+    // 新宿主：弹窗只开不装；确认动作在弹窗 onConfirm 里走 runConfirmedInstall（这里直接补一发）
+    if (native && installConfirm) {
+      assert.deepEqual(installConfirm, accepted ? { version: '1.1.0', force: false } : { version: '1.1.0', force: false })
+      if (accepted) await Function('runUpdateAction', 'rpc', 'runConfirmedInstall',
+        source + '\nreturn runConfirmedInstall')(runUpdateAction, rpc)(false)
+    }
     return calls
   }
-  assert.deepEqual(await drive(false), ['checkUpdate'])
-  assert.deepEqual(await drive(true), ['checkUpdate', 'installUpdate'])
+  // 新宿主 + 拒绝（关窗）：只检查，不安装
+  assert.deepEqual(await drive(true, false), ['checkUpdate'])
+  // 新宿主 + 确认：检查 → 弹窗 → 安装
+  assert.deepEqual(await drive(true, true), ['checkUpdate', 'installUpdate'])
+  // 旧宿主（组件缺失）+ 确认：同步 window.confirm 为 true → 检查 + 安装
+  assert.deepEqual(await drive(null, true), ['checkUpdate', 'confirm:ui.updateConfirm:{"version":"1.1.0"}', 'installUpdate'])
+  // 旧宿主 + 拒绝：confirm 被调用但返回 false → 只检查
+  assert.deepEqual(await drive(null, false), ['checkUpdate', 'confirm:ui.updateConfirm:{"version":"1.1.0"}'])
+  // 暂缓版本（回滚过 latest）：检查到也不弹窗 —— 确认了也会被引擎暂缓分支吃掉，等于死弹窗
+  assert.deepEqual(await drive(true, true, { available: true, latest: '1.1.0', pendingRestart: false, holdVersion: '1.1.0' }), ['checkUpdate'])
 })
 
 ok('2026-09-26：动作完成后重新读状态（半状态会让结论说说谎最多 15 秒）', () => {
@@ -1006,11 +1027,12 @@ ok('2026-09-26：动作完成后重新读状态（半状态会让结论说说谎
   assert.match(client, /return loadUpdateState\(\)\.then\(function \(\) \{/)
   // 旧写法：把动作返回值 merge 进旧状态 —— 动作结果少几个字段，结论行就会短暂说假话
   assert.doesNotMatch(client, /setUpdateState\(function \(prev\) \{ return Object\.assign\(\{\}, prev \|\| \{\}, res\); \}\)/)
-  // 四个动作全部走同一条通道（忙碌态 + 动作名 + 重读）
+  // 2026-11-13 起三个安装入口（检查确认 / 安装按钮 / 强制安装）都收敛到 requestInstall + runConfirmedInstall，
+  // install 通道只剩 runConfirmedInstall 里这一处 —— 弹窗确认与降级 confirm 共用同一条安装路径。
   for (const call of ["runUpdateAction('mode'", "runUpdateAction('check'", "runUpdateAction('install'"]) {
     assert.ok(client.includes(call), '更新动作必须统一走 runUpdateAction：' + call)
   }
-  assert.equal((client.match(/runUpdateAction\('install'/g) || []).length, 3, '检查确认、安装按钮、强制安装都走 install 通道')
+  assert.equal((client.match(/runUpdateAction\('install'/g) || []).length, 1, '检查确认、安装按钮、强制安装都经 runConfirmedInstall 走 install 通道')
 })
 
 ok('2026-09-26：更新动作前后保护滚动位置（用户报「点完更新，设置页滑到最上端」）', () => {

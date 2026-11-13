@@ -98,6 +98,21 @@ check('client 只给待重启 / 更新失败两枚短标记，出现与否只由
   && client.includes("fieldSpan('updateNotice',") && client.includes("fieldSpan('updateFailure',")
   && !client.includes("updateInfo.available && fieldVisible"))
 check('client 不再引导复制更新命令', !client.includes('copyTextToClipboard') && !client.includes('updateCommandCopied'))
+// 2026-11-13：安装确认对齐 dsh-chatgpt-sub 同款 —— 新宿主用原生 RiskConfirmation
+//（「安装新版本？」+ 勾选「我已了解」后才能点确定），旧宿主才退回 window.confirm。
+check('安装确认走原生 RiskConfirmation 弹窗（requestInstall + installDialog）',
+  client.includes('function requestInstall(version, force)')
+  && client.includes('const installDialog = installConfirm !== null && BIB_SET_NATIVE_RISK_CONFIRM')
+  && client.includes("React.createElement(BIB_SET_NATIVE_RISK_CONFIRM, {\n      open: true,\n      title: t('ui.updateConfirmTitle')"))
+check('「更新到 X」/ 检查到新版只开弹窗，不再同步 confirm 后直接安装',
+  client.includes('if (state && state.available === true && state.pendingRestart !== true && state.holdVersion !== state.latest) requestInstall(state.latest, false);')
+  && client.includes('requestInstall(updateState.latest, false);')
+  && client.includes('requestInstall(updateState.holdVersion, true);'))
+check('安装确认的降级路径保留 window.confirm（仅组件缺失的旧宿主）',
+  client.includes("window.confirm(t('ui.updateConfirm', { version: version }))"))
+check('安装确认弹窗文案齐全（标题 / 勾选 / 取消 / 确定）',
+  client.includes("t('ui.updateConfirmTitle')") && client.includes("t('ui.updateConfirmAcknowledge')")
+  && client.includes("t('ui.updateConfirmCancel')") && client.includes("t('ui.updateConfirmConfirm')"))
 // host 侧连「探测 git 仓库状态」都不许开子进程（v1.14.3）：更新命令只被复制、绝不执行，
 // 探测只读文件系统完成。锁死这条，避免以后有人图省事改成 spawnSync('git', …)。
 check(

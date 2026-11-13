@@ -1633,6 +1633,12 @@ function bibSetInstallStyles() {
          同特异性 + 插件样式后插入 = 反向覆盖宿主（与原生 Button / Switch 同一个坑）。 */
       .bib-set-input { min-width: 0; }
       .bib-set-input--block { display: flex; width: 100%; min-inline-size: 0; }
+      /* placeholder 可读性修正（2026-11-13，浅色主题实测）：宿主原生 Input 的 ::placeholder
+         在浅色主题下渲染成近白（rgb(225,229,238)），插件页搜索框/凭据输入框在浅色卡片上
+         几乎不可读——DSH 自己的会话搜索框用的是 tertiary（#81858c），两级明显不一致。
+         这里把插件域内的原生 Input placeholder 统一取宿主自己的 --dsw-alias-label-tertiary，
+         明暗两主题都不劣化；宿主将来修正 placeholder 色后这条可整体移除。 */
+      .bib-set-input input::placeholder { color: var(--dsw-alias-label-tertiary); opacity: 1; }
       /* 行内右栏的输入框：宽度收窄到一栏控件的量级（与下拉触发器同宽），不铺满整行。
          只声明布局宽度，边框/底色/圆角/焦点态仍全部由宿主 Input 维护。 */
       .bib-set-input--field { display: flex; flex: none; width: 260px; max-width: 100%; min-inline-size: 0; }
@@ -3438,6 +3444,7 @@ function BibSetDshGoPage(props) {
     deps.feedback ? React.createElement('div', { className: 'bib-go-feedback' }, deps.feedback) : null,
     deps.alerts.length > 0 ? React.createElement('div', { className: 'bib-go-alerts' }, deps.alerts) : null,
     deps.resetDialog,
+    deps.installDialog,
     React.createElement('footer', { className: 'bib-go-footer' }, t('meta.title') + ' · DSH Go' + (typeof update.runningVersion === 'string' ? ' · ' + update.runningVersion : ''))));
 }
 
@@ -3481,6 +3488,10 @@ function InfoBarSettingsSection() {
   // 决策 4：重置的二次确认。null=未在确认；'fields'/'colors'=待确认的重置类别。
   const [resetConfirm, setResetConfirm] = React.useState(null);
   const [resetAcknowledged, setResetAcknowledged] = React.useState(false);
+  // 安装新版本的二次确认（2026-11-13，对齐 dsh-chatgpt-sub 同款弹窗）：
+  // null=未在确认；{ version, force }=待确认的安装动作。勾选态独立保存，每次打开都重置。
+  const [installConfirm, setInstallConfirm] = React.useState(null);
+  const [installAck, setInstallAck] = React.useState(false);
   const nativePills = useNativeDockPills();
   function matchesSearch(field, query) {
     if (!query) return true;
@@ -3577,32 +3588,45 @@ function InfoBarSettingsSection() {
     setUpdateState(function (prev) { return prev ? Object.assign({}, prev, { autoUpdate: enabled }) : prev; });
     runUpdateAction('mode', function () { return rpc('setUpdateAuto', { enabled: enabled }); });
   }
-  function confirmUpdate(version) {
-    if (typeof version !== 'string' || !version) return false;
-    try {
-      return typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm(t('ui.updateConfirm', { version: version })) : false;
-    } catch (err) { return false; }
+  // 安装确认（2026-11-13）：对齐 ChatGPT 订阅插件（dsh-chatgpt-sub）的同款确认窗 ——
+  // 新宿主用原生 RiskConfirmation（「安装新版本？」+ 说明 + 勾选「我已了解」后才能点确认）；
+  // 组件缺失（旧宿主）退回 window.confirm。两条路径都保证「未确认不执行」。
+  function runConfirmedInstall(force) {
+    return runUpdateAction('install', function () { return rpc('installUpdate', force ? { force: true } : undefined); });
+  }
+  function requestInstall(version, force) {
+    if (typeof version !== 'string' || !version) return;
+    if (!BIB_SET_NATIVE_RISK_CONFIRM) {
+      let ok = false;
+      try {
+        ok = typeof window !== 'undefined' && typeof window.confirm === 'function'
+          ? window.confirm(t('ui.updateConfirm', { version: version })) : false;
+      } catch (err) { ok = false; }
+      if (ok) runConfirmedInstall(force === true);
+      return;
+    }
+    setInstallAck(false);
+    setInstallConfirm({ version: version, force: force === true });
   }
   // 「检查更新」只问版本；发现新版后在当前页面弹窗确认，确认才走安装接口。
+  // 暂缓版本（holdVersion === latest）不弹窗：那次安装会被引擎的暂缓分支吃掉，
+  // 弹了等于让用户确认一个注定没反应的动作 —— 与版本卡「暂缓时不摆更新按钮」同一条规矩。
   function onCheckUpdate() {
     return runUpdateAction('check', function () { return rpc('checkUpdate'); }).then(function (state) {
-      if (state && state.available === true && state.pendingRestart !== true && confirmUpdate(state.latest)) {
-        return runUpdateAction('install', function () { return rpc('installUpdate'); });
-      }
+      if (state && state.available === true && state.pendingRestart !== true && state.holdVersion !== state.latest) requestInstall(state.latest, false);
       return state;
     });
   }
   // 状态轮询出现的「更新到 X」按钮也须确认，不能绕过弹窗。
   function onInstallUpdate() {
-    if (!updateState || !confirmUpdate(updateState.latest)) return;
-    return runUpdateAction('install', function () { return rpc('installUpdate'); });
+    if (!updateState) return;
+    requestInstall(updateState.latest, false);
   }
   // 「允许更新到 X」：用户回滚过的版本默认不再装回来（引擎侧 holdVersion），
   // 只有这个显式动作才解除暂缓 —— 逃生门不能被自动流程悄悄重新打开。
   function onForceUpdate() {
-    if (!updateState || !confirmUpdate(updateState.holdVersion)) return;
-    return runUpdateAction('install', function () { return rpc('installUpdate', { force: true }); });
+    if (!updateState) return;
+    requestInstall(updateState.holdVersion, true);
   }
   function onRollbackUpdate() {
     // 回滚也是「替换包文件」，但结论行不能借用安装的文案（那会说成「正在更新到 X」）。
@@ -4003,6 +4027,28 @@ function InfoBarSettingsSection() {
       },
     })
     : null;
+  // 安装确认弹窗（2026-11-13，对齐 dsh-chatgpt-sub 同款）：勾选前「确定」按钮由 RiskConfirmation
+  // 保持禁用；「取消 / 右上角关闭 / Esc」都只是关窗，不产生任何安装动作。
+  const installDialog = installConfirm !== null && BIB_SET_NATIVE_RISK_CONFIRM
+    ? React.createElement(BIB_SET_NATIVE_RISK_CONFIRM, {
+      open: true,
+      title: t('ui.updateConfirmTitle'),
+      description: t('ui.updateConfirm', { version: installConfirm.version }),
+      acknowledgeLabel: t('ui.updateConfirmAcknowledge'),
+      cancelLabel: t('ui.updateConfirmCancel'),
+      closeLabel: t('ui.updateConfirmCancel'),
+      confirmLabel: t('ui.updateConfirmConfirm'),
+      acknowledged: installAck,
+      disabled: updateBusy,
+      onAcknowledgedChange: function (next) { setInstallAck(next === true); },
+      onCancel: function () { setInstallConfirm(null); },
+      onConfirm: function () {
+        const requested = installConfirm;
+        setInstallConfirm(null);
+        if (requested) runConfirmedInstall(requested.force);
+      },
+    })
+    : null;
   // DSH Go 配置页（4 屏单页）：只换呈现层与信息架构，动作全部复用上面的函数。
   if (dshGoPage) {
     return React.createElement(BibSetDshGoPage, {
@@ -4048,6 +4094,9 @@ function InfoBarSettingsSection() {
         feedback: feedback,
         alerts: alerts,
         resetDialog: resetDialog,
+        // 安装确认弹窗与重置弹窗同源：Go 页整个替换设置页，不传这一项的话，
+        // Go 模式点「更新到 X」只会设确认态却不弹窗，安装动作永远落不了地。
+        installDialog: installDialog,
         requestReset: requestReset,
         rootRef: settingsRootRef,
       },
@@ -4133,7 +4182,8 @@ function InfoBarSettingsSection() {
       onCredentialClear: onCredentialClear,
     }),
     alerts.length > 0 ? React.createElement('div', { className: 'bib-set-alerts' }, alerts) : null,
-    resetDialog);
+    resetDialog,
+    installDialog);
   } catch (err) {
     return React.createElement('div', { ref: settingsRootRef, className: 'bib-set-root bib-settings' },
       React.createElement(bibSetLanguagePicker, { runtime: languageRuntime, onError: setOpError }),
