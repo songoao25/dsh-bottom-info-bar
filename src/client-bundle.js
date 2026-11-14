@@ -934,8 +934,8 @@ function installStyles() {
         --dshgo-ink: var(--dsw-alias-label-primary, #1E232E); --dshgo-label: var(--dsw-alias-label-secondary, #4F5562); --dshgo-muted: var(--dsw-alias-label-tertiary, #646974); --dshgo-faint: var(--dsw-alias-label-tertiary, #646974); --dshgo-ghost: #A1A5AC;
         --dshgo-line: rgba(30, 35, 46, 0.07);
         --dshgo-card: rgba(255, 255, 255, 0.62); --dshgo-card-rim: rgba(255, 255, 255, 0.70);
-        /* 对话底栏是 composer 的延伸，不另造悬浮白卡：底色、0.5px 轮廓与两层中性柔影
-           逐项复用 DSH Go 当前输入框材质。宿主 token 存在时随动态主题走，旧宿主走兜底。 */
+        /* 卡片与输入框同材质：白面 + 0.5px 发丝轮廓 + 两层柔影，都是 composer 同款；
+           动态主题下由组件边界重新绑定的 label/bg token 跟随宿主。 */
         --dshgo-card-bg: var(--dsw-alias-bg-layer-1, #FFFFFF);
         --dshgo-card-stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #0F1115) 10%, transparent);
         --dshgo-card-shadow: 0 0 0 var(--dshgo-hairline, 0.5px) var(--dshgo-card-stroke), 0 4px 16px rgba(0, 0, 0, 0.03), 0 0 24px rgba(0, 0, 0, 0.03);
@@ -976,8 +976,7 @@ function installStyles() {
       /* ---------- DSH Go 信息栏三列卡 + 展开面板（DESIGN-FINAL §3/§4/§5；无分割线） ----------
          只在 Go 表面内生效；三档断点：≤360 收边距降字号、360–599 定稿值、≥600 收版心居中。
          三列之间不画竖线：页边 16、间隙用 space-between 均分；卡内行间 2px 空隙、分组 16。 */
-      /* 卡片与上方内容（DSH Go 宿主自带的原生统计行 / 对话区）之间留 8px 呼吸：
-         宿主那行 pill 是它自己的 DOM，删不得，只能把卡片往下让一档，两者才不会粘成一片。 */
+      /* 卡片与输入框之间留 8px（宿主 dock 另有 4px 顶距），四边内边距统一 16。 */
       /* 一个容器承载「条 + 明细」：收起时卡面在 strip 上，展开时卡面整个交给容器，
          strip 与 sheet 都变成内部区域（无边框、无间距、无第二层背景），
          所以展开后是同一张卡往下长，而不是条下面再摆一张卡。 */
@@ -1012,24 +1011,27 @@ function installStyles() {
       :root[data-dsh-app-layout] [data-slot="conversation.composer.dock"] > span:not([class*="bi-"]),
       :root[data-dsh-go-island] [data-slot="conversation.composer.dock"] > span:not([class*="bi-"]) { display: none !important; }
       :root[data-dsh-app-layout] .bi-go-row2, :root[data-dsh-go-island] .bi-go-row2 { display: block; width: 100%; }
-      :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; box-sizing: border-box; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: var(--dshgo-radius-composer, 28px); background: var(--dshgo-card-bg, #FFFFFF); box-shadow: var(--dshgo-card-shadow, none); overflow: hidden; -webkit-tap-highlight-color: transparent; transition: background-color 120ms linear; }
+      /* 收起态是输入框下面的一张卡：白底与柔和轮廓/阴影直接取 composer 同款 token
+         （--dshgo-card-bg / --dshgo-card-shadow），不再另造一套菜单色，避免卡面比输入框偏冷/偏灰。
+         四边内边距统一 16，卡面尺寸由内容加 32 得出。 */
+      :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { display: flex; align-items: center; justify-content: space-between; gap: 16px; box-sizing: border-box; width: 100%; height: auto; min-height: 0; padding: 16px; border: 0; border-radius: var(--dshgo-radius-composer, 28px); background: var(--dshgo-card-bg, #FFFFFF); box-shadow: var(--dshgo-card-shadow, none); overflow: hidden; -webkit-tap-highlight-color: transparent; transition: background-color 120ms linear; }
       :root[data-dsh-app-layout] .bi-go-strip:active, :root[data-dsh-go-island] .bi-go-strip:active { background: color-mix(in srgb, var(--dshgo-ink) 4%, var(--dshgo-card-bg, #FFFFFF)); }
       /* 三列按内容宽度排布，再用 space-between 均分剩余空间：
          首列贴左页边、末列贴右页边、三块之间的两个间隙严格相等。
          如果用等分网格再各自左对齐，末列内容短的时候右边就会空出一大块。 */
-      :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; max-width: calc((100% - 20px) / 3); padding: 0; }
+      :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; max-width: calc((100% - 32px) / 3); padding: 0; }
       :root[data-dsh-app-layout] .bi-go-col:last-child, :root[data-dsh-go-island] .bi-go-col:last-child { align-items: flex-end; text-align: right; }
       /* 列内元素按内容收缩（不撑满列宽），但不得超过列宽，省略号才会正常出现。 */
       :root[data-dsh-app-layout] .bi-go-col > .bi-go-cap, :root[data-dsh-go-island] .bi-go-col > .bi-go-cap,
       :root[data-dsh-app-layout] .bi-go-col > .bi-go-val, :root[data-dsh-go-island] .bi-go-col > .bi-go-val,
       :root[data-dsh-app-layout] .bi-go-col > .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-col > .bi-go-ringrow { max-width: 100%; }
-      :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { margin-bottom: 2px; font-size: var(--dshgo-font-caption, 12px); font-weight: 500; line-height: 16px; letter-spacing: 0.2px; color: var(--dshgo-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: var(--dshgo-font-value, 16px); font-weight: 600; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 11px; letter-spacing: -0.5px; }
+      :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { margin-bottom: 4px; font-size: 13px; font-weight: 500; line-height: 16px; letter-spacing: 0.1px; color: var(--dshgo-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -0.01em; color: var(--dshgo-ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      :root[data-dsh-app-layout] .bi-go-val--shrink, :root[data-dsh-go-island] .bi-go-val--shrink { font-size: 12px; letter-spacing: -0.5px; }
       :root[data-dsh-app-layout] .bi-go-val--low, :root[data-dsh-go-island] .bi-go-val--low { color: var(--dshgo-danger); }
       :root[data-dsh-app-layout] .bi-go-ph, :root[data-dsh-go-island] .bi-go-ph { display: block; width: 64px; max-width: 100%; height: 10px; margin-top: 6px; border-radius: 4px; background: var(--dshgo-ghost); opacity: 0.34; }
-      :root[data-dsh-app-layout] .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-ringrow { display: flex; align-items: center; gap: 5px; min-width: 0; }
-      :root[data-dsh-app-layout] .bi-go-ring, :root[data-dsh-go-island] .bi-go-ring { flex: none; display: block; }
+      :root[data-dsh-app-layout] .bi-go-ringrow, :root[data-dsh-go-island] .bi-go-ringrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+      :root[data-dsh-app-layout] .bi-go-ring, :root[data-dsh-go-island] .bi-go-ring { flex: none; display: block; width: 18px; height: 18px; }
       :root[data-dsh-app-layout] .bi-go-ring-track, :root[data-dsh-go-island] .bi-go-ring-track { stroke: var(--dshgo-line); }
       :root[data-dsh-app-layout] .bi-go-ring-fill, :root[data-dsh-go-island] .bi-go-ring-fill { stroke: var(--dshgo-accent); }
       /* 展开面板：卡内无分割线（行间 2px、分组 16）；动作行无上边框，靠 16 上间距 + 右对齐。 */
@@ -1065,11 +1067,11 @@ function installStyles() {
       :root[data-dsh-app-layout] .bi-go-act:active, :root[data-dsh-go-island] .bi-go-act:active { opacity: 0.7; }
       :root[data-dsh-app-layout] .bi-go-empty, :root[data-dsh-go-island] .bi-go-empty { padding: 8px 0 4px; font-size: 13px; line-height: var(--dshgo-lh-value, 20px); color: var(--dshgo-muted); }
       /* ---------- DSH Go 窄屏自适应（≤360，SE 一档） ----------
-         412 定稿的 12px 列内边距 + 16px 数值在 320 上放不下：可用宽只剩 60px，
-         「¥123万」和「上下文用量」都会被省略号吞掉。窄屏收边距并各降一档字号，
+         412 定稿的 16px 内边距 + 13/17 字在 320 上放不下：可用宽只剩 60px，
+         「¥123万」和「上下文用量」都会被省略号吞掉。窄屏四边统一收到 12px，各降一档字号，
          宁可小一档也不丢信息。必须写成组合媒体查询（CSS 不支持 @media 套 @media）。 */
       @media (max-width: 360px) {
-        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { gap: 8px; padding: 0 12px; }
+        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { gap: 8px; padding: 12px; }
         :root[data-dsh-app-layout] .bi-go-col, :root[data-dsh-go-island] .bi-go-col { max-width: calc((100% - 16px) / 3); }
         :root[data-dsh-app-layout] .bi-go-cap, :root[data-dsh-go-island] .bi-go-cap { font-size: 11px; letter-spacing: 0.1px; }
         :root[data-dsh-app-layout] .bi-go-val, :root[data-dsh-go-island] .bi-go-val { font-size: 15px; }
@@ -1083,9 +1085,9 @@ function installStyles() {
          卡片始终跟输入框同宽（100% − 16 页边），宽出来的空间不放空、也不把三列硬拉开：
          ① 收起态按宽度递进补列（今天 / 近 30 天 / 累计），一屏能看到的花费越来越多；
          ② 展开面板 ≥760 变双栏，同一块 40vh 高度里一屏能读完两倍的行。
-         形态仍是 Go 的卡（20 圆角 / 发丝线 / 三列语言），不退回桌面那条双行 pill。 */
+         形态仍是 Go 的卡（28 圆角 / 发丝线 / 三列语言），不退回桌面那条双行 pill。 */
       @media (min-width: 600px) {
-        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { padding: 0 20px; }
+        :root[data-dsh-app-layout] .bi-go-strip, :root[data-dsh-go-island] .bi-go-strip { padding: 16px 20px; }
         :root[data-dsh-app-layout] .bi-go-sheet-head, :root[data-dsh-go-island] .bi-go-sheet-head { padding: 0 8px 0 20px; }
         :root[data-dsh-app-layout] .bi-go-sheet-body, :root[data-dsh-go-island] .bi-go-sheet-body { padding: 0 20px 20px; }
       }

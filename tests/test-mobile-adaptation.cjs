@@ -139,11 +139,12 @@ check('token 间距/栅格对齐 DSH Go 当前原生布局（底栏继承 compos
   tokenBlock.includes('--dshgo-gap: 8px') && tokenBlock.includes('--dshgo-card-pad: 16px')
   && tokenBlock.includes('--dshgo-group-gap: 24px') && tokenBlock.includes('--dshgo-row-gap: 2px')
   && tokenBlock.includes('--dshgo-page-x: 0px') && tokenBlock.includes('--dshgo-config-page-x: 16px'), true);
-check('Go 底栏撑满 composer dock，卡片自身不再重复扣左右页边',
+check('Go 底栏撑满 composer dock，卡片与输入框同轴、保留 8px 卡距',
   visualBlock.includes('[data-composer-dock]:has(.bi-go-card)')
   && visualBlock.includes('width: 100%; max-width: 100%; align-self: stretch; box-sizing: border-box;')
   && visualBlock.includes('.bi-go-card')
-  && visualBlock.includes('width: 100%; max-width: 100%; box-sizing: border-box; margin: var(--dshgo-gap, 8px) 0 0;'), true);
+  && visualBlock.includes('width: 100%; max-width: 100%; box-sizing: border-box; margin: var(--dshgo-gap, 8px) 0 0;')
+  && visualBlock.includes('padding: 16px;'), true);
 check('Go 底栏在组件边界重新绑定宿主动态主题 token（注入位置不在 :root）',
   visualBlock.includes('--dshgo-card-bg: var(--dsw-alias-bg-layer-1, #FFFFFF)')
   && visualBlock.includes('--dshgo-card-stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #0F1115) 10%, transparent)')
@@ -176,24 +177,23 @@ check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.05)'), true);
 check('token 块只定义变量、不改任何现有元素视觉（视觉规则单独成块）',
   !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
-check('三列卡：56 高 / composer 28 圆角 / 宿主表面 token / 0.5 柔和轮廓 / 16 内边距 / 等间隙分布 / 末列贴右 / 无箭头格',
-  visualBlock.includes('.bi-go-strip') && visualBlock.includes('height: 56px')
+check('三列卡：composer 同款白底/轮廓 / 28 圆角 / 四边 16 / 等间隙分布 / 末列贴右 / 无箭头格',
+  visualBlock.includes('.bi-go-strip')
+  && visualBlock.includes('height: auto')
+  && visualBlock.includes('padding: 16px; border: 0;')
   && visualBlock.includes('border-radius: var(--dshgo-radius-composer, 28px)')
-  && visualBlock.includes('background: var(--dshgo-card-bg, #FFFFFF)')
-  && tokenBlock.includes('--dshgo-card-bg: var(--dsw-alias-bg-layer-1, #FFFFFF)')
-  && tokenBlock.includes('--dshgo-card-stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #0F1115) 10%, transparent)')
-  && tokenBlock.includes('0 4px 16px rgba(0, 0, 0, 0.03)')
-  && visualBlock.includes('height: 56px; padding: 0 16px; border: 0;')
+  && visualBlock.includes('background: var(--dshgo-card-bg')
+  && visualBlock.includes('box-shadow: var(--dshgo-card-shadow')
   && visualBlock.includes('justify-content: space-between')
-  && visualBlock.includes('height: 56px; padding: 0 16px;')
-  && visualBlock.includes('max-width: calc((100% - 20px) / 3)')
+  && visualBlock.includes('max-width: calc((100% - 32px) / 3)')
   && visualBlock.includes('.bi-go-col:last-child') && visualBlock.includes('align-items: flex-end')
+  && !visualBlock.includes('height: 56px')
   && !visualBlock.includes('bi-go-chev')
   && !visualBlock.includes('.bi-go-col + .bi-go-col::before'), true);
 check('宽屏（≥600）卡片与输入框同宽，只调内边距，不缩版心',
   visualBlock.includes('@media (min-width: 600px) {')
   && !visualBlock.includes('max-width: 560px')
-  && visualBlock.includes('padding: 0 20px')
+  && visualBlock.includes('padding: 16px 20px')
   && visualBlock.includes('padding: 0 20px 20px;'), true);
 check('宽屏增量列按档位递进（760 / 960 / 1180），手机档不占位',
   visualBlock.includes('.bi-go-col[data-extra]') && visualBlock.includes('display: none')
@@ -221,11 +221,11 @@ check('面板：28 圆角 / 40vh 内滚 / 行间 2px 空隙 / 分组 16 / 无行
   && visualBlock.includes('margin-top: var(--dshgo-section-gap, 16px)')
   && !visualBlock.includes('.bi-go-row + .bi-go-row')
   && !visualBlock.includes('border-top'), true);
-check('三列卡数值：caption 12/500、value 16/600、tabular-nums、长金额缩字号、窗口 progress 4px',
-  visualBlock.includes('font-size: var(--dshgo-font-caption, 12px)')
-  && visualBlock.includes('font-size: var(--dshgo-font-value, 16px)')
+check('三列卡数值：caption 13/500、value 17/600、tabular-nums、长金额缩字号、窗口 progress 4px',
+  visualBlock.includes('font-size: 13px; font-weight: 500; line-height: 16px')
+  && visualBlock.includes('font-size: 17px; font-weight: 600; line-height: 22px')
   && visualBlock.includes('font-variant-numeric: tabular-nums')
-  && visualBlock.includes('.bi-go-val--shrink') && visualBlock.includes('font-size: 11px; letter-spacing: -0.5px;')
+  && visualBlock.includes('.bi-go-val--shrink') && visualBlock.includes('font-size: 12px; letter-spacing: -0.5px;')
   && visualBlock.includes('.bi-go-bar') && visualBlock.includes('height: 4px'), true);
 
 // ---------- R1（2026-11-13）：缺额度凭据的配置引导必须到达 DSH Go 卡与面板 ----------
