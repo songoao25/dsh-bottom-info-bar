@@ -5,6 +5,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # 宿主 DSH Web 前端内置 React 18.3.1：客户端 bundle 的 require('react') 由宿主 seed
+      # 模块解析，peerDependencies 必须跟宿主对齐。React 19 要等宿主先升，单独抬 devDependency
+      # 只会让 npm ci 撞上 react-test-renderer 的 peer 冲突（ERESOLVE），测试也测不到线上真实版本。
+      - dependency-name: react
+        update-types:
+          - version-update:semver-major
+      - dependency-name: react-test-renderer
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
