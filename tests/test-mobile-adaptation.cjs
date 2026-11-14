@@ -112,10 +112,11 @@ const gateStart = css.indexOf(':root[data-dsh-app-layout], :root[data-dsh-go-isl
 check('Go 皮肤层由宿主属性门控，不依赖触屏（DSH Go 在任何指针环境都套 Go 形态）',
   tokenStart > 0 && gateStart > tokenStart
   && !css.slice(tokenStart, css.indexOf('/* ---------- DSH Go 信息栏三列卡', tokenStart)).includes('@media (pointer: coarse)'), true);
-check('Go 设置页预览卡与真实卡同构：无 chevron、16 页边、56 高、三列按内容分布',
+check('Go 设置页预览行与真实卡同构：无 chevron、16 内边距、56 高、三列按内容分布',
   !clientSrc.includes('bib-go-preview-chevron')
-  && clientSrc.includes('justify-content: space-between; gap: 10px; height: 100%; padding: 0 16px')
-  && clientSrc.includes('bib-go-preview-card, :root[data-dsh-go-island] .bib-go-preview-card { height: 56px; padding: 0; box-sizing: border-box; }')
+  && clientSrc.includes('justify-content: space-between; gap: 10px; min-height: 56px; padding: 0 16px')
+  && !clientSrc.includes('bib-go-preview-card')
+  && clientSrc.includes("const preview = React.createElement('div', { className: 'bib-go-preview' }")
   && clientSrc.includes('.bib-go-preview-col:last-child, :root[data-dsh-go-island] .bib-go-preview-col:last-child { align-items: flex-end; text-align: right; }'), true);
 check('Go 形态判定不再要求触屏（平板/大窗/鼠标环境仍是 DSH Go）',
   /function dshGoCompactEnabled\(\) \{\s*return dshGoSurfaceEnabled\(\);/.test(clientSrc), true);
@@ -132,10 +133,18 @@ check('token 颜色对齐 DESIGN-FINAL（雾蓝主色/渐变/玻璃卡/发丝/da
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.62)')
   && tokenBlock.includes('--dshgo-card-rim: rgba(255, 255, 255, 0.70)')
   && tokenBlock.includes('--dshgo-danger: #A54743'), true);
-check('token 间距/栅格对齐 DESIGN-FINAL（8 卡距 / 16 卡内 / 24 组间 / 2 行距 / 页边 16/20）',
+check('token 间距/栅格对齐 DSH Go 当前原生布局（底栏继承 composer 宽度 / 设置页 16 / 8 卡距 / 24 组间 / 2 行距）',
   tokenBlock.includes('--dshgo-gap: 8px') && tokenBlock.includes('--dshgo-card-pad: 16px')
   && tokenBlock.includes('--dshgo-group-gap: 24px') && tokenBlock.includes('--dshgo-row-gap: 2px')
-  && tokenBlock.includes('--dshgo-page-x: 16px') && tokenBlock.includes('--dshgo-config-page-x: 20px'), true);
+  && tokenBlock.includes('--dshgo-page-x: 0px') && tokenBlock.includes('--dshgo-config-page-x: 16px'), true);
+check('Go 底栏撑满 composer dock，卡片自身不再重复扣左右页边',
+  visualBlock.includes('[data-composer-dock]:has(.bi-go-card)')
+  && visualBlock.includes('width: 100%; max-width: 100%; align-self: stretch; box-sizing: border-box;')
+  && visualBlock.includes('.bi-go-card')
+  && visualBlock.includes('width: 100%; max-width: 100%; box-sizing: border-box; margin: var(--dshgo-gap, 8px) 0 0;'), true);
+check('Go 插件详情里的设置页复用宿主 20px 边距，不再二次缩进',
+  clientSrc.includes('[data-plugin-config] .bib-go-page { padding-inline: 0; }')
+  && clientSrc.includes('[data-plugin-config] .bib-go-head { padding-inline: 0; }'), true);
 check('token 行高/字号/开关/分段/面板上限/安全区对齐 DESIGN-FINAL',
   tokenBlock.includes('--dshgo-row-h: 56px') && tokenBlock.includes('--dshgo-row-h2: 64px')
   && tokenBlock.includes('--dshgo-panel-row: 40px') && tokenBlock.includes('--dshgo-panel-row2: 56px')
