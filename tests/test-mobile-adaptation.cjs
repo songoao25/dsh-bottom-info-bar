@@ -128,7 +128,9 @@ check('token 颜色对齐 DESIGN-FINAL（雾蓝主色/渐变/玻璃卡/发丝/da
   tokenBlock.includes('--dshgo-accent: #4B67B4') && tokenBlock.includes('--dshgo-accent-soft: #DEE8FF')
   && tokenBlock.includes('--dshgo-bg-1: #F1F4FB') && tokenBlock.includes('--dshgo-bg-2: #FAFBFE')
   && tokenBlock.includes('--dshgo-surface: #FBFCFF') && tokenBlock.includes('--dshgo-surface-low: #F6F9FE')
-  && tokenBlock.includes('--dshgo-ink: #1E232E') && tokenBlock.includes('--dshgo-label: #4F5562')
+  && tokenBlock.includes('--dshgo-ink: var(--dsw-alias-label-primary, #1E232E)')
+  && tokenBlock.includes('--dshgo-label: var(--dsw-alias-label-secondary, #4F5562)')
+  && tokenBlock.includes('--dshgo-muted: var(--dsw-alias-label-tertiary, #646974)')
   && tokenBlock.includes('--dshgo-line: rgba(30, 35, 46, 0.07)')
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.62)')
   && tokenBlock.includes('--dshgo-card-rim: rgba(255, 255, 255, 0.70)')
@@ -142,6 +144,13 @@ check('Go 底栏撑满 composer dock，卡片自身不再重复扣左右页边',
   && visualBlock.includes('width: 100%; max-width: 100%; align-self: stretch; box-sizing: border-box;')
   && visualBlock.includes('.bi-go-card')
   && visualBlock.includes('width: 100%; max-width: 100%; box-sizing: border-box; margin: var(--dshgo-gap, 8px) 0 0;'), true);
+check('Go 底栏在组件边界重新绑定宿主动态主题 token（注入位置不在 :root）',
+  visualBlock.includes('--dshgo-card-bg: var(--dsw-alias-bg-layer-1, #FFFFFF)')
+  && visualBlock.includes('--dshgo-card-stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #0F1115) 10%, transparent)')
+  && visualBlock.includes('--dshgo-ink: var(--dsw-alias-label-primary, #1E232E)')
+  && visualBlock.includes('--dshgo-muted: var(--dsw-alias-label-tertiary, #646974)')
+  && visualBlock.includes('body[data-ds-dark-theme] .bi-go-card')
+  && visualBlock.includes('--dshgo-card-bg: var(--dsw-alias-bg-layer-1, #232730)'), true);
 check('Go 插件详情里的设置页复用宿主 20px 边距，不再二次缩进',
   clientSrc.includes('[data-plugin-config] .bib-go-page { padding-inline: 0; }')
   && clientSrc.includes('[data-plugin-config] .bib-go-head { padding-inline: 0; }'), true);
@@ -156,7 +165,8 @@ check('token 行高/字号/开关/分段/面板上限/安全区对齐 DESIGN-FIN
   && tokenBlock.includes('--dshgo-seg-h: 36px') && tokenBlock.includes('--dshgo-seg-thumb: 30px')
   && tokenBlock.includes('--dshgo-control-h: 44px') && tokenBlock.includes('--dshgo-panel-max: 40vh')
   && tokenBlock.includes('--dshgo-hairline: 0.5px')
-  && tokenBlock.includes('--dshgo-radius-card: 20px') && tokenBlock.includes('--dshgo-radius-sheet: 28px')
+  && tokenBlock.includes('--dshgo-radius-card: 20px') && tokenBlock.includes('--dshgo-radius-composer: 28px')
+  && tokenBlock.includes('--dshgo-radius-sheet: 28px')
   && tokenBlock.includes('--dshgo-radius-control: 14px') && tokenBlock.includes('--dshgo-radius-segment: 18px')
   && tokenBlock.includes('--dshgo-safe-bottom:'), true);
 check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
@@ -166,11 +176,14 @@ check('深色 token 由 DSH 外观属性覆盖（同一套门控）',
   && tokenBlock.includes('--dshgo-card: rgba(255, 255, 255, 0.05)'), true);
 check('token 块只定义变量、不改任何现有元素视觉（视觉规则单独成块）',
   !/\.(bi|bib)-[a-z]/.test(tokenBlock), true);
-check('三列卡：56 高 / 20 圆角 / 纯白卡面 / 0.5 发丝 / 页边 16 / 等间隙分布 / 末列贴右 / 无箭头格',
+check('三列卡：56 高 / composer 28 圆角 / 宿主表面 token / 0.5 柔和轮廓 / 16 内边距 / 等间隙分布 / 末列贴右 / 无箭头格',
   visualBlock.includes('.bi-go-strip') && visualBlock.includes('height: 56px')
-  && visualBlock.includes('border-radius: var(--dshgo-radius-card, 20px)')
+  && visualBlock.includes('border-radius: var(--dshgo-radius-composer, 28px)')
   && visualBlock.includes('background: var(--dshgo-card-bg, #FFFFFF)')
-  && tokenBlock.includes('--dshgo-card-bg: #FFFFFF')
+  && tokenBlock.includes('--dshgo-card-bg: var(--dsw-alias-bg-layer-1, #FFFFFF)')
+  && tokenBlock.includes('--dshgo-card-stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #0F1115) 10%, transparent)')
+  && tokenBlock.includes('0 4px 16px rgba(0, 0, 0, 0.03)')
+  && visualBlock.includes('height: 56px; padding: 0 16px; border: 0;')
   && visualBlock.includes('justify-content: space-between')
   && visualBlock.includes('height: 56px; padding: 0 16px;')
   && visualBlock.includes('max-width: calc((100% - 20px) / 3)')
