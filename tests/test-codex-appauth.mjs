@@ -45,7 +45,7 @@ globalThis.fetch = async function () { throw new Error('network disabled in test
 
 // ---------- 被测代码 = 构建产物（DSH 真正加载的 lib/index.js；src 里常量是注入锚点） ----------
 const LIB_HOST = join(ROOT, 'lib', 'index.js')
-const SRC_FILES = ['host.js', 'constants.js', 'client-bundle.js', 'locales.js', 'host-locale.js', 'self-update.js', 'startup-trace.js', 'version.js', 'ledger-store.js', 'accounting.js', 'ledger-client.js', 'ledger-worker.js']
+const SRC_FILES = ['host.js', 'native.js', 'constants.js', 'client-bundle.js', 'locales.js', 'host-locale.js', 'self-update.js', 'startup-trace.js', 'version.js', 'ledger-store.js', 'accounting.js', 'ledger-client.js', 'ledger-worker.js']
   .map((f) => join(ROOT, 'src', f))
 function libIsStale() {
   if (!existsSync(LIB_HOST)) return true
