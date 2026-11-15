@@ -38,6 +38,7 @@ const cases = [
   ['test-display-model（渲染级：模式只决定原生行，字段显隐只由字段开关决定）', ['tests/test-display-model.cjs'], join(root), process.execPath],
   ['test-info-bar-rhythm（两行节奏：确定高度收合 / 无 fr 轨道 / 无行间空隙）', ['tests/test-info-bar-rhythm.cjs'], join(root), process.execPath],
   ['test-mobile-adaptation（手机宽度折行 / 触控目标 / 触屏点按明细 / 桌面零变化）', ['tests/test-mobile-adaptation.cjs'], join(root), process.execPath],
+  ['test-native-integration（DSH Go 原生：插件二级页卡片 / 真实数据 / 本对话）', ['tests/test-native-integration.cjs'], join(root), process.execPath],
   ['test-spend-accounting（host.js）', ['tests/test-spend-accounting.cjs'], join(root), process.execPath],
   ['test-weekend-pricing（host.js 周末峰谷规则）', ['tests/test-weekend-pricing.mjs'], join(root), process.execPath],
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.cjs'], join(root), process.execPath],

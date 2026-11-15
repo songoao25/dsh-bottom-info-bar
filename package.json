@@ -62,6 +62,32 @@
       ]
     }
   },
+  "dshGo": {
+    "v": 1,
+    "minApp": "1.0.9",
+    "title": {
+      "zh": "底部信息栏",
+      "en": "Bottom info bar"
+    },
+    "icon": "wallet",
+    "contributes": {
+      "panels": [
+        {
+          "id": "info-panel",
+          "title": {
+            "zh": "底部信息栏",
+            "en": "Bottom info bar"
+          },
+          "icon": "wallet",
+          "placement": [
+            "chat.panel",
+            "session.tab",
+            "features"
+          ]
+        }
+      ]
+    }
+  },
   "peerDependencies": {
     "react": "^18.0.0"
   },
