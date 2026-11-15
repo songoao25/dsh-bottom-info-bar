@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.26.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.2...v1.26.0) (2026-11-15)
+
+
+### Features
+
+* **dshgo:** show the info bar card in the native plugin page ([#305](https://github.com/songoao25/dsh-bottom-info-bar/issues/305)) ([098a874](https://github.com/songoao25/dsh-bottom-info-bar/commit/098a874b9dc1e180ca1dc2c665cc59369901777c))
+
 ## [1.25.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.1...v1.25.2) (2026-11-13)
 
 
