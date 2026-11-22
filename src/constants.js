@@ -3,7 +3,7 @@
 // v1.7：新增小米 MiMo Token Plan 三集群（月度 Credits 额度窗）
 // v1.16.0：新增 MiniMax（海螺）Token Plan 双站点（Global minimax / CN minimax-cn，5 小时 + 周窗口）
 // v1.22.0：新增阿里 Token Plan 中国站/国际站（百炼 Credits 订阅，月度窗口）与 Kimi For Coding（5 小时 + 周窗口）
-export const SUBSCRIPTION_PROVIDERS = ['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn', 'qwen-token-plan-cn', 'qwen-token-plan', 'qwen-token-plan-individual', 'kimi-coding']
+export const SUBSCRIPTION_PROVIDERS = ['codex', 'chatgpt', 'chatgpt-siwc', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn', 'qwen-token-plan-cn', 'qwen-token-plan', 'qwen-token-plan-individual', 'kimi-coding']
 // 云账单 provider 集合：这些 provider 走"账单型"显示（本月真实花费 / 预算%），与余额型/额度型互斥（FR-14）
 export const BILLING_PROVIDERS = ['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai', 'huggingface']
 
@@ -126,7 +126,7 @@ export const CREDENTIAL_CATALOG = [
     id: 'codex',
     label: 'ChatGPT / Codex',
     mode: 'subscription',
-    providers: ['openai-codex', 'chatgpt', 'codex'],
+    providers: ['openai-codex', 'chatgpt', 'chatgpt-siwc', 'codex'],
     official: true,
     verification: 'third-party',
     credentials: [],
@@ -254,7 +254,7 @@ export const PROVIDER_DEFAULT_CURRENCY = {
   'baseten': 'USD', 'cerebras': 'USD', 'cloudflare-ai-gateway': 'USD', 'cloudflare-workers-ai': 'USD',
   'fireworks': 'USD', 'github-copilot': 'USD', 'google': 'USD', 'google-vertex': 'USD', 'groq': 'USD',
   'huggingface': 'USD', 'kimi-coding': 'USD', 'mistral': 'USD', 'moonshotai': 'USD', 'nvidia': 'USD', 'openai': 'USD',
-  'openai-codex': 'USD', 'chatgpt': 'USD', 'codex': 'USD', 'openrouter': 'USD',
+  'openai-codex': 'USD', 'chatgpt': 'USD', 'chatgpt-siwc': 'USD', 'codex': 'USD', 'openrouter': 'USD',
   'qwen-token-plan': 'USD', 'qwen-token-plan-individual': 'USD', 'together': 'USD',
   'vercel-ai-gateway': 'USD', 'xai': 'USD',
 }
@@ -281,6 +281,7 @@ export const PROVIDER_IDENTITY = {
   'codex': { account: 'codex', subscription: 'codex', billing: null },
   'chatgpt': { account: 'codex', subscription: 'codex', billing: null },
   'openai-codex': { account: 'codex', subscription: 'codex', billing: null },
+  'chatgpt-siwc': { account: 'codex', subscription: 'codex', billing: null },
   'opencode-go': { account: 'opencode-go', subscription: 'opencode-go', billing: null },
   'opencode': { account: 'opencode-go', subscription: 'opencode-go', billing: null },
   'zai': { account: 'zai', subscription: 'zai', billing: null },

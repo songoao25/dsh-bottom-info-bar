@@ -138,7 +138,7 @@ check('自动识别忽略旧的手动覆盖参数：codex 仍为 subscription', 
 check('自动识别忽略旧的手动覆盖参数：deepseek 仍为 balance', detectBillingMode('deepseek', 'subscription').mode, 'balance');
 check('自动识别理由只含 provider', detectBillingMode('codex', 'balance').reason, 'provider:codex');
 check('auto 理由含 provider 标识', detectBillingMode('codex', 'auto').reason, 'provider:codex');
-check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn',
+check('订阅 provider 集合配置正确', JSON.stringify(SUBSCRIPTION_PROVIDERS), JSON.stringify(['codex', 'chatgpt', 'chatgpt-siwc', 'opencode-go', 'opencode', 'openai-codex', 'zai', 'zai-coding-cn', 'xiaomi-token-plan-cn', 'xiaomi-token-plan-sgp', 'xiaomi-token-plan-ams', 'command', 'command-code', 'minimax', 'minimax-cn',
   // v1.22.0：阿里 Token Plan（中国站/国际站）与 Kimi For Coding
   'qwen-token-plan-cn', 'qwen-token-plan', 'qwen-token-plan-individual', 'kimi-coding']));
 check('账单 provider 集合配置正确', JSON.stringify(BILLING_PROVIDERS), JSON.stringify(['together', 'fireworks', 'amazon-bedrock', 'cloudflare-ai-gateway', 'cloudflare-workers-ai', 'huggingface']));
@@ -270,7 +270,7 @@ check('client 订阅制模型组显示订阅服务名（subscriptionProviderGrou
 check('client 订阅服务名映射含 OpenCode Go / Codex / ChatGPT', clientSrc.includes("return 'OpenCode Go'") && clientSrc.includes("return 'Codex'") && clientSrc.includes("return 'ChatGPT'"), true);
 check('client 订阅服务名含 Command Code', clientSrc.includes("provider === 'command' || provider === 'command-code'") && clientSrc.includes("t('ui.commandCode')"), true);
 check('client 订阅失败提示按实际订阅服务命名，不把 Codex 误称为 ChatGPT', clientSrc.includes('const serviceName = subscriptionServiceName(source);'), true);
-check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.includes("if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';"), true);
+check('client openai-codex → ChatGPT（Codex/ChatGPT 已合并）', clientSrc.includes("provider === 'chatgpt' || provider === 'openai-codex' || provider === 'chatgpt-siwc'"), true);
 check('client codex → Codex 保持（映射不变）', clientSrc.includes("if (provider === 'codex') return 'Codex';"), true);
 check('client 剩余 = 100 - 已用（钳制 ≥0）', clientSrc.includes('return Math.max(0, 100 - w.usedPercent);'), true);
 check('client 紧凑标签 five_hour → 5h（缩写收进 WINDOW_META.short）', clientSrc.includes("five_hour: { field: 'subWindow5h', priority: 1, labelKey: 'host.hour', short: '5h' }") && clientSrc.includes('if (meta && meta.short) return meta.short;'), true);

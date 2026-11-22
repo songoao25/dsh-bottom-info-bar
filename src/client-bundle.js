@@ -4909,7 +4909,7 @@ module.exports = {
       // Codex 与 ChatGPT 已合并：实际 provider openai-codex / chatgpt 均显示 ChatGPT；codex 保持 Codex
       // v1.6 T7：新增 zai/zai-coding-cn → '智谱'；v1.7：小米 Token Plan → '小米 MiMo'
       function subscriptionServiceName(provider) {
-        if (provider === 'chatgpt' || provider === 'openai-codex') return 'ChatGPT';
+        if (provider === 'chatgpt' || provider === 'openai-codex' || provider === 'chatgpt-siwc') return 'ChatGPT';
         if (provider === 'codex') return 'Codex';
         if (provider === 'opencode-go' || provider === 'opencode') return 'OpenCode Go';
         if (provider === 'zai' || provider === 'zai-coding-cn') return t('ui.zhipu');

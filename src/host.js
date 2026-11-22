@@ -2907,11 +2907,36 @@ export default {
       return { data: { provider: 'codex', plan: plan, planType: parsed.planType, expiryAt: parsed.expiryMs, windows: [] } };
     }
 
+    // SIWC 会话通道：dsh-chatgpt-sub 0.9+ 把官方 Sign in with ChatGPT 会话存在
+    // DSH 凭据库（chatgpt-sub/session）。它没有 ~/.codex/auth.json 时，套餐与有效期
+    // 从这里读；旧版 Codex 文件仍保留为第三兜底。
+    async function fetchCodexUsageFromSession() {
+      try {
+        if (!ctx.credentials || typeof ctx.credentials.readRecord !== 'function') return null;
+        const record = await ctx.credentials.readRecord('chatgpt-sub/session');
+        const payload = record && record.kind === 'grant' ? record.payload : null;
+        if (!payload || typeof payload !== 'object' || payload.version !== 1) return null;
+        const idToken = typeof payload.idToken === 'string' && payload.idToken.length > 0 ? payload.idToken : null;
+        let parsed = null;
+        if (idToken) {
+          try { parsed = parseCodexJwt(idToken); } catch (err) { /* 只用会话里的字段 */ }
+        }
+        const planType = (parsed && parsed.planType) || (typeof payload.plan === 'string' && payload.plan.length > 0 ? payload.plan : null);
+        const expiryAt = (parsed && parsed.expiryMs) || (typeof payload.expiresAt === 'number' ? payload.expiresAt : null);
+        return { data: { provider: 'codex', plan: planType ? planDisplayName(planType) : null, planType: planType, expiryAt: expiryAt, windows: [] } };
+      } catch (err) {
+        return null;
+      }
+    }
+
     async function fetchCodexUsage() {
       // ① appAuth 优先：拿到额度窗口就用它（DSH Go 的唯一可用通道）
       const viaAppAuth = await fetchCodexUsageViaAppAuth();
       if (viaAppAuth && viaAppAuth.data) return viaAppAuth;
-      // ② 桌面文件通道：取到数据就用文件的数据，不被 appAuth 的失败状态遮住
+      // ② 新版 dsh-chatgpt-sub 的 SIWC 会话（没有 Codex 文件也能显示套餐与有效期）
+      const fromSession = await fetchCodexUsageFromSession();
+      if (fromSession && fromSession.data) return fromSession;
+      // ③ 旧版桌面文件通道：取到数据就用文件的数据，不被 appAuth 的失败状态遮住
       const fromFile = fetchCodexUsageFromFile();
       if (fromFile && fromFile.data) return fromFile;
       // ③ 两条都失败：appAuth 存在时返回它的明确原因（「去 DSH App 授权」等），
