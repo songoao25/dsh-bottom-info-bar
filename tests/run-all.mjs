@@ -44,6 +44,7 @@ const cases = [
   ['test-dual-mode（host.js 双模式逻辑 + client 订阅渲染）', ['tests/test-dual-mode.cjs'], join(root), process.execPath],
   ['test-zai-quota（Issue #85 智谱 CREDIT_LIMIT 积分制 + 窗口时长闸门/百分比推算/降级）', ['tests/test-zai-quota.cjs'], join(root), process.execPath],
   ['test-codex-appauth（Issue #274 DSH Go appAuth 通道：窗口映射/未登录引导/桌面回归/异常降级）', ['tests/test-codex-appauth.mjs'], join(root), process.execPath],
+  ['test-codex-wham（Codex 后端 /wham/usage 窗口映射与接入）', ['tests/test-codex-wham.mjs'], join(root), process.execPath],
   ['test-commandcode-quota（Issue #99 Command Code credits/窗口/未知套餐降级）', ['tests/test-commandcode-quota.cjs'], join(root), process.execPath],
   ['test-minimax-token-plan（MiniMax Token Plan 多桶最紧聚合 + Subscription Key 错误码降级）', ['tests/test-minimax-token-plan.cjs'], join(root), process.execPath],
   ['test-alibaba-token-plan（阿里 Token Plan：ACS3 签名向量/多层信封解析/CLI 令牌回退/错误分类）', ['tests/test-alibaba-token-plan.cjs'], join(root), process.execPath],

@@ -899,6 +899,55 @@ function parseAppAuthCodexUsage(result, windowLabels) {
   return { status: 'unavailable', reason: reason, plan: plan, planType: planType, windows: [] }
 }
 
+// /backend-api/wham/usage → 统一的 { provider, plan, planType, expiryAt, windows }。
+// 这是 Codex 后端的额度接口：primary_window/secondary_window 带 used_percent、
+// reset_at（Unix 秒）和 limit_window_seconds。SIWC 的 token 官方明确不接受，
+// 所以只有本机存在 Codex 登录文件时才有数据。
+function parseCodexWhamUsage(body, windowLabels) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const wl = windowLabels || WINDOW_LABELS
+  const windows = []
+  const seen = {}
+  const addWindow = function (win, id) {
+    if (!win || typeof win !== 'object') return
+    const percent = parsePercent(win.used_percent)
+    const key = appAuthWindowKey(id, win.limit_window_seconds)
+    if (percent == null || !key || seen[key]) return
+    seen[key] = true
+    windows.push({
+      key: key,
+      label: wl[key],
+      usedPercent: Math.round(percent),
+      resetsAt: normalizeResetAt(win.reset_at),
+    })
+  }
+  const rateLimit = body.rate_limit && typeof body.rate_limit === 'object' ? body.rate_limit : {}
+  addWindow(rateLimit.primary_window, 'primary')
+  addWindow(rateLimit.secondary_window, 'secondary')
+  // Business 计划没有 rate_limit，只有管理员设的月度上限。
+  const spend = body.spend_control && typeof body.spend_control === 'object' ? body.spend_control.individual_limit : null
+  if (windows.length === 0 && spend && typeof spend === 'object') {
+    let percent = parsePercent(spend.used_percent)
+    if (percent == null) {
+      const used = Number(spend.used)
+      const limit = Number(spend.limit)
+      if (isFinite(used) && isFinite(limit) && limit > 0) percent = (used / limit) * 100
+    }
+    if (percent != null) {
+      windows.push({ key: 'monthly', label: wl.monthly, usedPercent: Math.round(percent), resetsAt: normalizeResetAt(spend.reset_at) })
+    }
+  }
+  if (windows.length === 0) return null
+  const planType = typeof body.plan_type === 'string' && body.plan_type.length > 0 ? body.plan_type : null
+  return {
+    provider: 'codex',
+    plan: planType ? planDisplayName(planType) : null,
+    planType: planType,
+    expiryAt: null,
+    windows: windows,
+  }
+}
+
 // ---------- FR-9 / D8：小米 MiMo 解析（数值一律容错：字符串/数字、百分比 0-1 或 0-100 双形态） ----------
 function xiaomiRegionBaseUrl(region) {
   if (region === 'sgp') return 'https://token-plan-sgp.xiaomimimo.com'
@@ -2929,11 +2978,63 @@ export default {
       }
     }
 
+    // Codex 后端额度通道：需要本机 ~/.codex/auth.json（Codex CLI / 旧版插件留下的登录）。
+    // SIWC 的 token 被官方明确拒绝在 ChatGPT 用量端点之外，所以这是当前唯一能拿到
+    // 5 小时 / 每周 / 月度窗口百分比的路径。文件不存在或过期时返回 null，退回套餐/有效期。
+    async function fetchCodexUsageFromWham() {
+      const read = readCodexAuthFile(CODEX_AUTH_FILE);
+      if (!read.ok) return null;
+      const tokens = read.auth && read.auth.tokens;
+      const access = tokens && typeof tokens.access_token === 'string' && tokens.access_token.length > 0 ? tokens.access_token : null;
+      if (!access) return null;
+      // 账号一致性：两边的 id_token 都能读到邮箱且不一致时，不拿另一个账号的额度冒充。
+      try {
+        if (ctx.credentials && typeof ctx.credentials.readRecord === 'function') {
+          const record = await ctx.credentials.readRecord('chatgpt-sub/session');
+          const payload = record && record.kind === 'grant' ? record.payload : null;
+          const nativeClaims = payload && typeof payload.idToken === 'string' ? decodeJwtPayload(payload.idToken) : null;
+          const codexClaims = typeof tokens.id_token === 'string' ? decodeJwtPayload(tokens.id_token) : null;
+          if (nativeClaims && codexClaims && typeof nativeClaims.email === 'string' && typeof codexClaims.email === 'string'
+            && nativeClaims.email.toLowerCase() !== codexClaims.email.toLowerCase()) {
+            return null;
+          }
+        }
+      } catch (err) { /* 读不到会话就按纯 Codex 账号处理 */ }
+      const headers = { Authorization: 'Bearer ' + access, Accept: 'application/json' };
+      if (typeof tokens.account_id === 'string' && tokens.account_id.length > 0) headers['ChatGPT-Account-Id'] = tokens.account_id;
+      try {
+        const res = await fetch('https://chatgpt.com/backend-api/wham/usage', { headers: headers, signal: timeoutSignal(HTTP_TIMEOUT_MS) });
+        if (!res.ok) return null;
+        const body = await res.json();
+        const data = parseCodexWhamUsage(body, windowLabels);
+        if (!data) return null;
+        // 窗口来自 Codex 后端，但套餐名以官方 SIWC 会话为准：wham 的 plan_type 可能
+        // 是 Codex 侧的 free/plus，跟 ChatGPT 套餐不是同一个字段。
+        try {
+          if (ctx.credentials && typeof ctx.credentials.readRecord === 'function') {
+            const record = await ctx.credentials.readRecord('chatgpt-sub/session');
+            const payload = record && record.kind === 'grant' ? record.payload : null;
+            if (payload && typeof payload.plan === 'string' && payload.plan.length > 0) {
+              data.plan = planDisplayName(payload.plan);
+              data.planType = payload.plan;
+              data.expiryAt = typeof payload.planExpiresAt === 'number' ? payload.planExpiresAt : null;
+            }
+          }
+        } catch (err) { /* 以 wham 的套餐字段为准 */ }
+        return { data: data };
+      } catch (err) {
+        return null;
+      }
+    }
+
     async function fetchCodexUsage() {
       // ① appAuth 优先：拿到额度窗口就用它（DSH Go 的唯一可用通道）
       const viaAppAuth = await fetchCodexUsageViaAppAuth();
       if (viaAppAuth && viaAppAuth.data) return viaAppAuth;
-      // ② 新版 dsh-chatgpt-sub 的 SIWC 会话（没有 Codex 文件也能显示套餐与有效期）
+      // ② Codex 后端额度：桌面端唯一能拿到窗口百分比的通道
+      const viaWham = await fetchCodexUsageFromWham();
+      if (viaWham && viaWham.data) return viaWham;
+      // ③ 新版 dsh-chatgpt-sub 的 SIWC 会话（没有 Codex 文件也能显示套餐与有效期）
       const fromSession = await fetchCodexUsageFromSession();
       if (fromSession && fromSession.data) return fromSession;
       // ③ 旧版桌面文件通道：取到数据就用文件的数据，不被 appAuth 的失败状态遮住
