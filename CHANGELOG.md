@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.27.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.1...v1.27.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* disclose the undocumented Codex usage endpoint in README ([#311](https://github.com/songoao25/dsh-bottom-info-bar/issues/311)) ([5763d8a](https://github.com/songoao25/dsh-bottom-info-bar/commit/5763d8af85b53b03b95330735809348ce31ae9cd))
+
 ## [1.27.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.0...v1.27.1) (2026-11-22)
 
 
