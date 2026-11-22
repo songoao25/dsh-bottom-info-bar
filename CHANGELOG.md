@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.27.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.0...v1.27.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* show Codex quota windows from the existing login ([#309](https://github.com/songoao25/dsh-bottom-info-bar/issues/309)) ([59240a3](https://github.com/songoao25/dsh-bottom-info-bar/commit/59240a30bde398a38055bc4c1e323bda26642faa))
+
 ## [1.27.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.26.0...v1.27.0) (2026-11-22)
 
 
