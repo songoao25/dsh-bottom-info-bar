@@ -63,6 +63,8 @@ https://github.com/songoao25/dsh-bottom-info-bar
 
 API 密钥填在 DSH 的**设置 → 模型**；订阅类（Codex、OpenCode、小米 Token Plan、Command Code、MiniMax、智谱、Kimi For Coding）读本机登录或 DSH 里配的推理 Key 直接查额度（MiniMax 那把需是 Subscription Key），不在用的套餐不会出现在信息栏，也不用再在插件页填任何东西。只有阿里 Token Plan（中国站/国际站）例外：推理套餐 Key 读不到额度，要另配阿里云 AccessKey——`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`（RAM 用户即可），在**插件设置页的「额度凭据」**里填（默认折叠），也可以填在 DSH 凭据或同名环境变量里。列表里没有的服务商只会显示未适配提示，绝不借用别家的数据。
 
+Codex 要多说一句：它的数字窗口是通过 Codex 官方客户端使用的内部用量接口读取的，该接口没有公开文档，OpenAI 未来可能调整或关闭。介意的用户可以不登录 Codex CLI（或删除 `~/.codex/auth.json`），届时 Codex 只显示套餐信息。
+
 ## 花费与更新
 
 账本需要 DSH 内部运行环境为 Node.js 22.13 或更新版本。账目和历史会话保存在本机磁盘，按需分批读取，导出直接下载。升级会迁移旧账，但保留旧文件供恢复核对；详见 [账本存储与恢复](docs/LEDGER.md)。
