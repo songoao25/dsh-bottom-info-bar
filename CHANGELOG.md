@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.27.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.26.0...v1.27.0) (2026-11-22)
+
+
+### Features
+
+* read the official SIWC session from dsh-chatgpt-sub ([#307](https://github.com/songoao25/dsh-bottom-info-bar/issues/307)) ([26dbc01](https://github.com/songoao25/dsh-bottom-info-bar/commit/26dbc01a7b49479524b53a2c4f221ae818b947a7))
+
 ## [1.26.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.25.2...v1.26.0) (2026-11-15)
 
 
