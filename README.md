@@ -63,6 +63,8 @@ Plugin information is further grouped by billing mode — read only the block th
 
 API keys go in DSH under **Settings → Models**; subscriptions (Codex, OpenCode, Xiaomi Token Plan, Command Code, MiniMax, Zhipu GLM, Kimi For Coding) read the local sign-in or the model key already configured in DSH (MiniMax's needs to be a Subscription Key). Unused plans never show up, and nothing needs to be typed on the plugin page. The one exception is Alibaba Token Plan (China and international sites): the inference plan key cannot read quota, so set an Alibaba Cloud AccessKey (`ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, a RAM user is enough) under **Quota credentials** in the plugin settings (collapsed by default), or in DSH's credentials / same-named environment variables. Anything off the list gets a not-supported hint instead of borrowed numbers.
 
+One caveat for Codex: its numeric windows are read through an internal usage endpoint used by OpenAI's own Codex client. That endpoint is not publicly documented, and OpenAI may change or close it at any time. If you would rather not rely on it, do not sign in to Codex CLI (or delete `~/.codex/auth.json`) and Codex will show plan information only.
+
 ## Spend and updates
 
 The ledger requires a DSH runtime with Node.js 22.13 or newer. It keeps records and historical session indexes in a local disk database, reads bounded batches, and streams exports. Existing ledger files are migrated once and retained for recovery; see [Ledger storage and recovery](docs/LEDGER.md).
