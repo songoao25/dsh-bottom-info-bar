@@ -5495,6 +5495,11 @@ export default {
     // Origin/Host headers and adds its private Host cookie. requestRejection() is the shared
     // boundary for both Web and Desktop; reproducing the browser-header check here rejects
     // legitimate desktop requests.
+    // DSH 0.2.3 起 Connection 重构移除了 requestRejection：路由改由注册时的 auth 声明
+    // 负责准入（默认 required，未认证请求在框架层被拦），插件这段手工检查在新宿主上
+    // 已冗余。无守卫直调不存在的方法会抛 TypeError、被下方 catch 统一转成 500，
+    // 全部 RPC（含设置页 getFieldConfig）随之失效（Issue #313）。因此：宿主仍提供
+    // requestRejection 时照旧调用；不存在时跳过手工检查，准入交给框架默认策略。
     ctx.inject(['connection', 'webServer'], function (webCtx) {
       webCtx.effect(function () {
         const dispose = webCtx.webServer.register({
@@ -5503,7 +5508,9 @@ export default {
           handler: async function (req, res) {
             let method = '';
             try {
-              const rejection = webCtx.connection.requestRejection(req);
+              const rejection = typeof webCtx.connection.requestRejection === 'function'
+                ? webCtx.connection.requestRejection(req)
+                : undefined;
               if (rejection !== undefined) {
                 respond(res, rejection, { error: rejection === 401 ? 'authentication required' : 'request rejected' });
                 return;
