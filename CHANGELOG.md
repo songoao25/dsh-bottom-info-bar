@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.27.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.2...v1.27.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* guard connection.requestRejection for DSH 0.2.3 hosts ([#314](https://github.com/songoao25/dsh-bottom-info-bar/issues/314)) ([475bd1e](https://github.com/songoao25/dsh-bottom-info-bar/commit/475bd1e0942780534976e12965106ecc492c67fc))
+
 ## [1.27.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.1...v1.27.2) (2026-11-22)
 
 
