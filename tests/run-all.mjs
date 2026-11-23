@@ -64,6 +64,7 @@ const cases = [
   ['test-ledger-client（issue #260：账本 worker 客户端/分页/降级/懒启动）', ['tests/test-ledger-client.mjs'], join(root), process.execPath],
   ['test-ledger-download（真实HTTP认证/完整下载/大账兼容拒绝）', ['tests/test-ledger-download.mjs'], join(root), process.execPath],
   ['test-field-settings（v1.9 PR2 设置落盘/白名单/密度持久/双重置/configVersion）', ['tests/test-field-settings.mjs'], join(root), process.execPath],
+  ['test-connection-compat（Issue #313 DSH 0.2.3 移除 requestRejection 后 RPC 不得 500）', ['tests/test-connection-compat.mjs'], join(root), process.execPath],
   ['test-field-config-client（v1.9 PR2 客户端过滤/零回归着色/注册表一致性）', ['tests/test-field-config-client.cjs'], join(root), process.execPath],
   ['test-field-sections（设置页小节：完整划分 / 文案成对 / 与 group 及显隐零耦合）', ['tests/test-field-sections.cjs'], join(root), process.execPath],
   ['test-usage-stream-ledger（每次回答只记一笔）', ['tests/test-usage-stream-ledger.mjs'], join(root), process.execPath],
