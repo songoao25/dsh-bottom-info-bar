@@ -27,6 +27,26 @@ On **DSH 0.2.2 with the native activity/usage buttons**, the native line sits on
 
 On **older hosts**, clicking the bar still switches between **Full** and **Compact**: Full keeps the legacy statistics row, Compact collapses it. Plugin fields remain identical in both modes. Compatibility is detected from the host's live extension entries, rather than a version string.
 
+## DSH Go
+
+Since v1.25.0, the bar and its settings page also adapt to **DSH Go**, the touch host for DeepSeek Harness — same package, no separate build, detected from the host's live layout signals rather than a version string. On the Go surface the account row becomes a card matched to the composer's material, the whole bar is a single touch target, and the details the desktop shows as hover tooltips open as an expandable details card instead, because touch has no hover. Wide Go windows gain two extra spend columns: today and the last 30 days.
+
+The bar running under the composer in DSH Go:
+
+<img src="assets/promo-dsh-go/dsh-go-info-bar-success.png" width="360" alt="Bottom Info Bar running under the composer in DSH Go">
+
+Tapped open, the same card carries the full details:
+
+<img src="assets/promo-dsh-go/dsh-go-info-bar-expanded.png" width="360" alt="Bottom Info Bar expanded into its details card in DSH Go">
+
+The settings page adapts too, with a live preview of the bar and the same field switches:
+
+<img src="assets/promo-dsh-go/dsh-go-plugin-settings-controls.png" width="360" alt="Bottom Info Bar settings with live preview in DSH Go">
+
+And the plugin's own page in DSH Go carries the info bar card natively (v1.26.0):
+
+<img src="assets/promo-dsh-go/dsh-go-plugin-settings-final.png" width="360" alt="Bottom Info Bar plugin page with the info bar card in DSH Go">
+
 ## Install
 
 Recommended: open the DSH plugin page, choose **Add plugin**, and enter the npm package name — DSH fetches the published package from npm, with no commands and no build:

@@ -27,6 +27,26 @@ DeepSeek Harness 插件：把输入框下方那行统计栏换成一行信息栏
 
 **旧宿主**仍保留点击信息栏切换**完整/简洁**：完整显示旧统计行，简洁收起它；插件字段在两种模式下一致。兼容方式通过实际扩展入口判断，不依赖版本号猜测。
 
+## DSH Go
+
+v1.25.0 起，信息栏与设置页同样适配 **DSH Go**（DeepSeek Harness 的触屏宿主）——还是同一个包，不用另装，靠宿主的实时布局信号识别，不看版本号。在 Go 里，账户信息行变成与输入框同材质的卡片，整条栏是一个触控目标；桌面端靠悬停提示展示的明细，在触屏上改为点开一张可展开的明细卡，因为触屏没有悬停。Go 宽屏窗口还会多出两列花费：今天与近 30 天。
+
+信息栏在 DSH Go 输入框下方的运行画面：
+
+<img src="assets/promo-dsh-go/dsh-go-info-bar-success.png" width="360" alt="信息栏在 DSH Go 输入框下方运行">
+
+点开后，同一张卡承载完整明细：
+
+<img src="assets/promo-dsh-go/dsh-go-info-bar-expanded.png" width="360" alt="信息栏在 DSH Go 里展开为明细卡">
+
+设置页同样适配，带信息栏的实时预览与全部显示开关：
+
+<img src="assets/promo-dsh-go/dsh-go-plugin-settings-controls.png" width="360" alt="DSH Go 里的信息栏设置页与实时预览">
+
+DSH Go 里的插件页也原生带上信息栏卡片（v1.26.0）：
+
+<img src="assets/promo-dsh-go/dsh-go-plugin-settings-final.png" width="360" alt="DSH Go 里带信息栏卡片的插件页">
+
 ## 安装
 
 最推荐：打开 DSH 的插件页 → **添加插件**，在「包名或地址」里填 npm 包名——DSH 会直接从 npm 下载已发布的版本，不用敲命令，也不用构建：
