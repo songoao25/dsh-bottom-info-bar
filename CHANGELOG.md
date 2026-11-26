@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.29.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.28.0...v1.29.0) (2026-11-26)
+
+
+### Features
+
+* add DeepSeek USD pricing and peak-valley catalog auto-update ([#320](https://github.com/songoao25/dsh-bottom-info-bar/issues/320)) ([d6defa8](https://github.com/songoao25/dsh-bottom-info-bar/commit/d6defa8ea38f9db5d63cf9619cf488e0c5af2416))
+
 ## [1.28.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.3...v1.28.0) (2026-11-26)
 
 
