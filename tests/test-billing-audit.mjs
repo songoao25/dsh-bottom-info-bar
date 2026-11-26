@@ -102,7 +102,8 @@ check('峰谷：工作日 14:00 高峰', B.currentPeriod(Date.parse('2026-10-08T
 check('峰谷：工作日 18:00 空闲', B.currentPeriod(Date.parse('2026-10-08T18:00:00+08:00')) === 'offpeak')
 check('峰谷：周六全天空闲', B.currentPeriod(Date.parse('2026-10-10T10:00:00+08:00')) === 'offpeak')
 check('峰谷：国庆假期 10:00 空闲', B.currentPeriod(Date.parse('2026-10-06T10:00:00+08:00')) === 'offpeak')
-check('峰谷：未知年份按工作日规则（不猜农历）', B.currentPeriod(Date.parse('2027-10-01T10:00:00+08:00')) === 'peak')
+check('峰谷：未知年份按工作日规则（不猜农历）', B.currentPeriod(Date.parse('2028-10-02T10:00:00+08:00')) === 'peak')
+check('峰谷：2027 国庆已入表（国办发明电〔2026〕10号）10/1 = 空闲', B.currentPeriod(Date.parse('2027-10-01T10:00:00+08:00')) === 'offpeak')
 check('峰谷：高峰价 = 空闲价 2 倍（用户口径：谷时省一半）',
   B.costOf(flash({ input: 1e6, cacheRead: 0, output: 0 })) * 2 === B.costOf(flash({ input: 1e6, cacheRead: 0, output: 0, ts: PEAK })))
 

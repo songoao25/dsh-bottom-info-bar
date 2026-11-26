@@ -273,5 +273,69 @@
     },
     "source": "https://platform.kimi.com/docs/pricing/chat",
     "notes": "国内计费域（api.moonshot.cn）。K2 Turbo；国际站 USD 待采集后另建 moonshotai: 键。"
+  },
+  "deepseek-flash": {
+    "currency": "CNY",
+    "mode": "peak-valley",
+    "peak": {
+      "inputCacheHit": 0.04,
+      "inputCacheMiss": 2,
+      "output": 8
+    },
+    "offpeak": {
+      "inputCacheHit": 0.02,
+      "inputCacheMiss": 1,
+      "output": 4
+    },
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+    "notes": "官方人民币价目，2026-11-26 核对。高峰=北京时间周一至周五 09:00–12:00、14:00–18:00（中国法定节假日除外），空闲价为高峰价一半。内置表同值；目录为更新通道，官方调价改这里即可随 6 小时刷新下发，无需发版。"
+  },
+  "deepseek-v4-pro": {
+    "currency": "CNY",
+    "mode": "peak-valley",
+    "peak": {
+      "inputCacheHit": 0.3,
+      "inputCacheMiss": 9,
+      "output": 27
+    },
+    "offpeak": {
+      "inputCacheHit": 0.15,
+      "inputCacheMiss": 4.5,
+      "output": 13.5
+    },
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+    "notes": "官方人民币价目，2026-11-26 核对。峰谷规则同 deepseek-flash。内置表同值；目录为更新通道。"
+  },
+  "deepseek-usd:deepseek-flash": {
+    "currency": "USD",
+    "mode": "peak-valley",
+    "peak": {
+      "inputCacheHit": 0.006,
+      "inputCacheMiss": 0.3,
+      "output": 1.2
+    },
+    "offpeak": {
+      "inputCacheHit": 0.003,
+      "inputCacheMiss": 0.15,
+      "output": 0.6
+    },
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
+    "notes": "官方美元价目，2026-11-26 核对。美元账户专用作用域键（deepseek-usd:）；与人民币表是两张独立价目，v4-pro 人民币价比美元×汇率高约 2%，不可互换。峰谷窗口与人民币表一致（UTC 周一至周五 01:00–04:00、06:00–10:00）。"
+  },
+  "deepseek-usd:deepseek-v4-pro": {
+    "currency": "USD",
+    "mode": "peak-valley",
+    "peak": {
+      "inputCacheHit": 0.044,
+      "inputCacheMiss": 1.32,
+      "output": 3.96
+    },
+    "offpeak": {
+      "inputCacheHit": 0.022,
+      "inputCacheMiss": 0.66,
+      "output": 1.98
+    },
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
+    "notes": "官方美元价目，2026-11-26 核对。美元账户专用作用域键（deepseek-usd:）。峰谷规则同 deepseek-flash。"
   }
 }

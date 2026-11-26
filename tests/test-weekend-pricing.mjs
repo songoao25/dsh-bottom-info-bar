@@ -40,6 +40,7 @@ check('中秋倒计时跨越假期和周末', nextPeriodLabel(at('2026-09-24T18:
 check('国庆前一天仍为高峰', currentPeriod(at('2026-09-30T15:00:00+08:00')), 'peak')
 check('UTC 日期不同仍按北京国庆日期', currentPeriod(at('2026-10-01T01:00:00Z')), 'offpeak')
 check('旧规则时期不重算春节价格', currentPeriod(at('2026-02-16T10:00:00+08:00')), 'peak')
-check('未知年份保留工作日规则', currentPeriod(at('2027-10-01T10:00:00+08:00')), 'peak')
+check('未知年份保留工作日规则', currentPeriod(at('2028-10-02T10:00:00+08:00')), 'peak')
+check('2027 国庆已入表（国办发明电〔2026〕10号）', currentPeriod(at('2027-10-01T10:00:00+08:00')), 'offpeak')
 
 process.exit(failures === 0 ? 0 : 1)
