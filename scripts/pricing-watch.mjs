@@ -73,11 +73,28 @@ function decodeEntities(s) {
     .replace(/&amp;/g, '&')
 }
 export function stripCell(html) {
-  // 先解码再剥标签：&lt;script&gt; 这类编码过的标签解码后也会被剥掉；
-  // 顺序反过来会在剥完标签后把 &lt; 还原成 <，残留进结果（CodeQL 多字符清洗不完整告警）。
-  // &amp; 在 decodeEntities 内最后解，不会二次解码；>? 兜住无闭合 > 的残留。
-  return decodeEntities(html).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/g, '')
+  // 先解码再剥标签：&lt;script&gt; 解码后也会被剥掉；&amp; 在 decodeEntities 内最后解，不二次解码。
+  return stripTags(decodeEntities(html))
     .replace(/[ 　]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+// 标签剥离（逐字扫描，不用正则替换）：<...> 整段去掉，<br> 留一个空格，
+// 孤立的 <（无闭合 >）连同其后内容一起去掉。输出里不可能残留 <，
+// 因此编码标签（&lt;script&gt;）与嵌套标签（<scr<script>ipt>）都无法绕过——
+// 正则一次替换会被嵌套绕过，是 CodeQL 多字符清洗不完整告警的根因。
+function stripTags(s) {
+  let out = ''
+  let i = 0
+  while (i < s.length) {
+    const lt = s.indexOf('<', i)
+    if (lt === -1) { out += s.slice(i); break }
+    out += s.slice(i, lt)
+    const gt = s.indexOf('>', lt + 1)
+    const head = s.slice(lt + 1, gt === -1 ? s.length : gt).trim().toLowerCase()
+    if (head === 'br' || head.startsWith('br ') || head.startsWith('br/')) out += ' '
+    if (gt === -1) break
+    i = gt + 1
+  }
+  return out
 }
 function extractArticle(html) {
   const m = /<article[^>]*>([\s\S]*?)<\/article>/i.exec(html)

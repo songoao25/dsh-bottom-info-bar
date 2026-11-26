@@ -196,6 +196,9 @@ check('stripCell：编码过的 <script> 解码后也被剥掉，不残留',
 check('stripCell：&amp;lt; 只解一次，不二次解成标签',
   stripCell('&amp;lt;script&amp;gt;') === '&lt;script&gt;')
 check('stripCell：无闭合 > 的孤立标签也被剥掉', stripCell('abc<script') === 'abc')
+check('stripCell：嵌套标签 <scr<script>ipt> 绕不过去（输出不含 <）',
+  stripCell('<scr<script>ipt>').indexOf('<') === -1)
+check('stripCell：<br> 留一个空格', stripCell('a<br>b') === 'a b' && stripCell('a<br/>b') === 'a b')
 
 // ---------- ④ Change Log 只做旁证 ----------
 const entriesEn = parseChangeLog(logEn)
