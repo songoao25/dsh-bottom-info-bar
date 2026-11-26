@@ -1,4 +1,15 @@
 {
+  "meta": {
+    "schemaVersion": 2,
+    "checkedAt": "2026-11-26T21:14:46.539Z",
+    "sourceHash": "c81e656876cee450d1d00a544f3a24eed7de7b72aa74692294f1fa4279ff48f1",
+    "ruleHash": "3163d1a38f36e0d814ed3186f3859f21ac71369e5c04d8e0b807b1db235ad84c",
+    "sources": {
+      "CNY": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "USD": "https://api-docs.deepseek.com/quick_start/pricing"
+    },
+    "holidaysThrough": 2027
+  },
   "glm-5.3": {
     "currency": "CNY",
     "mode": "flat",
@@ -337,5 +348,44 @@
     },
     "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "notes": "官方美元价目，2026-11-26 核对。美元账户专用作用域键（deepseek-usd:）。峰谷规则同 deepseek-flash。"
+  },
+  "tools": {
+    "search": {
+      "unit": "per 1000 successful requests",
+      "CNY": 5,
+      "USD": 0.75
+    },
+    "fetch": {
+      "unit": "per 1000 successful requests",
+      "CNY": 5,
+      "USD": 0.75
+    },
+    "ocr": {
+      "unit": "per 1000 pages",
+      "CNY": 1.5,
+      "USD": 0.225
+    },
+    "tts": {
+      "unit": "per 10000 characters",
+      "CNY": {
+        "list": 3,
+        "limitedTime": 1.5
+      },
+      "USD": {
+        "list": 0.45,
+        "limitedTime": 0.225
+      }
+    },
+    "asr": {
+      "unit": "per hour of audio",
+      "CNY": {
+        "list": 0.78,
+        "limitedTime": 0.39
+      },
+      "USD": {
+        "list": 0.116,
+        "limitedTime": 0.058
+      }
+    }
   }
 }

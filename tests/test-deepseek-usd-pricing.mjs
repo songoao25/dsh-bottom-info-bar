@@ -7,7 +7,7 @@
 // 用法：node tests/test-deepseek-usd-pricing.mjs
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createAccounting, currentPeriod, pricingProviderFor } from '../src/accounting.js'
+import { createAccounting, currentPeriod, pricingProviderFor, BUILTIN_PRICING_CHECKED_AT, HOLIDAYS_THROUGH_YEAR, isPricingStale, PRICING_STALE_AFTER_MS } from '../src/accounting.js'
 
 const root = process.cwd()
 let pass = 0, fail = 0
@@ -56,14 +56,24 @@ check('deepseek + 无币种 → 不变（默认人民币价）', pricingProvider
 check('非 DeepSeek provider + USD → 不变', pricingProviderFor('openai', 'USD') === 'openai'
   && pricingProviderFor('moonshotai', 'USD') === 'moonshotai')
 check('空/非法 provider 原样返回', pricingProviderFor('', 'USD') === '' && pricingProviderFor(null, 'USD') === null)
+// pricing-watch §7.6：作用域映射按 ISO 4217 通用，不再 hardcode USD 分支
+check('deepseek + EUR → deepseek-eur（通用映射，将来出欧元表不用改代码）', pricingProviderFor('deepseek', 'EUR') === 'deepseek-eur')
+check('deepseek + JPY → deepseek-jpy', pricingProviderFor('deepseek', 'JPY') === 'deepseek-jpy')
+check('非法币种（两位/小写）→ 不变', pricingProviderFor('deepseek', 'US') === 'deepseek'
+  && pricingProviderFor('deepseek', 'usd') === 'deepseek')
+check('非 DeepSeek provider + EUR → 不变', pricingProviderFor('openai', 'EUR') === 'openai')
 
 // ---------- ③ 按账户币种选表 ----------
 check('modelCurrency：deepseek flash + USD → USD', accounting.modelCurrency('deepseek', 'deepseek-flash', 'USD') === 'USD')
 check('modelCurrency：deepseek-official v4-pro + USD → USD', accounting.modelCurrency('deepseek-official', 'deepseek-v4-pro', 'USD') === 'USD')
 check('modelCurrency：deepseek flash + CNY → CNY', accounting.modelCurrency('deepseek', 'deepseek-flash', 'CNY') === 'CNY')
 check('modelCurrency：不传币种 → CNY（既有默认不变）', accounting.modelCurrency('deepseek', 'deepseek-flash') === 'CNY')
-check('modelCurrency：deepseek-chat + USD → CNY（无美元官方价，不编造，回退人民币价）',
-  accounting.modelCurrency('deepseek', 'deepseek-chat', 'USD') === 'CNY')
+// pricing-watch §10-4（覆盖旧口径）：deepseek-chat 已退役，新记录按承接模型 Flash 计价，
+// 美元账户走 Flash 美元价（不再回退人民币价）。
+check('modelCurrency：deepseek-chat + USD → USD（退役承接 Flash 美元价）',
+  accounting.modelCurrency('deepseek', 'deepseek-chat', 'USD') === 'USD')
+check('modelCurrency：deepseek-chat + CNY → CNY（退役承接 Flash 人民币价）',
+  accounting.modelCurrency('deepseek', 'deepseek-chat', 'CNY') === 'CNY')
 check('modelCurrency：openai 不受币种参数影响', accounting.modelCurrency('openai', 'gpt-4o', 'USD') === 'USD')
 
 // 峰时：2026-11-27 周五北京时间 10:00（= UTC 02:00）；空闲：同日 20:00（= UTC 12:00）
@@ -94,6 +104,29 @@ check('costOf：冻结 CNY 的记录，forceOffpeak 重算 = 空闲人民币价 
   accounting.costOf(rec('deepseek', 'deepseek-flash', peakTs, 1e6, 0, 0, 1e6, 'CNY'), true) === 5)
 check('costOf：冻结 USD 的记录，不传币种参数也走美元表',
   accounting.costOf(rec('deepseek', 'deepseek-flash', peakTs, 1e6, 0, 0, 1e6, 'USD'), false) === 1.5)
+
+// ---------- ⑥ 退役承接（pricing-watch §10-4）：新记录按 Flash，旧记录保留原价 ----------
+// deepseek-chat 退役日 2026-07-24；flat 价 0.5/2/8 与 Flash 高峰价 0.04/2/8 在
+// 未命中/输出两档上数值相同，用空闲时段区分：退役后空闲走 Flash 空闲价（1/4），
+// 退役前仍按 flat 价（2/8，不分峰谷）。
+const preRetireOffpeak = Date.UTC(2026, 6, 1, 12, 0, 0) // 2026-07-01 20:00 北京时间 = 空闲
+const postRetireOffpeak = Date.UTC(2026, 7, 1, 12, 0, 0) // 2026-08-01 20:00 北京时间 = 空闲
+check('costOf：退役日之前的 deepseek-chat 记录按 flat 原价（空闲 1M+1M = ¥10）',
+  accounting.costOf(rec('deepseek', 'deepseek-chat', preRetireOffpeak, 1e6, 0, 0, 1e6), false) === 10)
+check('costOf：退役日之后的 deepseek-chat 记录按 Flash 空闲价（空闲 1M+1M = ¥5）',
+  accounting.costOf(rec('deepseek', 'deepseek-chat', postRetireOffpeak, 1e6, 0, 0, 1e6), false) === 5)
+check('costOf：退役日之后的 deepseek-chat 美元记录按 Flash 美元空闲价（$0.75）',
+  accounting.costOf(rec('deepseek', 'deepseek-chat', postRetireOffpeak, 1e6, 0, 0, 1e6), false, 'USD') === 0.75)
+check('costOf：已落盘金额的记录不受承接影响（cost 优先）',
+  accounting.costOf({ provider: 'deepseek', model: 'deepseek-chat', ts: postRetireOffpeak, input: 1e6, cacheRead: 0, cacheWrite: 0, output: 1e6, cost: 3 }, false) === 3)
+
+// ---------- ⑦ 价目验证状态（pricing-watch §7.5） ----------
+check('内置 DeepSeek 条目核对日 = 2026-11-27', BUILTIN_PRICING_CHECKED_AT === '2026-11-27')
+check('假期表覆盖到 2027 年', HOLIDAYS_THROUGH_YEAR === 2027)
+check('stale 阈值 = 7 天', PRICING_STALE_AFTER_MS === 7 * 24 * 60 * 60 * 1000)
+check('isPricingStale：6 天前不 stale', isPricingStale(Date.now() - 6 * 24 * 60 * 60 * 1000, Date.now()) === false)
+check('isPricingStale：8 天前 stale', isPricingStale(Date.now() - 8 * 24 * 60 * 60 * 1000, Date.now()) === true)
+check('isPricingStale：无时间戳 stale', isPricingStale(null, Date.now()) === true && isPricingStale(NaN, Date.now()) === true)
 
 // ---------- ④ 2027 法定节假日 ----------
 // 北京时间 10:00（= UTC 02:00）本是高峰窗口；落在法定节假日则为空闲。

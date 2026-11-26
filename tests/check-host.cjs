@@ -54,6 +54,7 @@ const builtins = new Set([
   'openLedgerStore', 'packageVersion', 'parseSemver', 'PACKAGE_FILE', 'PACKAGE_DIR', 'UPDATE_REGISTRY_URL', 'PACKAGE_NAME',
   // 记账引擎与账本 worker 客户端（issue #260：价目/账户映射下沉、sqlite 移出主线程）
   'createAccounting', 'createLedgerClient', 'accountForProvider', 'safeMapKey', 'currentPeriod',
+  'isPricingStale', 'BUILTIN_PRICING_CHECKED_AT', 'HOLIDAYS_THROUGH_YEAR', // pricing-watch：价目验证状态（目录 meta + stale 判定）
   'process', 'URL', 'Buffer', 'decodeURIComponent', 'encodeURIComponent',
   'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'queueMicrotask', 'AbortController', 'fetch', 'require', 'module', 'exports',

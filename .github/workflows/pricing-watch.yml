@@ -1,0 +1,135 @@
+# DeepSeek 价目自动更新（pricing-watch）
+#
+# 每小时匿名读一次 DeepSeek 官方价目页（英文/USD + 中文/CNY）与 Change Log，
+# scripts/pricing-watch.mjs 严格解析 + 全部校验通过后才提交 catalog/pricing.json；
+# 任一环节失败 → 整批拒绝、不写目录，并在仓库开一个去重后的 issue 告警。
+#
+# 设计依据：RESEARCH-deepseek-auto-pricing-20261127.md §7（CI 抓取器 + 现有目录通道）。
+# 权限：仅 contents: write（提交本仓库目录）与 issues: write（失败告警）。
+# 注意：目录提交用 GITHUB_TOKEN 推送，不会触发 CI/Release Please（GitHub 的防循环规则），
+# 这正是期望行为——纯数据更新不发版；校验本身已在脚本内完成。
+name: Pricing Watch
+
+on:
+  schedule:
+    - cron: '7 * * * *' # 每小时（错开整点）
+    - cron: '0 0 15 11 *' # 每年 11 月 15 日：节假日表年度闹钟
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run（只校验、不提交目录）'
+        type: boolean
+        default: false
+      run_holiday_check:
+        description: '同时跑一次节假日表检查（平时仅 11 月 15 日自动跑）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pricing-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Run pricing watch
+        id: watch
+        run: |
+          # pipefail：不加的话 tee 会吃掉抓取器的非零退出码，失败告警步永远不触发
+          set -o pipefail
+          node scripts/pricing-watch.mjs --catalog catalog/pricing.json ${{ inputs.dry_run == true && '--dry-run' || '' }} | tee "$RUNNER_TEMP/watch.json"
+      - name: Commit catalog update
+        if: steps.watch.outcome == 'success'
+        run: |
+          if ! git status --porcelain -- catalog/pricing.json | grep -q .; then
+            echo '目录无变化，不提交。'
+            exit 0
+          fi
+          node -e "
+            const fs = require('node:fs');
+            const s = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/watch.json', 'utf8'));
+            let msg;
+            if (s.status === 'stamp') {
+              msg = 'chore(pricing): daily verification stamp (pricing-watch)\n\n官方价目页无变化；本次仅更新 checkedAt 验讫戳。\nsourceHash: ' + s.sourceHash + '\n';
+            } else {
+              const lines = s.changes.length > 0 ? s.changes.map(function (c) { return '- ' + c; }) : ['- 价格与规则均无变化（仅 meta 更新）'];
+              if (s.warnings.length > 0) lines.push('', '警告：', ...s.warnings.map(function (w) { return '- ' + w; }));
+              if (s.changelogNote) lines.push('', s.changelogNote);
+              lines.push('sourceHash: ' + s.sourceHash, 'ruleHash: ' + s.ruleHash);
+              msg = 'chore(pricing): auto-update DeepSeek catalog (pricing-watch)\n\n' + lines.join('\n') + '\n';
+            }
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/commit-msg.txt', msg);
+          "
+          git config user.name 'dsh-bottom-info-bar pricing-watch'
+          git config user.email 'pricing-watch@users.noreply.github.com'
+          git add catalog/pricing.json
+          git commit -F "$RUNNER_TEMP/commit-msg.txt"
+          git push
+      - name: Open failure issue (deduped by open issue)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh issue list --label pricing-watch-failure --state open --json number --jq 'length')" != "0" ]; then
+            echo '已有未关闭的 pricing-watch-failure issue，不重复开。'
+            exit 0
+          fi
+          BODY="pricing-watch 校验失败，整批已拒绝，目录未改动（上一份可用目录继续生效，用户侧零感知）。"
+          if [ -f "$RUNNER_TEMP/watch.json" ]; then
+            BODY="$BODY
+
+          摘要：$(cat "$RUNNER_TEMP/watch.json")"
+          else
+            BODY="$BODY
+
+          抓取器未产出摘要（可能在抓取阶段即失败），详见本次 Action 日志。"
+          fi
+          gh issue create --label pricing-watch-failure \
+            --title "pricing-watch 校验失败（$(date -u +%Y-%m-%d)）" --body "$BODY"
+
+  holiday-alarm:
+    # 年度闹钟：每年 11 月 15 日检查节假日表是否覆盖次年；覆盖不足即开 issue 提醒补表。
+    # 国务院次年安排的公文 URL 每年都变、无法提前拼出，故本任务不猜 URL：
+    # 覆盖不足本身就是开 issue 的充分条件，issue 正文附 gov.cn 检索入口。
+    if: github.event.schedule == '0 0 15 11 *' || inputs.run_holiday_check == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check holiday table coverage
+        id: check
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const catalog = JSON.parse(fs.readFileSync('catalog/pricing.json', 'utf8'));
+            const nextYear = new Date().getUTCFullYear() + 1;
+            const through = (catalog.meta && catalog.meta.holidaysThrough) || 0;
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'next_year=' + nextYear + '\n');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'holidays_through=' + through + '\n');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'needs_issue=' + (through < nextYear) + '\n');
+            console.log('nextYear=' + nextYear + ' holidaysThrough=' + through + ' needsIssue=' + (through < nextYear));
+          "
+      - name: Open holiday issue (deduped by open issue)
+        if: steps.check.outputs.needs_issue == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh issue list --label holiday-table --state open --json number --jq 'length')" != "0" ]; then
+            echo '已有未关闭的 holiday-table issue，不重复开。'
+            exit 0
+          fi
+          gh issue create --label holiday-table \
+            --title "节假日表只到 ${{ steps.check.outputs.holidays_through }} 年，请补 ${{ steps.check.outputs.next_year }} 年安排" \
+            --body "国务院办公厅已发布（或即将发布）${{ steps.check.outputs.next_year }} 年部分节假日安排，请按公文补一行日期到 src/accounting.js 的 CHINESE_PUBLIC_HOLIDAYS（不是改逻辑），补完后 pricing-watch 下一轮会自动把 catalog meta 的 holidaysThrough 同步过去。
+
+          公文检索：https://www.gov.cn/zhengce/ 搜索「${{ steps.check.outputs.next_year }}年部分节假日安排的通知」。
+
+          影响：该年假期工作日在此之前会按高峰价多算一倍；插件设置页价目行已有过期提示兜底。"

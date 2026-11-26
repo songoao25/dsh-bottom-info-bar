@@ -1,4 +1,5 @@
 import { readLedgerRecords, resetSyntheticDatabase } from './ledger-fixture.mjs'
+import { currentPeriod } from '../src/accounting.js'
 // v1.9.0 性能地基验收测试（docs/PERF-AUDIT-v1.9.md §⑦）：
 // ① 压缩等价：~5000 条快照 + 5000 行 journal 折叠后，totalSpend/todaySpend/last30dSpend/
 //    spendSummary/currentSessionSummary 与旧版全扫基线逐字段相等；快照 ≤ 保留窗、journal ≤ 阈值；重启总额不变
@@ -77,8 +78,14 @@ function refCurrency(r) {
 function refCostOf(r) {
   return Number.isFinite(r.cost) && r.cost >= 0 ? r.cost : null
 }
-// 强制空闲价口径：deepseek-chat 为 flat 价（0.5/2/8 CNY·百万），重算式与 host 一致
+// 退役承接（pricing-watch §10-4）：deepseek-chat 2026-07-24 退役；该日之后的记录按承接
+// 模型 Flash 空闲价（1/0.02/4 CNY·百万）重算，之前的保留 flat 价（2/0.5/8）。
+// 本测试的 deepseek-chat 记录全部在退役日之后（最早约 2026-07-30）。
+const DEEPSEEK_CHAT_RETIRED_AT_MS = Date.UTC(2026, 6, 24)
 function refOffpeak(r) {
+  if (r.model === 'deepseek-chat' && r.ts >= DEEPSEEK_CHAT_RETIRED_AT_MS) {
+    return ((r.input + r.cacheWrite) * 1 + r.cacheRead * 0.02 + r.output * 4) / 1e6
+  }
   return ((r.input + r.cacheWrite) * 2 + r.cacheRead * 0.5 + r.output * 8) / 1e6
 }
 function refTotalSpend(records, account, currency) {
@@ -473,11 +480,17 @@ dispose2()
   }
   check('④ recordUsage 单条 O(1)：5 次记账零明细扫描', m4.internals.counters.detailScanCalls === scanCallsBefore && m4.internals.counters.recordUsageCount === 5, m4.internals.counters)
   const liveLast = await invokeSummary(stub4.captured.route, 'live-5')
-  // deepseek-chat 单笔 live-5 = (500×2 + 50×8)/1e6 = 0.0014；currentSession.costs 不做四舍五入，可精确断言
-  check('④ 增量记账同步进汇总（本会话金额精确可见）', liveLast.currentSession && liveLast.currentSession.tokens === 550 && close(liveLast.currentSession.costs.CNY, 0.0014, 1e-12), liveLast.currentSession)
+  // live 记录是当下时间的 deepseek-chat 新记录（退役后 → 按 Flash 计价）：
+  // 高峰 (500×2 + 50×8)/1e6 = 0.0014，空闲 (500×1 + 50×4)/1e6 = 0.0007；按当前时段断言
+  const livePeriod = currentPeriod(Date.now())
+  const liveMiss = livePeriod === 'offpeak' ? 1 : 2
+  const liveOut = livePeriod === 'offpeak' ? 4 : 8
+  const live5Cost = (500 * liveMiss + 50 * liveOut) / 1e6
+  check('④ 增量记账同步进汇总（本会话金额精确可见）', liveLast.currentSession && liveLast.currentSession.tokens === 550 && close(liveLast.currentSession.costs.CNY, live5Cost, 1e-12), liveLast.currentSession)
   const after4 = (await invokeSummary(stub4.captured.route, 'recent-check')).totalSpend
-  // 5 笔合计 = 280×(1+2+3+4+5)/1e6 = 0.0042
-  check('④ 增量记账同步进总账（+0.0042）', close(after4 - summary1.totalSpend, 0.0042, 0.0006), { after4, base: summary1.totalSpend })
+  // 5 笔合计 = (100×miss + 10×out)×(1+2+3+4+5)/1e6：高峰 0.0042，空闲 0.0021
+  const liveSumCost = (100 * liveMiss + 10 * liveOut) * 15 / 1e6
+  check('④ 增量记账同步进总账（+' + liveSumCost + '）', close(after4 - summary1.totalSpend, liveSumCost, 0.0006), { after4, base: summary1.totalSpend })
   dispose4()
   rmSync(dataDir4, { recursive: true, force: true })
 }

@@ -79,6 +79,7 @@ const cases = [
   ['test-self-update（自更新引擎：版本比较/完整性校验/原子替换/回滚/开关/审计日志 + host/client 接线）', ['tests/test-self-update.mjs'], join(root), process.execPath],
   ['test-pricing-catalog（远程价目目录体系 + 官方价目校验）', ['tests/test-pricing-catalog.mjs'], join(root), process.execPath],
   ['test-deepseek-usd-pricing（Issue #317 第二阶段：DeepSeek 美元价目 / 账户币种定价 / 2027 假期日历）', ['tests/test-deepseek-usd-pricing.mjs'], join(root), process.execPath],
+  ['test-pricing-watch（pricing-watch 抓取器：离线解析 + 10 条校验契约 + 目录生成）', ['tests/test-pricing-watch.mjs'], join(root), process.execPath],
   ['check-host（host.js）', ['tests/check-host.cjs', HOST], join(root), process.execPath],
   ['test-localization（zh/en rendering and host checker regressions）', ['tests/test-localization.mjs'], join(root), process.execPath],
   ['test-locale-copy（locale meta.title / 字典对称 / 错误码文案 / cordis ctx / patch 行 id）', ['tests/test-locale-copy.mjs'], join(root), process.execPath],
