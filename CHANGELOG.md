@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.28.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.3...v1.28.0) (2026-11-26)
+
+
+### Features
+
+* add display currency setting ([#318](https://github.com/songoao25/dsh-bottom-info-bar/issues/318)) ([3898f69](https://github.com/songoao25/dsh-bottom-info-bar/commit/3898f69f419646116bbbf91b8e7a933d550da862)), closes [#317](https://github.com/songoao25/dsh-bottom-info-bar/issues/317)
+
 ## [1.27.3](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.27.2...v1.27.3) (2026-11-23)
 
 
