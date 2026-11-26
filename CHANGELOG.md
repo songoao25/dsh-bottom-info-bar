@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.29.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.29.0...v1.29.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* refresh Display currency dropdown label immediately after selection ([#322](https://github.com/songoao25/dsh-bottom-info-bar/issues/322)) ([345776d](https://github.com/songoao25/dsh-bottom-info-bar/commit/345776d82e68fed43fb65c1f9cdf2496e4ec374f))
+
 ## [1.29.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.28.0...v1.29.0) (2026-11-26)
 
 
