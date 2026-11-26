@@ -362,7 +362,8 @@ check('三态：deepseek → balance', detectBillingMode('deepseek', 'auto').mod
 // ================= ⑧ client 静态检查（v1.7 渲染面） =================
 const billFn = extractClientFnBody('pushBillingGroups');
 check('client：账单型分支（三态互斥）', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('pushBillingGroups(groups, trailingErrorGroups)'), true);
-check('client：账单型显示本月 $X', clientSrc.includes("metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))"), true);
+// v1.28.0（issue #317）：本月花费改走 displayMoneyParts 统一换算口；auto 下与旧 symbol + fmt 写法逐字一致。
+check('client：账单型显示本月 $X', clientSrc.includes("metric(t('ui.thisMonth'), spendParts.symbol + spendParts.text)"), true);
 check('client：账单型显示预算 Y%', clientSrc.includes("metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')"), true);
 check('client：账单型不显示余额类字段（本会话也不显示）', !billFn.includes('余额 ') && !billFn.includes('本会话 '), true);
 check('client：JWT 到期卡片（到期 YYYY-MM-DD）', clientSrc.includes("metric(t('ui.expires'), formatDate(sub.expiryAt))"), true);
