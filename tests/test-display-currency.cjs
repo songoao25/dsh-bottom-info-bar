@@ -247,5 +247,59 @@ checkContains('native 闭包传 displayCurrency', nativeSrc, 'moneyText(m.curren
 checkContains('native 导入换算表', nativeSrc, "import { DISPLAY_CURRENCY_META } from './constants.js'");
 checkContains('native 导入换算函数', nativeSrc, "import { convertMoney, normalizeDisplayCurrency } from './accounting.js'");
 
+// ---------- ⑨ v1.29.1 下拉显示即时刷新（issue #317 跟进） ----------
+// 报告人：选 USD 后下拉仍显示 Automatic，重开面板才对。根因在 bibSetSelect 的原生
+// 分支：宿主 Menu 在挂载时快照锚点按钮，value 变了不重画锚点文字；React 树本身是对的
+// （commit 乐观更新快照、value 往下传），所以纯字符串断言查不出，须把真实函数跑起来：
+// 用桩 React + 桩宿主渲染 bibSetSelect，断言 Menu 元素的 key 跟 value 走、锚点文字
+// 就是当前选项；再断言 onSelect 把所选项交出去；兜底 <select> 分支受控，本来就即时。
+function makeStubReact() {
+  function createElement(type, config) {
+    const props = Object.assign({}, config || {});
+    const key = props.key !== undefined ? props.key : null;
+    delete props.key;
+    const children = Array.prototype.slice.call(arguments, 2);
+    props.children = children.length === 1 ? children[0] : children;
+    return { type: type, props: props, key: key };
+  }
+  return { createElement: createElement, useState: function (initial) { return [initial, function () {}]; } };
+}
+function NativeMenuStub() {}
+const SELECT_SRC = extractFunctionFrom(clientSrc, 'bibSetSelect') + '\n' + extractFunctionFrom(clientSrc, 'bibSetButton');
+const SELECT_OPTIONS = [
+  { id: 'auto', label: 'Automatic (billing currency)' },
+  { id: 'USD', label: 'USD $' },
+  { id: 'EUR', label: 'EUR €' },
+];
+function renderSelect(nativeMenu, value, onChange) {
+  const box = { React: makeStubReact(), BIB_SET_NATIVE_MENU: nativeMenu, BIB_SET_NATIVE_BUTTON: null, BIB_SET_CHEVRON_ICON: null };
+  vm.createContext(box);
+  vm.runInContext(SELECT_SRC, box);
+  return box.bibSetSelect({ value: value, label: 'Display currency', options: SELECT_OPTIONS, fallbackClassName: 'bib-set-display-currency', onChange: onChange || function () {} });
+}
+function anchorLabel(menuEl) {
+  const kids = menuEl.props.anchor.props.children;
+  const list = Array.isArray(kids) ? kids : [kids];
+  for (const k of list) {
+    if (k && k.props && typeof k.props.className === 'string' && k.props.className.indexOf('bib-set-select-value') !== -1) return k.props.children;
+  }
+  return null;
+}
+const menuAuto = renderSelect(NativeMenuStub, 'auto');
+check('原生分支：value=auto 时 Menu key=auto', menuAuto.key, 'auto');
+check('原生分支：value=auto 时锚点显示 auto 文案', anchorLabel(menuAuto), 'Automatic (billing currency)');
+const menuUsd = renderSelect(NativeMenuStub, 'USD');
+check('原生分支：value=USD 时 Menu key=USD', menuUsd.key, 'USD');
+check('原生分支：value=USD 时锚点显示 USD $', anchorLabel(menuUsd), 'USD $');
+check('原生分支：换值即换 key（强制重挂 Menu 与锚点）', menuAuto.key !== menuUsd.key, true);
+check('原生分支：selectedId 跟 value 走', menuUsd.props.selectedId, 'USD');
+let picked = null;
+const menuPick = renderSelect(NativeMenuStub, 'auto', function (id) { picked = id; });
+menuPick.props.onSelect('EUR');
+check('原生分支：onSelect 把所选项交给 onChange', picked, 'EUR');
+const selectFallback = renderSelect(null, 'USD');
+check('兜底分支：受控 select 的 value 跟 value 走', selectFallback.props.value, 'USD');
+check('兜底分支：仍是 select 元素', selectFallback.type, 'select');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail > 0) process.exit(1);

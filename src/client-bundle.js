@@ -2124,7 +2124,13 @@ function bibSetSelect(props) {
         : React.createElement('span', { key: 'c', className: 'bib-set-chevron-glyph bib-set-select-chevron' }),
     ],
   });
+  // v1.29.1：Menu 的 key 跟 value 走（issue #317 跟进）。宿主原生 Menu 在挂载时快照
+  // 锚点按钮，之后 value 变了它不重画锚点文字——选 USD 后锚点仍显示 Automatic，只有
+  // 重开面板（整树重挂载）才对。key 随 value 变 = 换值即重挂 Menu 与锚点，显示立刻跟上。
+  // open 态在 bibSetSelect 自己的 useState 里，不随 Menu 重挂丢失；选值时 onSelect 先
+  // 关菜单再 onChange，重挂发生在菜单已关时。兜底 <select> 是受控组件，重渲染即更新，不用 key。
   return React.createElement(BIB_SET_NATIVE_MENU, {
+    key: value,
     open: open,
     anchor: anchor,
     items: options.map(function (option) { return { id: option.id, label: option.label }; }),
