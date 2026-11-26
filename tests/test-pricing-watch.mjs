@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   parsePricingPage, parseChangeLog, validateParsed, buildCatalog, canonicalVector,
-  holidaysThroughFromAccounting, toMicro, sha256Hex,
+  holidaysThroughFromAccounting, toMicro, sha256Hex, stripCell,
 } from '../scripts/pricing-watch.mjs'
 
 const root = process.cwd()
@@ -188,6 +188,14 @@ check('假期年份从 accounting.js 表读到 2027', holidaysThroughFromAccount
   const b = buildCatalog(catalog, next, { nowIso: '2026-11-27T00:00:00.000Z', holidaysThrough: 2027 })
   check('新模型双币种条目进目录', !!b.catalog['deepseek-v5'] && !!b.catalog['deepseek-usd:deepseek-v5'])
 }
+
+// ---------- ⑤ 清洗顺序（CodeQL 回归）：先解码再剥标签 ----------
+check('stripCell：普通标签剥掉', stripCell('<b>$0.003</b>') === '$0.003')
+check('stripCell：编码过的 <script> 解码后也被剥掉，不残留',
+  stripCell('&lt;script&gt;alert(1)') === 'alert(1)' && stripCell('&lt;script&gt;alert(1)').indexOf('<') === -1)
+check('stripCell：&amp;lt; 只解一次，不二次解成标签',
+  stripCell('&amp;lt;script&amp;gt;') === '&lt;script&gt;')
+check('stripCell：无闭合 > 的孤立标签也被剥掉', stripCell('abc<script') === 'abc')
 
 // ---------- ④ Change Log 只做旁证 ----------
 const entriesEn = parseChangeLog(logEn)

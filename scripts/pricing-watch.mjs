@@ -73,8 +73,10 @@ function decodeEntities(s) {
     .replace(/&amp;/g, '&')
 }
 export function stripCell(html) {
-  // 标签剥离：>? 兜住无闭合 > 的残留（如孤立 <script），否则 CodeQL 多字符清洗不完整告警
-  return decodeEntities(html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/g, ''))
+  // 先解码再剥标签：&lt;script&gt; 这类编码过的标签解码后也会被剥掉；
+  // 顺序反过来会在剥完标签后把 &lt; 还原成 <，残留进结果（CodeQL 多字符清洗不完整告警）。
+  // &amp; 在 decodeEntities 内最后解，不会二次解码；>? 兜住无闭合 > 的残留。
+  return decodeEntities(html).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/g, '')
     .replace(/[ 　]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 function extractArticle(html) {
