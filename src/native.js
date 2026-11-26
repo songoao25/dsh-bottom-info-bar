@@ -8,6 +8,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { LOCALES } from './locales.js'
+import { DISPLAY_CURRENCY_META } from './constants.js'
+import { convertMoney, normalizeDisplayCurrency } from './accounting.js'
 
 const REFRESH_MS = 15000
 const SESSION_CACHE_MS = 5000
@@ -148,17 +150,22 @@ function windowLabel(locale, key) {
   return String(key || '')
 }
 
-function moneyText(currency, value) {
+function moneyText(currency, value, displayCurrency) {
   const n = typeof value === 'number' && Number.isFinite(value) ? value : null
   if (n === null) return '—'
-  const symbol = currency === 'USD' ? '$' : '¥'
-  const abs = Math.abs(n)
+  // 显示货币（issue #317）：原生币种仍按 pickMoney / 账户币种取，只在落屏时按
+  // displayCurrency 换算；'auto'（默认）与今天逐字一致。换算过的金额带 ~ 前缀。
+  const converted = convertMoney(n, currency, normalizeDisplayCurrency(displayCurrency))
+  const meta = DISPLAY_CURRENCY_META[converted.currency] || { symbol: converted.currency === 'USD' ? '$' : '¥', decimals: 2 }
+  const symbol = (converted.converted ? '~' : '') + meta.symbol
+  const out = converted.value
+  const abs = Math.abs(out)
   if (abs >= 10000) {
     const scaled = abs / 10000
     const text = scaled >= 100 ? scaled.toFixed(0) : scaled.toFixed(1).replace(/\.0$/, '')
-    return symbol + (n < 0 ? '-' : '') + text + '万'
+    return symbol + (out < 0 ? '-' : '') + text + '万'
   }
-  return symbol + (n < 0 ? '-' : '') + abs.toFixed(2)
+  return symbol + (out < 0 ? '-' : '') + abs.toFixed(meta.decimals)
 }
 
 function pickMoney(costs) {
@@ -341,7 +348,7 @@ export function registerNative(ctx, deps) {
       refresh: tr(locale, 'ui.refresh', 'Refresh'),
       title: tr(locale, 'meta.title', 'Bottom Info Bar'),
     }
-    const money = function (m) { return m ? moneyText(m.currency, m.value) : '—' }
+    const money = function (m) { return m ? moneyText(m.currency, m.value, fieldSettings && fieldSettings.displayCurrency) : '—' }
     const metrics = []
     if (snap && snap.mode === 'subscription' && snap.windows.length > 0) {
       snap.windows.slice(0, 3).forEach(function (w) {

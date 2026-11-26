@@ -311,6 +311,8 @@ function clearNativePillVisibility() {
   document.documentElement.removeAttribute(NATIVE_PILL_HIDDEN_ATTR);
 }
 const PRESET_COLORS = /*__PRESET_COLORS__*/[];
+// v1.28：显示货币换算表（构建从 constants.js 注入，与上面诸表同规；见 DISPLAY_CURRENCY_META）。
+const DISPLAY_CURRENCY_META = /*__DISPLAY_CURRENCY_META__*/{};
 // v1.6 T7 / v1.7 FR-14：订阅/账单 provider 集合（构建注入，永不变）。以前在 BottomInfoBar 里每次渲染重建
 // 字面量——值从不变，多建的只是垃圾。提到模块级，var 拼法保留（一致性测试按该字面锚点提取）。
 var SUBSCRIPTION_PROVIDERS = /*__SUBSCRIPTION_PROVIDERS__*/[];
@@ -324,12 +326,57 @@ const DEFAULT_QUOTA_DISPLAY_MODE = 'remaining';
 function normalizeQuotaDisplayMode(value) {
   return value === 'used' || value === 'remaining' ? value : DEFAULT_QUOTA_DISPLAY_MODE;
 }
+// v1.28：显示货币（displayCurrency，issue #317）。'auto' = 历史行为（默认）：每笔金额
+// 按其原生计费币种显示，不换算；选定一种货币后，全部金额按 DISPLAY_CURRENCY_META
+// 的内置近似汇率换算显示（非实时汇率），换算过的金额前面带 ~（与「部分未计价 ≈」
+// 同一套「界面不冒充精确值」的标记语言）。账本与导出永远保留原生币种。
+// 契约：宿主缺字段 / 给出非法值时一律回退 'auto'，任何输入都不得抛错（老宿主 = 老行为）。
+const DISPLAY_CURRENCIES = ['auto', 'USD', 'CNY', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW'];
+const DEFAULT_DISPLAY_CURRENCY = 'auto';
+function normalizeDisplayCurrency(value) {
+  return DISPLAY_CURRENCIES.indexOf(value) !== -1 ? value : DEFAULT_DISPLAY_CURRENCY;
+}
+// 信息栏渲染期读取当前显示货币（模块级配置，随 fieldConfigVersion 触发重渲染）
+function activeDisplayCurrency() {
+  return normalizeDisplayCurrency(fieldConfig.displayCurrency);
+}
+// 金额落屏前的唯一换算口（显示层共用）：把原生币种金额换成当前显示货币。
+// 返回 { currency, value, converted }。target='auto'、目标与原生相同、
+// 币种未知或数值非有限时一律不换算（converted=false），绝不抛错。
+function convertDisplayMoney(currency, value) {
+  const meta = (typeof DISPLAY_CURRENCY_META === 'object' && DISPLAY_CURRENCY_META !== null)
+    ? DISPLAY_CURRENCY_META : {};
+  const n = typeof value === 'number' && isFinite(value) ? value : 0;
+  const targetCode = activeDisplayCurrency();
+  if (targetCode === 'auto' || targetCode === currency) return { currency: currency, value: n, converted: false };
+  const from = meta[currency];
+  const to = meta[targetCode];
+  if (!from || !to || !from.perUsd || !to.perUsd) return { currency: currency, value: n, converted: false };
+  const usd = currency === 'USD' ? n : n / from.perUsd;
+  const out = targetCode === 'USD' ? usd : usd * to.perUsd;
+  if (!isFinite(out)) return { currency: currency, value: n, converted: false };
+  return { currency: targetCode, value: out, converted: true };
+}
+// 落屏格式化：返回 { symbol, text, converted }：symbol 含换算标记 ~（未换算时就是
+// 原生符号）；text 是带千分位、不带符号的数字本体（负号在数字前）；digits 为 null
+// 时按币种惯例小数位（JPY/KRW 0 位，其余 2 位），传 3 则用于本会话 3 位小数那一处。
+function displayMoneyParts(currency, value, digits) {
+  const meta = (typeof DISPLAY_CURRENCY_META === 'object' && DISPLAY_CURRENCY_META !== null)
+    ? DISPLAY_CURRENCY_META : {};
+  const converted = convertDisplayMoney(currency, value);
+  const m = meta[converted.currency] || { symbol: converted.currency === 'USD' ? '$' : '¥', decimals: 2 };
+  const decimals = digits == null ? m.decimals : digits;
+  const fixed = Math.abs(converted.value).toFixed(decimals);
+  const whole = fixed.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const text = (converted.value < 0 ? '-' : '') + whole + (decimals > 0 ? '.' + (fixed.split('.')[1] || '') : '');
+  return { symbol: (converted.converted ? '~' : '') + m.symbol, text: text, converted: converted.converted };
+}
 // 信息栏渲染期读取当前方向（模块级配置，随 fieldConfigVersion 触发重渲染）
 function activeQuotaDisplayMode() {
   return normalizeQuotaDisplayMode(fieldConfig.quotaDisplayMode);
 }
 
-let fieldConfig = { fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE };
+let fieldConfig = { fields: {}, colors: {}, timeZones: { main: 'Asia/Shanghai', world: 'UTC' }, customText: '', quotaDisplayMode: DEFAULT_QUOTA_DISPLAY_MODE, displayCurrency: DEFAULT_DISPLAY_CURRENCY };
 let fieldConfigVersion = 0;
 let fieldConfigServerVersion = -1; // 宿主 configVersion（-1=尚未取得）；过期响应据此丢弃（D3）
 const fieldConfigListeners = new Set();
@@ -343,6 +390,7 @@ function applyFieldConfigSnapshot(next) {
     timeZones: next && next.timeZones && typeof next.timeZones === 'object' ? next.timeZones : { main: 'Asia/Shanghai', world: 'UTC' },
     customText: typeof (next && next.customText) === 'string' ? next.customText : '',
     quotaDisplayMode: normalizeQuotaDisplayMode(next && next.quotaDisplayMode),
+    displayCurrency: normalizeDisplayCurrency(next && next.displayCurrency),
   };
   if (next && typeof next.customTextValue === 'string' && !next.customText) fieldConfig.customText = next.customTextValue;
   fieldConfigVersion += 1;
@@ -2600,6 +2648,41 @@ function bibSetQuotaDisplaySection(props) {
         native ? panels : null)));
 }
 
+// v1.28.0：显示货币卡片（issue #317）。与额度显示方向同属「数字怎么显示」的偏好卡，
+// 同一套卡片语法：卡头（标题＋说明）＋下拉选择器。控件选 bibSetSelect（宿主原生
+// Menu＋<select> 兜底，时区同款），不用分段控件：8 个选项按分段控件每项最小 72px
+// 会溢出；不用开关：这是多选一，不是二值。选项标签用币种代码＋符号（如 USD $），
+// 语言中立，不另增文案键；auto 一项用文案键（各语已翻）。
+function bibSetDisplayCurrencySection(props) {
+  const current = normalizeDisplayCurrency(props.currencyOf());
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-display-currency-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-display-currency-title',
+      title: t('ui.displayCurrencyTitle'),
+      description: t('ui.displayCurrencyDesc'),
+    }),
+    React.createElement('div', { className: 'bib-set-fieldblocks' },
+      React.createElement('div', { className: 'bib-set-field' },
+        React.createElement('div', { className: 'bib-set-field-control' },
+          React.createElement(bibSetSelect, {
+            value: current,
+            label: t('ui.displayCurrencyTitle'),
+            options: displayCurrencyOptions(),
+            fallbackClassName: 'bib-set-display-currency',
+            onChange: props.onCurrencyChange,
+          })))));
+}
+
+// 显示货币下拉选项（设置页两条渲染路径共用）：auto 一项用文案键，其余「代码＋符号」。
+function displayCurrencyOptions() {
+  return [{ id: 'auto', label: t('ui.displayCurrencyAuto') }].concat(
+    DISPLAY_CURRENCIES.filter(function (c) { return c !== 'auto'; }).map(function (c) {
+      const meta = DISPLAY_CURRENCY_META[c] || { symbol: '' };
+      return { id: c, label: c + ' ' + meta.symbol };
+    }));
+}
+
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
 // 不要在 InfoBarSettingsSection 的 return 里再插一段（体系统一化：加东西改 1 处）。
 // 每行 render(ctx) 收到同一个上下文包；返回 null 的区不占位（与原来直写 null 一致）。
@@ -2867,6 +2950,7 @@ const BIB_SET_SECTIONS = [
   { id: 'timeDate', render: function (deps) { return bibSetTimeDateSection({ fieldOn: deps.fieldOn, timeZonesOf: deps.timeZonesOf, onTimeZoneChange: deps.setTimeZone }); } },
   { id: 'customText', render: function (deps) { return bibSetCustomTextSection({ fieldOn: deps.fieldOn, customTextDraft: deps.customTextDraft, customTextOf: deps.customTextOf, onCustomTextChange: deps.onCustomTextChange, onCustomTextCommit: deps.commitCustomText }); } },
   { id: 'quota', render: function (deps) { return bibSetQuotaDisplaySection({ fieldOn: deps.fieldOn, modeOf: deps.quotaDisplayModeOf, onModeChange: deps.setQuotaDisplayMode }); } },
+  { id: 'currency', render: function (deps) { return bibSetDisplayCurrencySection({ currencyOf: deps.displayCurrencyOf, onCurrencyChange: deps.setDisplayCurrency }); } },
   { id: 'credentials', render: function (deps) { return bibSetCredentialsSection({ credentialState: deps.credentialState, credentialDrafts: deps.credentialDrafts, credentialBusyRef: deps.credentialBusyRef, credentialFeedback: deps.credentialFeedback, onCredentialDraft: deps.onCredentialDraft, onCredentialSave: deps.onCredentialSave, onCredentialClear: deps.onCredentialClear }); } },
   { id: 'data', render: function (deps) { return bibSetDataCard({ busy: deps.busy, onExport: deps.runExport, onClear: deps.runClearRecords }); } },
   { id: 'version', render: function (deps) { return bibSetVersionSection({ state: deps.updateState, error: deps.updateError, busy: deps.updateBusy, phase: deps.updatePhase, onToggleAuto: deps.onToggleUpdateAuto, onCheck: deps.onCheckUpdate, onInstall: deps.onInstallUpdate, onForce: deps.onForceUpdate, onRollback: deps.onRollbackUpdate }); } },
@@ -3485,6 +3569,20 @@ function BibSetDshGoPage(props) {
               onChange: deps.setQuotaDisplayMode,
             }),
           }),
+          // 显示货币（issue #317）：Go 页没有 8 选项的分段/下拉控件，复用 bibSetSelect
+          //（宿主原生 Menu＋<select> 兜底，时区同款），不另造控件。
+          React.createElement(BibSetGoRow, {
+            title: t('ui.displayCurrencyTitle'),
+            desc: t('ui.displayCurrencyDesc'),
+            stack: true,
+            control: React.createElement(bibSetSelect, {
+              value: deps.displayCurrencyOf(),
+              label: t('ui.displayCurrencyTitle'),
+              options: displayCurrencyOptions(),
+              fallbackClassName: 'bib-set-display-currency',
+              onChange: deps.setDisplayCurrency,
+            }),
+          }),
           React.createElement(BibSetGoDisclosure, { title: t('ui.colors'), desc: null, open: bibGoColorsOpen, onToggle: setBibGoColorsOpen }, colorRows),
           React.createElement('div', { className: 'bib-go-actions' },
             React.createElement(BibSetGoButton, { variant: 'secondary', disabled: deps.busy === true, onClick: function () { deps.requestReset('colors'); } }, t('ui.resetColors'))))),
@@ -3586,7 +3684,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), displayCurrency: normalizeDisplayCurrency(cfg.displayCurrency), configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -3894,6 +3992,7 @@ function InfoBarSettingsSection() {
   function timeZonesOf() { return snapshot.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }; }
   function customTextOf() { return typeof snapshot.customText === 'string' ? snapshot.customText : ''; }
   function quotaDisplayModeOf() { return normalizeQuotaDisplayMode(snapshot.quotaDisplayMode); }
+  function displayCurrencyOf() { return normalizeDisplayCurrency(snapshot.displayCurrency); }
   function infoDensityOf() { return snapshot.infoDensity === 'compact' ? 'compact' : 'full'; }
   function setTimeZone(which, next) {
     const current = timeZonesOf();
@@ -3915,6 +4014,17 @@ function InfoBarSettingsSection() {
       function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: value }); }); },
       function () { setSnapshot(function (s) { return Object.assign({}, s, { quotaDisplayMode: previous }); }); },
       function () { return t('ui.quotaDisplayModeTitle'); });
+  }
+  // 显示货币：与上面同一条 commit()（乐观更新 + 失败回滚 + 版本号守卫），
+  // 成功由 applyServerResult 回写快照并广播 CustomEvent，信息栏随即重拉配置。
+  function setDisplayCurrency(next) {
+    const value = normalizeDisplayCurrency(next);
+    const previous = displayCurrencyOf();
+    if (previous === value) return;
+    commit({ displayCurrency: value },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { displayCurrency: value }); }); },
+      function () { setSnapshot(function (s) { return Object.assign({}, s, { displayCurrency: previous }); }); },
+      function () { return t('ui.displayCurrencyTitle'); });
   }
 
   function onCustomTextChange(raw) { setCustomTextDraft(raw); }
@@ -4146,6 +4256,8 @@ function InfoBarSettingsSection() {
         onCustomTextCommit: commitCustomText,
         quotaDisplayModeOf: quotaDisplayModeOf,
         setQuotaDisplayMode: setQuotaDisplayMode,
+        displayCurrencyOf: displayCurrencyOf,
+        setDisplayCurrency: setDisplayCurrency,
         // 额度凭据是 v1.24 才有的设置分区（Go 分支分叉时还不存在）。Go 页整个替换掉设置页，
         // 不接这一组依赖的话，DSH Go 用户就没有任何入口配置额度凭据了。
         credentialState: credentialState,
@@ -4239,6 +4351,8 @@ function InfoBarSettingsSection() {
       commitCustomText: commitCustomText,
       quotaDisplayModeOf: quotaDisplayModeOf,
       setQuotaDisplayMode: setQuotaDisplayMode,
+      displayCurrencyOf: displayCurrencyOf,
+      setDisplayCurrency: setDisplayCurrency,
       busy: saving || dataBusy,
       runExport: runExport,
       runClearRecords: runClearRecords,
@@ -5116,18 +5230,23 @@ module.exports = {
             const cs = usg.currentSession;
             const costCNY = cs && cs.costs && cs.costs.CNY != null ? cs.costs.CNY : null;
             const costUSD = cs && cs.costs && cs.costs.USD != null ? cs.costs.USD : null;
-            const symbol = usdSymbol ? '$' : '¥';
+            // 显示货币（issue #317）：原生币种仍按今天的规则取（会话取 CNY 优先、汇总行
+            // 取账户币种），只在落屏时按 displayCurrency 换算；'auto' 下与今天逐字一致。
+            const costNative = costCNY != null ? 'CNY' : 'USD';
+            const hoverNative = usdSymbol ? 'USD' : 'CNY';
+            const costParts = displayMoneyParts(costNative, costCNY != null ? costCNY : costUSD, 3);
+            const symbol = displayMoneyParts(hoverNative, 0, 3).symbol;
             const priced = costCNY != null || costUSD != null;
             const unpricedRecords = cs && cs.unpricedRecords ? cs.unpricedRecords : 0;
             // 有 token 但一条都没定价 → 绝不用 ¥0.000 冒充“没有花费”（审计 2026-10-05）：
             // 未收录模型只记账、不猜价，界面必须直说“暂不可计算”；部分未计价则前缀 ≈。
             const hasTokens = !!(cs && cs.tokens > 0);
             const costTxt = priced
-              ? (unpricedRecords > 0 ? '≈' : '') + (costCNY != null ? '¥' + costCNY.toFixed(3) : '$' + costUSD.toFixed(3))
+              ? (unpricedRecords > 0 ? '≈' : '') + costParts.symbol + costParts.text
               : (hasTokens ? symbol + '—' : symbol + (0).toFixed(3));
-            const today = usg.todaySpend != null ? t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) }) : '';
-            const month = usg.last30dSpend != null ? t('ui.lastDays', { symbol: symbol, value: fmt(usg.last30dSpend, 3) }) : '';
-            const total = usg.totalSpend != null ? t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) }) : '';
+            const today = usg.todaySpend != null ? t('ui.today', { symbol: symbol, value: displayMoneyParts(hoverNative, usg.todaySpend, 3).text }) : '';
+            const month = usg.last30dSpend != null ? t('ui.lastDays', { symbol: symbol, value: displayMoneyParts(hoverNative, usg.last30dSpend, 3).text }) : '';
+            const total = usg.totalSpend != null ? t('ui.allTime', { symbol: symbol, value: displayMoneyParts(hoverNative, usg.totalSpend, 3).text }) : '';
             const detail = [today, month, total].filter(function (s) { return s.length > 0; }).join(' · ');
             const costTitle = [t('ui.sessionIncludingSubagents', { costTxt: costTxt, value: detail ? '\n' + detail : '' })];
             if (!priced && hasTokens) costTitle.push(t('ui.pricingNotListedUsingDefaults'));
@@ -5354,16 +5473,18 @@ module.exports = {
           return;
         }
         if (hasSpend) {
-          const symbol = d.currency === 'CNY' ? '¥' : '$';
+          // 显示货币（issue #317）：原生币种 = 账单接口给的 d.currency，落屏时换算。
+          const spendParts = d.currentPeriodSpend != null ? displayMoneyParts(d.currency, d.currentPeriodSpend, 2) : null;
+          const symbol = spendParts ? spendParts.symbol : (d.currency === 'CNY' ? '¥' : '$');
           const titleLines = [t('ui.billingSource', { value: billingServiceName(visibleBillingMode && visibleBillingMode.provider) })]
             .concat(d.note ? [hostText(d.note)] : [])
-            .concat(d.currentPeriodSpend != null ? [t('ui.thisMonthSSpend', { symbol: symbol, value: fmt(d.currentPeriodSpend, 2) })] : [])
+            .concat(d.currentPeriodSpend != null ? [t('ui.thisMonthSSpend', { symbol: symbol, value: spendParts.text })] : [])
             .concat(d.budgetPercent != null ? [t('ui.budgetUsed', { value: fmt(d.budgetPercent, 0) })] : [])
             .concat(d.freeRemaining != null ? [t('ui.dailyFreeQuotaRemaining', { value: fmt(d.freeRemaining, 0) })] : []);
           // v1.9.0 PR2：本月/预算/免费额度三片段各自显隐，分隔符只在可见片段之间
           const nodes = [];
           if (d.currentPeriodSpend != null && fieldVisible('billingSpend')) {
-            nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))));
+            nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonth'), spendParts.symbol + spendParts.text)));
           } else if (d.usage != null && fieldVisible('billingSpend')) {
             nodes.push(fieldSpan('billingSpend', 'billspend', metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2) + (d.usageUnit ? ' ' + d.usageUnit : ''))));
           }
@@ -5439,15 +5560,16 @@ module.exports = {
       const goNarrow = (function () { try { return typeof window !== 'undefined' && window && typeof window.innerWidth === 'number' && window.innerWidth <= 360; } catch (err) { return false; } })();
       const goUnit = function (key) { return t(key); };
       const goMoneyFull = function (currency, value) {
-        const symbol = currency === 'USD' ? '$' : '¥';
-        const n = typeof value === 'number' && isFinite(value) ? value : 0;
-        const fixed = Math.abs(n).toFixed(2);
-        const whole = fixed.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-        return symbol + (n < 0 ? '-' : '') + whole + '.' + fixed.split('.')[1];
+        const parts = displayMoneyParts(currency, value, null);
+        return parts.symbol + parts.text;
       };
       const goMoneyCompact = function (currency, value) {
-        const symbol = currency === 'USD' ? '$' : '¥';
-        const n = typeof value === 'number' && isFinite(value) ? value : 0;
+        const converted = convertDisplayMoney(currency, value);
+        const meta = (typeof DISPLAY_CURRENCY_META === 'object' && DISPLAY_CURRENCY_META !== null)
+          ? DISPLAY_CURRENCY_META : {};
+        const m = meta[converted.currency] || { symbol: converted.currency === 'USD' ? '$' : '¥', decimals: 2 };
+        const symbol = (converted.converted ? '~' : '') + m.symbol;
+        const n = converted.value;
         const abs = Math.abs(n);
         const cjk = goLanguage === 'zh' || goLanguage === 'zh-hant' || goLanguage === 'ja' || goLanguage === 'ko';
         let scaled = abs;
@@ -5458,8 +5580,8 @@ module.exports = {
         } else if (abs >= 1e9) { scaled = abs / 1e9; unit = goUnit('number.compactB'); }
         else if (abs >= 1e6) { scaled = abs / 1e6; unit = goUnit('number.compactM'); }
         else if (abs >= 1e3) { scaled = abs / 1e3; unit = goUnit('number.compactK'); }
-        if (unit === '') return goMoneyFull(currency, n);
-        const digits = scaled >= 100 ? 0 : (scaled >= 10 ? 1 : 2);
+        if (unit === '') return goMoneyFull(currency, value);
+        const digits = Math.min(scaled >= 100 ? 0 : (scaled >= 10 ? 1 : 2), m.decimals);
         const text = scaled.toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
         return symbol + (n < 0 ? '-' : '') + text + unit;
       };
@@ -5619,10 +5741,14 @@ module.exports = {
           if (bal && bal.data) {
             const granted = typeof bal.data.granted === 'number' && isFinite(bal.data.granted) ? bal.data.granted : 0;
             const toppedUp = typeof bal.data.toppedUp === 'number' && isFinite(bal.data.toppedUp) ? bal.data.toppedUp : 0;
+            // 显示货币（issue #317）：余额明细的符号与数字由 displayMoneyParts 分离提供；
+            // 旧写法 goMoneyFull(...).slice(1) 假定符号 1 字符，HK$ / ~ 会把它弄坏。
+            const upParts = displayMoneyParts(bal.currency, toppedUp, null);
+            const grParts = displayMoneyParts(bal.currency, granted, null);
             accountRows.push({
               k: t('ui.balance.pushBalanceGroups'),
               v: goMoneyFull(bal.currency, bal.data.total),
-              small: granted > 0 ? t('ui.balanceDetailToppedUp', { symbol: bal.currency === 'USD' ? '$' : '¥', value: goMoneyFull(bal.currency, toppedUp).slice(1) }) + ' · ' + t('ui.balanceDetailGranted', { symbol: bal.currency === 'USD' ? '$' : '¥', value: goMoneyFull(bal.currency, granted).slice(1) }) : null,
+              small: granted > 0 ? t('ui.balanceDetailToppedUp', { symbol: upParts.symbol, value: upParts.text }) + ' · ' + t('ui.balanceDetailGranted', { symbol: grParts.symbol, value: grParts.text }) : null,
             });
           }
         }

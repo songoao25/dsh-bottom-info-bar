@@ -67,6 +67,8 @@ const fieldGroupLabelsJson = extractLiteral('FIELD_GROUP_LABELS')
 const fieldSectionsJson = extractLiteral('FIELD_SECTIONS')
 // 2026-11-12：+CREDENTIAL_CATALOG（额度凭据目录：设置页渲染与测试都以它为同一口径）
 const credentialCatalogJson = extractLiteral('CREDENTIAL_CATALOG')
+// v1.28.0：+DISPLAY_CURRENCY_META（显示货币换算表：符号/小数位/兑美元汇率）
+const displayCurrencyMetaJson = extractLiteral('DISPLAY_CURRENCY_META')
 function injectSharedConstants(source) {
   return source
     .replace(/\/\*__SUBSCRIPTION_PROVIDERS__\*\/\[\]/g, subscriptionProvidersJson)
@@ -77,6 +79,9 @@ function injectSharedConstants(source) {
     .replace(/\/\*__FIELD_GROUP_LABELS__\*\/\{\}/g, fieldGroupLabelsJson)
     .replace(/\/\*__FIELD_SECTIONS__\*\/\[\]/g, fieldSectionsJson)
     .replace(/\/\*__CREDENTIAL_CATALOG__\*\/\[\]/g, credentialCatalogJson)
+    // 注意：DISPLAY_CURRENCY_META 字面量含 '$'（USD 符号），字符串形式的 replace
+    // 会把其中的 $' / $` 当成特殊替换模式而搅坏注入结果，必须用函数形式（LOCALES 同理）。
+    .replace(/\/\*__DISPLAY_CURRENCY_META__\*\/\{\}/g, () => displayCurrencyMetaJson)
 }
 
 // 1) host（ESM，原样复制后替换锚点占位；constants.js 随包复制供 import 解析）

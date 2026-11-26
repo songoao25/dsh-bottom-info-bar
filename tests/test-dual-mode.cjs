@@ -294,7 +294,8 @@ const billFn = extractClientFnBody('pushBillingGroups');
 check('client 账单型渲染分支存在（pushBillingGroups）', clientSrc.includes('function pushBillingGroups(groups, trailingErrorGroups)'), true);
 check('client 三态互斥：row2 依次判定 billing → subscription → balance', clientSrc.includes('} else if (isBilling) {') && clientSrc.includes('} else if (isSub) {') && clientSrc.includes('} else {') && clientSrc.includes('pushBalanceGroups(groups, trailingErrorGroups)'), true);
 check('client 账单型不显示余额/本会话花费/峰谷时段', !billFn.includes('余额 ') && !billFn.includes('本会话 ') && !billFn.includes("t('ui.peakPrice')"), true);
-check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric(t('ui.thisMonth'), symbol + fmt(d.currentPeriodSpend, 2))"), true);
+// v1.28.0（issue #317）：本月花费改走 displayMoneyParts 统一换算口；auto 下与旧 symbol + fmt 写法逐字一致。
+check('client 账单型显示本月真实花费（本月 $X）', clientSrc.includes("metric(t('ui.thisMonth'), spendParts.symbol + spendParts.text)"), true);
 check('client 账单型显示预算%（本月 $X · 预算 Y%）', clientSrc.includes("metric(t('ui.budget'), fmt(d.budgetPercent, 0) + '%')"), true);
 check('client 账单型免费额度仅在接口给出免费字段时显示（绝不编造）', clientSrc.includes('d.freeRemaining != null && d.resetsAt'), true);
 check('client 账单型无金额时按真实用量展示', clientSrc.includes("metric(t('ui.thisMonthSUsage'), fmt(d.usage, 2)"), true);

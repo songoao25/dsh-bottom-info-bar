@@ -22,8 +22,9 @@ check('本会话块在 usg 存在时始终渲染（pushSessionCost 公共小部�
   && clientSrc.includes('const usg = renderedState.usage;')
   && (clientSrc.match(/pushSessionCost\(groups/g) || []).length >= 2, true);
 check('无记账时显示 ¥0.000 回退', clientSrc.includes('symbol + (0).toFixed(3)'), true);
-check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: fmt(usg.todaySpend, 3) })"), true);
-check('hover 仍含 全部', clientSrc.includes("t('ui.allTime', { symbol: symbol, value: fmt(usg.totalSpend, 3) })"), true);
+// v1.28.0（issue #317）：hover 三行金额改走 displayMoneyParts 统一换算口；auto 下与旧 fmt 写法逐字一致。
+check('hover 仍含 今天/近一月/全部', clientSrc.includes("t('ui.today', { symbol: symbol, value: displayMoneyParts(hoverNative, usg.todaySpend, 3).text })"), true);
+check('hover 仍含 全部', clientSrc.includes("t('ui.allTime', { symbol: symbol, value: displayMoneyParts(hoverNative, usg.totalSpend, 3).text })"), true);
 // Issue #245：账本从插件开始运行时才有记录，装插件之前那段不在里面。
 // 标签保持「本会话」不动（v1.21.5 及以前的样子不变），只在 tooltip 里如实写出统计起点；
 // 宿主没给出 sinceTs 时一个字都不加，绝不编造"统计自何时"。

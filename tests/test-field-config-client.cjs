@@ -818,11 +818,11 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
     const layouts = [];
     const reLayout = /layout:\s*'([^']+)'/g;
     while ((m = reLayout.exec(clientSrc)) !== null) layouts.push(m[1]);
-    // 10 处 fallbackClassName：桌面设置页 7 处（search / customText / credential / hex 两处 + 时区 / 语言两个下拉）
-    // + DSH Go 配置页 3 处（自定义文字 + 主/世界时区，见 BibSetDshGoPage）。
+    // 12 处 fallbackClassName：桌面设置页 8 处（search / customText / credential / hex 两处 + 时区 / 语言两个下拉 + 显示货币下拉）
+    // + DSH Go 配置页 4 处（自定义文字 + 主/世界时区 + 显示货币下拉，见 BibSetDshGoPage）。
     // layout 只有输入框用：恰好 8 条（桌面 5 + Go 页 3），且全部在白名单内。
     // 仍取确切数而不是下限：新增输入框必须同步改这里，否则外观类会悄悄漂移。
-    return fallbacks.length === 10
+    return fallbacks.length === 12
       && fallbacks.indexOf('bib-set-search') !== -1
       && fallbacks.indexOf('bib-set-custom-text-input') !== -1
       && fallbacks.indexOf('bib-set-credential-input') !== -1
@@ -830,6 +830,7 @@ check('构建产物含被注入的字段注册表与插件配置页注册（非�
       && fallbacks.filter(function (x) { return x === 'bib-set-custom-text-input'; }).length === 2
       && fallbacks.filter(function (x) { return x === 'bib-set-language'; }).length === 1
       && fallbacks.filter(function (x) { return x === 'bib-set-time-zone'; }).length === 3
+      && fallbacks.filter(function (x) { return x === 'bib-set-display-currency'; }).length === 2
       && layouts.length === 8
       && layouts.every(function (cls) { return ALLOWED.indexOf(cls) !== -1; });
   })(), true);
