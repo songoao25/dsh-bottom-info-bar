@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.30.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.29.1...v1.30.0) (2026-11-26)
+
+
+### Features
+
+* auto-update DeepSeek pricing catalog via hourly pricing-watch ([#324](https://github.com/songoao25/dsh-bottom-info-bar/issues/324)) ([6c37400](https://github.com/songoao25/dsh-bottom-info-bar/commit/6c3740016014cb5af4723587953500ea91a1ef82))
+
 ## [1.29.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.29.0...v1.29.1) (2026-11-26)
 
 
