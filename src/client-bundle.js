@@ -2689,6 +2689,33 @@ function displayCurrencyOptions() {
     }));
 }
 
+// 价目表验证状态卡（pricing-watch）：只读，无控件。host 随 getFieldConfig 下发
+// { checkedAt, stale, source, holidaysThrough, holidaysExpired }；
+// 老宿主不下发该字段时本区返回 null、不占位。stale（>7 天未验证）与节假日表过期时
+// 各出一行警告；正常时只在卡头说明里写最后验证时间。
+function bibSetPricingCatalogSection(props) {
+  const status = props.pricingCatalog;
+  if (!status || typeof status !== 'object') return null;
+  const checkedAt = Number.isFinite(status.checkedAt) && status.checkedAt > 0 ? status.checkedAt : null;
+  const timeText = checkedAt ? bibSetRelativeTime(checkedAt) : null;
+  const desc = status.source === 'builtin'
+    ? t('ui.pricingCatalogBuiltin', { date: checkedAt ? new Date(checkedAt).toISOString().slice(0, 10) : '' })
+    : t('ui.pricingCatalogVerified', { time: timeText || '' });
+  return React.createElement('section', { className: 'bib-set-card bib-set-card--panel', 'aria-labelledby': 'bib-set-pricing-catalog-title' },
+    bibSetCardHeader({
+      static: true,
+      titleId: 'bib-set-pricing-catalog-title',
+      title: t('ui.pricingCatalogTitle'),
+      description: desc,
+    }),
+    status.stale && timeText
+      ? bibSetAlert({ tone: 'warning', children: t('ui.pricingCatalogStale', { time: timeText }) })
+      : null,
+    status.holidaysExpired
+      ? bibSetAlert({ tone: 'warning', children: t('ui.pricingCatalogHolidaysExpired', { year: status.holidaysThrough }) })
+      : null);
+}
+
 // 设置区注册表：设置页的区块组成与顺序只在这里排。要加一个新区 = 在这张表里加一行，
 // 不要在 InfoBarSettingsSection 的 return 里再插一段（体系统一化：加东西改 1 处）。
 // 每行 render(ctx) 收到同一个上下文包；返回 null 的区不占位（与原来直写 null 一致）。
@@ -2957,6 +2984,7 @@ const BIB_SET_SECTIONS = [
   { id: 'customText', render: function (deps) { return bibSetCustomTextSection({ fieldOn: deps.fieldOn, customTextDraft: deps.customTextDraft, customTextOf: deps.customTextOf, onCustomTextChange: deps.onCustomTextChange, onCustomTextCommit: deps.commitCustomText }); } },
   { id: 'quota', render: function (deps) { return bibSetQuotaDisplaySection({ fieldOn: deps.fieldOn, modeOf: deps.quotaDisplayModeOf, onModeChange: deps.setQuotaDisplayMode }); } },
   { id: 'currency', render: function (deps) { return bibSetDisplayCurrencySection({ currencyOf: deps.displayCurrencyOf, onCurrencyChange: deps.setDisplayCurrency }); } },
+  { id: 'pricing', render: function (deps) { return bibSetPricingCatalogSection({ pricingCatalog: deps.pricingCatalog }); } },
   { id: 'credentials', render: function (deps) { return bibSetCredentialsSection({ credentialState: deps.credentialState, credentialDrafts: deps.credentialDrafts, credentialBusyRef: deps.credentialBusyRef, credentialFeedback: deps.credentialFeedback, onCredentialDraft: deps.onCredentialDraft, onCredentialSave: deps.onCredentialSave, onCredentialClear: deps.onCredentialClear }); } },
   { id: 'data', render: function (deps) { return bibSetDataCard({ busy: deps.busy, onExport: deps.runExport, onClear: deps.runClearRecords }); } },
   { id: 'version', render: function (deps) { return bibSetVersionSection({ state: deps.updateState, error: deps.updateError, busy: deps.updateBusy, phase: deps.updatePhase, onToggleAuto: deps.onToggleUpdateAuto, onCheck: deps.onCheckUpdate, onInstall: deps.onInstallUpdate, onForce: deps.onForceUpdate, onRollback: deps.onRollbackUpdate }); } },
@@ -3690,7 +3718,7 @@ function InfoBarSettingsSection() {
     rpc('getFieldConfig').then(function (cfg) {
       if (!active) return;
       if (cfg && typeof cfg === 'object' && cfg.fields) {
-        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), displayCurrency: normalizeDisplayCurrency(cfg.displayCurrency), configVersion: cfg.configVersion || 0 });
+        setSnapshot({ fields: cfg.fields, colors: cfg.colors || {}, infoDensity: cfg.infoDensity === 'compact' ? 'compact' : 'full', timeZones: cfg.timeZones || { main: 'Asia/Shanghai', world: 'UTC' }, customText: typeof cfg.customText === 'string' ? cfg.customText : '', quotaDisplayMode: normalizeQuotaDisplayMode(cfg.quotaDisplayMode), displayCurrency: normalizeDisplayCurrency(cfg.displayCurrency), pricingCatalog: cfg.pricingCatalog || null, configVersion: cfg.configVersion || 0 });
         setStatus('ready');
       } else {
         setLoadError(t('ui.settingsAreTemporarilyUnavailable')); setStatus('error');
@@ -4359,6 +4387,7 @@ function InfoBarSettingsSection() {
       setQuotaDisplayMode: setQuotaDisplayMode,
       displayCurrencyOf: displayCurrencyOf,
       setDisplayCurrency: setDisplayCurrency,
+      pricingCatalog: snapshot.pricingCatalog || null,
       busy: saving || dataBusy,
       runExport: runExport,
       runClearRecords: runClearRecords,

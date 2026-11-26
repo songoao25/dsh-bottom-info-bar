@@ -21,13 +21,29 @@ export function accountForProvider(pid) {
 // （美元表与人民币表是两张独立价目，不是简单汇率换算——见 deepseek-usd: 条目注释）。
 // 'deepseek' 与 'deepseek-official' 在 PROVIDER_IDENTITY 里同属 account 'deepseek'；
 // 'deepseek-account'（DSH 桌面内置账号）刻意不在 PROVIDER_IDENTITY 里（见 host.js 的
-// PLATFORM_BALANCE_PROVIDERS），此处单列。billingCurrency 非 'USD' 时原样返回，
-// 调用方不传币种即沿用既有行为（人民币价）。
+// PLATFORM_BALANCE_PROVIDERS），此处单列。币种映射按 ISO 4217 通用（pricing-watch）：
+// CNY（人民币）走裸键，其余币种走 deepseek-<小写币种>: 作用域；billingCurrency 非法或
+// 缺失时原样返回，调用方不传币种即沿用既有行为（人民币价）。
 export function pricingProviderFor(provider, billingCurrency) {
-  if (billingCurrency !== 'USD' || typeof provider !== 'string' || provider.length === 0) return provider
-  if (accountForProvider(provider) === 'deepseek' || provider === 'deepseek-account') return 'deepseek-usd'
+  if (typeof provider !== 'string' || provider.length === 0) return provider
+  if (typeof billingCurrency !== 'string' || !/^[A-Z]{3}$/.test(billingCurrency) || billingCurrency === 'CNY') return provider
+  if (accountForProvider(provider) === 'deepseek' || provider === 'deepseek-account') return 'deepseek-' + billingCurrency.toLowerCase()
   return provider
 }
+
+// ---------- 价目目录验证状态（pricing-watch）：内置表核对日 / stale 判定 / 假期覆盖 ----------
+// 内置 DeepSeek 条目最后核对日：2026-11-27 与官方中英文价目页逐值核对一致。
+// 远程目录无 meta 时 stale 判断回退到这一天（报告 §7.5）。
+export const BUILTIN_PRICING_CHECKED_AT = '2026-11-27'
+// 目录超过 7 天未验证即标 stale（报告 §7.5）
+export const PRICING_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
+export function isPricingStale(checkedAtMs, nowMs) {
+  if (!Number.isFinite(checkedAtMs) || checkedAtMs <= 0) return true
+  return nowMs - checkedAtMs > PRICING_STALE_AFTER_MS
+}
+// CHINESE_PUBLIC_HOLIDAYS 覆盖到的年份；补一年假期时与表同步改。
+// pricing-watch 每轮从本表读最大年份写进目录 meta.holidaysThrough。
+export const HOLIDAYS_THROUGH_YEAR = 2027
 
 // 桶/索引的键都来自落盘记录（账户、币种、会话 ID）。JSON.parse 产生的 __proto__ 自有属性无害，
 // 但 obj[key]= 赋值会触发原型污染——统一过一道键名护栏。
@@ -129,9 +145,10 @@ export const BUILTIN_PRICING = {
   },
   // deepseek-chat：2026-11-26 核对时已不在官方中英文价目页上（仅剩 flash 与 v4-pro），
   // 但 DSH 侧仍可能以该模型名发起调用；本条目为兼容保留（最后已知官方价，flat），
-  // 待 DeepSeek 明确该模型名退役后再移除。美元域无此模型官方价，故不建 deepseek-usd 键——
-  // 美元账户调 deepseek-chat 时回退人民币价（与此前行为一致），不编造价格。
-  'deepseek-chat': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.5, inputCacheMiss: 2.0, output: 8.0 } },
+  // 退役日 2026-07-24（Change Log 2026-04-24 条目）。新记录按承接模型 Flash 计价
+  // （pricing-watch 决议 §10-4；官方：请求由 Flash 按 Flash 价提供服务），
+  // 退役日之前的旧记录保留本价回填——分界见 pricingEntryFor 的 asOfMs 参数。
+  'deepseek-chat': { currency: 'CNY', mode: 'flat', price: { inputCacheHit: 0.5, inputCacheMiss: 2.0, output: 8.0 }, retired: true, retiredAt: '2026-07-24', successor: 'deepseek-flash' },
   'gpt-4o':        { currency: 'USD', mode: 'flat', price: { inputCacheHit: 1.25, inputCacheMiss: 2.5, output: 10.0 } },
   'gpt-4o-mini':   { currency: 'USD', mode: 'flat', price: { inputCacheHit: 0.15, inputCacheMiss: 0.15, output: 0.6 } },
   // ---------- 智谱 BigModel 官方按量价（CNY/百万 tokens；来源 open.bigmodel.cn/pricing，
@@ -199,6 +216,15 @@ export function normalizeDisplayCurrency(value) {
   return DISPLAY_CURRENCIES.indexOf(value) !== -1 ? value : 'auto'
 }
 
+// 退役条目的退役时刻（毫秒，UTC 零点）：retiredAt 必须是合法 YYYY-MM-DD，否则视为未退役。
+function retiredAtMs(entry) {
+  if (!entry || entry.retired !== true || typeof entry.retiredAt !== 'string') return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(entry.retiredAt)
+  if (!m) return null
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return Number.isFinite(ms) ? ms : null
+}
+
 export function createAccounting() {
   const PRICING = Object.assign(Object.create(null), BUILTIN_PRICING)
 
@@ -217,12 +243,23 @@ export function createAccounting() {
     return 'CNY';
   }
 
-  function pricingEntryFor(provider, model, billingCurrency) {
+  function pricingEntryFor(provider, model, billingCurrency, asOfMs) {
     const scopedKey = pricingProviderFor(provider, billingCurrency) + ':' + model;
-    const scoped = Object.hasOwn(PRICING, scopedKey) ? PRICING[scopedKey] : null;
-    return scoped && typeof scoped === 'object'
-      ? scoped
-      : (Object.hasOwn(PRICING, model) ? PRICING[model] : null);
+    let entry = Object.hasOwn(PRICING, scopedKey) ? PRICING[scopedKey] : null;
+    if (!entry) entry = Object.hasOwn(PRICING, model) ? PRICING[model] : null;
+    if (!entry || typeof entry !== 'object') return null;
+    // 退役承接（pricing-watch §7.3-9 / §10-4）：asOfMs 在退役日之后的新记录按承接模型计价，
+    // 退役日之前的旧记录保留本条目原价回填；不传 asOfMs 时按现在计（当前模型展示与新记录）。
+    // 承接方本身也已退役时不跟进，避免链式解析。
+    const retiredMs = retiredAtMs(entry);
+    const asOf = Number.isFinite(asOfMs) ? asOfMs : Date.now();
+    if (retiredMs !== null && asOf >= retiredMs && typeof entry.successor === 'string' && entry.successor.length > 0) {
+      const succScopedKey = pricingProviderFor(provider, billingCurrency) + ':' + entry.successor;
+      let succ = Object.hasOwn(PRICING, succScopedKey) ? PRICING[succScopedKey] : null;
+      if (!succ) succ = Object.hasOwn(PRICING, entry.successor) ? PRICING[entry.successor] : null;
+      if (succ && typeof succ === 'object' && retiredAtMs(succ) === null) return succ;
+    }
+    return entry;
   }
 
   // ---------- 花费计算 ----------
@@ -232,7 +269,8 @@ export function createAccounting() {
     if (!forceOffpeak && Number.isFinite(record.cost) && record.cost >= 0) return record.cost;
     // 未传 billingCurrency 时用记录冻结的币种定作用域（forecast 重算）；新记录落盘时
     // host 传余额快照的账户币种；两者都没有 → 既有默认（DeepSeek 人民币价）。
-    const entry = pricingEntryFor(record.provider, record.model, billingCurrency || record.currency);
+    // record.ts 决定退役承接分界：退役日之后的记录按承接模型计价，之前的保留原价。
+    const entry = pricingEntryFor(record.provider, record.model, billingCurrency || record.currency, record.ts);
     if (!entry) return null;
     let p;
     if (entry.mode === 'peak-valley') {
