@@ -64,14 +64,17 @@ export function toMicro(str) {
 }
 
 // ---------- HTML 解析（无依赖：Docusaurus 静态页，article 内含完整表格） ----------
+// HTML 实体解码：&amp; 必须最后解（先解它会把 &amp;lt; 二次解成 <，CodeQL 双重解码告警）
 function decodeEntities(s) {
   return s
     .replace(/&#x27;/g, "'").replace(/&#39;/g, "'").replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ').replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(Number(n)) })
+    .replace(/&amp;/g, '&')
 }
 export function stripCell(html) {
-  return decodeEntities(html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, ''))
+  // 标签剥离：>? 兜住无闭合 > 的残留（如孤立 <script），否则 CodeQL 多字符清洗不完整告警
+  return decodeEntities(html.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/g, ''))
     .replace(/[ 　]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 function extractArticle(html) {
