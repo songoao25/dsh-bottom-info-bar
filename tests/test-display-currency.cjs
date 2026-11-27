@@ -179,6 +179,12 @@ checkContains('会话成本走换算口', clientSrc, 'displayMoneyParts(costNati
 checkContains('汇总行走换算口', clientSrc, 'displayMoneyParts(hoverNative,');
 checkContains('账单本月花费走换算口', clientSrc, 'displayMoneyParts(d.currency,');
 checkContains('余额明细走换算口', clientSrc, 'displayMoneyParts(bal.currency,');
+checkContains('余额块总计走换算口', clientSrc, 'const balParts = displayMoneyParts(bal.currency, bal.data.total, null);');
+check('余额块不再用原生符号二选一直出', clientSrc.indexOf("const symbol = bal.currency === 'USD' ? '$' : '¥';") === -1, true);
+checkContains('余额悬停明细与总计同一换算口径', clientSrc, 'return displayMoneyParts(bal.currency, n, null).text;');
+checkContains('智谱充值余额走换算口（CNY 原生）', clientSrc, "displayMoneyParts('CNY', sub.balance, null)");
+check('智谱充值余额不再 ¥ 直拼', clientSrc.indexOf("'¥' + fmt(sub.balance, 2)") === -1, true);
+check('积分余额仍不带币种符号（积分不是钱）', clientSrc.indexOf('isCreditsBalance ? fmt(sub.balance, 2) : subBalParts.symbol + subBalParts.text') !== -1, true);
 check('旧 slice(1) 剥符号写法已清除', clientSrc.indexOf('goMoneyFull(bal.currency, toppedUp).slice(1)') === -1, true);
 checkContains('goMoneyFull 走 parts', clientSrc, 'const parts = displayMoneyParts(currency, value, null);');
 checkContains('goMoneyCompact 走换算', clientSrc, 'const converted = convertDisplayMoney(currency, value);');

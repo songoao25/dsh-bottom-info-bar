@@ -59,6 +59,24 @@ check('设置页变更经 CustomEvent 即时同步到信息栏', clientSrc.inclu
   && clientSrc.includes("document.removeEventListener('dsh-bib-config-changed', onConfigChanged)"), true);
 check('组件订阅字段配置变化（版本号 tick 触发重渲染）', clientSrc.includes('fieldConfigListeners.add(listener)')
   && clientSrc.includes('setFieldConfigTick(fieldConfigVersion);'), true);
+// 切换对话 / 切回可见时立即校准字段配置（显示货币只在当前对话生效的根因）：
+// CustomEvent 只在同一 document 内有效，后台对话的栏收不到；30s 轮询在后台文档里
+// 可能被节流/冻结。sessionId 变化与重新可见/获得焦点时各拉一次。
+check('切换对话时立即校准字段配置（sessionId 变化拉一次，首挂载不重复拉）', (function () {
+  const at = clientSrc.indexOf('const fieldConfigSessionRef = React.useRef(sessionId);');
+  if (at === -1) return false;
+  const end = clientSrc.indexOf('}, [sessionId]);', at);
+  if (end === -1) return false;
+  const body = clientSrc.slice(at, end);
+  return body.includes('if (fieldConfigSessionRef.current === sessionId) return undefined;')
+    && body.includes('fieldConfigSessionRef.current = sessionId;')
+    && body.includes('refreshFieldConfig();');
+})(), true);
+check('切回可见/获得焦点时立即校准字段配置', clientSrc.includes("document.addEventListener('visibilitychange', onVisibleRefreshConfig)")
+  && clientSrc.includes("window.addEventListener('focus', onVisibleRefreshConfig)")
+  && clientSrc.includes("document.removeEventListener('visibilitychange', onVisibleRefreshConfig)")
+  && clientSrc.includes("window.removeEventListener('focus', onVisibleRefreshConfig)")
+  && clientSrc.includes("if (document.visibilityState === 'visible') refreshFieldConfig();"), true);
 
 // ---------- ③ 颜色变量默认不注入（零回归） ----------
 check('fieldStyle 未自定义返回 undefined（变量不存在）', /function fieldStyle\(id\) \{\s*\n  const color = fieldColor\(id\);\s*\n  if \(!color\) return undefined;/.test(clientSrc), true);
