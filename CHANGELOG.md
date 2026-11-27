@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.30.2](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.30.1...v1.30.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* submit pricing-watch catalog updates via PR (main is branch-protected) ([#329](https://github.com/songoao25/dsh-bottom-info-bar/issues/329)) ([c72ce65](https://github.com/songoao25/dsh-bottom-info-bar/commit/c72ce658bbd8b1519f1f5ba423fbef5d210890e4))
+
 ## [1.30.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.30.0...v1.30.1) (2026-11-27)
 
 
