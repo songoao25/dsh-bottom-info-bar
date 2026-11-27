@@ -1,13 +1,17 @@
 # DeepSeek 价目自动更新（pricing-watch）
 #
 # 每小时匿名读一次 DeepSeek 官方价目页（英文/USD + 中文/CNY）与 Change Log，
-# scripts/pricing-watch.mjs 严格解析 + 全部校验通过后才提交 catalog/pricing.json；
+# scripts/pricing-watch.mjs 严格解析 + 全部校验通过后才更新 catalog/pricing.json；
 # 任一环节失败 → 整批拒绝、不写目录，并在仓库开一个去重后的 issue 告警。
 #
+# 目录更新走 PR，不直接推送：main 分支受保护（要求 PR + CI），直接 push 会被
+# GH006 拒绝（#328 的教训：抓取器明明通过，推送一步失败还误报成“校验失败”）。
+# 流程：固定分支 pricing-watch/catalog → 以仓库拥有者身份建 PR
+# （RELEASE_PLEASE_TOKEN）→ auto-merge-own 在 CI 通过后自动合入。
+# chore(pricing) 提交不触发 release-please 发版；校验本身已在脚本内完成。
+#
 # 设计依据：RESEARCH-deepseek-auto-pricing-20261127.md §7（CI 抓取器 + 现有目录通道）。
-# 权限：仅 contents: write（提交本仓库目录）与 issues: write（失败告警）。
-# 注意：目录提交用 GITHUB_TOKEN 推送，不会触发 CI/Release Please（GitHub 的防循环规则），
-# 这正是期望行为——纯数据更新不发版；校验本身已在脚本内完成。
+# 权限：contents: write（推分支、建 PR）与 issues: write（失败告警）。
 name: Pricing Watch
 
 on:
@@ -47,8 +51,13 @@ jobs:
           # pipefail：不加的话 tee 会吃掉抓取器的非零退出码，失败告警步永远不触发
           set -o pipefail
           node scripts/pricing-watch.mjs --catalog catalog/pricing.json ${{ inputs.dry_run == true && '--dry-run' || '' }} | tee "$RUNNER_TEMP/watch.json"
-      - name: Commit catalog update
+      - name: Open catalog update PR
         if: steps.watch.outcome == 'success'
+        env:
+          # owner PAT：以仓库拥有者身份建 PR，auto-merge-own 才会自动合入；
+          # 回退到 GITHUB_TOKEN 时作者为 github-actions[bot]，PR 会停留在待人工合入，
+          # 建完后按作者检查并打 warning（见本步末尾）。
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if ! git status --porcelain -- catalog/pricing.json | grep -q .; then
             echo '目录无变化，不提交。'
@@ -69,11 +78,30 @@ jobs:
             }
             fs.writeFileSync(process.env.RUNNER_TEMP + '/commit-msg.txt', msg);
           "
+          BRANCH='pricing-watch/catalog'
+          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq 'length')" != "0" ]; then
+            echo '已有未合并的 pricing PR，跳过本轮（等它合入后，下一轮再按新 checkedAt 走）。'
+            exit 0
+          fi
           git config user.name 'dsh-bottom-info-bar pricing-watch'
           git config user.email 'pricing-watch@users.noreply.github.com'
+          git checkout -B "$BRANCH"
           git add catalog/pricing.json
           git commit -F "$RUNNER_TEMP/commit-msg.txt"
-          git push
+          # 旧分支残留（上一轮 PR 已合入但分支未删）先清掉，再干净推送，不用 --force。
+          git push origin --delete "$BRANCH" 2>/dev/null || true
+          git push -u origin "$BRANCH"
+          TITLE="$(head -n 1 "$RUNNER_TEMP/commit-msg.txt")"
+          BODY="$(tail -n +3 "$RUNNER_TEMP/commit-msg.txt")
+
+          pricing-watch 自动提交，只改 catalog/pricing.json，不碰插件代码；chore 提交不触发 release-please 发版。CI 通过后由 auto-merge 自动合入。"
+          PR_URL="$(gh pr create --head "$BRANCH" --base main --title "$TITLE" --body "$BODY")"
+          echo "pricing PR: $PR_URL"
+          OWNER="$(gh repo view --json owner --jq '.owner.login')"
+          AUTHOR="$(gh pr view "$PR_URL" --json author --jq '.author.login')"
+          if [ "$AUTHOR" != "$OWNER" ]; then
+            echo "::warning::pricing PR 作者为 $AUTHOR（非仓库拥有者），auto-merge 不会自动合入，需人工合入：$PR_URL"
+          fi
       - name: Open failure issue (deduped by open issue)
         if: failure()
         env:
@@ -83,8 +111,16 @@ jobs:
             echo '已有未关闭的 pricing-watch-failure issue，不重复开。'
             exit 0
           fi
+          TITLE="pricing-watch 校验失败（$(date -u +%Y-%m-%d)）"
           BODY="pricing-watch 校验失败，整批已拒绝，目录未改动（上一份可用目录继续生效，用户侧零感知）。"
           if [ -f "$RUNNER_TEMP/watch.json" ]; then
+            # 摘要存在且 status 不是 failed，说明抓取与校验已通过，失败在提交/PR 阶段，
+            # 别再误报成“校验失败”（#328 的教训）。
+            STATUS="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.env.RUNNER_TEMP + '/watch.json', 'utf8')).status)")"
+            if [ "$STATUS" != "failed" ]; then
+              TITLE="pricing-watch 推送失败（$(date -u +%Y-%m-%d)）"
+              BODY="pricing-watch 抓取与校验均已通过（摘要 status=$STATUS），失败发生在提交/PR 阶段，目录未改动（上一份可用目录继续生效，用户侧零感知）。详见本次 Action 日志 Open catalog update PR 一步。"
+            fi
             BODY="$BODY
 
           摘要：$(cat "$RUNNER_TEMP/watch.json")"
@@ -94,7 +130,7 @@ jobs:
           抓取器未产出摘要（可能在抓取阶段即失败），详见本次 Action 日志。"
           fi
           gh issue create --label pricing-watch-failure \
-            --title "pricing-watch 校验失败（$(date -u +%Y-%m-%d)）" --body "$BODY"
+            --title "$TITLE" --body "$BODY"
 
   holiday-alarm:
     # 年度闹钟：每年 11 月 15 日检查节假日表是否覆盖次年；覆盖不足即开 issue 提醒补表。
