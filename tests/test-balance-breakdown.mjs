@@ -100,14 +100,22 @@ check('英文第二/三行 = Topped-up balance: ¥12.50 / Granted balance: ¥3.0
   enThree.length === 3 && enThree[1] === 'Topped-up balance: ¥12.50' && enThree[2] === 'Granted balance: ¥3.00', JSON.stringify(enThree))
 
 // ---------- ③ 接线：渲染真的用了这条明细 ----------
+// 余额块接显示货币换算（余额是最后一个原生币种直出的金额点）：总计与悬停明细
+// 都走 displayMoneyParts；'auto' 下与老版本逐字一致（千分位除外，与会话花费一致）。
 check('接线：余额 title 由 balanceHoverLines(balTitle, bal.data, …) 拼接',
-  clientSrc.includes('const balHoverTitle = balanceHoverLines(balTitle, bal.data, symbol, t, fmt)')
+  clientSrc.includes('const balHoverTitle = balanceHoverLines(balTitle, bal.data, symbol, t,')
   && clientSrc.includes('{ title: balHoverTitle }'),
   '缺少接线')
-check('接线：估算与普通两条路都仍在（明细只是叠加，不改原语义）',
-  clientSrc.includes("? t('ui.estimatedBalance', { symbol: symbol, value: fmt(bal.data.total) })")
-  && clientSrc.includes(": t('ui.balance', { symbol: symbol, value: fmt(bal.data.total) })"),
-  '原 balTitle 分支被改动')
+check('接线：余额总计走 displayMoneyParts 换算（不再原生币种直出）',
+  clientSrc.includes('const balParts = displayMoneyParts(bal.currency, bal.data.total, null);')
+  && clientSrc.includes("? t('ui.estimatedBalance', { symbol: symbol, value: balParts.text })")
+  && clientSrc.includes(": t('ui.balance', { symbol: symbol, value: balParts.text })")
+  && clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + balParts.text,")
+  && clientSrc.indexOf("const symbol = bal.currency === 'USD' ? '$' : '¥';") === -1,
+  '余额块仍在用原生符号直出')
+check('接线：悬停明细行与总计同一换算口径（明细不回退原生币种）',
+  clientSrc.includes('return displayMoneyParts(bal.currency, n, null).text;'),
+  '明细行仍用 fmt 直出原生币种')
 
 // ---------- ④ 端到端：宿主真的把 granted/toppedUp 送到客户端 ----------
 function makeStub(options) {

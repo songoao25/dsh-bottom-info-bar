@@ -83,12 +83,12 @@ check('低余额和低额度使用无框“低”字，状态不只依赖颜色�
 check('外部分组为 6px、标签与数据为 4px、模型内部圆点为 4px，层级清晰而不过松', clientSrc.includes('.bi-sep { color: var(--bi-separator); margin: 0 6px; }')
   && clientSrc.includes('.bi-metric-data { margin-left: 4px; }')
   && clientSrc.includes('.bi-model-dot { margin: 0 4px; flex: 0 0 auto; }'), true);
-check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
+check('数值语法统一：数值与紧随单位/货币符号整体加粗，中文数值与量词留白，标签保持常规字重', clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + balParts.text")
   && clientSrc.includes("num(formatTps(statsProj.decodeTokens / (statsProj.decodeMs / 1e3)) + ' tok/s')")
   && clientSrc.includes("group([num(t(statsProj.turns === 1 ? 'ui.turnCount' : 'ui.turnCountPlural', { count: statsProj.turns })), ' · ', num(t(statsProj.steps === 1 ? 'ui.stepCount' : 'ui.stepCountPlural', { count: statsProj.steps }))], false, 'turnsSteps')")
   && clientSrc.includes("group([metric(t('ui.input.BottomInfoBar'), formatTokens(billedInput(usageProj)) + ' tok')"), true);
 check('标签与数据通过 metric 组件统一 4px 边界，不依赖普通字符空格', clientSrc.includes("function metric(label, value, extraClass)")
-  && clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + fmt(bal.data.total)")
+  && clientSrc.includes("metric(t('ui.balance.pushBalanceGroups'), symbol + balParts.text")
   && clientSrc.includes("metric(t('ui.session'), costTxt)")
   && clientSrc.includes("metric(t('ui.cacheHit'), hit + '%')"), true);
 check('超长模型名不会被根容器裁切：模型详情可整体换行，视觉胶囊保留能力词并省略过长型号', !clientSrc.includes('display: block; overflow: hidden; font-size: 12px')
