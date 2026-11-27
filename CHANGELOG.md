@@ -2,6 +2,13 @@
 
 本项目的版本记录遵循 Keep a Changelog 与 语义化版本。
 
+## [1.30.1](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.30.0...v1.30.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* apply display currency to balance and refresh config when switching sessions ([#326](https://github.com/songoao25/dsh-bottom-info-bar/issues/326)) ([a0936dc](https://github.com/songoao25/dsh-bottom-info-bar/commit/a0936dc06676fbda35e2f05571ce677d964ebac3))
+
 ## [1.30.0](https://github.com/songoao25/dsh-bottom-info-bar/compare/v1.29.1...v1.30.0) (2026-11-26)
 
 
